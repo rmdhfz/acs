@@ -1,0 +1,11 @@
+.git/
+frontend/
+*.md
+.env
+.env.*
+!.env.example
+.claude/
+.github/
+bin/
+*.exe
+*.test

@@ -1,0 +1,33 @@
+SET FOREIGN_KEY_CHECKS = 0;
+
+DROP TABLE IF EXISTS device_diagnostics;
+DROP TABLE IF EXISTS firmware_upgrade_jobs;
+DROP TABLE IF EXISTS firmware_files;
+DROP TABLE IF EXISTS zero_touch_rules;
+DROP TABLE IF EXISTS provisioning_profile_parameters;
+DROP TABLE IF EXISTS provisioning_profiles;
+DROP TABLE IF EXISTS tasks;
+DROP TABLE IF EXISTS device_optical_metrics;
+DROP TABLE IF EXISTS device_events;
+DROP TABLE IF EXISTS device_sessions;
+DROP TABLE IF EXISTS device_parameters;
+DROP TABLE IF EXISTS devices;
+DROP TABLE IF EXISTS vendor_parameter_mappings;
+DROP TABLE IF EXISTS device_models;
+DROP TABLE IF EXISTS vendor_ouis;
+DROP TABLE IF EXISTS activity_logs;
+DROP TABLE IF EXISTS api_tokens;
+DROP TABLE IF EXISTS user_roles;
+DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS tenants;
+DROP TABLE IF EXISTS ref_roles;
+DROP TABLE IF EXISTS ref_parameter_types;
+DROP TABLE IF EXISTS ref_device_status;
+DROP TABLE IF EXISTS ref_task_status;
+DROP TABLE IF EXISTS ref_task_types;
+DROP TABLE IF EXISTS ref_event_codes;
+DROP TABLE IF EXISTS ref_data_model_versions;
+DROP TABLE IF EXISTS ref_device_types;
+DROP TABLE IF EXISTS ref_vendors;
+
+SET FOREIGN_KEY_CHECKS = 1;

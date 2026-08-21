@@ -1,0 +1,15 @@
+# Binari hasil build
+/bin/
+*.exe
+*.test
+
+# Env lokal (jangan commit secret) - lihat .env.example untuk template
+.env
+.env.*
+!.env.example
+
+# Data lokal Docker Compose (bind mount, bila ada)
+/.data/
+
+# State internal harness Claude Code (lock file sesi lokal, bukan bagian project)
+.claude/scheduled_tasks.lock
