@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
-import { Building2, Cable, FileSliders, HardDrive, LayoutDashboard, LayoutGrid, ListChecks, LogOut, Radio } from 'lucide-react'
+import { Building2, Cable, FileSliders, HardDrive, LayoutDashboard, LayoutGrid, ListChecks, LogOut, Radio, Search } from 'lucide-react'
 import { useAuth } from '../lib/auth'
+import { CommandPalette } from './CommandPalette'
 
 const NAV_ITEMS: { to: string; label: string; icon: typeof LayoutGrid; requireRole?: string }[] = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -12,9 +14,23 @@ const NAV_ITEMS: { to: string; label: string; icon: typeof LayoutGrid; requireRo
   { to: '/administration', label: 'Administration', icon: Building2, requireRole: 'ADMIN' },
 ]
 
+const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform ?? navigator.userAgent)
+
 export function Layout() {
   const { user, logout, hasRole } = useAuth()
   const visibleNavItems = NAV_ITEMS.filter((item) => !item.requireRole || hasRole(item.requireRole))
+  const [paletteOpen, setPaletteOpen] = useState(false)
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setPaletteOpen((prev) => !prev)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   return (
     <div className="flex min-h-screen bg-slate-50">
@@ -27,6 +43,19 @@ export function Layout() {
             <p className="text-sm font-semibold leading-none text-slate-900">ACS Console</p>
             <p className="text-[11px] leading-none text-slate-400 mt-0.5">Multi-Vendor TR-069</p>
           </div>
+        </div>
+
+        <div className="px-3 pt-3">
+          <button
+            onClick={() => setPaletteOpen(true)}
+            className="flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm text-slate-400 transition-colors hover:border-slate-300 hover:bg-white"
+          >
+            <Search className="h-3.5 w-3.5" />
+            <span className="flex-1 text-left">Cari...</span>
+            <kbd className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] text-slate-400">
+              {isMac ? '⌘K' : 'Ctrl+K'}
+            </kbd>
+          </button>
         </div>
 
         <nav className="flex-1 space-y-1 px-3 py-4">
@@ -69,6 +98,8 @@ export function Layout() {
       <main className="min-w-0 flex-1">
         <Outlet />
       </main>
+
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
     </div>
   )
 }

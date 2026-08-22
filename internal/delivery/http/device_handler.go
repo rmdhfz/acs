@@ -102,6 +102,19 @@ func (r *Router) listDeviceEvents(c *echo.Context) error {
 	return c.JSON(http.StatusOK, listResponse{Data: events, Total: total})
 }
 
+func (r *Router) listDeviceActivity(c *echo.Context) error {
+	actor := ActorFrom(c)
+	id, err := parseUint64Param(c, "id")
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "id tidak valid")
+	}
+	logs, total, err := r.Devices.ListActivity(c.Request().Context(), actor, id, paginationFromQuery(c))
+	if err != nil {
+		return handleErr(c, err)
+	}
+	return c.JSON(http.StatusOK, listResponse{Data: logs, Total: total})
+}
+
 func (r *Router) listOpticalMetrics(c *echo.Context) error {
 	actor := ActorFrom(c)
 	id, err := parseUint64Param(c, "id")

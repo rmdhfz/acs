@@ -279,7 +279,9 @@ func (r *activityLogRepository) ListByEntity(ctx context.Context, entityType str
 	}
 	var rows []domain.ActivityLog
 	err = r.db.SelectContext(ctx, &rows,
-		`SELECT * FROM activity_logs WHERE entity_type = ? AND entity_id = ? ORDER BY id DESC LIMIT ? OFFSET ?`,
+		`SELECT al.*, u.username AS username FROM activity_logs al
+		 LEFT JOIN users u ON u.id = al.user_id
+		 WHERE al.entity_type = ? AND al.entity_id = ? ORDER BY al.id DESC LIMIT ? OFFSET ?`,
 		entityType, entityID, p.Limit(), p.Offset())
 	if err != nil {
 		return nil, 0, translateErr(err)

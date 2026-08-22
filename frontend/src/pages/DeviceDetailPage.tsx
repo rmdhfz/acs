@@ -1,7 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Line, LineChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { Activity, ArrowLeft, Cpu, Gauge, HardDrive, History, ListChecks, Sparkles, SlidersHorizontal } from 'lucide-react'
+import { Activity, ArrowLeft, Cpu, Gauge, HardDrive, History, ListChecks, ScrollText, Sparkles, SlidersHorizontal } from 'lucide-react'
 import { StatusBadge } from '../components/StatusBadge'
 import { EmptyState } from '../components/EmptyState'
 import { PageSpinner } from '../components/Spinner'
@@ -12,6 +12,7 @@ import {
   findRefById,
   useApplyProfile,
   useDevice,
+  useDeviceActivity,
   useDeviceDiagnostics,
   useDeviceEvents,
   useDeviceOpticalMetrics,
@@ -27,7 +28,7 @@ import {
 } from '../lib/hooks'
 import { decodeBytesField, formatDateTime, formatRelativeTime } from '../lib/format'
 
-type Tab = 'overview' | 'parameters' | 'optical' | 'events' | 'tasks' | 'diagnostics' | 'firmware'
+type Tab = 'overview' | 'parameters' | 'optical' | 'events' | 'tasks' | 'diagnostics' | 'firmware' | 'timeline'
 
 const TABS: { key: Tab; label: string; icon: typeof Cpu }[] = [
   { key: 'overview', label: 'Overview', icon: Cpu },
@@ -37,7 +38,14 @@ const TABS: { key: Tab; label: string; icon: typeof Cpu }[] = [
   { key: 'tasks', label: 'Task', icon: ListChecks },
   { key: 'diagnostics', label: 'Diagnostics', icon: Activity },
   { key: 'firmware', label: 'Firmware', icon: HardDrive },
+  { key: 'timeline', label: 'Timeline Audit', icon: ScrollText },
 ]
+
+const ACTIVITY_LABELS: Record<string, string> = {
+  UPDATE_DEVICE: 'Mengubah data device',
+  APPLY_PROVISIONING_PROFILE: 'Menerapkan provisioning profile',
+  ZERO_TOUCH_MATCH: 'Auto-provisioning (zero-touch) match',
+}
 
 const inputCls =
   'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500'
@@ -127,6 +135,7 @@ export function DeviceDetailPage() {
       {tab === 'tasks' && <TasksTab deviceId={deviceId} />}
       {tab === 'diagnostics' && <DiagnosticsTab deviceId={deviceId} canTrigger={hasRole('ADMIN', 'NOC')} />}
       {tab === 'firmware' && <FirmwareTab deviceId={deviceId} vendorId={device.vendor_id} canSchedule={hasRole('ADMIN')} />}
+      {tab === 'timeline' && <TimelineTab deviceId={deviceId} />}
     </div>
   )
 }
@@ -584,5 +593,41 @@ function FirmwareTab({ deviceId, vendorId, canSchedule }: { deviceId: number; ve
         </Card>
       )}
     </div>
+  )
+}
+
+function TimelineTab({ deviceId }: { deviceId: number }) {
+  const { data, isLoading } = useDeviceActivity(deviceId)
+  const logs = data?.data ?? []
+
+  if (isLoading) return <PageSpinner />
+  if (logs.length === 0) {
+    return (
+      <EmptyState
+        icon={ScrollText}
+        title="Belum ada aktivitas tercatat"
+        description="Perubahan data device, penerapan provisioning profile, dan match zero-touch akan tercatat di sini. Histori event CWMP dan task RPC ada di tab masing-masing."
+      />
+    )
+  }
+
+  return (
+    <Card>
+      <ul className="divide-y divide-slate-100">
+        {logs.map((log) => (
+          <li key={log.id} className="flex items-start gap-3 px-5 py-3.5">
+            <div className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm text-slate-800">
+                <span className="font-medium">{log.username ?? 'Sistem'}</span>{' '}
+                {(ACTIVITY_LABELS[log.action] ?? log.action).toLowerCase()}
+              </p>
+              {log.description && <p className="mt-0.5 text-xs text-slate-500">{log.description}</p>}
+            </div>
+            <span className="shrink-0 text-xs text-slate-400">{formatDateTime(log.created_at)}</span>
+          </li>
+        ))}
+      </ul>
+    </Card>
   )
 }

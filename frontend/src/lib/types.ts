@@ -241,6 +241,19 @@ export interface FirmwareUpgradeJob {
   created_at: string
 }
 
+export interface ActivityLog {
+  id: number
+  user_id: number | null
+  tenant_id: number | null
+  action: string
+  entity_type: string
+  entity_id: number | null
+  description: string | null
+  ip_address: string | null
+  created_at: string
+  username: string | null
+}
+
 export interface DeviceDiagnostic {
   id: number
   device_id: number

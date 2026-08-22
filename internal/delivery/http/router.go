@@ -58,6 +58,7 @@ func (r *Router) Register(e *echo.Echo) {
 	authed.GET("/devices/:id/parameters", r.listDeviceParameters)
 	authed.GET("/devices/:id/events", r.listDeviceEvents)
 	authed.GET("/devices/:id/optical-metrics", r.listOpticalMetrics)
+	authed.GET("/devices/:id/activity", r.listDeviceActivity)
 
 	authed.GET("/tasks", r.listTasks)
 	authed.GET("/tasks/stats", r.taskStats)

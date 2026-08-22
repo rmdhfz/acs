@@ -268,3 +268,15 @@ func (s *Service) ListOpticalMetrics(ctx context.Context, actor domain.Actor, de
 	}
 	return s.opticalMetrics.ListByDevice(ctx, deviceID, p)
 }
+
+// ListActivity — timeline audit trail per device (ROADMAP.md Fase 1): aksi
+// admin/operator yang tercatat langsung terhadap record device ini (update,
+// apply provisioning profile, match zero-touch). Histori event CWMP
+// (BOOT/PERIODIC/dst) dan task RPC punya tab terpisah (ListEvents/tasks) —
+// timeline ini spesifik "siapa mengubah apa", bukan duplikasi keduanya.
+func (s *Service) ListActivity(ctx context.Context, actor domain.Actor, deviceID uint64, p domain.Pagination) ([]domain.ActivityLog, int, error) {
+	if _, err := s.Get(ctx, actor, deviceID); err != nil {
+		return nil, 0, err
+	}
+	return s.activity.ListByEntity(ctx, "device", deviceID, p)
+}

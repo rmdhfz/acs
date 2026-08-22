@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './api'
 import type {
+  ActivityLog,
   Device,
   DeviceDiagnostic,
   DeviceEvent,
@@ -111,6 +112,14 @@ export function useDeviceTasks(id: number) {
   return useQuery({
     queryKey: ['device', id, 'tasks'],
     queryFn: () => api.get<ListResponse<Task>>(`/tasks${buildQuery({ device_id: id, page_size: 50 })}`),
+    refetchInterval: LIVE_REFRESH_MS,
+  })
+}
+
+export function useDeviceActivity(id: number) {
+  return useQuery({
+    queryKey: ['device', id, 'activity'],
+    queryFn: () => api.get<ListResponse<ActivityLog>>(`/devices/${id}/activity?page_size=50`),
     refetchInterval: LIVE_REFRESH_MS,
   })
 }

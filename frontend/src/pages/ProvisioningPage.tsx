@@ -12,6 +12,7 @@ import {
   useDeleteProfile,
   useDeleteZTRule,
   useDeviceModels,
+  useParameterMappings,
   useProvisioningProfile,
   useProvisioningProfiles,
   useUpdateProfile,
@@ -159,6 +160,7 @@ function ProfileModal({ id, onClose }: { id: number | undefined; onClose: () => 
   const [error, setError] = useState<string | null>(null)
 
   const { data: models } = useDeviceModels(vendorId ? Number(vendorId) : undefined)
+  const { data: mappings } = useParameterMappings(vendorId ? Number(vendorId) : undefined)
 
   useEffect(() => {
     if (existing) {
@@ -276,26 +278,47 @@ function ProfileModal({ id, onClose }: { id: number | undefined; onClose: () => 
                 + tambah parameter
               </button>
             </div>
-            <div className="space-y-2">
-              {params.map((p, i) => (
-                <div key={i} className="flex gap-2">
-                  <input
-                    placeholder="parameter_name / logical key"
-                    value={p.parameter_name}
-                    onChange={(e) => updateParam(i, { parameter_name: e.target.value })}
-                    className={`${inputCls} flex-1 font-mono text-xs`}
-                  />
-                  <input
-                    placeholder="value"
-                    value={p.parameter_value ?? ''}
-                    onChange={(e) => updateParam(i, { parameter_value: e.target.value })}
-                    className={`${inputCls} flex-1 font-mono text-xs`}
-                  />
-                  <button type="button" onClick={() => removeParam(i)} className="shrink-0 rounded-md p-2 text-slate-400 hover:bg-red-50 hover:text-red-600">
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
+            <p className="mb-1.5 text-xs text-slate-400">
+              {vendorId
+                ? mappings && mappings.length > 0
+                  ? `Ketik untuk cari logical key vendor ini (${mappings.length} tersedia) — raw TR-069 path tetap bisa diketik manual.`
+                  : 'Belum ada parameter mapping utk vendor ini — ketik raw TR-069 path langsung, atau tambahkan mapping-nya dulu di Catalog Vendor.'
+                : 'Pilih vendor di atas utk autocomplete logical key, atau ketik raw TR-069 path langsung.'}
+            </p>
+            <datalist id="param-logical-keys">
+              {mappings?.map((m) => (
+                <option key={m.id} value={m.logical_key} />
               ))}
+            </datalist>
+            <div className="space-y-2">
+              {params.map((p, i) => {
+                const matchedMapping = mappings?.find((m) => m.logical_key === p.parameter_name)
+                return (
+                  <div key={i}>
+                    <div className="flex gap-2">
+                      <input
+                        placeholder="parameter_name / logical key"
+                        list="param-logical-keys"
+                        value={p.parameter_name}
+                        onChange={(e) => updateParam(i, { parameter_name: e.target.value })}
+                        className={`${inputCls} flex-1 font-mono text-xs`}
+                      />
+                      <input
+                        placeholder="value"
+                        value={p.parameter_value ?? ''}
+                        onChange={(e) => updateParam(i, { parameter_value: e.target.value })}
+                        className={`${inputCls} flex-1 font-mono text-xs`}
+                      />
+                      <button type="button" onClick={() => removeParam(i)} className="shrink-0 rounded-md p-2 text-slate-400 hover:bg-red-50 hover:text-red-600">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                    {matchedMapping && (
+                      <p className="mt-0.5 truncate pl-0.5 font-mono text-[11px] text-slate-400">-&gt; {matchedMapping.tr069_path}</p>
+                    )}
+                  </div>
+                )
+              })}
               {params.length === 0 && <p className="text-xs text-slate-400">Belum ada parameter.</p>}
             </div>
           </div>

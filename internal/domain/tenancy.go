@@ -92,6 +92,10 @@ type ActivityLog struct {
 	Description *string   `db:"description" json:"description"`
 	IPAddress   *string   `db:"ip_address" json:"ip_address"`
 	CreatedAt   time.Time `db:"created_at" json:"created_at"`
+	// Username — hasil LEFT JOIN users di ListByEntity (bukan kolom asli
+	// activity_logs), nil bila UserID nil (aksi sistem, mis. evaluasi ZTP
+	// otomatis) atau user-nya sudah dihapus.
+	Username *string `db:"username" json:"username"`
 }
 
 type ActivityLogRepository interface {
