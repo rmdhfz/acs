@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
-import { Building2, KeyRound, Plus, Users as UsersIcon } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Building2, KeyRound, Plus, Users as UsersIcon, Wand2 } from 'lucide-react'
 import { EmptyState } from '../components/EmptyState'
 import { StatusBadge } from '../components/StatusBadge'
 import { Modal } from '../components/Modal'
@@ -236,6 +237,7 @@ function CreateUserModal({
 // ---- Tenants ----
 
 function TenantsTab() {
+  const navigate = useNavigate()
   const { data, isLoading } = useTenants()
   const tenants = data?.data ?? []
   const [showCreate, setShowCreate] = useState(false)
@@ -243,9 +245,15 @@ function TenantsTab() {
 
   return (
     <div>
-      <div className="mb-4 flex justify-end">
-        <button onClick={() => setShowCreate(true)} className={primaryBtnCls}>
-          <Plus className="h-4 w-4" /> Tenant Baru
+      <div className="mb-4 flex justify-end gap-2">
+        <button onClick={() => navigate('/administration/onboarding')} className={primaryBtnCls}>
+          <Wand2 className="h-4 w-4" /> Onboarding Tenant Baru
+        </button>
+        <button
+          onClick={() => setShowCreate(true)}
+          className="flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          <Plus className="h-4 w-4" /> Tenant Cepat
         </button>
       </div>
 

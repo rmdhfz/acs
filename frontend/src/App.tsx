@@ -10,6 +10,7 @@ import { ProvisioningPage } from './pages/ProvisioningPage'
 import { FirmwarePage } from './pages/FirmwarePage'
 import { CatalogPage } from './pages/CatalogPage'
 import { AdministrationPage } from './pages/AdministrationPage'
+import { TenantOnboardingWizard } from './pages/TenantOnboardingWizard'
 
 function App() {
   return (
@@ -31,6 +32,7 @@ function App() {
         <Route path="/firmware" element={<FirmwarePage />} />
         <Route path="/catalog" element={<CatalogPage />} />
         <Route path="/administration" element={<AdministrationPage />} />
+        <Route path="/administration/onboarding" element={<TenantOnboardingWizard />} />
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
       </Route>
 
