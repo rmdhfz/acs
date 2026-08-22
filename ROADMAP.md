@@ -81,7 +81,7 @@ Root cause: `internal/delivery/cwmp/handler.go` tidak punya pengecekan Basic/Dig
 - **[SEDANG, DIPERBAIKI — code review]** Logic keamanan baru (`authenticateInform`/`passwordMatches`) tanpa unit test. Fix: `internal/usecase/session/service_test.go` ditambahkan, 11 skenario (anti-spoofing, override wajib, tenant nonaktif, orphan healing, password kosong, dst) — semua lulus.
 - **[RENDAH, DITERIMA APA ADANYA]** Timing side-channel minor (durasi respons beda antara username tak dikenal vs password salah) dan perbandingan username tidak constant-time — severity rendah menurut reviewer sendiri, mitigasi penuh butuh dummy-crypto-ops yang menambah kompleksitas tidak sepadan untuk saat ini. Dicatat, tidak diperbaiki.
 - **[FOLLOW-UP, bukan blocker]** Tidak ada endpoint REST untuk SET kredensial per-device (`devices.inform_username/inform_password_enc`) — kolom & logic override-nya sudah ada dan tervalidasi jalan lewat unit test + DB manual, tapi baru bisa diisi manual di DB, belum ada jalur API/UI. Tambahkan ke Fase 2 kalau override per-device memang dibutuhkan operasional.
-- **[FOLLOW-UP, bukan blocker]** Rate limiting baru ada di `/cwmp`, REST API internal (`restEcho`) masih belum ada — TECH.md §8 mensyaratkan keduanya. Tambahkan ke Fase 0/2.
+- **[SELESAI 2026-08-22, commit `0ac772a`]** Rate limiting REST API internal (`restEcho`) — sudah ditambahkan, 30 req/s per-IP.
 - **[FOLLOW-UP, bukan blocker]** Tidak ada endpoint untuk menonaktifkan tenant (hanya create/list) — jadi skenario "device override milik tenant nonaktif ditolak" baru tervalidasi lewat unit test, belum lewat REST end-to-end (butuh endpoint `PATCH /tenants/:id` untuk toggle `is_active` dulu).
 
 *Agent terkait: `cwmp-session-engineer` (uji sesi & auth), `db-schema-guardian` (validasi migrasi), `acs-security-reviewer` + `acs-code-reviewer` (review independen), kerja CI/commit dilakukan langsung bersama user.*
@@ -115,11 +115,12 @@ Fix: `TaskFilter` dapat `TenantID` (resolve via JOIN devices), `task.Service.Lis
 
 - [ ] White-labeling per tenant (logo, nama produk, warna aksen) di `Layout.tsx`
 - [ ] Tenant admin self-service penuh: kelola user & role tenant sendiri tanpa perlu superadmin turun tangan
-- [ ] Uji isolasi tenant end-to-end: pastikan tidak ada satu pun query yang lolos tanpa filter `tenant_id` (audit sistematis, bukan spot-check)
-- [ ] Kuota/rate limit per tenant — mencegah satu perusahaan menghabiskan resource bersama (task queue, koneksi CWMP)
-- [ ] Tambahkan `GET /vendors/:id/ouis` + tampilkan daftar OUI di Catalog UI (gap yang sudah diketahui dari §2)
-- [ ] Playbook tertulis "cara menambah vendor baru" (operasi data, bukan kode — TECH.md §5.1) + form approval request vendor baru untuk non-superadmin
-- [ ] Putuskan & implementasikan strategi object storage firmware (S3-compatible vs filesystem) — TECH.md §12, perlu keputusan eksplisit dari user dulu
+- [x] Uji isolasi tenant end-to-end — **selesai 2026-08-22** (commit `0ac772a`): audit sistematis oleh `acs-security-reviewer` ke SELURUH endpoint REST (bukan spot-check). Ketemu **3 celah kritis** (eskalasi privilese lintas tenant via `POST /auth/tokens`, `GET /provisioning-profiles/:id` tanpa scope sama sekali, `apply-profile` tidak validasi tenant milik profile), 1 tinggi (`firmware-jobs` tanpa scope), 1 sedang (upload firmware harusnya superadmin-only). Semua diperbaiki & divalidasi live dgn 2 tenant + superadmin. Bonus: ketemu & perbaiki bug lama tak terkait (struct `ProvisioningProfileParameter` bikin endpoint itu selalu 500).
+- [x] `GET /vendors/:id/ouis` + tampilan Catalog UI — **selesai 2026-08-22** (commit `0ac772a`): endpoint baru + kolom "OUI Terdaftar" di tabel Vendors.
+- [x] Rate limiting REST API internal — **selesai 2026-08-22** (commit `0ac772a`): 30 req/s per-IP di `restEcho` (vs 5 req/s di `/cwmp`, lebih longgar krn dashboard polling tiap 5 detik). Menutup gap yang dicatat sejak rate limit CWMP ditambahkan.
+- [ ] Kuota/rate limit **per tenant** (bukan cuma per-IP global) — mencegah satu perusahaan menghabiskan resource bersama (task queue, koneksi CWMP). Beda dari item rate limiting di atas — ini butuh tracking usage per tenant_id, belum dikerjakan.
+- [x] Playbook "cara menambah vendor baru" — **selesai 2026-08-22**: `VENDOR_ONBOARDING.md` — panduan operasional step-by-step via Catalog Vendor UI. **Sesuai keputusan user:** dokumentasi saja, TANPA sistem request/approval baru (superadmin tetap eksekusi langsung).
+- [ ] Putuskan & implementasikan strategi object storage firmware — **keputusan user: S3-compatible (MinIO utk dev)**, belum diimplementasikan.
 - [ ] Observability: metrics Prometheus + dashboard (device online/offline, task queue depth per status, error rate per vendor) + alert saat backlog menumpuk (TECH.md §10)
 
 *Agent terkait: `vendor-mapping-specialist` (playbook & operasi data vendor), `rest-api-builder` (endpoint baru), `acs-security-reviewer` (audit isolasi tenant), `db-schema-guardian` (bila kuota/rate limit butuh tabel baru).*
