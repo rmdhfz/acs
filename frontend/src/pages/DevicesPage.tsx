@@ -40,9 +40,9 @@ import type { Device } from '../lib/types'
 
 const PAGE_SIZE = 20
 const inputCls =
-  'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500'
+  'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
 const primaryBtnCls =
-  'flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60'
+  'flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white'
 
 export function DevicesPage() {
   const navigate = useNavigate()
@@ -119,17 +119,17 @@ export function DevicesPage() {
     <div className="mx-auto max-w-7xl px-6 py-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Devices</h1>
-          <p className="mt-0.5 text-sm text-slate-500">Monitor status koneksi perangkat CPE secara real-time</p>
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Devices</h1>
+          <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Monitor status koneksi perangkat CPE secara real-time</p>
         </div>
-        <div className="flex items-center gap-2 text-xs text-slate-400">
+        <div className="flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
           <span className="relative flex h-2 w-2">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
           </span>
           Live
           {dataUpdatedAt > 0 && <span>· diperbarui {formatRelativeTime(new Date(dataUpdatedAt).toISOString())}</span>}
-          {isFetching && <RefreshCw className="h-3.5 w-3.5 animate-spin text-slate-400" />}
+          {isFetching && <RefreshCw className="h-3.5 w-3.5 animate-spin text-slate-400 dark:text-slate-500" />}
         </div>
       </div>
 
@@ -148,7 +148,7 @@ export function DevicesPage() {
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[220px]">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
           <input
             type="text"
             placeholder="Cari serial number atau MAC address..."
@@ -157,7 +157,7 @@ export function DevicesPage() {
               setSearch(e.target.value)
               resetToFirstPage()
             }}
-            className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500"
+            className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 dark:text-slate-100 outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500"
           />
         </div>
         <select
@@ -166,7 +166,7 @@ export function DevicesPage() {
             setStatusFilter(e.target.value)
             resetToFirstPage()
           }}
-          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-500"
+          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-500"
         >
           <option value="">Semua status</option>
           {statusRefs?.map((s) => (
@@ -181,7 +181,7 @@ export function DevicesPage() {
             setVendorFilter(e.target.value)
             resetToFirstPage()
           }}
-          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-500"
+          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-500"
         >
           <option value="">Semua vendor</option>
           {vendors.map((v) => (
@@ -225,9 +225,9 @@ export function DevicesPage() {
         </div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         {isLoading ? (
-          <div className="divide-y divide-slate-100">
+          <div className="divide-y divide-slate-100 dark:divide-slate-800">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="flex items-center gap-4 px-5 py-4">
                 <div className="h-5 w-20 animate-pulse rounded-full bg-slate-100" />
@@ -246,7 +246,7 @@ export function DevicesPage() {
           <>
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+                <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                   {canBulkAct && (
                     <th className="w-10 px-5 py-3">
                       <input
@@ -267,14 +267,14 @@ export function DevicesPage() {
                   <th className="px-5 py-3">Terakhir Terhubung</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {devices.map((d) => {
                   const status = findRefById(statusRefs, d.device_status_id)
                   return (
                     <tr
                       key={d.id}
                       onClick={() => navigate(`/devices/${d.id}`)}
-                      className="cursor-pointer transition-colors hover:bg-slate-50"
+                      className="cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50"
                     >
                       {canBulkAct && (
                         <td className="px-5 py-3.5" onClick={(e) => e.stopPropagation()}>
@@ -289,19 +289,19 @@ export function DevicesPage() {
                       <td className="px-5 py-3.5">
                         <StatusBadge code={status?.code} label={status?.name ?? '-'} pulse={status?.code === 'ONLINE'} />
                       </td>
-                      <td className="px-5 py-3.5 text-slate-600">{vendorName(d.vendor_id)}</td>
-                      <td className="px-5 py-3.5 font-mono text-xs text-slate-900">{d.serial_number}</td>
-                      <td className="px-5 py-3.5 font-mono text-xs text-slate-500">{d.mac_address ?? '-'}</td>
-                      <td className="px-5 py-3.5 font-mono text-xs text-slate-500">{d.ip_address ?? '-'}</td>
-                      <td className="px-5 py-3.5 text-slate-500">{d.software_version ?? '-'}</td>
-                      <td className="px-5 py-3.5 text-slate-500">{formatRelativeTime(d.last_inform_at)}</td>
+                      <td className="px-5 py-3.5 text-slate-600 dark:text-slate-400">{vendorName(d.vendor_id)}</td>
+                      <td className="px-5 py-3.5 font-mono text-xs text-slate-900 dark:text-slate-100">{d.serial_number}</td>
+                      <td className="px-5 py-3.5 font-mono text-xs text-slate-500 dark:text-slate-400">{d.mac_address ?? '-'}</td>
+                      <td className="px-5 py-3.5 font-mono text-xs text-slate-500 dark:text-slate-400">{d.ip_address ?? '-'}</td>
+                      <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{d.software_version ?? '-'}</td>
+                      <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{formatRelativeTime(d.last_inform_at)}</td>
                     </tr>
                   )
                 })}
               </tbody>
             </table>
 
-            <div className="flex items-center justify-between border-t border-slate-200 px-5 py-3 text-sm text-slate-500">
+            <div className="flex items-center justify-between border-t border-slate-200 px-5 py-3 text-sm text-slate-500 dark:text-slate-400">
               <span>
                 Menampilkan {devices.length} dari {total} device
               </span>
@@ -309,7 +309,7 @@ export function DevicesPage() {
                 <button
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page <= 1}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 dark:text-slate-400 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </button>
@@ -319,7 +319,7 @@ export function DevicesPage() {
                 <button
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={page >= totalPages}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 dark:text-slate-400 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <ChevronRight className="h-4 w-4" />
                 </button>
@@ -353,15 +353,15 @@ interface BulkItem {
 
 function BulkResultList({ items }: { items: BulkItem[] }) {
   return (
-    <ul className="max-h-64 divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-200">
+    <ul className="max-h-64 divide-y divide-slate-100 dark:divide-slate-800 overflow-y-auto rounded-lg border border-slate-200">
       {items.map((item) => (
         <li key={item.device.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
           <div className="min-w-0">
-            <p className="truncate font-mono text-xs text-slate-700">{item.device.serial_number}</p>
-            {item.message && <p className="truncate text-xs text-slate-400">{item.message}</p>}
+            <p className="truncate font-mono text-xs text-slate-700 dark:text-slate-300">{item.device.serial_number}</p>
+            {item.message && <p className="truncate text-xs text-slate-400 dark:text-slate-500">{item.message}</p>}
           </div>
-          {item.status === 'pending' && <span className="shrink-0 text-xs text-slate-400">Menunggu</span>}
-          {item.status === 'running' && <RefreshCw className="h-4 w-4 shrink-0 animate-spin text-slate-400" />}
+          {item.status === 'pending' && <span className="shrink-0 text-xs text-slate-400 dark:text-slate-500">Menunggu</span>}
+          {item.status === 'running' && <RefreshCw className="h-4 w-4 shrink-0 animate-spin text-slate-400 dark:text-slate-500" />}
           {item.status === 'success' && <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />}
           {item.status === 'error' && <XCircle className="h-4 w-4 shrink-0 text-red-500" />}
           {item.status === 'skipped' && <span className="shrink-0 text-xs text-amber-600">Dilewati</span>}
@@ -408,7 +408,7 @@ function BulkApplyProfileModal({ devices, onClose, onDone }: { devices: Device[]
     <Modal title={`Terapkan Provisioning Profile ke ${devices.length} Device`} onClose={onClose}>
       {items === null ? (
         <form onSubmit={handleSubmit} className="space-y-3">
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
             Device dengan vendor berbeda dari profil (bila profil dibatasi ke vendor tertentu) akan otomatis dilewati.
           </p>
           <select required value={profileId} onChange={(e) => setProfileId(e.target.value)} className={inputCls}>
@@ -478,7 +478,7 @@ function BulkFirmwareModal({ devices, onClose, onDone }: { devices: Device[]; on
     <Modal title={`Jadwalkan Firmware Upgrade untuk ${devices.length} Device`} onClose={onClose}>
       {items === null ? (
         <form onSubmit={handleSubmit} className="space-y-3">
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
             Firmware spesifik per vendor — pilih satu vendor dulu. Device dari vendor lain di seleksi ini akan dilewati.
           </p>
           <select
@@ -550,7 +550,7 @@ function BulkRebootModal({ devices, onClose, onDone }: { devices: Device[]; onCl
     <Modal title={`Reboot ${devices.length} Device`} onClose={onClose}>
       {items === null ? (
         <div className="space-y-3">
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-slate-600 dark:text-slate-400">
             Task reboot akan diantrekan (prioritas tinggi) ke {devices.length} device terpilih. Device yang sedang
             offline akan reboot pada sesi Inform berikutnya atau saat Connection Request berhasil.
           </p>

@@ -7,6 +7,7 @@ import { EmptyState } from '../components/EmptyState'
 import { PageSpinner } from '../components/Spinner'
 import { Modal } from '../components/Modal'
 import { useAuth } from '../lib/auth'
+import { useTheme } from '../lib/theme'
 import { ApiError } from '../lib/api'
 import {
   findRefById,
@@ -48,9 +49,9 @@ const ACTIVITY_LABELS: Record<string, string> = {
 }
 
 const inputCls =
-  'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500'
+  'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
 const primaryBtnCls =
-  'flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60'
+  'flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white'
 
 export function DeviceDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -74,14 +75,14 @@ export function DeviceDetailPage() {
       <div className="mb-4 flex items-center justify-between">
         <button
           onClick={() => navigate('/devices')}
-          className="flex items-center gap-1.5 text-sm text-slate-500 transition-colors hover:text-slate-900"
+          className="flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400 transition-colors hover:text-slate-900 dark:hover:text-slate-100"
         >
           <ArrowLeft className="h-4 w-4" /> Kembali ke daftar device
         </button>
         {hasRole('ADMIN') && (
           <button
             onClick={() => setShowApplyProfile(true)}
-            className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+            className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-300 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50"
           >
             <Sparkles className="h-4 w-4" /> Terapkan Provisioning Profile
           </button>
@@ -91,10 +92,10 @@ export function DeviceDetailPage() {
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="font-mono text-lg font-semibold text-slate-900">{device.serial_number}</h1>
+            <h1 className="font-mono text-lg font-semibold text-slate-900 dark:text-slate-100">{device.serial_number}</h1>
             <StatusBadge code={status?.code} label={status?.name ?? '-'} pulse={status?.code === 'ONLINE'} />
           </div>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             {vendor?.name ?? 'Vendor belum diketahui'}
             {device.product_class ? ` · ${device.product_class}` : ''}
           </p>
@@ -118,8 +119,8 @@ export function DeviceDetailPage() {
             onClick={() => setTab(t.key)}
             className={`flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
               tab === t.key
-                ? 'border-slate-900 text-slate-900'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
+                ? 'border-slate-900 text-slate-900 dark:text-slate-100'
+                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800'
             }`}
           >
             <t.icon className="h-4 w-4" />
@@ -143,14 +144,14 @@ export function DeviceDetailPage() {
 function InfoItem({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div>
-      <dt className="text-xs text-slate-400">{label}</dt>
+      <dt className="text-xs text-slate-400 dark:text-slate-500">{label}</dt>
       <dd className={`text-slate-800 ${mono ? 'font-mono text-xs' : ''}`}>{value}</dd>
     </div>
   )
 }
 
 function Card({ children }: { children: ReactNode }) {
-  return <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">{children}</div>
+  return <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">{children}</div>
 }
 
 function OverviewTab({ device }: { device: NonNullable<ReturnType<typeof useDevice>['data']> }) {
@@ -167,10 +168,10 @@ function OverviewTab({ device }: { device: NonNullable<ReturnType<typeof useDevi
   ]
   return (
     <Card>
-      <dl className="divide-y divide-slate-100">
+      <dl className="divide-y divide-slate-100 dark:divide-slate-800">
         {rows.map(([label, value]) => (
           <div key={label} className="grid grid-cols-3 gap-4 px-5 py-3 text-sm">
-            <dt className="text-slate-500">{label}</dt>
+            <dt className="text-slate-500 dark:text-slate-400">{label}</dt>
             <dd className="col-span-2 break-all font-mono text-xs text-slate-800">{value}</dd>
           </div>
         ))}
@@ -210,16 +211,16 @@ function ParametersTab({ deviceId }: { deviceId: number }) {
       <div className="max-h-[32rem] overflow-y-auto">
         <table className="w-full text-left text-sm">
           <thead className="sticky top-0 bg-slate-50">
-            <tr className="border-b border-slate-200 text-xs font-medium uppercase tracking-wide text-slate-500">
+            <tr className="border-b border-slate-200 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
               <th className="px-5 py-2.5">Parameter</th>
               <th className="px-5 py-2.5">Nilai</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
             {params.map((p) => (
               <tr key={p.id}>
-                <td className="px-5 py-2.5 font-mono text-xs text-slate-700">{p.parameter_name}</td>
-                <td className="px-5 py-2.5 font-mono text-xs text-slate-900">{p.parameter_value ?? '-'}</td>
+                <td className="px-5 py-2.5 font-mono text-xs text-slate-700 dark:text-slate-300">{p.parameter_name}</td>
+                <td className="px-5 py-2.5 font-mono text-xs text-slate-900 dark:text-slate-100">{p.parameter_value ?? '-'}</td>
               </tr>
             ))}
           </tbody>
@@ -231,6 +232,8 @@ function ParametersTab({ deviceId }: { deviceId: number }) {
 
 function OpticalMetricsTab({ deviceId }: { deviceId: number }) {
   const { data, isLoading } = useDeviceOpticalMetrics(deviceId)
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === 'dark'
   const metrics = data?.data ?? []
 
   if (isLoading) return <PageSpinner />
@@ -265,13 +268,21 @@ function OpticalMetricsTab({ deviceId }: { deviceId: number }) {
 
       <Card>
         <div className="p-5">
-          <h3 className="mb-4 text-sm font-semibold text-slate-900">Tren RX/TX Power</h3>
+          <h3 className="mb-4 text-sm font-semibold text-slate-900 dark:text-slate-100">Tren RX/TX Power</h3>
           <ResponsiveContainer width="100%" height={280}>
             <LineChart data={chartData} margin={{ left: -12, right: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="time" tick={{ fontSize: 11, fill: '#64748b' }} minTickGap={30} />
-              <YAxis tick={{ fontSize: 12, fill: '#64748b' }} unit=" dBm" width={70} />
-              <Tooltip contentStyle={{ borderRadius: 8, borderColor: '#e2e8f0', fontSize: 13 }} />
+              <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#1e293b' : '#f1f5f9'} />
+              <XAxis dataKey="time" tick={{ fontSize: 11, fill: isDark ? '#94a3b8' : '#64748b' }} minTickGap={30} />
+              <YAxis tick={{ fontSize: 12, fill: isDark ? '#94a3b8' : '#64748b' }} unit=" dBm" width={70} />
+              <Tooltip
+                contentStyle={{
+                  borderRadius: 8,
+                  borderColor: isDark ? '#334155' : '#e2e8f0',
+                  backgroundColor: isDark ? '#0f172a' : '#ffffff',
+                  color: isDark ? '#e2e8f0' : '#0f172a',
+                  fontSize: 13,
+                }}
+              />
               <Line type="monotone" dataKey="rx" name="RX Power" stroke="#3b82f6" strokeWidth={2} dot={false} connectNulls />
               <Line type="monotone" dataKey="tx" name="TX Power" stroke="#f59e0b" strokeWidth={2} dot={false} connectNulls />
             </LineChart>
@@ -285,10 +296,10 @@ function OpticalMetricsTab({ deviceId }: { deviceId: number }) {
 function MetricStat({ label, value, unit }: { label: string; value: number | null; unit: string }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <p className="text-xs font-medium text-slate-500">{label}</p>
-      <p className="mt-1 text-lg font-semibold tabular-nums text-slate-900">
+      <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</p>
+      <p className="mt-1 text-lg font-semibold tabular-nums text-slate-900 dark:text-slate-100">
         {value ?? '-'}
-        {value !== null && <span className="ml-1 text-xs font-normal text-slate-400">{unit}</span>}
+        {value !== null && <span className="ml-1 text-xs font-normal text-slate-400 dark:text-slate-500">{unit}</span>}
       </p>
     </div>
   )
@@ -307,7 +318,7 @@ function EventsTab({ deviceId }: { deviceId: number }) {
 
   return (
     <Card>
-      <ul className="divide-y divide-slate-100">
+      <ul className="divide-y divide-slate-100 dark:divide-slate-800">
         {events.map((e) => {
           const code = findRefById(eventCodeRefs, e.event_code_id)
           return (
@@ -316,7 +327,7 @@ function EventsTab({ deviceId }: { deviceId: number }) {
                 <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300" />
                 <span className="font-medium text-slate-800">{code?.name ?? code?.code ?? `#${e.event_code_id}`}</span>
               </div>
-              <span className="shrink-0 text-xs text-slate-400">{formatDateTime(e.occurred_at)}</span>
+              <span className="shrink-0 text-xs text-slate-400 dark:text-slate-500">{formatDateTime(e.occurred_at)}</span>
             </li>
           )
         })}
@@ -341,7 +352,7 @@ function TasksTab({ deviceId }: { deviceId: number }) {
     <Card>
       <table className="w-full text-left text-sm">
         <thead>
-          <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+          <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
             <th className="px-5 py-3">Status</th>
             <th className="px-5 py-3">Tipe</th>
             <th className="px-5 py-3">Retry</th>
@@ -349,7 +360,7 @@ function TasksTab({ deviceId }: { deviceId: number }) {
             <th className="px-5 py-3">Error</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
+        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
           {tasks.map((t) => {
             const status = findRefById(statusRefs, t.task_status_id)
             const type = findRefById(typeRefs, t.task_type_id)
@@ -358,11 +369,11 @@ function TasksTab({ deviceId }: { deviceId: number }) {
                 <td className="px-5 py-3">
                   <StatusBadge code={status?.code} label={status?.name ?? '-'} />
                 </td>
-                <td className="px-5 py-3 text-slate-700">{type?.name ?? type?.code ?? '-'}</td>
-                <td className="px-5 py-3 text-slate-500">
+                <td className="px-5 py-3 text-slate-700 dark:text-slate-300">{type?.name ?? type?.code ?? '-'}</td>
+                <td className="px-5 py-3 text-slate-500 dark:text-slate-400">
                   {t.retry_count}/{t.max_retries}
                 </td>
-                <td className="px-5 py-3 text-slate-500">{formatRelativeTime(t.created_at)}</td>
+                <td className="px-5 py-3 text-slate-500 dark:text-slate-400">{formatRelativeTime(t.created_at)}</td>
                 <td className="max-w-xs truncate px-5 py-3 text-xs text-red-600">{t.error_message ?? '-'}</td>
               </tr>
             )
@@ -402,7 +413,7 @@ function ApplyProfileModal({
   return (
     <Modal title="Terapkan Provisioning Profile" onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-3">
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-slate-500 dark:text-slate-400">
           Mengantre task SetParameterValues berisi seluruh parameter profil ke device ini sekarang — perubahan profil
           di kemudian hari tidak otomatis re-apply (FR-18).
         </p>
@@ -459,7 +470,7 @@ function DiagnosticsTab({ deviceId, canTrigger }: { deviceId: number; canTrigger
         <Card>
           <div className="flex flex-wrap items-end gap-3 p-4">
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Tipe Diagnostic</label>
+              <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Tipe Diagnostic</label>
               <select value={diagnosticType} onChange={(e) => setDiagnosticType(e.target.value)} className={`${inputCls} w-48`}>
                 {DIAGNOSTIC_TYPES.map((d) => (
                   <option key={d.code} value={d.code}>
@@ -470,7 +481,7 @@ function DiagnosticsTab({ deviceId, canTrigger }: { deviceId: number; canTrigger
             </div>
             {(diagnosticType === 'PING' || diagnosticType === 'TRACEROUTE') && (
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Host</label>
+                <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Host</label>
                 <input value={host} onChange={(e) => setHost(e.target.value)} placeholder="8.8.8.8" className={`${inputCls} w-48`} />
               </div>
             )}
@@ -488,7 +499,7 @@ function DiagnosticsTab({ deviceId, canTrigger }: { deviceId: number; canTrigger
         <EmptyState icon={Activity} title="Belum ada diagnostic" description="Trigger test PING/TRACEROUTE/WiFi Scan bawaan TR-069 di atas." />
       ) : (
         <Card>
-          <ul className="divide-y divide-slate-100">
+          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
             {diagnostics.map((d) => {
               const result = decodeBytesField(d.result)
               return (
@@ -497,7 +508,7 @@ function DiagnosticsTab({ deviceId, canTrigger }: { deviceId: number; canTrigger
                     <div className="flex items-center gap-3">
                       <StatusBadge code={d.status === 'COMPLETED' ? 'COMPLETED' : d.status === 'FAILED' ? 'FAILED' : 'PENDING'} label={d.diagnostic_type} />
                     </div>
-                    <span className="shrink-0 text-xs text-slate-400">{formatDateTime(d.executed_at ?? d.created_at)}</span>
+                    <span className="shrink-0 text-xs text-slate-400 dark:text-slate-500">{formatDateTime(d.executed_at ?? d.created_at)}</span>
                   </div>
                   {result && <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-slate-900 p-3 text-xs text-slate-200">{result}</pre>}
                 </li>
@@ -537,7 +548,7 @@ function FirmwareTab({ deviceId, vendorId, canSchedule }: { deviceId: number; ve
         <Card>
           <div className="flex flex-wrap items-end gap-3 p-4">
             <div className="min-w-[220px]">
-              <label className="mb-1 block text-xs font-medium text-slate-600">Firmware</label>
+              <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Firmware</label>
               <select value={firmwareId} onChange={(e) => setFirmwareId(e.target.value)} disabled={!vendorId} className={inputCls}>
                 <option value="">{vendorId ? 'Pilih firmware...' : 'Vendor device belum diketahui'}</option>
                 {firmwareOptions.map((f) => (
@@ -563,7 +574,7 @@ function FirmwareTab({ deviceId, vendorId, canSchedule }: { deviceId: number; ve
         <Card>
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+              <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                 <th className="px-5 py-3">Status</th>
                 <th className="px-5 py-3">Dari → Ke</th>
                 <th className="px-5 py-3">Dijadwalkan</th>
@@ -571,7 +582,7 @@ function FirmwareTab({ deviceId, vendorId, canSchedule }: { deviceId: number; ve
                 <th className="px-5 py-3">Error</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {jobs.map((j) => {
                 const status = findRefById(statusRefs, j.task_status_id)
                 return (
@@ -579,11 +590,11 @@ function FirmwareTab({ deviceId, vendorId, canSchedule }: { deviceId: number; ve
                     <td className="px-5 py-3">
                       <StatusBadge code={status?.code} label={status?.name ?? '-'} />
                     </td>
-                    <td className="px-5 py-3 font-mono text-xs text-slate-600">
+                    <td className="px-5 py-3 font-mono text-xs text-slate-600 dark:text-slate-400">
                       {j.from_version ?? '-'} → {j.to_version ?? '-'}
                     </td>
-                    <td className="px-5 py-3 text-slate-500">{formatDateTime(j.scheduled_at)}</td>
-                    <td className="px-5 py-3 text-slate-500">{formatDateTime(j.completed_at)}</td>
+                    <td className="px-5 py-3 text-slate-500 dark:text-slate-400">{formatDateTime(j.scheduled_at)}</td>
+                    <td className="px-5 py-3 text-slate-500 dark:text-slate-400">{formatDateTime(j.completed_at)}</td>
                     <td className="max-w-xs truncate px-5 py-3 text-xs text-red-600">{j.error_message ?? '-'}</td>
                   </tr>
                 )
@@ -613,7 +624,7 @@ function TimelineTab({ deviceId }: { deviceId: number }) {
 
   return (
     <Card>
-      <ul className="divide-y divide-slate-100">
+      <ul className="divide-y divide-slate-100 dark:divide-slate-800">
         {logs.map((log) => (
           <li key={log.id} className="flex items-start gap-3 px-5 py-3.5">
             <div className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300" />
@@ -622,9 +633,9 @@ function TimelineTab({ deviceId }: { deviceId: number }) {
                 <span className="font-medium">{log.username ?? 'Sistem'}</span>{' '}
                 {(ACTIVITY_LABELS[log.action] ?? log.action).toLowerCase()}
               </p>
-              {log.description && <p className="mt-0.5 text-xs text-slate-500">{log.description}</p>}
+              {log.description && <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{log.description}</p>}
             </div>
-            <span className="shrink-0 text-xs text-slate-400">{formatDateTime(log.created_at)}</span>
+            <span className="shrink-0 text-xs text-slate-400 dark:text-slate-500">{formatDateTime(log.created_at)}</span>
           </li>
         ))}
       </ul>

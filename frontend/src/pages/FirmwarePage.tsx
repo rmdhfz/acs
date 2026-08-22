@@ -9,9 +9,9 @@ import { useDeviceModels, useFirmwareList, useUploadFirmware, useVendors, type U
 import { formatDateTime } from '../lib/format'
 
 const inputCls =
-  'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500'
+  'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
 const primaryBtnCls =
-  'flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60'
+  'flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white'
 
 export function FirmwarePage() {
   const { hasRole } = useAuth()
@@ -28,8 +28,8 @@ export function FirmwarePage() {
     <div className="mx-auto max-w-7xl px-6 py-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Firmware</h1>
-          <p className="mt-0.5 text-sm text-slate-500">Katalog firmware per vendor — penjadwalan upgrade dilakukan dari halaman detail device</p>
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Firmware</h1>
+          <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Katalog firmware per vendor — penjadwalan upgrade dilakukan dari halaman detail device</p>
         </div>
         {canManage && (
           <button onClick={() => setShowUpload(true)} className={primaryBtnCls}>
@@ -49,7 +49,7 @@ export function FirmwarePage() {
         </select>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         {!vendorId ? (
           <EmptyState icon={HardDrive} title="Pilih vendor" description="Firmware dikelompokkan per vendor — pilih salah satu di atas." />
         ) : isLoading ? (
@@ -59,7 +59,7 @@ export function FirmwarePage() {
         ) : (
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+              <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                 <th className="px-5 py-3">Versi</th>
                 <th className="px-5 py-3">File</th>
                 <th className="px-5 py-3">Checksum</th>
@@ -67,16 +67,16 @@ export function FirmwarePage() {
                 <th className="px-5 py-3">Didaftarkan</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {files.map((f) => (
                 <tr key={f.id}>
-                  <td className="px-5 py-3.5 font-medium text-slate-900">{f.version}</td>
-                  <td className="px-5 py-3.5 font-mono text-xs text-slate-600">{f.file_name}</td>
-                  <td className="px-5 py-3.5 max-w-[220px] truncate font-mono text-xs text-slate-400" title={f.checksum_sha256 ?? undefined}>
+                  <td className="px-5 py-3.5 font-medium text-slate-900 dark:text-slate-100">{f.version}</td>
+                  <td className="px-5 py-3.5 font-mono text-xs text-slate-600 dark:text-slate-400">{f.file_name}</td>
+                  <td className="px-5 py-3.5 max-w-[220px] truncate font-mono text-xs text-slate-400 dark:text-slate-500" title={f.checksum_sha256 ?? undefined}>
                     {f.checksum_sha256 ?? '-'}
                   </td>
-                  <td className="px-5 py-3.5 text-slate-500">{f.file_size_bytes ? `${(f.file_size_bytes / 1_000_000).toFixed(1)} MB` : '-'}</td>
-                  <td className="px-5 py-3.5 text-slate-500">{formatDateTime(f.created_at)}</td>
+                  <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{f.file_size_bytes ? `${(f.file_size_bytes / 1_000_000).toFixed(1)} MB` : '-'}</td>
+                  <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{formatDateTime(f.created_at)}</td>
                 </tr>
               ))}
             </tbody>
@@ -126,12 +126,12 @@ function UploadFirmwareModal({ defaultVendorId, onClose }: { defaultVendorId: st
   return (
     <Modal title="Daftarkan Firmware" onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-3">
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-slate-500 dark:text-slate-400">
           File firmware harus sudah tersedia di object storage/filesystem — form ini hanya mencatat metadatanya (TECH.md §12).
         </p>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Vendor</label>
+            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Vendor</label>
             <select
               required
               value={vendorId}
@@ -150,7 +150,7 @@ function UploadFirmwareModal({ defaultVendorId, onClose }: { defaultVendorId: st
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Device Model (opsional)</label>
+            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Device Model (opsional)</label>
             <select value={deviceModelId} onChange={(e) => setDeviceModelId(e.target.value)} disabled={!vendorId} className={inputCls}>
               <option value="">Semua model vendor ini</option>
               {models?.map((m) => (
@@ -162,23 +162,23 @@ function UploadFirmwareModal({ defaultVendorId, onClose }: { defaultVendorId: st
           </div>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">Versi</label>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Versi</label>
           <input required value={version} onChange={(e) => setVersion(e.target.value)} className={inputCls} />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">Nama File</label>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama File</label>
           <input required value={fileName} onChange={(e) => setFileName(e.target.value)} className={inputCls} />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">Path File (object storage / filesystem)</label>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Path File (object storage / filesystem)</label>
           <input required value={filePath} onChange={(e) => setFilePath(e.target.value)} className={`${inputCls} font-mono text-xs`} />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">Checksum SHA-256 (opsional)</label>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Checksum SHA-256 (opsional)</label>
           <input value={checksum} onChange={(e) => setChecksum(e.target.value)} className={`${inputCls} font-mono text-xs`} />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">Release Notes (opsional)</label>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Release Notes (opsional)</label>
           <textarea value={releaseNotes} onChange={(e) => setReleaseNotes(e.target.value)} rows={2} className={inputCls} />
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}

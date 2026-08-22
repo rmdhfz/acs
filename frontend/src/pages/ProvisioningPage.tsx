@@ -25,9 +25,9 @@ import {
 import type { ProvisioningProfileParameter } from '../lib/types'
 
 const inputCls =
-  'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500'
+  'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
 const primaryBtnCls =
-  'flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60'
+  'flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white'
 
 type Tab = 'profiles' | 'rules'
 
@@ -39,8 +39,8 @@ export function ProvisioningPage() {
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-slate-900">Provisioning</h1>
-        <p className="mt-0.5 text-sm text-slate-500">Profil parameter default & aturan zero-touch provisioning</p>
+        <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Provisioning</h1>
+        <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Profil parameter default & aturan zero-touch provisioning</p>
       </div>
 
       <div className="mb-4 flex gap-1 border-b border-slate-200">
@@ -58,7 +58,7 @@ function TabButton({ active, onClick, icon: Icon, label }: { active: boolean; on
     <button
       onClick={onClick}
       className={`flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
-        active ? 'border-slate-900 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-800'
+        active ? 'border-slate-900 text-slate-900 dark:text-slate-100' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800'
       }`}
     >
       <Icon className="h-4 w-4" />
@@ -88,7 +88,7 @@ function ProfilesTab({ canManage }: { canManage: boolean }) {
         </div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         {isLoading ? (
           <PageSpinner />
         ) : profiles.length === 0 ? (
@@ -96,21 +96,21 @@ function ProfilesTab({ canManage }: { canManage: boolean }) {
         ) : (
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+              <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                 <th className="px-5 py-3">Nama</th>
                 <th className="px-5 py-3">Vendor</th>
                 <th className="px-5 py-3">Status</th>
                 <th className="px-5 py-3"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {profiles.map((p) => (
-                <tr key={p.id} onClick={() => canManage && setModalId(p.id)} className={canManage ? 'cursor-pointer hover:bg-slate-50' : ''}>
+                <tr key={p.id} onClick={() => canManage && setModalId(p.id)} className={canManage ? 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50' : ''}>
                   <td className="px-5 py-3.5">
-                    <p className="font-medium text-slate-900">{p.name}</p>
-                    {p.description && <p className="text-xs text-slate-400">{p.description}</p>}
+                    <p className="font-medium text-slate-900 dark:text-slate-100">{p.name}</p>
+                    {p.description && <p className="text-xs text-slate-400 dark:text-slate-500">{p.description}</p>}
                   </td>
-                  <td className="px-5 py-3.5 text-slate-600">
+                  <td className="px-5 py-3.5 text-slate-600 dark:text-slate-400">
                     {p.vendor_id ? vendors.find((v) => v.id === p.vendor_id)?.name ?? `#${p.vendor_id}` : 'Semua vendor'}
                   </td>
                   <td className="px-5 py-3.5">
@@ -126,7 +126,7 @@ function ProfilesTab({ canManage }: { canManage: boolean }) {
                           e.stopPropagation()
                           if (confirm(`Hapus profil "${p.name}"?`)) deleteMutation.mutate(p.id)
                         }}
-                        className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                        className="rounded-md p-1.5 text-slate-400 dark:text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -220,16 +220,16 @@ function ProfileModal({ id, onClose }: { id: number | undefined; onClose: () => 
       ) : (
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Nama</label>
+            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama</label>
             <input required value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Deskripsi</label>
+            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Deskripsi</label>
             <input value={description} onChange={(e) => setDescription(e.target.value)} className={inputCls} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Vendor (opsional — kosong = semua vendor)</label>
+              <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Vendor (opsional — kosong = semua vendor)</label>
               <select
                 value={vendorId}
                 onChange={(e) => {
@@ -247,7 +247,7 @@ function ProfileModal({ id, onClose }: { id: number | undefined; onClose: () => 
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Device Model (opsional)</label>
+              <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Device Model (opsional)</label>
               <select value={deviceModelId} onChange={(e) => setDeviceModelId(e.target.value)} disabled={!vendorId} className={inputCls}>
                 <option value="">Semua model</option>
                 {models?.map((m) => (
@@ -259,12 +259,12 @@ function ProfileModal({ id, onClose }: { id: number | undefined; onClose: () => 
             </div>
           </div>
           <div className="flex gap-5">
-            <label className="flex items-center gap-2 text-sm text-slate-700">
+            <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
               <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} />
               Profil default
             </label>
             {isEdit && (
-              <label className="flex items-center gap-2 text-sm text-slate-700">
+              <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
                 <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
                 Aktif
               </label>
@@ -273,12 +273,12 @@ function ProfileModal({ id, onClose }: { id: number | undefined; onClose: () => 
 
           <div>
             <div className="mb-1.5 flex items-center justify-between">
-              <label className="text-xs font-medium text-slate-600">Parameter</label>
-              <button type="button" onClick={addParam} className="text-xs font-medium text-slate-600 hover:text-slate-900">
+              <label className="text-xs font-medium text-slate-600 dark:text-slate-400">Parameter</label>
+              <button type="button" onClick={addParam} className="text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100">
                 + tambah parameter
               </button>
             </div>
-            <p className="mb-1.5 text-xs text-slate-400">
+            <p className="mb-1.5 text-xs text-slate-400 dark:text-slate-500">
               {vendorId
                 ? mappings && mappings.length > 0
                   ? `Ketik untuk cari logical key vendor ini (${mappings.length} tersedia) — raw TR-069 path tetap bisa diketik manual.`
@@ -309,17 +309,17 @@ function ProfileModal({ id, onClose }: { id: number | undefined; onClose: () => 
                         onChange={(e) => updateParam(i, { parameter_value: e.target.value })}
                         className={`${inputCls} flex-1 font-mono text-xs`}
                       />
-                      <button type="button" onClick={() => removeParam(i)} className="shrink-0 rounded-md p-2 text-slate-400 hover:bg-red-50 hover:text-red-600">
+                      <button type="button" onClick={() => removeParam(i)} className="shrink-0 rounded-md p-2 text-slate-400 dark:text-slate-500 hover:bg-red-50 hover:text-red-600">
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
                     {matchedMapping && (
-                      <p className="mt-0.5 truncate pl-0.5 font-mono text-[11px] text-slate-400">-&gt; {matchedMapping.tr069_path}</p>
+                      <p className="mt-0.5 truncate pl-0.5 font-mono text-[11px] text-slate-400 dark:text-slate-500">-&gt; {matchedMapping.tr069_path}</p>
                     )}
                   </div>
                 )
               })}
-              {params.length === 0 && <p className="text-xs text-slate-400">Belum ada parameter.</p>}
+              {params.length === 0 && <p className="text-xs text-slate-400 dark:text-slate-500">Belum ada parameter.</p>}
             </div>
           </div>
 
@@ -354,7 +354,7 @@ function ZTRulesTab({ canManage }: { canManage: boolean }) {
         </div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         {isLoading ? (
           <PageSpinner />
         ) : !rules || rules.length === 0 ? (
@@ -362,7 +362,7 @@ function ZTRulesTab({ canManage }: { canManage: boolean }) {
         ) : (
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+              <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                 <th className="px-5 py-3">Prioritas</th>
                 <th className="px-5 py-3">Kriteria</th>
                 <th className="px-5 py-3">Profil</th>
@@ -370,13 +370,13 @@ function ZTRulesTab({ canManage }: { canManage: boolean }) {
                 <th className="px-5 py-3"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {[...rules]
                 .sort((a, b) => a.priority - b.priority)
                 .map((r) => (
-                  <tr key={r.id} onClick={() => canManage && setModalId(r.id)} className={canManage ? 'cursor-pointer hover:bg-slate-50' : ''}>
-                    <td className="px-5 py-3.5 tabular-nums text-slate-600">{r.priority}</td>
-                    <td className="px-5 py-3.5 text-xs text-slate-600">
+                  <tr key={r.id} onClick={() => canManage && setModalId(r.id)} className={canManage ? 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50' : ''}>
+                    <td className="px-5 py-3.5 tabular-nums text-slate-600 dark:text-slate-400">{r.priority}</td>
+                    <td className="px-5 py-3.5 text-xs text-slate-600 dark:text-slate-400">
                       {[
                         r.vendor_id ? vendors.find((v) => v.id === r.vendor_id)?.name ?? `vendor#${r.vendor_id}` : null,
                         r.oui ? `OUI ${r.oui}` : null,
@@ -385,7 +385,7 @@ function ZTRulesTab({ canManage }: { canManage: boolean }) {
                         .filter(Boolean)
                         .join(' · ') || 'Semua device'}
                     </td>
-                    <td className="px-5 py-3.5 text-slate-700">
+                    <td className="px-5 py-3.5 text-slate-700 dark:text-slate-300">
                       {profiles.find((p) => p.id === r.provisioning_profile_id)?.name ?? `#${r.provisioning_profile_id}`}
                     </td>
                     <td className="px-5 py-3.5">
@@ -398,7 +398,7 @@ function ZTRulesTab({ canManage }: { canManage: boolean }) {
                             e.stopPropagation()
                             if (confirm('Hapus rule ini?')) deleteMutation.mutate(r.id)
                           }}
-                          className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                          className="rounded-md p-1.5 text-slate-400 dark:text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
@@ -480,9 +480,9 @@ function ZTRuleModal({ id, onClose }: { id: number | undefined; onClose: () => v
   return (
     <Modal title={isEdit ? 'Edit Zero-Touch Rule' : 'Zero-Touch Rule Baru'} onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-3">
-        <p className="text-xs text-slate-500">Kriteria dikombinasikan dengan AND — kosongkan yang tidak dipakai. Rule prioritas terkecil dievaluasi lebih dulu.</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">Kriteria dikombinasikan dengan AND — kosongkan yang tidak dipakai. Rule prioritas terkecil dievaluasi lebih dulu.</p>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">Vendor</label>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Vendor</label>
           <select
             value={vendorId}
             onChange={(e) => {
@@ -500,7 +500,7 @@ function ZTRuleModal({ id, onClose }: { id: number | undefined; onClose: () => v
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">Device Model</label>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Device Model</label>
           <select value={deviceModelId} onChange={(e) => setDeviceModelId(e.target.value)} disabled={!vendorId} className={inputCls}>
             <option value="">Semua model</option>
             {models?.map((m) => (
@@ -512,16 +512,16 @@ function ZTRuleModal({ id, onClose }: { id: number | undefined; onClose: () => v
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">OUI</label>
+            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">OUI</label>
             <input value={oui} onChange={(e) => setOui(e.target.value)} placeholder="mis. 3C6A9D" className={inputCls} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Serial Pattern (SQL LIKE)</label>
+            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Serial Pattern (SQL LIKE)</label>
             <input value={serialPattern} onChange={(e) => setSerialPattern(e.target.value)} placeholder="mis. ZTE%" className={inputCls} />
           </div>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">Provisioning Profile</label>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Provisioning Profile</label>
           <select required value={profileId} onChange={(e) => setProfileId(e.target.value)} className={inputCls}>
             <option value="">Pilih profil...</option>
             {profiles.map((p) => (
@@ -533,10 +533,10 @@ function ZTRuleModal({ id, onClose }: { id: number | undefined; onClose: () => v
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Priority</label>
+            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Priority</label>
             <input type="number" min={1} value={priority} onChange={(e) => setPriority(e.target.value)} className={inputCls} />
           </div>
-          <label className="mt-6 flex items-center gap-2 text-sm text-slate-700">
+          <label className="mt-6 flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
             <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
             Aktif
           </label>

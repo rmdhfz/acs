@@ -20,9 +20,9 @@ import { formatDateTime } from '../lib/format'
 import type { Tenant } from '../lib/types'
 
 const inputCls =
-  'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500'
+  'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
 const primaryBtnCls =
-  'flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60'
+  'flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white'
 
 type Tab = 'users' | 'tenants'
 
@@ -34,8 +34,8 @@ export function AdministrationPage() {
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-slate-900">Administration</h1>
-        <p className="mt-0.5 text-sm text-slate-500">Kelola user dan tenant platform</p>
+        <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Administration</h1>
+        <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Kelola user dan tenant platform</p>
       </div>
 
       {isSuperadmin && (
@@ -55,7 +55,7 @@ function TabButton({ active, onClick, icon: Icon, label }: { active: boolean; on
     <button
       onClick={onClick}
       className={`flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
-        active ? 'border-slate-900 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-800'
+        active ? 'border-slate-900 text-slate-900 dark:text-slate-100' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800'
       }`}
     >
       <Icon className="h-4 w-4" />
@@ -95,7 +95,7 @@ function UsersTab({ isSuperadmin }: { isSuperadmin: boolean }) {
         </button>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         {isLoading ? (
           <PageSpinner />
         ) : users.length === 0 ? (
@@ -103,7 +103,7 @@ function UsersTab({ isSuperadmin }: { isSuperadmin: boolean }) {
         ) : (
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+              <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                 <th className="px-5 py-3">Username</th>
                 <th className="px-5 py-3">Nama</th>
                 <th className="px-5 py-3">Email</th>
@@ -112,21 +112,21 @@ function UsersTab({ isSuperadmin }: { isSuperadmin: boolean }) {
                 <th className="px-5 py-3">Login Terakhir</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {users.map((u) => (
                 <tr key={u.id}>
-                  <td className="px-5 py-3.5 font-mono text-xs text-slate-900">{u.username}</td>
-                  <td className="px-5 py-3.5 text-slate-700">{u.full_name || '-'}</td>
-                  <td className="px-5 py-3.5 text-slate-500">{u.email || '-'}</td>
+                  <td className="px-5 py-3.5 font-mono text-xs text-slate-900 dark:text-slate-100">{u.username}</td>
+                  <td className="px-5 py-3.5 text-slate-700 dark:text-slate-300">{u.full_name || '-'}</td>
+                  <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{u.email || '-'}</td>
                   <td className="px-5 py-3.5">
                     <div className="flex flex-wrap gap-1">
-                      {u.roles.length === 0 ? <span className="text-xs text-slate-400">-</span> : u.roles.map((r) => <StatusBadge key={r} code="PROVISIONING" label={r} />)}
+                      {u.roles.length === 0 ? <span className="text-xs text-slate-400 dark:text-slate-500">-</span> : u.roles.map((r) => <StatusBadge key={r} code="PROVISIONING" label={r} />)}
                     </div>
                   </td>
                   <td className="px-5 py-3.5">
                     <StatusBadge code={u.is_active ? 'ONLINE' : 'OFFLINE'} label={u.is_active ? 'Aktif' : 'Nonaktif'} />
                   </td>
-                  <td className="px-5 py-3.5 text-slate-500">{formatDateTime(u.last_login_at)}</td>
+                  <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{formatDateTime(u.last_login_at)}</td>
                 </tr>
               ))}
             </tbody>
@@ -186,7 +186,7 @@ function CreateUserModal({
       <form onSubmit={handleSubmit} className="space-y-3">
         {isSuperadmin && (
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Tenant</label>
+            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Tenant</label>
             <select value={tenantId} onChange={(e) => setTenantId(e.target.value)} className={inputCls}>
               <option value="">- (lintas tenant / global)</option>
               {tenants.map((t) => (
@@ -198,26 +198,26 @@ function CreateUserModal({
           </div>
         )}
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">Username</label>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Username</label>
           <input required value={username} onChange={(e) => setUsername(e.target.value)} className={inputCls} />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">Nama Lengkap</label>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama Lengkap</label>
           <input value={fullName} onChange={(e) => setFullName(e.target.value)} className={inputCls} />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">Email</label>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Email</label>
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">Password</label>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Password</label>
           <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className={inputCls} />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">Role</label>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Role</label>
           <div className="flex flex-wrap gap-3">
             {roleRefs?.map((r) => (
-              <label key={r.id} className="flex items-center gap-1.5 text-sm text-slate-700">
+              <label key={r.id} className="flex items-center gap-1.5 text-sm text-slate-700 dark:text-slate-300">
                 <input type="checkbox" checked={roleCodes.includes(r.code)} onChange={() => toggleRole(r.code)} />
                 {r.name}
               </label>
@@ -249,7 +249,7 @@ function TenantsTab() {
         </button>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         {isLoading ? (
           <PageSpinner />
         ) : tenants.length === 0 ? (
@@ -257,7 +257,7 @@ function TenantsTab() {
         ) : (
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+              <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                 <th className="px-5 py-3">Code</th>
                 <th className="px-5 py-3">Nama</th>
                 <th className="px-5 py-3">Status</th>
@@ -266,26 +266,26 @@ function TenantsTab() {
                 <th className="px-5 py-3"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {tenants.map((t) => (
                 <tr key={t.id}>
-                  <td className="px-5 py-3.5 font-mono text-xs text-slate-700">{t.code}</td>
-                  <td className="px-5 py-3.5 font-medium text-slate-900">{t.name}</td>
+                  <td className="px-5 py-3.5 font-mono text-xs text-slate-700 dark:text-slate-300">{t.code}</td>
+                  <td className="px-5 py-3.5 font-medium text-slate-900 dark:text-slate-100">{t.name}</td>
                   <td className="px-5 py-3.5">
                     <StatusBadge code={t.is_active ? 'ONLINE' : 'OFFLINE'} label={t.is_active ? 'Aktif' : 'Nonaktif'} />
                   </td>
                   <td className="px-5 py-3.5">
                     {t.cwmp_inform_username ? (
-                      <span className="font-mono text-xs text-slate-600">{t.cwmp_inform_username}</span>
+                      <span className="font-mono text-xs text-slate-600 dark:text-slate-400">{t.cwmp_inform_username}</span>
                     ) : (
                       <StatusBadge code="FAULTY" label="Belum diset" />
                     )}
                   </td>
-                  <td className="px-5 py-3.5 text-slate-500">{formatDateTime(t.created_at)}</td>
+                  <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{formatDateTime(t.created_at)}</td>
                   <td className="px-5 py-3.5 text-right">
                     <button
                       onClick={() => setRotateTarget(t)}
-                      className="flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-slate-900"
+                      className="flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
                       title="Set/rotate shared secret Inform CWMP"
                     >
                       <KeyRound className="h-3.5 w-3.5" /> Kredensial CWMP
@@ -333,15 +333,15 @@ function CreateTenantModal({ onClose }: { onClose: () => void }) {
     <Modal title="Tenant Baru" onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">Code</label>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Code</label>
           <input required value={code} onChange={(e) => setCode(e.target.value)} className={inputCls} />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">Nama</label>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama</label>
           <input required value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
         </div>
         <div className="border-t border-slate-100 pt-3">
-          <p className="mb-2 text-xs text-slate-500">
+          <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
             Shared secret Inform CWMP (opsional, bisa diisi belakangan) — dipakai memvalidasi device baru milik tenant
             ini sebelum CPE punya kredensial sendiri. Beri tahu username/password ini ke teknisi yang memprovisioning
             CPE tenant ini.
@@ -391,16 +391,16 @@ function RotateCWMPCredentialsModal({ tenant, onClose }: { tenant: Tenant; onClo
   return (
     <Modal title={`Kredensial CWMP — ${tenant.name}`} onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-3">
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-slate-500 dark:text-slate-400">
           Password lama tidak ditampilkan (tersimpan terenkripsi). Mengisi form ini akan menimpa/mengganti kredensial
           yang ada — pastikan teknisi lapangan mengetahui perubahan ini sebelum menyimpan.
         </p>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">Username</label>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Username</label>
           <input required value={username} onChange={(e) => setUsername(e.target.value)} className={`${inputCls} font-mono text-xs`} />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">Password Baru</label>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Password Baru</label>
           <input required type="password" value={password} onChange={(e) => setPassword(e.target.value)} className={`${inputCls} font-mono text-xs`} />
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}

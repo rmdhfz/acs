@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* Dark mode class-based (toggle manual via lib/theme.tsx), bukan cuma
+   prefers-color-scheme -- lihat html.dark di bawah. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
@@ -8,9 +12,12 @@
 html {
   color-scheme: light;
 }
+html.dark {
+  color-scheme: dark;
+}
 
 body {
-  @apply bg-slate-50 text-slate-900 antialiased;
+  @apply bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100;
   font-family: var(--font-sans);
 }
 
@@ -28,4 +35,10 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background-color: theme(colors.slate.400);
+}
+html.dark ::-webkit-scrollbar-thumb {
+  background-color: theme(colors.slate.700);
+}
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background-color: theme(colors.slate.600);
 }

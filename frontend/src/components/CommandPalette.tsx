@@ -114,33 +114,33 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         onKeyDown={handleKeyDown}
       >
         <div className="flex items-center gap-2.5 border-b border-slate-200 px-4 py-3">
-          <Search className="h-4 w-4 shrink-0 text-slate-400" />
+          <Search className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" />
           <input
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Cari device (serial/MAC) atau buka halaman..."
-            className="w-full text-sm text-slate-900 outline-none placeholder:text-slate-400"
+            className="w-full text-sm text-slate-900 dark:text-slate-100 outline-none placeholder:text-slate-400 dark:placeholder:text-slate-500"
           />
           {isFetching && debouncedQuery.trim().length >= 2 && (
-            <span className="shrink-0 text-xs text-slate-400">Mencari…</span>
+            <span className="shrink-0 text-xs text-slate-400 dark:text-slate-500">Mencari…</span>
           )}
-          <kbd className="shrink-0 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-400">Esc</kbd>
+          <kbd className="shrink-0 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-400 dark:text-slate-500">Esc</kbd>
         </div>
 
         <div className="max-h-80 overflow-y-auto py-2">
           {items.length === 0 ? (
-            <p className="px-4 py-6 text-center text-sm text-slate-400">
+            <p className="px-4 py-6 text-center text-sm text-slate-400 dark:text-slate-500">
               {query.trim() ? 'Tidak ada hasil' : 'Ketik untuk mencari device atau halaman'}
             </p>
           ) : (
             <>
               {links.length > 0 && (
                 <div className="px-2">
-                  <p className="px-2 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wide text-slate-400">Halaman</p>
+                  <p className="px-2 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Halaman</p>
                   {links.map((link, i) => (
                     <ResultRow key={link.to} active={i === activeIndex} onClick={() => activate({ kind: 'link', link })}>
-                      <link.icon className="h-4 w-4 text-slate-400" />
+                      <link.icon className="h-4 w-4 text-slate-400 dark:text-slate-500" />
                       <span>{link.label}</span>
                     </ResultRow>
                   ))}
@@ -148,14 +148,14 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
               )}
               {deviceResults.length > 0 && (
                 <div className="px-2">
-                  <p className="px-2 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wide text-slate-400">Device</p>
+                  <p className="px-2 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Device</p>
                   {deviceResults.map((device, i) => {
                     const idx = links.length + i
                     return (
                       <ResultRow key={device.id} active={idx === activeIndex} onClick={() => activate({ kind: 'device', device })}>
-                        <Router className="h-4 w-4 text-slate-400" />
+                        <Router className="h-4 w-4 text-slate-400 dark:text-slate-500" />
                         <span className="flex-1 truncate font-mono text-xs">{device.serial_number}</span>
-                        {device.mac_address && <span className="shrink-0 font-mono text-[11px] text-slate-400">{device.mac_address}</span>}
+                        {device.mac_address && <span className="shrink-0 font-mono text-[11px] text-slate-400 dark:text-slate-500">{device.mac_address}</span>}
                       </ResultRow>
                     )
                   })}
@@ -174,7 +174,7 @@ function ResultRow({ active, onClick, children }: { active: boolean; onClick: ()
     <button
       onClick={onClick}
       className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors ${
-        active ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-50'
+        active ? 'bg-slate-900 text-white' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50'
       }`}
     >
       {children}

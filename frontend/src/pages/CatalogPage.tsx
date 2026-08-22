@@ -19,9 +19,9 @@ import {
 } from '../lib/hooks'
 
 const inputCls =
-  'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500'
+  'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
 const primaryBtnCls =
-  'flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60'
+  'flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white'
 
 type Tab = 'vendors' | 'models' | 'mappings'
 
@@ -31,8 +31,8 @@ export function CatalogPage() {
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-slate-900">Catalog Vendor</h1>
-        <p className="mt-0.5 text-sm text-slate-500">
+        <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Catalog Vendor</h1>
+        <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
           Menambah vendor/model baru adalah operasi data, bukan kode (TECH.md §5.1) — kelola di sini
         </p>
       </div>
@@ -55,7 +55,7 @@ function TabButton({ active, onClick, icon: Icon, label }: { active: boolean; on
     <button
       onClick={onClick}
       className={`flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
-        active ? 'border-slate-900 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-800'
+        active ? 'border-slate-900 text-slate-900 dark:text-slate-100' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800'
       }`}
     >
       <Icon className="h-4 w-4" />
@@ -80,7 +80,7 @@ function VendorsTab() {
         </button>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         {isLoading ? (
           <PageSpinner />
         ) : vendors.length === 0 ? (
@@ -88,23 +88,23 @@ function VendorsTab() {
         ) : (
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+              <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                 <th className="px-5 py-3">Code</th>
                 <th className="px-5 py-3">Nama</th>
                 <th className="px-5 py-3">Status</th>
                 <th className="px-5 py-3"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {vendors.map((v) => (
                 <tr key={v.id}>
-                  <td className="px-5 py-3.5 font-mono text-xs text-slate-700">{v.code}</td>
-                  <td className="px-5 py-3.5 font-medium text-slate-900">{v.name}</td>
+                  <td className="px-5 py-3.5 font-mono text-xs text-slate-700 dark:text-slate-300">{v.code}</td>
+                  <td className="px-5 py-3.5 font-medium text-slate-900 dark:text-slate-100">{v.name}</td>
                   <td className="px-5 py-3.5">
                     <StatusBadge code={v.is_active ? 'ONLINE' : 'OFFLINE'} label={v.is_active ? 'Aktif' : 'Nonaktif'} />
                   </td>
                   <td className="px-5 py-3.5 text-right">
-                    <button onClick={() => setOuiTargetId(v.id)} className="text-xs font-medium text-slate-600 hover:text-slate-900">
+                    <button onClick={() => setOuiTargetId(v.id)} className="text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100">
                       + OUI
                     </button>
                   </td>
@@ -143,15 +143,15 @@ function CreateVendorModal({ onClose }: { onClose: () => void }) {
     <Modal title="Vendor Baru" onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">Code</label>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Code</label>
           <input required value={code} onChange={(e) => setCode(e.target.value)} placeholder="mis. ZTE" className={inputCls} />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">Nama</label>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama</label>
           <input required value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">Deskripsi (opsional)</label>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Deskripsi (opsional)</label>
           <input value={description} onChange={(e) => setDescription(e.target.value)} className={inputCls} />
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
@@ -184,11 +184,11 @@ function AddOUIModal({ vendorId, onClose }: { vendorId: number; onClose: () => v
     <Modal title="Tambah OUI" onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">OUI (6 hex digit)</label>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">OUI (6 hex digit)</label>
           <input required value={oui} onChange={(e) => setOui(e.target.value.toUpperCase())} placeholder="mis. 3C6A9D" className={`${inputCls} font-mono`} />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">Catatan (opsional)</label>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Catatan (opsional)</label>
           <input value={notes} onChange={(e) => setNotes(e.target.value)} className={inputCls} />
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
@@ -227,7 +227,7 @@ function DeviceModelsTab() {
         )}
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         {!vendorId ? (
           <EmptyState icon={Cpu} title="Pilih vendor" description="Device model dikelompokkan per vendor." />
         ) : isLoading ? (
@@ -237,17 +237,17 @@ function DeviceModelsTab() {
         ) : (
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+              <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                 <th className="px-5 py-3">Model</th>
                 <th className="px-5 py-3">Product Class</th>
                 <th className="px-5 py-3">Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {models.map((m) => (
                 <tr key={m.id}>
-                  <td className="px-5 py-3.5 font-medium text-slate-900">{m.model_name}</td>
-                  <td className="px-5 py-3.5 font-mono text-xs text-slate-600">{m.product_class ?? '-'}</td>
+                  <td className="px-5 py-3.5 font-medium text-slate-900 dark:text-slate-100">{m.model_name}</td>
+                  <td className="px-5 py-3.5 font-mono text-xs text-slate-600 dark:text-slate-400">{m.product_class ?? '-'}</td>
                   <td className="px-5 py-3.5">
                     <StatusBadge code={m.is_active ? 'ONLINE' : 'OFFLINE'} label={m.is_active ? 'Aktif' : 'Nonaktif'} />
                   </td>
@@ -297,16 +297,16 @@ function CreateDeviceModelModal({ vendorId, onClose }: { vendorId: number; onClo
     <Modal title="Device Model Baru" onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">Nama Model</label>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama Model</label>
           <input required value={modelName} onChange={(e) => setModelName(e.target.value)} placeholder="mis. F670L" className={inputCls} />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">Product Class (opsional)</label>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Product Class (opsional)</label>
           <input value={productClass} onChange={(e) => setProductClass(e.target.value)} className={`${inputCls} font-mono text-xs`} />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Device Type</label>
+            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Device Type</label>
             <select required value={deviceTypeId} onChange={(e) => setDeviceTypeId(e.target.value)} className={inputCls}>
               <option value="">Pilih...</option>
               {deviceTypes?.map((t) => (
@@ -317,7 +317,7 @@ function CreateDeviceModelModal({ vendorId, onClose }: { vendorId: number; onClo
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Data Model Version</label>
+            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Data Model Version</label>
             <select required value={dmVersionId} onChange={(e) => setDmVersionId(e.target.value)} className={inputCls}>
               <option value="">Pilih...</option>
               {dmVersions?.map((d) => (
@@ -329,7 +329,7 @@ function CreateDeviceModelModal({ vendorId, onClose }: { vendorId: number; onClo
           </div>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">Deskripsi (opsional)</label>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Deskripsi (opsional)</label>
           <input value={description} onChange={(e) => setDescription(e.target.value)} className={inputCls} />
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
@@ -368,7 +368,7 @@ function MappingsTab() {
         )}
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         {!vendorId ? (
           <EmptyState icon={Route} title="Pilih vendor" description="Parameter mapping dikelompokkan per vendor." />
         ) : isLoading ? (
@@ -378,18 +378,18 @@ function MappingsTab() {
         ) : (
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+              <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                 <th className="px-5 py-3">Logical Key</th>
                 <th className="px-5 py-3">TR-069 Path</th>
                 <th className="px-5 py-3">Scope</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {mappings.map((m) => (
                 <tr key={m.id}>
-                  <td className="px-5 py-3.5 font-mono text-xs text-slate-700">{m.logical_key}</td>
-                  <td className="px-5 py-3.5 font-mono text-xs text-slate-500">{m.tr069_path}</td>
-                  <td className="px-5 py-3.5 text-xs text-slate-500">{m.device_model_id ? `Model #${m.device_model_id}` : 'Semua model vendor'}</td>
+                  <td className="px-5 py-3.5 font-mono text-xs text-slate-700 dark:text-slate-300">{m.logical_key}</td>
+                  <td className="px-5 py-3.5 font-mono text-xs text-slate-500 dark:text-slate-400">{m.tr069_path}</td>
+                  <td className="px-5 py-3.5 text-xs text-slate-500 dark:text-slate-400">{m.device_model_id ? `Model #${m.device_model_id}` : 'Semua model vendor'}</td>
                 </tr>
               ))}
             </tbody>
@@ -439,11 +439,11 @@ function CreateMappingModal({ vendorId, onClose }: { vendorId: number; onClose: 
     <Modal title="Parameter Mapping Baru" onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">Logical Key</label>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Logical Key</label>
           <input required value={logicalKey} onChange={(e) => setLogicalKey(e.target.value)} placeholder="mis. wifi.5g.ssid" className={`${inputCls} font-mono text-xs`} />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">TR-069 Path</label>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">TR-069 Path</label>
           <input
             required
             value={tr069Path}
@@ -454,7 +454,7 @@ function CreateMappingModal({ vendorId, onClose }: { vendorId: number; onClose: 
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Data Model Version</label>
+            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Data Model Version</label>
             <select required value={dmVersionId} onChange={(e) => setDmVersionId(e.target.value)} className={inputCls}>
               <option value="">Pilih...</option>
               {dmVersions?.map((d) => (
@@ -465,7 +465,7 @@ function CreateMappingModal({ vendorId, onClose }: { vendorId: number; onClose: 
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Parameter Type (opsional)</label>
+            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Parameter Type (opsional)</label>
             <select value={parameterTypeId} onChange={(e) => setParameterTypeId(e.target.value)} className={inputCls}>
               <option value="">-</option>
               {paramTypes?.map((p) => (
@@ -477,7 +477,7 @@ function CreateMappingModal({ vendorId, onClose }: { vendorId: number; onClose: 
           </div>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">Device Model (opsional — override lebih spesifik)</label>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Device Model (opsional — override lebih spesifik)</label>
           <select value={deviceModelId} onChange={(e) => setDeviceModelId(e.target.value)} className={inputCls}>
             <option value="">Semua model vendor ini</option>
             {models?.map((m) => (
@@ -488,7 +488,7 @@ function CreateMappingModal({ vendorId, onClose }: { vendorId: number; onClose: 
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">Deskripsi (opsional)</label>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Deskripsi (opsional)</label>
           <input value={description} onChange={(e) => setDescription(e.target.value)} className={inputCls} />
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}

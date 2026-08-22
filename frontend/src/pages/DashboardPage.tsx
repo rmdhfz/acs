@@ -4,6 +4,7 @@ import { StatCard } from '../components/StatCard'
 import { PageSpinner } from '../components/Spinner'
 import { EmptyState } from '../components/EmptyState'
 import { findRefById, findRefIdByCode, useDeviceStats, useRefs, useTaskStats, useVendors } from '../lib/hooks'
+import { useTheme } from '../lib/theme'
 
 // Warna selaras dengan STATUS_STYLES di components/StatusBadge.tsx supaya
 // chart & badge konsisten secara visual di seluruh aplikasi.
@@ -24,9 +25,22 @@ const STATUS_COLORS: Record<string, string> = {
 }
 const DEFAULT_COLOR = '#94a3b8'
 
-const cardCls = 'rounded-xl border border-slate-200 bg-white p-5 shadow-sm'
+const cardCls = 'rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900'
 
 export function DashboardPage() {
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === 'dark'
+  const gridStroke = isDark ? '#1e293b' : '#f1f5f9'
+  const tickFill = isDark ? '#94a3b8' : '#64748b'
+  const tooltipStyle = {
+    borderRadius: 8,
+    borderColor: isDark ? '#334155' : '#e2e8f0',
+    backgroundColor: isDark ? '#0f172a' : '#ffffff',
+    color: isDark ? '#e2e8f0' : '#0f172a',
+    fontSize: 13,
+  }
+  const cursorFill = isDark ? '#1e293b80' : '#f8fafc'
+
   const { data: statusRefs } = useRefs('ref_device_status')
   const { data: taskStatusRefs } = useRefs('ref_task_status')
   const { data: vendorsResp } = useVendors()
@@ -66,8 +80,8 @@ export function DashboardPage() {
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-slate-900">Dashboard</h1>
-        <p className="mt-0.5 text-sm text-slate-500">Ringkasan status seluruh perangkat CPE dan antrean task secara real-time</p>
+        <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Dashboard</h1>
+        <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Ringkasan status seluruh perangkat CPE dan antrean task secara real-time</p>
       </div>
 
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -79,7 +93,7 @@ export function DashboardPage() {
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <div className={cardCls}>
-          <h2 className="mb-4 text-sm font-semibold text-slate-900">Distribusi Status Device</h2>
+          <h2 className="mb-4 text-sm font-semibold text-slate-900 dark:text-slate-100">Distribusi Status Device</h2>
           {deviceStatsLoading ? (
             <PageSpinner />
           ) : statusChartData.length === 0 || totalDevices === 0 ? (
@@ -92,7 +106,7 @@ export function DashboardPage() {
                     <Cell key={i} fill={STATUS_COLORS[entry.code ?? ''] ?? DEFAULT_COLOR} />
                   ))}
                 </Pie>
-                <Tooltip contentStyle={{ borderRadius: 8, borderColor: '#e2e8f0', fontSize: 13 }} />
+                <Tooltip contentStyle={tooltipStyle} />
                 <Legend verticalAlign="bottom" height={36} iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
               </PieChart>
             </ResponsiveContainer>
@@ -100,7 +114,7 @@ export function DashboardPage() {
         </div>
 
         <div className={cardCls}>
-          <h2 className="mb-4 text-sm font-semibold text-slate-900">Antrean Task per Status</h2>
+          <h2 className="mb-4 text-sm font-semibold text-slate-900 dark:text-slate-100">Antrean Task per Status</h2>
           {taskStatsLoading ? (
             <PageSpinner />
           ) : taskChartData.length === 0 ? (
@@ -108,10 +122,10 @@ export function DashboardPage() {
           ) : (
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={taskChartData} layout="vertical" margin={{ left: 8, right: 16 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 12, fill: '#64748b' }} />
-                <YAxis type="category" dataKey="name" width={110} tick={{ fontSize: 12, fill: '#64748b' }} />
-                <Tooltip contentStyle={{ borderRadius: 8, borderColor: '#e2e8f0', fontSize: 13 }} cursor={{ fill: '#f8fafc' }} />
+                <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} horizontal={false} />
+                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 12, fill: tickFill }} />
+                <YAxis type="category" dataKey="name" width={110} tick={{ fontSize: 12, fill: tickFill }} />
+                <Tooltip contentStyle={tooltipStyle} cursor={{ fill: cursorFill }} />
                 <Bar dataKey="value" radius={[0, 4, 4, 0]}>
                   {taskChartData.map((entry, i) => (
                     <Cell key={i} fill={STATUS_COLORS[entry.code ?? ''] ?? DEFAULT_COLOR} />
@@ -123,7 +137,7 @@ export function DashboardPage() {
         </div>
 
         <div className={`${cardCls} lg:col-span-2`}>
-          <h2 className="mb-4 text-sm font-semibold text-slate-900">Device per Vendor</h2>
+          <h2 className="mb-4 text-sm font-semibold text-slate-900 dark:text-slate-100">Device per Vendor</h2>
           {deviceStatsLoading ? (
             <PageSpinner />
           ) : vendorChartData.length === 0 || totalDevices === 0 ? (
@@ -131,11 +145,11 @@ export function DashboardPage() {
           ) : (
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={vendorChartData} margin={{ top: 8, right: 8, left: -20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#64748b' }} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: '#64748b' }} />
-                <Tooltip contentStyle={{ borderRadius: 8, borderColor: '#e2e8f0', fontSize: 13 }} cursor={{ fill: '#f8fafc' }} />
-                <Bar dataKey="value" fill="#0f172a" radius={[4, 4, 0, 0]} maxBarSize={56} />
+                <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
+                <XAxis dataKey="name" tick={{ fontSize: 12, fill: tickFill }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: tickFill }} />
+                <Tooltip contentStyle={tooltipStyle} cursor={{ fill: cursorFill }} />
+                <Bar dataKey="value" fill={isDark ? '#e2e8f0' : '#0f172a'} radius={[4, 4, 0, 0]} maxBarSize={56} />
               </BarChart>
             </ResponsiveContainer>
           )}
