@@ -104,6 +104,38 @@ func (r *deviceRepository) List(ctx context.Context, f domain.DeviceFilter, p do
 	return rows, total, nil
 }
 
+func (r *deviceRepository) CountByStatus(ctx context.Context, tenantID *uint64) ([]domain.DeviceStatusCount, error) {
+	where := "is_deleted = 0"
+	args := []interface{}{}
+	if tenantID != nil {
+		where += " AND tenant_id = ?"
+		args = append(args, *tenantID)
+	}
+	var rows []domain.DeviceStatusCount
+	err := r.db.SelectContext(ctx, &rows,
+		"SELECT device_status_id, COUNT(*) AS cnt FROM devices WHERE "+where+" GROUP BY device_status_id", args...)
+	if err != nil {
+		return nil, translateErr(err)
+	}
+	return rows, nil
+}
+
+func (r *deviceRepository) CountByVendor(ctx context.Context, tenantID *uint64) ([]domain.DeviceVendorCount, error) {
+	where := "is_deleted = 0"
+	args := []interface{}{}
+	if tenantID != nil {
+		where += " AND tenant_id = ?"
+		args = append(args, *tenantID)
+	}
+	var rows []domain.DeviceVendorCount
+	err := r.db.SelectContext(ctx, &rows,
+		"SELECT vendor_id, COUNT(*) AS cnt FROM devices WHERE "+where+" GROUP BY vendor_id", args...)
+	if err != nil {
+		return nil, translateErr(err)
+	}
+	return rows, nil
+}
+
 func (r *deviceRepository) Update(ctx context.Context, d *domain.Device) error {
 	const q = `UPDATE devices SET
 		tenant_id = :tenant_id, vendor_id = :vendor_id, device_model_id = :device_model_id,

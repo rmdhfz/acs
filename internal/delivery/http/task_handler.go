@@ -51,6 +51,15 @@ func (r *Router) listTasks(c *echo.Context) error {
 	return c.JSON(http.StatusOK, listResponse{Data: tasks, Total: total})
 }
 
+func (r *Router) taskStats(c *echo.Context) error {
+	actor := ActorFrom(c)
+	stats, err := r.Tasks.Stats(c.Request().Context(), actor)
+	if err != nil {
+		return handleErr(c, err)
+	}
+	return c.JSON(http.StatusOK, stats)
+}
+
 func (r *Router) getTask(c *echo.Context) error {
 	id, err := parseUint64Param(c, "id")
 	if err != nil {

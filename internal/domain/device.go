@@ -41,12 +41,29 @@ type DeviceFilter struct {
 	Search         string // cocok ke serial_number/mac_address
 }
 
+// DeviceStatusCount/DeviceVendorCount — hasil agregasi utk dashboard analitik
+// (ROADMAP.md Fase 1). VendorID nil berarti device belum ter-resolve vendor-nya.
+type DeviceStatusCount struct {
+	DeviceStatusID uint64 `db:"device_status_id" json:"device_status_id"`
+	Count          int    `db:"cnt" json:"count"`
+}
+
+type DeviceVendorCount struct {
+	VendorID *uint64 `db:"vendor_id" json:"vendor_id"`
+	Count    int     `db:"cnt" json:"count"`
+}
+
 type DeviceRepository interface {
 	Create(ctx context.Context, d *Device) error
 	GetByID(ctx context.Context, id uint64) (*Device, error)
 	GetByUUID(ctx context.Context, uuid string) (*Device, error)
 	GetByOUISerial(ctx context.Context, oui, serial string) (*Device, error)
 	List(ctx context.Context, f DeviceFilter, p Pagination) ([]Device, int, error)
+	// CountByStatus/CountByVendor — agregasi GROUP BY untuk dashboard, jauh
+	// lebih murah daripada N query List(page_size=1) per status/vendor dari
+	// frontend. tenantID nil = agregat lintas tenant (view superadmin).
+	CountByStatus(ctx context.Context, tenantID *uint64) ([]DeviceStatusCount, error)
+	CountByVendor(ctx context.Context, tenantID *uint64) ([]DeviceVendorCount, error)
 	Update(ctx context.Context, d *Device) error
 	UpdateStatus(ctx context.Context, id, statusID uint64, updatedBy *uint64) error
 	MarkStaleOffline(ctx context.Context, offlineStatusID uint64, staleBefore time.Time) (int64, error)

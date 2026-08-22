@@ -52,6 +52,7 @@ func (r *Router) Register(e *echo.Echo) {
 	authed.GET("/users", r.listUsers, RequireRoles(admin...))
 
 	authed.GET("/devices", r.listDevices)
+	authed.GET("/devices/stats", r.deviceStats)
 	authed.GET("/devices/:id", r.getDevice)
 	authed.PATCH("/devices/:id", r.updateDevice, RequireRoles(adminOrNOC...))
 	authed.GET("/devices/:id/parameters", r.listDeviceParameters)
@@ -59,6 +60,7 @@ func (r *Router) Register(e *echo.Echo) {
 	authed.GET("/devices/:id/optical-metrics", r.listOpticalMetrics)
 
 	authed.GET("/tasks", r.listTasks)
+	authed.GET("/tasks/stats", r.taskStats)
 	authed.GET("/tasks/:id", r.getTask)
 	authed.POST("/tasks", r.createTask, RequireRoles(adminOrNOC...))
 	authed.POST("/tasks/:id/cancel", r.cancelTask, RequireRoles(adminOrNOC...))

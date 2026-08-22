@@ -36,6 +36,12 @@ func (f *fakeDeviceRepoAuth) GetByOUISerial(_ context.Context, oui, serial strin
 func (f *fakeDeviceRepoAuth) List(context.Context, domain.DeviceFilter, domain.Pagination) ([]domain.Device, int, error) {
 	return nil, 0, nil
 }
+func (f *fakeDeviceRepoAuth) CountByStatus(context.Context, *uint64) ([]domain.DeviceStatusCount, error) {
+	return nil, nil
+}
+func (f *fakeDeviceRepoAuth) CountByVendor(context.Context, *uint64) ([]domain.DeviceVendorCount, error) {
+	return nil, nil
+}
 func (f *fakeDeviceRepoAuth) Update(context.Context, *domain.Device) error { return nil }
 func (f *fakeDeviceRepoAuth) UpdateStatus(context.Context, uint64, uint64, *uint64) error {
 	return nil

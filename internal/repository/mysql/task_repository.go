@@ -105,6 +105,26 @@ func (r *taskRepository) HasPendingForDevice(ctx context.Context, deviceID uint6
 	return count > 0, nil
 }
 
+// CountByStatus meng-agregasi jumlah task per status. tasks tidak punya
+// tenant_id langsung (task melekat ke device) — JOIN devices dibutuhkan
+// hanya saat tenantID != nil untuk membatasi scope tenant (dashboard, FR-26).
+func (r *taskRepository) CountByStatus(ctx context.Context, tenantID *uint64) ([]domain.TaskStatusCount, error) {
+	where := "t.is_deleted = 0"
+	args := []interface{}{}
+	joins := ""
+	if tenantID != nil {
+		joins = "JOIN devices d ON d.id = t.device_id"
+		where += " AND d.tenant_id = ?"
+		args = append(args, *tenantID)
+	}
+	var rows []domain.TaskStatusCount
+	q := "SELECT t.task_status_id, COUNT(*) AS cnt FROM tasks t " + joins + " WHERE " + where + " GROUP BY t.task_status_id"
+	if err := r.db.SelectContext(ctx, &rows, q, args...); err != nil {
+		return nil, translateErr(err)
+	}
+	return rows, nil
+}
+
 func (r *taskRepository) List(ctx context.Context, f domain.TaskFilter, p domain.Pagination) ([]domain.Task, int, error) {
 	where := []string{"t.is_deleted = 0"}
 	args := []interface{}{}

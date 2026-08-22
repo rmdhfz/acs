@@ -1,8 +1,9 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { Building2, Cable, FileSliders, HardDrive, LayoutGrid, ListChecks, LogOut, Radio } from 'lucide-react'
+import { Building2, Cable, FileSliders, HardDrive, LayoutDashboard, LayoutGrid, ListChecks, LogOut, Radio } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 
 const NAV_ITEMS: { to: string; label: string; icon: typeof LayoutGrid; requireRole?: string }[] = [
+  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/devices', label: 'Devices', icon: LayoutGrid },
   { to: '/tasks', label: 'Tasks', icon: ListChecks },
   { to: '/provisioning', label: 'Provisioning', icon: FileSliders },

@@ -156,6 +156,17 @@ func (s *Service) List(ctx context.Context, f domain.TaskFilter, p domain.Pagina
 	return s.tasks.List(ctx, f, p)
 }
 
+// Stats — agregat untuk dashboard analitik (ROADMAP.md Fase 1), tenant-scoped
+// (berbeda dari List di atas yang saat ini TIDAK tenant-scoped — gap
+// terpisah yang sudah diketahui, lihat ROADMAP.md §Fase 0/2).
+func (s *Service) Stats(ctx context.Context, actor domain.Actor) ([]domain.TaskStatusCount, error) {
+	var tenantID *uint64
+	if !actor.IsSuperadmin() {
+		tenantID = actor.TenantID
+	}
+	return s.tasks.CountByStatus(ctx, tenantID)
+}
+
 func (s *Service) Cancel(ctx context.Context, actor domain.Actor, id uint64) error {
 	return s.tasks.Cancel(ctx, id, actor.UserIDPtr())
 }

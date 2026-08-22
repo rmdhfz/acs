@@ -70,6 +70,28 @@ func (s *Service) List(ctx context.Context, actor domain.Actor, f domain.DeviceF
 	return s.devices.List(ctx, f, p)
 }
 
+// DeviceStats — agregat untuk dashboard analitik (ROADMAP.md Fase 1).
+type DeviceStats struct {
+	ByStatus []domain.DeviceStatusCount `json:"by_status"`
+	ByVendor []domain.DeviceVendorCount `json:"by_vendor"`
+}
+
+func (s *Service) Stats(ctx context.Context, actor domain.Actor) (*DeviceStats, error) {
+	var tenantID *uint64
+	if !actor.IsSuperadmin() {
+		tenantID = actor.TenantID
+	}
+	byStatus, err := s.devices.CountByStatus(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	byVendor, err := s.devices.CountByVendor(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	return &DeviceStats{ByStatus: byStatus, ByVendor: byVendor}, nil
+}
+
 type UpdateDeviceInput struct {
 	Notes                     *string
 	ConnectionRequestURL      *string

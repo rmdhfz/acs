@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { LoginPage } from './pages/LoginPage'
+import { DashboardPage } from './pages/DashboardPage'
 import { DevicesPage } from './pages/DevicesPage'
 import { DeviceDetailPage } from './pages/DeviceDetailPage'
 import { TasksPage } from './pages/TasksPage'
@@ -22,6 +23,7 @@ function App() {
           </ProtectedRoute>
         }
       >
+        <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/devices" element={<DevicesPage />} />
         <Route path="/devices/:id" element={<DeviceDetailPage />} />
         <Route path="/tasks" element={<TasksPage />} />
@@ -29,10 +31,10 @@ function App() {
         <Route path="/firmware" element={<FirmwarePage />} />
         <Route path="/catalog" element={<CatalogPage />} />
         <Route path="/administration" element={<AdministrationPage />} />
-        <Route path="/" element={<Navigate to="/devices" replace />} />
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
       </Route>
 
-      <Route path="*" element={<Navigate to="/devices" replace />} />
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   )
 }

@@ -37,6 +37,9 @@ func (f *fakeTaskRepo) ListStaleSent(context.Context, time.Time) ([]domain.Task,
 func (f *fakeTaskRepo) List(context.Context, domain.TaskFilter, domain.Pagination) ([]domain.Task, int, error) {
 	return nil, 0, nil
 }
+func (f *fakeTaskRepo) CountByStatus(context.Context, *uint64) ([]domain.TaskStatusCount, error) {
+	return nil, nil
+}
 func (f *fakeTaskRepo) UpdateStatus(_ context.Context, _ uint64, statusID uint64, _ *uint64) error {
 	f.statusHistory = append(f.statusHistory, statusID)
 	return nil

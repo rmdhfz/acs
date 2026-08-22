@@ -1,6 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Activity, ArrowLeft, Cpu, HardDrive, History, ListChecks, Sparkles, SlidersHorizontal } from 'lucide-react'
+import { Line, LineChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Activity, ArrowLeft, Cpu, Gauge, HardDrive, History, ListChecks, Sparkles, SlidersHorizontal } from 'lucide-react'
 import { StatusBadge } from '../components/StatusBadge'
 import { EmptyState } from '../components/EmptyState'
 import { PageSpinner } from '../components/Spinner'
@@ -13,6 +14,7 @@ import {
   useDevice,
   useDeviceDiagnostics,
   useDeviceEvents,
+  useDeviceOpticalMetrics,
   useDeviceParameters,
   useDeviceTasks,
   useFirmwareJobs,
@@ -25,11 +27,12 @@ import {
 } from '../lib/hooks'
 import { decodeBytesField, formatDateTime, formatRelativeTime } from '../lib/format'
 
-type Tab = 'overview' | 'parameters' | 'events' | 'tasks' | 'diagnostics' | 'firmware'
+type Tab = 'overview' | 'parameters' | 'optical' | 'events' | 'tasks' | 'diagnostics' | 'firmware'
 
 const TABS: { key: Tab; label: string; icon: typeof Cpu }[] = [
   { key: 'overview', label: 'Overview', icon: Cpu },
   { key: 'parameters', label: 'Parameter', icon: SlidersHorizontal },
+  { key: 'optical', label: 'Redaman Optik', icon: Gauge },
   { key: 'events', label: 'Histori Event', icon: History },
   { key: 'tasks', label: 'Task', icon: ListChecks },
   { key: 'diagnostics', label: 'Diagnostics', icon: Activity },
@@ -119,6 +122,7 @@ export function DeviceDetailPage() {
 
       {tab === 'overview' && <OverviewTab device={device} />}
       {tab === 'parameters' && <ParametersTab deviceId={deviceId} />}
+      {tab === 'optical' && <OpticalMetricsTab deviceId={deviceId} />}
       {tab === 'events' && <EventsTab deviceId={deviceId} />}
       {tab === 'tasks' && <TasksTab deviceId={deviceId} />}
       {tab === 'diagnostics' && <DiagnosticsTab deviceId={deviceId} canTrigger={hasRole('ADMIN', 'NOC')} />}
@@ -213,6 +217,71 @@ function ParametersTab({ deviceId }: { deviceId: number }) {
         </table>
       </div>
     </Card>
+  )
+}
+
+function OpticalMetricsTab({ deviceId }: { deviceId: number }) {
+  const { data, isLoading } = useDeviceOpticalMetrics(deviceId)
+  const metrics = data?.data ?? []
+
+  if (isLoading) return <PageSpinner />
+  if (metrics.length === 0) {
+    return (
+      <EmptyState
+        icon={Gauge}
+        title="Belum ada data redaman optik"
+        description="Metrik RX/TX power tersinkron dari parameter TR-069 saat tersedia (mis. via diagnostic OPTICAL_POWER atau parameter sync ONT GPON/EPON)."
+      />
+    )
+  }
+
+  // API mengembalikan urutan terbaru dulu (DESC) — balik ke kronologis utk chart.
+  const chronological = [...metrics].reverse()
+  const chartData = chronological.map((m) => ({
+    time: formatDateTime(m.recorded_at),
+    rx: m.rx_power_dbm,
+    tx: m.tx_power_dbm,
+  }))
+  const latest = metrics[0]
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+        <MetricStat label="RX Power" value={latest.rx_power_dbm} unit="dBm" />
+        <MetricStat label="TX Power" value={latest.tx_power_dbm} unit="dBm" />
+        <MetricStat label="Voltage" value={latest.voltage} unit="V" />
+        <MetricStat label="Bias Current" value={latest.bias_current_ma} unit="mA" />
+        <MetricStat label="Suhu" value={latest.temperature_celsius} unit="°C" />
+      </div>
+
+      <Card>
+        <div className="p-5">
+          <h3 className="mb-4 text-sm font-semibold text-slate-900">Tren RX/TX Power</h3>
+          <ResponsiveContainer width="100%" height={280}>
+            <LineChart data={chartData} margin={{ left: -12, right: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+              <XAxis dataKey="time" tick={{ fontSize: 11, fill: '#64748b' }} minTickGap={30} />
+              <YAxis tick={{ fontSize: 12, fill: '#64748b' }} unit=" dBm" width={70} />
+              <Tooltip contentStyle={{ borderRadius: 8, borderColor: '#e2e8f0', fontSize: 13 }} />
+              <Line type="monotone" dataKey="rx" name="RX Power" stroke="#3b82f6" strokeWidth={2} dot={false} connectNulls />
+              <Line type="monotone" dataKey="tx" name="TX Power" stroke="#f59e0b" strokeWidth={2} dot={false} connectNulls />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </Card>
+    </div>
+  )
+}
+
+function MetricStat({ label, value, unit }: { label: string; value: number | null; unit: string }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <p className="text-xs font-medium text-slate-500">{label}</p>
+      <p className="mt-1 text-lg font-semibold tabular-nums text-slate-900">
+        {value ?? '-'}
+        {value !== null && <span className="ml-1 text-xs font-normal text-slate-400">{unit}</span>}
+      </p>
+    </div>
   )
 }
 

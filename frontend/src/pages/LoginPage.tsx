@@ -20,7 +20,7 @@ export function LoginPage() {
     setIsSubmitting(true)
     try {
       await login(username, password)
-      const from = (location.state as { from?: string } | null)?.from ?? '/devices'
+      const from = (location.state as { from?: string } | null)?.from ?? '/dashboard'
       navigate(from, { replace: true })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Gagal login, coba lagi')

@@ -5,7 +5,9 @@ import type {
   DeviceDiagnostic,
   DeviceEvent,
   DeviceModel,
+  DeviceOpticalMetric,
   DeviceParameter,
+  DeviceStats,
   FirmwareFile,
   FirmwareUpgradeJob,
   ListResponse,
@@ -13,6 +15,7 @@ import type {
   ProvisioningProfileParameter,
   RefLookup,
   Task,
+  TaskStatusCount,
   Tenant,
   User,
   Vendor,
@@ -108,6 +111,32 @@ export function useDeviceTasks(id: number) {
   return useQuery({
     queryKey: ['device', id, 'tasks'],
     queryFn: () => api.get<ListResponse<Task>>(`/tasks${buildQuery({ device_id: id, page_size: 50 })}`),
+    refetchInterval: LIVE_REFRESH_MS,
+  })
+}
+
+export function useDeviceOpticalMetrics(id: number) {
+  return useQuery({
+    queryKey: ['device', id, 'optical-metrics'],
+    queryFn: () => api.get<ListResponse<DeviceOpticalMetric>>(`/devices/${id}/optical-metrics?page_size=200`),
+    refetchInterval: LIVE_REFRESH_MS,
+  })
+}
+
+// ---- Dashboard analitik (ROADMAP.md Fase 1) ----
+
+export function useDeviceStats() {
+  return useQuery({
+    queryKey: ['devices', 'stats'],
+    queryFn: () => api.get<DeviceStats>('/devices/stats'),
+    refetchInterval: LIVE_REFRESH_MS,
+  })
+}
+
+export function useTaskStats() {
+  return useQuery({
+    queryKey: ['tasks', 'stats'],
+    queryFn: () => api.get<TaskStatusCount[]>('/tasks/stats'),
     refetchInterval: LIVE_REFRESH_MS,
   })
 }

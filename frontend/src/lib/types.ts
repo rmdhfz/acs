@@ -117,6 +117,26 @@ export interface Vendor {
   is_active: boolean
 }
 
+export interface DeviceStatusCount {
+  device_status_id: number
+  count: number
+}
+
+export interface DeviceVendorCount {
+  vendor_id: number | null
+  count: number
+}
+
+export interface DeviceStats {
+  by_status: DeviceStatusCount[] | null
+  by_vendor: DeviceVendorCount[] | null
+}
+
+export interface TaskStatusCount {
+  task_status_id: number
+  count: number
+}
+
 export interface VendorOUI {
   id: number
   vendor_id: number

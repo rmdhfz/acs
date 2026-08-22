@@ -31,10 +31,20 @@ type TaskFilter struct {
 	TaskTypeCode string
 }
 
+// TaskStatusCount — agregasi untuk dashboard analitik (ROADMAP.md Fase 1).
+type TaskStatusCount struct {
+	TaskStatusID uint64 `db:"task_status_id" json:"task_status_id"`
+	Count        int    `db:"cnt" json:"count"`
+}
+
 type TaskRepository interface {
 	Create(ctx context.Context, t *Task) error
 	GetByID(ctx context.Context, id uint64) (*Task, error)
 	GetByUUID(ctx context.Context, uuid string) (*Task, error)
+	// CountByStatus — agregasi GROUP BY, tenantID nil = lintas tenant
+	// (superadmin). Butuh JOIN devices karena tasks tidak punya tenant_id
+	// langsung.
+	CountByStatus(ctx context.Context, tenantID *uint64) ([]TaskStatusCount, error)
 	// NextForDevice mengambil task PENDING milik device, terurut priority ASC
 	// (1 = tertinggi dieksekusi lebih dulu), created_at ASC.
 	NextForDevice(ctx context.Context, deviceID uint64) (*Task, error)

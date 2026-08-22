@@ -25,6 +25,15 @@ func (r *Router) listDevices(c *echo.Context) error {
 	return c.JSON(http.StatusOK, listResponse{Data: devices, Total: total})
 }
 
+func (r *Router) deviceStats(c *echo.Context) error {
+	actor := ActorFrom(c)
+	stats, err := r.Devices.Stats(c.Request().Context(), actor)
+	if err != nil {
+		return handleErr(c, err)
+	}
+	return c.JSON(http.StatusOK, stats)
+}
+
 func (r *Router) getDevice(c *echo.Context) error {
 	actor := ActorFrom(c)
 	id, err := parseUint64Param(c, "id")
