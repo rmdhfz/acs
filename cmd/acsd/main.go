@@ -71,13 +71,13 @@ func main() {
 	diagnosticRepo := mysql.NewDeviceDiagnosticRepository(db)
 
 	authSvc := auth.NewService(userRepo, apiTokenRepo, activityLogRepo, cfg.JWTSecret, cfg.JWTExpiry)
-	iamSvc := iam.NewService(tenantRepo, userRepo, refRepo, activityLogRepo)
+	iamSvc := iam.NewService(tenantRepo, userRepo, refRepo, activityLogRepo, enc)
 	taskSvc := task.NewService(taskRepo, deviceRepo, deviceModelRepo, paramMappingRepo, refRepo, activityLogRepo)
 	provisioningSvc := provisioning.NewService(profileRepo, profileParamRepo, ztRuleRepo, deviceRepo, taskSvc, activityLogRepo)
 	deviceSvc := device.NewService(deviceRepo, vendorOUIRepo, deviceModelRepo, refRepo, deviceParamRepo, deviceEventRepo, opticalMetricRepo, enc, activityLogRepo)
 	firmwareSvc := firmware.NewService(firmwareFileRepo, firmwareJobRepo, deviceRepo, taskSvc, refRepo, activityLogRepo)
 	diagnosticsSvc := diagnostics.NewService(diagnosticRepo, deviceRepo, taskSvc, activityLogRepo)
-	sessionSvc := session.NewService(deviceSessionRepo, deviceEventRepo, deviceParamRepo, refRepo, deviceSvc, taskSvc, provisioningSvc, firmwareSvc, diagnosticsSvc)
+	sessionSvc := session.NewService(deviceSessionRepo, deviceEventRepo, deviceParamRepo, deviceRepo, tenantRepo, refRepo, deviceSvc, taskSvc, provisioningSvc, firmwareSvc, diagnosticsSvc, enc)
 
 	// ---- REST API internal (BSS/OSS, portal NOC) ----
 	restEcho := echo.New()
@@ -100,6 +100,10 @@ func main() {
 	// publik bisa diatur berbeda dari REST API internal (TECH.md §8). ----
 	cwmpEcho := echo.New()
 	cwmpEcho.Use(middleware.Recover())
+	// Rate limit per identifier (default: IP) — endpoint ini sekarang menjaga
+	// shared secret Inform CWMP sungguhan (bukan cuma anti CPE nakal/loop
+	// seperti sebelumnya), jadi juga jadi mitigasi brute-force kredensial.
+	cwmpEcho.Use(middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(5)))
 	deliverycwmp.NewHandler(sessionSvc).Register(cwmpEcho, "/cwmp")
 
 	// echo.Start() menangani graceful shutdown otomatis saat menerima

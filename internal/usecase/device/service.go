@@ -120,6 +120,18 @@ type InformDeviceInfo struct {
 	SoftwareVersion string
 	HardwareVersion string
 	RemoteIP        string
+	// TenantID hasil resolusi kredensial Inform (usecase/session). Dipakai
+	// saat device baru dibuat, DAN untuk "menyembuhkan" device lama yang
+	// belum punya tenant_id (mis. dibuat sebelum kredensial Inform wajib) —
+	// sekali sembuh, klaim terkunci: authenticateInform menolak tenant lain
+	// yang beda begitu tenant_id device tidak lagi nil (lihat usecase/session
+	// dan ROADMAP.md soal window transisi untuk device orphan yang sudah ada).
+	// Tidak pernah menimpa tenant_id yang SUDAH ter-assign.
+	TenantID *uint64
+	// ExistingDevice, bila diisi, adalah hasil GetByOUISerial yang sudah
+	// dilakukan authenticateInform — menghindari query devices duplikat pada
+	// setiap Inform (device_id ini adalah hot path, TECH.md §9).
+	ExistingDevice *domain.Device
 }
 
 // FindOrCreateFromInform meng-upsert device berdasarkan OUI+SerialNumber
@@ -129,19 +141,27 @@ type InformDeviceInfo struct {
 func (s *Service) FindOrCreateFromInform(ctx context.Context, info InformDeviceInfo) (dev *domain.Device, isNew bool, err error) {
 	now := time.Now()
 
-	existing, err := s.devices.GetByOUISerial(ctx, info.OUI, info.SerialNumber)
-	if err == nil {
+	existing := info.ExistingDevice
+	if existing == nil {
+		lookup, lookupErr := s.devices.GetByOUISerial(ctx, info.OUI, info.SerialNumber)
+		if lookupErr != nil && !errors.Is(lookupErr, domain.ErrNotFound) {
+			return nil, false, lookupErr
+		}
+		existing = lookup
+	}
+
+	if existing != nil {
 		existing.SoftwareVersion = &info.SoftwareVersion
 		existing.HardwareVersion = &info.HardwareVersion
 		existing.IPAddress = &info.RemoteIP
 		existing.LastInformAt = &now
+		if existing.TenantID == nil && info.TenantID != nil {
+			existing.TenantID = info.TenantID
+		}
 		if err := s.devices.Update(ctx, existing); err != nil {
 			return nil, false, err
 		}
 		return existing, false, nil
-	}
-	if !errors.Is(err, domain.ErrNotFound) {
-		return nil, false, err
 	}
 
 	unregisteredStatus, err := s.refs.GetByCode(ctx, domain.RefTableDeviceStatus, domain.DeviceStatusUnregistered)
@@ -151,6 +171,7 @@ func (s *Service) FindOrCreateFromInform(ctx context.Context, info InformDeviceI
 
 	d := &domain.Device{
 		DeviceUUID:      uuid.NewString(),
+		TenantID:        info.TenantID,
 		DeviceStatusID:  unregisteredStatus.ID,
 		OUI:             &info.OUI,
 		SerialNumber:    info.SerialNumber,

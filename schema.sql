@@ -161,11 +161,16 @@ CREATE TABLE ref_roles (
 -- =====================================================================
 
 CREATE TABLE tenants (
-    id              BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    tenant_uuid     CHAR(36)        NOT NULL,
-    code            VARCHAR(32)     NOT NULL,
-    name            VARCHAR(128)    NOT NULL,
-    is_active       TINYINT(1)      NOT NULL DEFAULT 1,
+    id                        BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    tenant_uuid               CHAR(36)        NOT NULL,
+    code                      VARCHAR(32)     NOT NULL,
+    name                      VARCHAR(128)    NOT NULL,
+    is_active                 TINYINT(1)      NOT NULL DEFAULT 1,
+    -- Shared secret Inform CWMP: dibutuhkan agar ACS bisa memvalidasi Inform
+    -- dari device yang BENAR-BENAR baru (belum tercatat di `devices`), sebelum
+    -- device tsb punya kredensial per-device sendiri. Lihat migrations/0002.
+    cwmp_inform_username      VARCHAR(128)    NULL,
+    cwmp_inform_password_enc  VARBINARY(255)  NULL COMMENT 'Terenkripsi (AES-GCM) di level aplikasi, bukan plaintext',
     created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     created_by      BIGINT UNSIGNED NULL,
     updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -174,7 +179,8 @@ CREATE TABLE tenants (
     deleted_by      BIGINT UNSIGNED NULL,
     is_deleted      TINYINT(1)      NOT NULL DEFAULT 0,
     UNIQUE KEY uq_tenants_uuid (tenant_uuid),
-    UNIQUE KEY uq_tenants_code (code)
+    UNIQUE KEY uq_tenants_code (code),
+    UNIQUE KEY uq_tenants_cwmp_inform_username (cwmp_inform_username)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   COMMENT='Entitas ISP/brand yang menggunakan platform ACS ini (multi-tenant)';
 

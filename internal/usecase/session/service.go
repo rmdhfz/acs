@@ -9,6 +9,7 @@ package session
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,35 +23,42 @@ import (
 	"acs/internal/usecase/firmware"
 	"acs/internal/usecase/provisioning"
 	"acs/internal/usecase/task"
+	"acs/pkg/cryptoutil"
 )
 
 type Service struct {
 	sessions        domain.DeviceSessionRepository
 	events          domain.DeviceEventRepository
 	deviceParams    domain.DeviceParameterRepository
+	devices         domain.DeviceRepository
+	tenants         domain.TenantRepository
 	refs            domain.RefRepository
 	deviceSvc       *device.Service
 	taskSvc         *task.Service
 	provisioningSvc *provisioning.Service
 	firmwareSvc     *firmware.Service
 	diagnosticsSvc  *diagnostics.Service
+	enc             *cryptoutil.Encryptor
 }
 
 func NewService(
 	sessions domain.DeviceSessionRepository,
 	events domain.DeviceEventRepository,
 	deviceParams domain.DeviceParameterRepository,
+	devices domain.DeviceRepository,
+	tenants domain.TenantRepository,
 	refs domain.RefRepository,
 	deviceSvc *device.Service,
 	taskSvc *task.Service,
 	provisioningSvc *provisioning.Service,
 	firmwareSvc *firmware.Service,
 	diagnosticsSvc *diagnostics.Service,
+	enc *cryptoutil.Encryptor,
 ) *Service {
 	return &Service{
-		sessions: sessions, events: events, deviceParams: deviceParams, refs: refs,
+		sessions: sessions, events: events, deviceParams: deviceParams, devices: devices, tenants: tenants, refs: refs,
 		deviceSvc: deviceSvc, taskSvc: taskSvc, provisioningSvc: provisioningSvc,
-		firmwareSvc: firmwareSvc, diagnosticsSvc: diagnosticsSvc,
+		firmwareSvc: firmwareSvc, diagnosticsSvc: diagnosticsSvc, enc: enc,
 	}
 }
 
@@ -74,8 +82,13 @@ type InformInput struct {
 	ProductClass    string
 	SoftwareVersion string
 	HardwareVersion string
-	Events          []InformEvent
-	Parameters      []InformParameter
+	// InformUsername/Password dari header Authorization (Basic Auth) request
+	// CWMP — divalidasi authenticateInform sebelum device diproses sama
+	// sekali (CLAUDE.md: kredensial CWMP wajib divalidasi, TECH.md §3/§8).
+	InformUsername string
+	InformPassword string
+	Events         []InformEvent
+	Parameters     []InformParameter
 }
 
 type InformResult struct {
@@ -84,6 +97,11 @@ type InformResult struct {
 }
 
 func (s *Service) HandleInform(ctx context.Context, in InformInput) (*InformResult, error) {
+	auth, err := s.authenticateInform(ctx, in.DeviceOUI, in.SerialNumber, in.InformUsername, in.InformPassword)
+	if err != nil {
+		return nil, err
+	}
+
 	dev, _, err := s.deviceSvc.FindOrCreateFromInform(ctx, device.InformDeviceInfo{
 		OUI:             in.DeviceOUI,
 		SerialNumber:    in.SerialNumber,
@@ -91,6 +109,8 @@ func (s *Service) HandleInform(ctx context.Context, in InformInput) (*InformResu
 		SoftwareVersion: in.SoftwareVersion,
 		HardwareVersion: in.HardwareVersion,
 		RemoteIP:        in.RemoteIP,
+		TenantID:        auth.TenantID,
+		ExistingDevice:  auth.Device,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("session: gagal upsert device dari Inform: %w", err)
@@ -143,6 +163,93 @@ func (s *Service) HandleInform(ctx context.Context, in InformInput) (*InformResu
 	_ = s.deviceSvc.MarkOnline(ctx, dev.ID)
 
 	return &InformResult{SessionToken: sess.SessionToken, DeviceID: dev.ID}, nil
+}
+
+// informAuth adalah hasil authenticateInform — Device diteruskan ke
+// FindOrCreateFromInform supaya tidak query devices dua kali per Inform
+// (hot path, TECH.md §9; lihat temuan review internal).
+type informAuth struct {
+	TenantID *uint64
+	Device   *domain.Device // nil bila device belum pernah dikenal
+}
+
+// authenticateInform memvalidasi kredensial Basic Auth Inform CWMP (TECH.md
+// §3/§8, PRD.md FR-1) dan meng-resolve tenant_id yang harus di-assign bila
+// device belum pernah tercatat. Dua jalur:
+//  1. Device sudah dikenal (OUI+Serial) dan punya kredensial sendiri
+//     (devices.inform_username) -> override, divalidasi ke device tsb. Bila
+//     device ini sudah py tenant_id, tenant tsb juga harus masih aktif —
+//     menonaktifkan tenant (offboarding) harus benar-benar memutus akses
+//     Inform, termasuk device yang pakai kredensial override sendiri.
+//  2. Selain itu -> dicocokkan ke shared secret salah satu tenant
+//     (tenants.cwmp_inform_username) — ini yang menangani device BENAR-BENAR
+//     baru (FR-13/FR-15 zero-touch) yang belum bisa punya kredensial sendiri.
+//     Bila device sudah dikenal dan sudah py tenant_id, secret HARUS milik
+//     tenant yang sama (mencegah spoofing lintas-tenant pakai secret tenant
+//     lain). Device lama yang tenant_id-nya masih nil (mis. dibuat sebelum
+//     kredensial Inform wajib) akan "sembuh" — tenant_id di-assign ke tenant
+//     pemilik secret yang pertama kali berhasil Inform setelahnya, lalu
+//     terkunci (Inform berikutnya dari tenant lain akan ditolak oleh
+//     pengecekan mismatch di atas). Untuk instalasi dgn device lama yang
+//     tenant kepemilikannya sudah diketahui, sebaiknya di-backfill manual
+//     SEBELUM mengaktifkan banyak shared secret tenant — lihat ROADMAP.md.
+//
+// Tidak ada kredensial yang cocok -> domain.ErrUnauthorized, device TIDAK
+// dibuat/diupdate sama sekali.
+func (s *Service) authenticateInform(ctx context.Context, oui, serial, username, password string) (*informAuth, error) {
+	if username == "" {
+		return nil, domain.ErrUnauthorized
+	}
+
+	existing, err := s.devices.GetByOUISerial(ctx, oui, serial)
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return nil, err
+	}
+	deviceExists := existing != nil
+
+	if deviceExists && existing.InformUsername != nil {
+		if username != *existing.InformUsername || !s.passwordMatches(existing.InformPasswordEnc, password) {
+			return nil, domain.ErrUnauthorized
+		}
+		if existing.TenantID != nil {
+			tenant, err := s.tenants.GetByID(ctx, *existing.TenantID)
+			if err != nil || !tenant.IsActive {
+				return nil, domain.ErrUnauthorized
+			}
+		}
+		return &informAuth{TenantID: existing.TenantID, Device: existing}, nil
+	}
+
+	tenant, err := s.tenants.GetByCWMPInformUsername(ctx, username)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, domain.ErrUnauthorized
+		}
+		return nil, err
+	}
+	if !s.passwordMatches(tenant.CWMPInformPasswordEnc, password) {
+		return nil, domain.ErrUnauthorized
+	}
+	if deviceExists && existing.TenantID != nil && *existing.TenantID != tenant.ID {
+		return nil, domain.ErrUnauthorized
+	}
+
+	tenantID := tenant.ID
+	return &informAuth{TenantID: &tenantID, Device: existing}, nil
+}
+
+// passwordMatches: enc kosong berarti belum ada secret dikonfigurasi ->
+// selalu tolak (bukan "cocok dengan password kosong"). Constant-time compare
+// supaya durasi respons tidak membocorkan seberapa banyak karakter yang cocok.
+func (s *Service) passwordMatches(enc []byte, provided string) bool {
+	if len(enc) == 0 {
+		return false
+	}
+	decrypted, err := s.enc.Decrypt(enc)
+	if err != nil {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(decrypted), []byte(provided)) == 1
 }
 
 func (s *Service) resolveSession(ctx context.Context, token string, deviceID uint64, remoteIP string) (*domain.DeviceSession, error) {

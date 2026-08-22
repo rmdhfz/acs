@@ -75,7 +75,7 @@ schema.sql
 ## 3. Alur Sesi CWMP
 
 1. CPE mengirim HTTP POST ke endpoint ACS berisi SOAP envelope `Inform` (memuat `DeviceId`, `Event`, `ParameterList` seperti `InternetGatewayDevice.DeviceInfo.SerialNumber`, dst).
-2. ACS memvalidasi Basic/Digest Auth. Jika device belum dikenal (serial number baru), catat sebagai device baru berstatus `UNREGISTERED`/`PROVISIONING`.
+2. ACS memvalidasi Basic Auth (implementasi saat ini: shared secret Inform per tenant di `tenants.cwmp_inform_username`/`cwmp_inform_password_enc`, dengan kredensial per-device di `devices.inform_username`/`inform_password_enc` sebagai override opsional setelah device dikenal — lihat `internal/usecase/session/service.go#authenticateInform`). **Auth hanya diperiksa di request yang membawa `Inform`** (titik pembentukan sesi); request lanjutan dalam sesi yang sama (POST kosong, respons RPC) mengandalkan `session_token` (UUID v4, di cookie `acs_session`) sebagai bearer credential, bukan re-check Basic Auth per request — ini disengaja, bukan celah, karena endpoint CWMP wajib TLS (lihat §8) dan `session_token` acak tidak ditebak. Jika device belum dikenal (serial number baru), catat sebagai device baru berstatus `UNREGISTERED`/`PROVISIONING` dan otomatis dapat `tenant_id` dari tenant pemilik shared secret yang berhasil dipakai.
 3. ACS membalas `InformResponse`, lalu **menahan koneksi HTTP (long-ish loop request/response)** sesuai pola CWMP: CPE mengirim POST kosong berikutnya, dan ACS bisa mengirim RPC method sebagai body response bila ada task pending untuk device tersebut.
 4. Selama sesi terbuka, ACS mengeksekusi task dari `tasks` (status `PENDING`/`QUEUED`) satu per satu, menunggu response CPE untuk tiap RPC, mencatat `response`/`error_message`, meng-update status task.
 5. Sesi ditutup saat tidak ada task tersisa dan CPE mengirim POST kosong tanpa body — ACS membalas HTTP 204/empty untuk menandakan sesi selesai.
@@ -151,8 +151,9 @@ Saat event `0 BOOTSTRAP` diterima dari device yang belum punya `provisioning_pro
 - **Kredensial connection request** (`connection_request_username`/`password`) disimpan terenkripsi (AES-GCM, key dari secret manager/env, bukan hardcoded) — bukan plaintext di DB.
 - **Kredensial Inform Auth** per device/profil juga tidak plaintext.
 - **RBAC** di layer REST API: role `SUPERADMIN`, `ADMIN` (scoped per tenant), `NOC`, `VIEWER` — middleware Echo memeriksa scope tenant pada setiap request.
-- **Rate limiting** pada endpoint REST publik dan endpoint CWMP (mencegah CPE nakal/loop menginform terlalu sering membebani server).
+- **Rate limiting** pada endpoint REST publik dan endpoint CWMP (mencegah CPE nakal/loop menginform terlalu sering membebani server, dan sejak Basic Auth CWMP aktif, juga mitigasi brute-force kredensial). Implementasi saat ini: `middleware.RateLimiter` (Echo v5) di `cwmpEcho`, 5 req/s per identifier — **belum ada di REST API internal** (`restEcho`), masih perlu ditambahkan (lihat ROADMAP.md).
 - Semua endpoint REST admin memerlukan API token (`api_tokens`) atau JWT sesi user; tidak ada endpoint mutasi tanpa autentikasi.
+- Shared secret Inform CWMP (`tenants.cwmp_inform_password`) wajib minimal 16 karakter (`internal/usecase/iam/service.go`) — mengurangi risiko brute-force mengingat endpoint `/cwmp` publik-facing.
 
 ## 9. Skalabilitas & Performa
 

@@ -5,30 +5,61 @@ package iam
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/google/uuid"
 
 	"acs/internal/domain"
 	"acs/internal/usecase/auth"
+	"acs/pkg/cryptoutil"
 )
+
+// minCWMPInformPasswordLen — shared secret Inform CWMP dipakai lewat HTTP
+// Basic Auth tanpa batas percobaan bawaan CWMP itu sendiri (rate limiting
+// ada di layer server, bukan di sini) — panjang minimum mengurangi risiko
+// brute-force pada endpoint publik /cwmp (TECH.md/PRD.md §8).
+const minCWMPInformPasswordLen = 16
 
 type Service struct {
 	tenants  domain.TenantRepository
 	users    domain.UserRepository
 	refs     domain.RefRepository
 	activity domain.ActivityLogRepository
+	enc      *cryptoutil.Encryptor
 }
 
-func NewService(tenants domain.TenantRepository, users domain.UserRepository, refs domain.RefRepository, activity domain.ActivityLogRepository) *Service {
-	return &Service{tenants: tenants, users: users, refs: refs, activity: activity}
+func NewService(tenants domain.TenantRepository, users domain.UserRepository, refs domain.RefRepository, activity domain.ActivityLogRepository, enc *cryptoutil.Encryptor) *Service {
+	return &Service{tenants: tenants, users: users, refs: refs, activity: activity, enc: enc}
 }
 
-func (s *Service) CreateTenant(ctx context.Context, actor domain.Actor, code, name string) (*domain.Tenant, error) {
+type CreateTenantInput struct {
+	Code string
+	Name string
+	// CWMPInformUsername/Password (opsional) — shared secret Inform CWMP
+	// tenant ini, dipakai memvalidasi device baru sebelum ia punya kredensial
+	// sendiri (lihat usecase/session). Password disimpan terenkripsi.
+	CWMPInformUsername *string
+	CWMPInformPassword *string
+}
+
+func (s *Service) CreateTenant(ctx context.Context, actor domain.Actor, in CreateTenantInput) (*domain.Tenant, error) {
 	if err := auth.RequireRole(actor, domain.RoleSuperadmin); err != nil {
 		return nil, err
 	}
+	var passwordEnc []byte
+	if in.CWMPInformPassword != nil {
+		if len(*in.CWMPInformPassword) < minCWMPInformPasswordLen {
+			return nil, fmt.Errorf("%w: password Inform CWMP minimal %d karakter", domain.ErrInvalidInput, minCWMPInformPasswordLen)
+		}
+		enc, err := s.enc.Encrypt(*in.CWMPInformPassword)
+		if err != nil {
+			return nil, err
+		}
+		passwordEnc = enc
+	}
 	t := &domain.Tenant{
-		TenantUUID: uuid.NewString(), Code: code, Name: name, IsActive: true,
+		TenantUUID: uuid.NewString(), Code: in.Code, Name: in.Name, IsActive: true,
+		CWMPInformUsername: in.CWMPInformUsername, CWMPInformPasswordEnc: passwordEnc,
 		Audit: domain.Audit{CreatedBy: actor.UserIDPtr()},
 	}
 	if err := s.tenants.Create(ctx, t); err != nil {
@@ -36,6 +67,26 @@ func (s *Service) CreateTenant(ctx context.Context, actor domain.Actor, code, na
 	}
 	_ = s.activity.Record(ctx, &domain.ActivityLog{UserID: actor.UserIDPtr(), Action: "CREATE_TENANT", EntityType: "tenant", EntityID: &t.ID})
 	return t, nil
+}
+
+// SetCWMPInformCredentials meng-set/rotate shared secret Inform CWMP tenant
+// (superadmin only — kredensial sensitif lintas seluruh device tenant ini).
+func (s *Service) SetCWMPInformCredentials(ctx context.Context, actor domain.Actor, tenantID uint64, username, password string) error {
+	if err := auth.RequireRole(actor, domain.RoleSuperadmin); err != nil {
+		return err
+	}
+	if len(password) < minCWMPInformPasswordLen {
+		return fmt.Errorf("%w: password Inform CWMP minimal %d karakter", domain.ErrInvalidInput, minCWMPInformPasswordLen)
+	}
+	passwordEnc, err := s.enc.Encrypt(password)
+	if err != nil {
+		return err
+	}
+	if err := s.tenants.SetCWMPInformCredentials(ctx, tenantID, username, passwordEnc, actor.UserIDPtr()); err != nil {
+		return err
+	}
+	_ = s.activity.Record(ctx, &domain.ActivityLog{UserID: actor.UserIDPtr(), Action: "SET_TENANT_CWMP_CREDENTIALS", EntityType: "tenant", EntityID: &tenantID})
+	return nil
 }
 
 func (s *Service) ListTenants(ctx context.Context, actor domain.Actor, p domain.Pagination) ([]domain.Tenant, int, error) {

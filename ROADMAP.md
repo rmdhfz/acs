@@ -55,15 +55,36 @@ Checklist ini dipecah per fase. **Jangan lompat ke Fase 1/2 sebelum Fase 0 seles
 
 ### Fase 0 — Fondasi & Validasi (prasyarat sebelum klaim apa pun ke Group)
 
-- [ ] `go build ./...`, `go vet ./...`, `go test ./...` berhasil lulus di CI atau minimal satu environment nyata
-- [ ] `docker-compose up` berhasil: MariaDB naik, migrasi jalan bersih dari nol, `acsd` listening di dua port (REST + CWMP)
-- [ ] Smoke test manual frontend di browser: login, lihat semua halaman baru (Tasks, Provisioning, Firmware, Catalog, Administration), coba satu alur create/edit di masing-masing
-- [ ] Commit awal ke git sebagai baseline (`git init`/commit pertama) — tanpa ini tidak ada riwayat untuk rollback
-- [ ] Setup CI dasar (GitHub Actions atau setara): lint + `go vet` + `go test` + `npm run build` otomatis tiap push/PR
-- [ ] Uji sesi CWMP end-to-end dengan simulator CPE (mis. genieacs-sim, atau script Python/Go sederhana yang mengirim Inform) — pastikan model sesi stateful (TECH.md §3) benar-benar bekerja, bukan cuma benar di kertas
-- [ ] Jalankan `/security-review` menyeluruh sebelum promosi ke fase berikutnya
+- [x] `go build ./...`, `go vet ./...`, `go test ./...` berhasil lulus — divalidasi 2026-08-21 via image `golang:latest` (build ✅, vet ✅ bersih, test ✅ termasuk skenario retry/max_retries di `internal/usecase/task`)
+- [x] `docker-compose up` berhasil — divalidasi 2026-08-21: MariaDB healthy, migrasi `0001_init_schema` jalan bersih ("migrate up: selesai"), `acsd` listening di :8080 (REST) dan :7547 (CWMP)
+- [ ] Smoke test manual frontend di browser: login, lihat semua halaman baru (Tasks, Provisioning, Firmware, Catalog, Administration), coba satu alur create/edit di masing-masing — **belum bisa dilakukan Claude** (tidak ada tool browser di environment ini), REST API sudah dicek lewat curl/PowerShell tapi interaksi UI sungguhan butuh dicoba manual oleh user
+- [x] Commit awal ke git sebagai baseline — commit `6adf25a`, 2026-08-21 (lokal, belum di-push ke `origin` — konfirmasi dulu ke user sebelum push)
+- [x] Setup CI dasar (GitHub Actions) — `.github/workflows/ci.yml` dibuat (job backend: vet+build+test; job frontend: lint+build); **belum divalidasi jalan sungguhan di GitHub** karena belum di-push
+- [x] Uji sesi CWMP end-to-end — divalidasi 2026-08-21 dengan simulasi Inform (event `0 BOOTSTRAP`) manual: InformResponse benar, device ter-upsert, event tercatat, sesi ditutup bersih (POST kosong -> 204, `device_sessions.status=CLOSED`)
+- [ ] Jalankan `/security-review` menyeluruh sebelum promosi ke fase berikutnya — temuan kritis di bawah **sudah diperbaiki**, review lain (RBAC endpoint lain, isolasi tenant di luar CWMP) belum menyeluruh
 
-*Agent terkait: `cwmp-session-engineer` (uji sesi), `db-schema-guardian` (validasi migrasi), `acs-security-reviewer` (review keamanan), kerja CI/commit dilakukan langsung bersama user.*
+**[SELESAI 2026-08-22] Endpoint CWMP TIDAK memvalidasi kredensial sama sekali — diperbaiki.**
+Root cause: `internal/delivery/cwmp/handler.go` tidak punya pengecekan Basic/Digest Auth apa pun, padahal `TECH.md` §3/§8 dan `PRD.md` FR-1 mensyaratkannya. Ditemukan dengan mengirim Inform simulasi tanpa header `Authorization` — diterima begitu saja.
+
+**Pendekatan yang dipilih & diimplementasikan: shared secret Inform per tenant** (`tenants.cwmp_inform_username`/`cwmp_inform_password_enc`, migrasi `0002_tenant_cwmp_inform_credentials`), dengan kredensial per-device (`devices.inform_username`) sebagai override opsional setelah device dikenal. Anti-spoofing lintas-tenant: bila device sudah py `tenant_id`, secret HARUS milik tenant yang sama. Superadmin kelola shared secret via `POST /tenants` (saat create) atau `PATCH /tenants/:id/cwmp-credentials` (rotate) — sudah ada UI-nya di Administration > Tenants.
+
+**Bonus fix sekalian:** device yang dibuat dari Inform sekarang otomatis dapat `tenant_id` dari tenant yang match kredensialnya — sebelumnya `FindOrCreateFromInform` TIDAK PERNAH meng-assign tenant_id sama sekali (device baru selalu `tenant_id=NULL`, artinya admin/NOC ber-scope-tenant tidak akan pernah melihat device barunya sendiri — bug fondasional untuk use-case Group).
+
+**Divalidasi end-to-end manual** (docker-compose + MariaDB nyata, bukan cuma unit test) untuk 5 skenario: (1) tanpa auth → 401, (2) shared secret benar + device baru → 200 & tenant_id ter-assign otomatis, (3) password salah → 401, (4) device tenant A coba pakai secret tenant B → 401 (anti-spoofing), (5) device dgn override per-device wajib pakai kredensial override-nya, bukan shared secret tenant → 401 kalau salah. `go build`/`vet`/`test` dan `npm run build` lulus semua setelah perubahan.
+
+**Independent review (`acs-code-reviewer` + `acs-security-reviewer`) atas fix di atas — semua temuan signifikan sudah ditindaklanjuti (2026-08-22):**
+- **[KRITIS, DIPERBAIKI]** Device lama/orphan (`tenant_id NULL`) tidak ter-lindungi anti-spoofing DAN tidak pernah "sembuh" — celah re-terbuka tiap Inform. Fix: `FindOrCreateFromInform` sekarang meng-assign `tenant_id` begitu device orphan berhasil Inform dgn kredensial tenant manapun, lalu klaim **terkunci** (tenant lain langsung ditolak sesudahnya) — divalidasi live: device orphan `SIMTEST-0001` sembuh ke `tenant_id=1` pada Inform pertama, lalu klaim dari tenant lain ditolak 401 di percobaan berikutnya.
+- **[TINGGI, DIPERBAIKI]** Tidak ada rate limiting di `/cwmp` padahal sekarang menjaga secret sungguhan. Fix: `middleware.RateLimiter` 5 req/s per identifier di `cwmpEcho` — divalidasi live (burst 15 request memicu beberapa `429`).
+- **[TINGGI, DIPERBAIKI]** Tidak ada validasi panjang minimum `cwmp_inform_password`. Fix: minimal 16 karakter di `iam.Service` — divalidasi live (password 8 karakter ditolak `400`).
+- **[SEDANG, DIPERBAIKI]** Kredensial override per-device tidak ikut tercabut saat tenant pemiliknya dinonaktifkan. Fix: `authenticateInform` sekarang cross-check `tenant.IsActive` juga di jalur override (unit test).
+- **[SEDANG, DIPERBAIKI — code review]** Query `devices` duplikat di setiap Inform (hot path). Fix: `authenticateInform` meneruskan device yang sudah di-fetch ke `FindOrCreateFromInform` lewat `ExistingDevice`, bukan query ulang.
+- **[SEDANG, DIPERBAIKI — code review]** Logic keamanan baru (`authenticateInform`/`passwordMatches`) tanpa unit test. Fix: `internal/usecase/session/service_test.go` ditambahkan, 11 skenario (anti-spoofing, override wajib, tenant nonaktif, orphan healing, password kosong, dst) — semua lulus.
+- **[RENDAH, DITERIMA APA ADANYA]** Timing side-channel minor (durasi respons beda antara username tak dikenal vs password salah) dan perbandingan username tidak constant-time — severity rendah menurut reviewer sendiri, mitigasi penuh butuh dummy-crypto-ops yang menambah kompleksitas tidak sepadan untuk saat ini. Dicatat, tidak diperbaiki.
+- **[FOLLOW-UP, bukan blocker]** Tidak ada endpoint REST untuk SET kredensial per-device (`devices.inform_username/inform_password_enc`) — kolom & logic override-nya sudah ada dan tervalidasi jalan lewat unit test + DB manual, tapi baru bisa diisi manual di DB, belum ada jalur API/UI. Tambahkan ke Fase 2 kalau override per-device memang dibutuhkan operasional.
+- **[FOLLOW-UP, bukan blocker]** Rate limiting baru ada di `/cwmp`, REST API internal (`restEcho`) masih belum ada — TECH.md §8 mensyaratkan keduanya. Tambahkan ke Fase 0/2.
+- **[FOLLOW-UP, bukan blocker]** Tidak ada endpoint untuk menonaktifkan tenant (hanya create/list) — jadi skenario "device override milik tenant nonaktif ditolak" baru tervalidasi lewat unit test, belum lewat REST end-to-end (butuh endpoint `PATCH /tenants/:id` untuk toggle `is_active` dulu).
+
+*Agent terkait: `cwmp-session-engineer` (uji sesi & auth), `db-schema-guardian` (validasi migrasi), `acs-security-reviewer` + `acs-code-reviewer` (review independen), kerja CI/commit dilakukan langsung bersama user.*
 
 ### Fase 1 — Diferensiasi UI/UX (bagian yang bikin "lebih bagus dari GenieACS" terasa nyata)
 

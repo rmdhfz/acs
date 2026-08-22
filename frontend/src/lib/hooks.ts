@@ -425,10 +425,26 @@ export function useTenants() {
   })
 }
 
+export interface CreateTenantInput {
+  code: string
+  name: string
+  cwmp_inform_username?: string
+  cwmp_inform_password?: string
+}
+
 export function useCreateTenant() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (input: { code: string; name: string }) => api.post<Tenant>('/tenants', input),
+    mutationFn: (input: CreateTenantInput) => api.post<Tenant>('/tenants', input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tenants'] }),
+  })
+}
+
+export function useSetTenantCWMPCredentials() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ tenantId, username, password }: { tenantId: number; username: string; password: string }) =>
+      api.patch<void>(`/tenants/${tenantId}/cwmp-credentials`, { username, password }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tenants'] }),
   })
 }

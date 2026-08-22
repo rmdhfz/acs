@@ -11,6 +11,11 @@ type Tenant struct {
 	Code       string `db:"code" json:"code"`
 	Name       string `db:"name" json:"name"`
 	IsActive   bool   `db:"is_active" json:"is_active"`
+	// CWMPInformUsername/PasswordEnc adalah shared secret Inform CWMP tenant
+	// ini — dipakai memvalidasi Inform dari device yang belum pernah tercatat
+	// (lihat usecase/session). PasswordEnc tidak pernah diekspos ke JSON.
+	CWMPInformUsername    *string `db:"cwmp_inform_username" json:"cwmp_inform_username"`
+	CWMPInformPasswordEnc []byte  `db:"cwmp_inform_password_enc" json:"-"`
 	Audit
 }
 
@@ -18,8 +23,12 @@ type TenantRepository interface {
 	Create(ctx context.Context, t *Tenant) error
 	GetByID(ctx context.Context, id uint64) (*Tenant, error)
 	GetByUUID(ctx context.Context, uuid string) (*Tenant, error)
+	// GetByCWMPInformUsername dipakai usecase/session untuk resolve tenant
+	// dari shared secret Inform saat device belum dikenal.
+	GetByCWMPInformUsername(ctx context.Context, username string) (*Tenant, error)
 	List(ctx context.Context, p Pagination) ([]Tenant, int, error)
 	Update(ctx context.Context, t *Tenant) error
+	SetCWMPInformCredentials(ctx context.Context, id uint64, username string, passwordEnc []byte, updatedBy *uint64) error
 	SoftDelete(ctx context.Context, id, deletedBy uint64) error
 }
 

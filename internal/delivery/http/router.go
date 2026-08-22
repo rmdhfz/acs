@@ -47,6 +47,7 @@ func (r *Router) Register(e *echo.Echo) {
 
 	authed.POST("/tenants", r.createTenant, RequireRoles(superadminOnly...))
 	authed.GET("/tenants", r.listTenants, RequireRoles(superadminOnly...))
+	authed.PATCH("/tenants/:id/cwmp-credentials", r.setTenantCWMPCredentials, RequireRoles(superadminOnly...))
 	authed.POST("/users", r.createUser, RequireRoles(admin...))
 	authed.GET("/users", r.listUsers, RequireRoles(admin...))
 

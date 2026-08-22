@@ -7,11 +7,13 @@ package cwmp
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 
 	"github.com/labstack/echo/v5"
 
+	"acs/internal/domain"
 	"acs/internal/usecase/session"
 	"acs/pkg/cwmpxml"
 )
@@ -76,6 +78,11 @@ func (h *Handler) handleInform(c *echo.Context, token string, env *cwmpxml.Envel
 		params = append(params, session.InformParameter{Name: p.Name, Value: p.Value.Value})
 	}
 
+	// Basic Auth wajib untuk setiap Inform (session baru maupun lanjutan) —
+	// tidak divalidasi ulang di request lain dalam sesi yang sama (Inform
+	// adalah titik pembentukan sesi, lihat TECH.md §3 & usecase/session).
+	username, password, _ := c.Request().BasicAuth()
+
 	result, err := h.sessions.HandleInform(c.Request().Context(), session.InformInput{
 		SessionToken:    token,
 		RemoteIP:        c.RealIP(),
@@ -84,10 +91,16 @@ func (h *Handler) handleInform(c *echo.Context, token string, env *cwmpxml.Envel
 		ProductClass:    inf.DeviceId.ProductClass,
 		SoftwareVersion: paramSuffix(params, "SoftwareVersion"),
 		HardwareVersion: paramSuffix(params, "HardwareVersion"),
+		InformUsername:  username,
+		InformPassword:  password,
 		Events:          events,
 		Parameters:      params,
 	})
 	if err != nil {
+		if errors.Is(err, domain.ErrUnauthorized) {
+			c.Response().Header().Set("WWW-Authenticate", `Basic realm="ACS"`)
+			return c.NoContent(http.StatusUnauthorized)
+		}
 		c.Logger().Error("cwmp handler error", "error", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}

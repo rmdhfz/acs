@@ -18,8 +18,8 @@ func NewTenantRepository(db *sqlx.DB) domain.TenantRepository { return &tenantRe
 func (r *tenantRepository) Create(ctx context.Context, t *domain.Tenant) error {
 	now := time.Now()
 	t.CreatedAt, t.UpdatedAt = now, now
-	const q = `INSERT INTO tenants (tenant_uuid, code, name, is_active, created_at, updated_at, created_by)
-		VALUES (:tenant_uuid, :code, :name, :is_active, :created_at, :updated_at, :created_by)`
+	const q = `INSERT INTO tenants (tenant_uuid, code, name, is_active, cwmp_inform_username, cwmp_inform_password_enc, created_at, updated_at, created_by)
+		VALUES (:tenant_uuid, :code, :name, :is_active, :cwmp_inform_username, :cwmp_inform_password_enc, :created_at, :updated_at, :created_by)`
 	res, err := r.db.NamedExecContext(ctx, q, t)
 	if err != nil {
 		return translateErr(err)
@@ -45,6 +45,23 @@ func (r *tenantRepository) GetByUUID(ctx context.Context, uuid string) (*domain.
 		return nil, translateErr(err)
 	}
 	return &t, nil
+}
+
+func (r *tenantRepository) GetByCWMPInformUsername(ctx context.Context, username string) (*domain.Tenant, error) {
+	var t domain.Tenant
+	err := r.db.GetContext(ctx, &t,
+		`SELECT * FROM tenants WHERE cwmp_inform_username = ? AND is_deleted = 0 AND is_active = 1`, username)
+	if err != nil {
+		return nil, translateErr(err)
+	}
+	return &t, nil
+}
+
+func (r *tenantRepository) SetCWMPInformCredentials(ctx context.Context, id uint64, username string, passwordEnc []byte, updatedBy *uint64) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE tenants SET cwmp_inform_username = ?, cwmp_inform_password_enc = ?, updated_by = ? WHERE id = ? AND is_deleted = 0`,
+		username, passwordEnc, updatedBy, id)
+	return translateErr(err)
 }
 
 func (r *tenantRepository) List(ctx context.Context, p domain.Pagination) ([]domain.Tenant, int, error) {

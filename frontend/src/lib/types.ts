@@ -152,6 +152,7 @@ export interface Tenant {
   code: string
   name: string
   is_active: boolean
+  cwmp_inform_username: string | null
   created_at: string
 }
 

@@ -1,13 +1,23 @@
 import { useState, type FormEvent } from 'react'
-import { Building2, Plus, Users as UsersIcon } from 'lucide-react'
+import { Building2, KeyRound, Plus, Users as UsersIcon } from 'lucide-react'
 import { EmptyState } from '../components/EmptyState'
 import { StatusBadge } from '../components/StatusBadge'
 import { Modal } from '../components/Modal'
 import { PageSpinner } from '../components/Spinner'
 import { useAuth } from '../lib/auth'
 import { ApiError } from '../lib/api'
-import { useCreateTenant, useCreateUser, useRefs, useTenants, useUsers, type CreateUserInput } from '../lib/hooks'
+import {
+  useCreateTenant,
+  useCreateUser,
+  useRefs,
+  useSetTenantCWMPCredentials,
+  useTenants,
+  useUsers,
+  type CreateTenantInput,
+  type CreateUserInput,
+} from '../lib/hooks'
 import { formatDateTime } from '../lib/format'
+import type { Tenant } from '../lib/types'
 
 const inputCls =
   'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500'
@@ -229,6 +239,7 @@ function TenantsTab() {
   const { data, isLoading } = useTenants()
   const tenants = data?.data ?? []
   const [showCreate, setShowCreate] = useState(false)
+  const [rotateTarget, setRotateTarget] = useState<Tenant | null>(null)
 
   return (
     <div>
@@ -250,7 +261,9 @@ function TenantsTab() {
                 <th className="px-5 py-3">Code</th>
                 <th className="px-5 py-3">Nama</th>
                 <th className="px-5 py-3">Status</th>
+                <th className="px-5 py-3">Shared Secret CWMP</th>
                 <th className="px-5 py-3">Dibuat</th>
+                <th className="px-5 py-3"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -261,7 +274,23 @@ function TenantsTab() {
                   <td className="px-5 py-3.5">
                     <StatusBadge code={t.is_active ? 'ONLINE' : 'OFFLINE'} label={t.is_active ? 'Aktif' : 'Nonaktif'} />
                   </td>
+                  <td className="px-5 py-3.5">
+                    {t.cwmp_inform_username ? (
+                      <span className="font-mono text-xs text-slate-600">{t.cwmp_inform_username}</span>
+                    ) : (
+                      <StatusBadge code="FAULTY" label="Belum diset" />
+                    )}
+                  </td>
                   <td className="px-5 py-3.5 text-slate-500">{formatDateTime(t.created_at)}</td>
+                  <td className="px-5 py-3.5 text-right">
+                    <button
+                      onClick={() => setRotateTarget(t)}
+                      className="flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-slate-900"
+                      title="Set/rotate shared secret Inform CWMP"
+                    >
+                      <KeyRound className="h-3.5 w-3.5" /> Kredensial CWMP
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -270,6 +299,7 @@ function TenantsTab() {
       </div>
 
       {showCreate && <CreateTenantModal onClose={() => setShowCreate(false)} />}
+      {rotateTarget && <RotateCWMPCredentialsModal tenant={rotateTarget} onClose={() => setRotateTarget(null)} />}
     </div>
   )
 }
@@ -277,14 +307,22 @@ function TenantsTab() {
 function CreateTenantModal({ onClose }: { onClose: () => void }) {
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
+  const [cwmpUsername, setCwmpUsername] = useState('')
+  const [cwmpPassword, setCwmpPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const createMutation = useCreateTenant()
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
+    const input: CreateTenantInput = {
+      code,
+      name,
+      cwmp_inform_username: cwmpUsername || undefined,
+      cwmp_inform_password: cwmpPassword || undefined,
+    }
     try {
-      await createMutation.mutateAsync({ code, name })
+      await createMutation.mutateAsync(input)
       onClose()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Gagal membuat tenant')
@@ -302,9 +340,72 @@ function CreateTenantModal({ onClose }: { onClose: () => void }) {
           <label className="mb-1 block text-xs font-medium text-slate-600">Nama</label>
           <input required value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
         </div>
+        <div className="border-t border-slate-100 pt-3">
+          <p className="mb-2 text-xs text-slate-500">
+            Shared secret Inform CWMP (opsional, bisa diisi belakangan) — dipakai memvalidasi device baru milik tenant
+            ini sebelum CPE punya kredensial sendiri. Beri tahu username/password ini ke teknisi yang memprovisioning
+            CPE tenant ini.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <input
+              placeholder="Username Inform"
+              value={cwmpUsername}
+              onChange={(e) => setCwmpUsername(e.target.value)}
+              className={`${inputCls} font-mono text-xs`}
+            />
+            <input
+              placeholder="Password Inform"
+              type="password"
+              value={cwmpPassword}
+              onChange={(e) => setCwmpPassword(e.target.value)}
+              className={`${inputCls} font-mono text-xs`}
+            />
+          </div>
+        </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
         <button type="submit" disabled={createMutation.isPending} className={`${primaryBtnCls} w-full`}>
           Buat Tenant
+        </button>
+      </form>
+    </Modal>
+  )
+}
+
+function RotateCWMPCredentialsModal({ tenant, onClose }: { tenant: Tenant; onClose: () => void }) {
+  const [username, setUsername] = useState(tenant.cwmp_inform_username ?? '')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const setCredsMutation = useSetTenantCWMPCredentials()
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setError(null)
+    try {
+      await setCredsMutation.mutateAsync({ tenantId: tenant.id, username, password })
+      onClose()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Gagal menyimpan kredensial')
+    }
+  }
+
+  return (
+    <Modal title={`Kredensial CWMP — ${tenant.name}`} onClose={onClose}>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <p className="text-xs text-slate-500">
+          Password lama tidak ditampilkan (tersimpan terenkripsi). Mengisi form ini akan menimpa/mengganti kredensial
+          yang ada — pastikan teknisi lapangan mengetahui perubahan ini sebelum menyimpan.
+        </p>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-600">Username</label>
+          <input required value={username} onChange={(e) => setUsername(e.target.value)} className={`${inputCls} font-mono text-xs`} />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-600">Password Baru</label>
+          <input required type="password" value={password} onChange={(e) => setPassword(e.target.value)} className={`${inputCls} font-mono text-xs`} />
+        </div>
+        {error && <p className="text-sm text-red-600">{error}</p>}
+        <button type="submit" disabled={setCredsMutation.isPending} className={`${primaryBtnCls} w-full`}>
+          Simpan
         </button>
       </form>
     </Modal>

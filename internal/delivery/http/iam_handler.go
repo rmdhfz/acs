@@ -9,8 +9,10 @@ import (
 )
 
 type createTenantRequest struct {
-	Code string `json:"code"`
-	Name string `json:"name"`
+	Code               string  `json:"code"`
+	Name               string  `json:"name"`
+	CWMPInformUsername *string `json:"cwmp_inform_username"`
+	CWMPInformPassword *string `json:"cwmp_inform_password"`
 }
 
 func (r *Router) createTenant(c *echo.Context) error {
@@ -22,11 +24,38 @@ func (r *Router) createTenant(c *echo.Context) error {
 	if req.Code == "" || req.Name == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "code dan name wajib diisi")
 	}
-	t, err := r.IAM.CreateTenant(c.Request().Context(), actor, req.Code, req.Name)
+	t, err := r.IAM.CreateTenant(c.Request().Context(), actor, iam.CreateTenantInput{
+		Code: req.Code, Name: req.Name,
+		CWMPInformUsername: req.CWMPInformUsername, CWMPInformPassword: req.CWMPInformPassword,
+	})
 	if err != nil {
 		return handleErr(c, err)
 	}
 	return c.JSON(http.StatusCreated, t)
+}
+
+type setTenantCWMPCredentialsRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+func (r *Router) setTenantCWMPCredentials(c *echo.Context) error {
+	actor := ActorFrom(c)
+	id, err := parseUint64Param(c, "id")
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "id tidak valid")
+	}
+	var req setTenantCWMPCredentialsRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "payload tidak valid")
+	}
+	if req.Username == "" || req.Password == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "username dan password wajib diisi")
+	}
+	if err := r.IAM.SetCWMPInformCredentials(c.Request().Context(), actor, id, req.Username, req.Password); err != nil {
+		return handleErr(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
 }
 
 func (r *Router) listTenants(c *echo.Context) error {
