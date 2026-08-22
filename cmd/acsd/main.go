@@ -88,6 +88,12 @@ func main() {
 		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodPut, http.MethodDelete, http.MethodOptions},
 		AllowHeaders: []string{"Authorization", "Content-Type"},
 	}))
+	// Rate limit per identifier (default: IP) — jauh lebih longgar dari CWMP
+	// (5 req/s) karena dashboard frontend polling beberapa endpoint tiap 5
+	// detik per tab; 30 req/s tetap membatasi brute-force /auth/login &
+	// scraping API token sambil tidak mengganggu pemakaian normal
+	// (ROADMAP.md Fase 2 — gap yang dicatat saat CWMP rate limit ditambahkan).
+	restEcho.Use(middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(30)))
 	router := &deliveryhttp.Router{
 		Auth: authSvc, IAM: iamSvc, Devices: deviceSvc, Tasks: taskSvc, Provisioning: provisioningSvc,
 		Firmware: firmwareSvc, Diagnostics: diagnosticsSvc,

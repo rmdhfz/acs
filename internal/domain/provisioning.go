@@ -1,6 +1,9 @@
 ﻿package domain
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // ProvisioningProfile — kumpulan parameter default per vendor/model (lihat TECH.md §6).
 type ProvisioningProfile struct {
@@ -29,12 +32,14 @@ type ProvisioningProfileRepository interface {
 // path (lihat schema.sql). Resolusi logical key dilakukan saat apply, bukan
 // saat disimpan, agar tetap portable lintas vendor bila profile bersifat umum.
 type ProvisioningProfileParameter struct {
-	ID              uint64  `db:"id" json:"id"`
-	ProfileID       uint64  `db:"profile_id" json:"profile_id"`
-	ParameterName   string  `db:"parameter_name" json:"parameter_name"`
-	ParameterValue  *string `db:"parameter_value" json:"parameter_value"`
-	ParameterTypeID *uint64 `db:"parameter_type_id" json:"parameter_type_id"`
-	ApplyOrder      uint32  `db:"apply_order" json:"apply_order"`
+	ID              uint64    `db:"id" json:"id"`
+	ProfileID       uint64    `db:"profile_id" json:"profile_id"`
+	ParameterName   string    `db:"parameter_name" json:"parameter_name"`
+	ParameterValue  *string   `db:"parameter_value" json:"parameter_value"`
+	ParameterTypeID *uint64   `db:"parameter_type_id" json:"parameter_type_id"`
+	ApplyOrder      uint32    `db:"apply_order" json:"apply_order"`
+	CreatedAt       time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt       time.Time `db:"updated_at" json:"updated_at"`
 }
 
 type ProvisioningProfileParameterRepository interface {

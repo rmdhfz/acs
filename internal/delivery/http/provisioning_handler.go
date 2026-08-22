@@ -55,11 +55,12 @@ func (r *Router) createProfile(c *echo.Context) error {
 }
 
 func (r *Router) getProfile(c *echo.Context) error {
+	actor := ActorFrom(c)
 	id, err := parseUint64Param(c, "id")
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "id tidak valid")
 	}
-	p, params, err := r.Provisioning.Get(c.Request().Context(), id)
+	p, params, err := r.Provisioning.Get(c.Request().Context(), actor, id)
 	if err != nil {
 		return handleErr(c, err)
 	}

@@ -34,6 +34,18 @@ func NewService(
 	return &Service{files: files, jobs: jobs, devices: devices, tasks: tasks, refs: refs, activity: activity}
 }
 
+// requireDeviceTenantScope — RBAC scope tenant (CLAUDE.md), dipakai tiap kali
+// usecase ini mengakses data ter-scope ke satu device.
+func requireDeviceTenantScope(actor domain.Actor, deviceTenantID *uint64) error {
+	if actor.IsSuperadmin() {
+		return nil
+	}
+	if deviceTenantID == nil || actor.TenantID == nil || *actor.TenantID != *deviceTenantID {
+		return domain.ErrForbidden
+	}
+	return nil
+}
+
 type UploadFirmwareInput struct {
 	VendorID       uint64
 	DeviceModelID  *uint64
@@ -86,10 +98,8 @@ func (s *Service) ScheduleUpgrade(ctx context.Context, actor domain.Actor, devic
 	if err != nil {
 		return nil, err
 	}
-	if !actor.IsSuperadmin() {
-		if dev.TenantID == nil || actor.TenantID == nil || *dev.TenantID != *actor.TenantID {
-			return nil, domain.ErrForbidden
-		}
+	if err := requireDeviceTenantScope(actor, dev.TenantID); err != nil {
+		return nil, err
 	}
 	fw, err := s.files.GetByID(ctx, firmwareID)
 	if err != nil {
@@ -140,7 +150,14 @@ func (s *Service) ScheduleUpgrade(ctx context.Context, actor domain.Actor, devic
 	return job, nil
 }
 
-func (s *Service) ListJobsByDevice(ctx context.Context, deviceID uint64, p domain.Pagination) ([]domain.FirmwareUpgradeJob, int, error) {
+func (s *Service) ListJobsByDevice(ctx context.Context, actor domain.Actor, deviceID uint64, p domain.Pagination) ([]domain.FirmwareUpgradeJob, int, error) {
+	dev, err := s.devices.GetByID(ctx, deviceID)
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := requireDeviceTenantScope(actor, dev.TenantID); err != nil {
+		return nil, 0, err
+	}
 	return s.jobs.ListByDevice(ctx, deviceID, p)
 }
 

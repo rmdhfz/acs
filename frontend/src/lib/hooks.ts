@@ -217,6 +217,14 @@ export function useCreateVendor() {
   })
 }
 
+export function useVendorOUIs(vendorId: number | undefined) {
+  return useQuery({
+    queryKey: ['vendor-ouis', vendorId],
+    queryFn: () => api.get<VendorOUI[]>(`/vendors/${vendorId}/ouis`),
+    enabled: vendorId !== undefined,
+  })
+}
+
 export function useAddVendorOUI() {
   const qc = useQueryClient()
   return useMutation({

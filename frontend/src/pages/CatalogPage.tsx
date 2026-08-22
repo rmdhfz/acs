@@ -13,6 +13,7 @@ import {
   useParameterMappings,
   useRefs,
   useUpsertParameterMapping,
+  useVendorOUIs,
   useVendors,
   type CreateDeviceModelInput,
   type UpsertMappingInput,
@@ -91,6 +92,7 @@ function VendorsTab() {
               <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                 <th className="px-5 py-3">Code</th>
                 <th className="px-5 py-3">Nama</th>
+                <th className="px-5 py-3">OUI Terdaftar</th>
                 <th className="px-5 py-3">Status</th>
                 <th className="px-5 py-3"></th>
               </tr>
@@ -100,6 +102,9 @@ function VendorsTab() {
                 <tr key={v.id}>
                   <td className="px-5 py-3.5 font-mono text-xs text-slate-700 dark:text-slate-300">{v.code}</td>
                   <td className="px-5 py-3.5 font-medium text-slate-900 dark:text-slate-100">{v.name}</td>
+                  <td className="px-5 py-3.5">
+                    <VendorOUICell vendorId={v.id} />
+                  </td>
                   <td className="px-5 py-3.5">
                     <StatusBadge code={v.is_active ? 'ONLINE' : 'OFFLINE'} label={v.is_active ? 'Aktif' : 'Nonaktif'} />
                   </td>
@@ -117,6 +122,28 @@ function VendorsTab() {
 
       {showCreate && <CreateVendorModal onClose={() => setShowCreate(false)} />}
       {ouiTargetId !== null && <AddOUIModal vendorId={ouiTargetId} onClose={() => setOuiTargetId(null)} />}
+    </div>
+  )
+}
+
+function VendorOUICell({ vendorId }: { vendorId: number }) {
+  const { data, isLoading } = useVendorOUIs(vendorId)
+  const ouis = data ?? []
+
+  if (isLoading) return <span className="text-xs text-slate-400 dark:text-slate-500">…</span>
+  if (ouis.length === 0) return <span className="text-xs text-slate-400 dark:text-slate-500">Belum ada</span>
+
+  return (
+    <div className="flex flex-wrap gap-1">
+      {ouis.map((o) => (
+        <span
+          key={o.id}
+          title={o.notes ?? undefined}
+          className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+        >
+          {o.oui}
+        </span>
+      ))}
     </div>
   )
 }

@@ -100,7 +100,16 @@ func (s *Service) ParseJWT(tokenStr string) (*domain.Actor, error) {
 
 // ---- API Token ----
 
+// IssueAPIToken — non-superadmin hanya boleh menerbitkan token utk tenant-nya
+// sendiri (RBAC scope tenant, CLAUDE.md). Tanpa cek ini, ADMIN tenant A bisa
+// minta token dgn tenant_id tenant B lalu dapat akses tulis penuh permanen
+// ke data tenant B (celah kritis, ditemukan audit isolasi tenant Fase 2).
 func (s *Service) IssueAPIToken(ctx context.Context, actor domain.Actor, name string, tenantID *uint64, expiresAt *time.Time) (string, *domain.APIToken, error) {
+	if !actor.IsSuperadmin() {
+		if tenantID == nil || actor.TenantID == nil || *tenantID != *actor.TenantID {
+			return "", nil, domain.ErrForbidden
+		}
+	}
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
 		return "", nil, err

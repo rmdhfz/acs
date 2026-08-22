@@ -68,6 +68,18 @@ func (r *Router) addVendorOUI(c *echo.Context) error {
 	return c.JSON(http.StatusCreated, o)
 }
 
+func (r *Router) listVendorOUIs(c *echo.Context) error {
+	vendorID, err := parseUint64Param(c, "id")
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "id tidak valid")
+	}
+	ouis, err := r.VendorOUIs.ListByVendor(c.Request().Context(), vendorID)
+	if err != nil {
+		return handleErr(c, err)
+	}
+	return c.JSON(http.StatusOK, ouis)
+}
+
 func (r *Router) listDeviceModels(c *echo.Context) error {
 	vendorID := queryUint64(c, "vendor_id")
 	if vendorID == nil {

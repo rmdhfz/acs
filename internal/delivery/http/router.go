@@ -80,12 +80,19 @@ func (r *Router) Register(e *echo.Echo) {
 
 	authed.GET("/vendors", r.listVendors)
 	authed.POST("/vendors", r.createVendor, RequireRoles(superadminOnly...))
+	authed.GET("/vendors/:id/ouis", r.listVendorOUIs)
 	authed.POST("/vendors/:id/ouis", r.addVendorOUI, RequireRoles(superadminOnly...))
 	authed.GET("/device-models", r.listDeviceModels)
 	authed.POST("/device-models", r.createDeviceModel, RequireRoles(superadminOnly...))
 	authed.POST("/vendor-parameter-mappings", r.upsertParameterMapping, RequireRoles(superadminOnly...))
 
-	authed.POST("/firmware", r.uploadFirmware, RequireRoles(admin...))
+	// firmware_files adalah katalog global lintas tenant (tidak py tenant_id,
+	// sama seperti vendors/device-models/vendor-parameter-mappings) — upload
+	// dibatasi superadmin, konsisten dgn data referensi global lain (temuan
+	// audit isolasi tenant Fase 2: sebelumnya admin tenant mana pun bisa
+	// upload firmware yang lalu dipakai tenant lain via device-models/vendor
+	// yang sama, celah supply-chain/integrity lintas tenant).
+	authed.POST("/firmware", r.uploadFirmware, RequireRoles(superadminOnly...))
 	authed.GET("/firmware", r.listFirmware)
 	authed.POST("/devices/:id/firmware-upgrade", r.scheduleFirmwareUpgrade, RequireRoles(admin...))
 	authed.GET("/devices/:id/firmware-jobs", r.listFirmwareJobs)

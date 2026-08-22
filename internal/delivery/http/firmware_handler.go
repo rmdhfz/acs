@@ -78,11 +78,12 @@ func (r *Router) scheduleFirmwareUpgrade(c *echo.Context) error {
 }
 
 func (r *Router) listFirmwareJobs(c *echo.Context) error {
+	actor := ActorFrom(c)
 	deviceID, err := parseUint64Param(c, "id")
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "id tidak valid")
 	}
-	jobs, total, err := r.Firmware.ListJobsByDevice(c.Request().Context(), deviceID, paginationFromQuery(c))
+	jobs, total, err := r.Firmware.ListJobsByDevice(c.Request().Context(), actor, deviceID, paginationFromQuery(c))
 	if err != nil {
 		return handleErr(c, err)
 	}

@@ -46,6 +46,25 @@ func requireTenantScope(actor domain.Actor, resourceTenantID *uint64) error {
 	return nil
 }
 
+// requireProfileReadScope mengizinkan baca/terapkan profile milik tenant
+// sendiri ATAU profile global (tenant_id NULL, dibuat superadmin sbg default
+// lintas tenant — FR-17, konsisten dgn provisioningProfileRepository.List()
+// yang juga menampilkan tenant_id NULL ke semua tenant). Beda dari
+// requireTenantScope di atas (dipakai utk MUTASI profile — Create/Update/
+// Delete) yang sengaja menolak tenant_id nil utk non-superadmin: profile
+// global cuma boleh DIEDIT/DIHAPUS superadmin (supaya tidak ada satu tenant
+// diam-diam mengubah default bersama), tapi boleh DIBACA/DITERAPKAN semua
+// tenant.
+func requireProfileReadScope(actor domain.Actor, resourceTenantID *uint64) error {
+	if actor.IsSuperadmin() || resourceTenantID == nil {
+		return nil
+	}
+	if actor.TenantID == nil || *actor.TenantID != *resourceTenantID {
+		return domain.ErrForbidden
+	}
+	return nil
+}
+
 // ---- Provisioning Profile CRUD (FR-16/FR-17) ----
 
 type CreateProfileInput struct {
@@ -88,9 +107,12 @@ func (s *Service) CreateProfile(ctx context.Context, actor domain.Actor, in Crea
 	return p, nil
 }
 
-func (s *Service) Get(ctx context.Context, id uint64) (*domain.ProvisioningProfile, []domain.ProvisioningProfileParameter, error) {
+func (s *Service) Get(ctx context.Context, actor domain.Actor, id uint64) (*domain.ProvisioningProfile, []domain.ProvisioningProfileParameter, error) {
 	p, err := s.profiles.GetByID(ctx, id)
 	if err != nil {
+		return nil, nil, err
+	}
+	if err := requireProfileReadScope(actor, p.TenantID); err != nil {
 		return nil, nil, err
 	}
 	params, err := s.profileParams.ListByProfile(ctx, id)
@@ -146,6 +168,13 @@ func (s *Service) ApplyProfile(ctx context.Context, actor domain.Actor, deviceID
 		return nil, err
 	}
 	if err := requireTenantScope(actor, dev.TenantID); err != nil {
+		return nil, err
+	}
+	profile, err := s.profiles.GetByID(ctx, profileID)
+	if err != nil {
+		return nil, err
+	}
+	if err := requireProfileReadScope(actor, profile.TenantID); err != nil {
 		return nil, err
 	}
 	params, err := s.profileParams.ListByProfile(ctx, profileID)
