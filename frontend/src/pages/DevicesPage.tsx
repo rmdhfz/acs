@@ -1,20 +1,59 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, Radio, RefreshCw, Router, Search, Wifi, WifiOff, Clock3 } from 'lucide-react'
+import {
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Clock3,
+  HardDrive,
+  Power,
+  Radio,
+  RefreshCw,
+  Router,
+  Search,
+  Sparkles,
+  Wifi,
+  WifiOff,
+  X,
+  XCircle,
+} from 'lucide-react'
 import { StatCard } from '../components/StatCard'
 import { StatusBadge } from '../components/StatusBadge'
 import { EmptyState } from '../components/EmptyState'
-import { findRefById, findRefIdByCode, useDevices, usePendingTaskCount, useRefs, useVendors } from '../lib/hooks'
+import { Modal } from '../components/Modal'
+import { useAuth } from '../lib/auth'
+import {
+  findRefById,
+  findRefIdByCode,
+  useApplyProfile,
+  useCreateTask,
+  useDevices,
+  useFirmwareList,
+  usePendingTaskCount,
+  useProvisioningProfiles,
+  useRefs,
+  useScheduleFirmwareUpgrade,
+  useVendors,
+} from '../lib/hooks'
 import { formatRelativeTime } from '../lib/format'
+import type { Device } from '../lib/types'
 
 const PAGE_SIZE = 20
+const inputCls =
+  'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500'
+const primaryBtnCls =
+  'flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60'
 
 export function DevicesPage() {
   const navigate = useNavigate()
+  const { hasRole } = useAuth()
+  const canBulkAct = hasRole('ADMIN', 'NOC')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [vendorFilter, setVendorFilter] = useState<string>('')
   const [page, setPage] = useState(1)
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [bulkAction, setBulkAction] = useState<'profile' | 'firmware' | 'reboot' | null>(null)
 
   const { data: statusRefs } = useRefs('ref_device_status')
   const { data: vendorsResp } = useVendors()
@@ -46,6 +85,13 @@ export function DevicesPage() {
   const devices = devicesResp?.data ?? []
   const total = devicesResp?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const selectedDevices = devices.filter((d) => selected.has(d.id))
+
+  // Selection dibatasi ke halaman/filter yang sedang tampil supaya tidak ada
+  // device "terpilih" secara tidak kasat mata dari filter/halaman sebelumnya.
+  useEffect(() => {
+    setSelected(new Set())
+  }, [search, statusFilter, vendorFilter, page])
 
   function vendorName(vendorId: number | null) {
     if (vendorId == null) return '-'
@@ -54,6 +100,19 @@ export function DevicesPage() {
 
   function resetToFirstPage() {
     setPage(1)
+  }
+
+  function toggleSelected(id: number) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleSelectAll() {
+    setSelected((prev) => (prev.size === devices.length ? new Set() : new Set(devices.map((d) => d.id))))
   }
 
   return (
@@ -133,6 +192,39 @@ export function DevicesPage() {
         </select>
       </div>
 
+      {canBulkAct && selected.size > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-slate-300 bg-slate-900 px-4 py-2.5 text-white">
+          <span className="text-sm font-medium">{selected.size} device dipilih</span>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setBulkAction('profile')}
+              className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-white/20"
+            >
+              <Sparkles className="h-3.5 w-3.5" /> Terapkan Profile
+            </button>
+            <button
+              onClick={() => setBulkAction('firmware')}
+              className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-white/20"
+            >
+              <HardDrive className="h-3.5 w-3.5" /> Firmware Upgrade
+            </button>
+            <button
+              onClick={() => setBulkAction('reboot')}
+              className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-white/20"
+            >
+              <Power className="h-3.5 w-3.5" /> Reboot
+            </button>
+            <button
+              onClick={() => setSelected(new Set())}
+              className="flex h-7 w-7 items-center justify-center rounded-md text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+              title="Batal pilih"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         {isLoading ? (
           <div className="divide-y divide-slate-100">
@@ -155,6 +247,17 @@ export function DevicesPage() {
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+                  {canBulkAct && (
+                    <th className="w-10 px-5 py-3">
+                      <input
+                        type="checkbox"
+                        checked={devices.length > 0 && selected.size === devices.length}
+                        onChange={toggleSelectAll}
+                        onClick={(e) => e.stopPropagation()}
+                        className="h-4 w-4 rounded border-slate-300"
+                      />
+                    </th>
+                  )}
                   <th className="px-5 py-3">Status</th>
                   <th className="px-5 py-3">Vendor</th>
                   <th className="px-5 py-3">Serial Number</th>
@@ -173,6 +276,16 @@ export function DevicesPage() {
                       onClick={() => navigate(`/devices/${d.id}`)}
                       className="cursor-pointer transition-colors hover:bg-slate-50"
                     >
+                      {canBulkAct && (
+                        <td className="px-5 py-3.5" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selected.has(d.id)}
+                            onChange={() => toggleSelected(d.id)}
+                            className="h-4 w-4 rounded border-slate-300"
+                          />
+                        </td>
+                      )}
                       <td className="px-5 py-3.5">
                         <StatusBadge code={status?.code} label={status?.name ?? '-'} pulse={status?.code === 'ONLINE'} />
                       </td>
@@ -215,6 +328,246 @@ export function DevicesPage() {
           </>
         )}
       </div>
+
+      {bulkAction === 'profile' && (
+        <BulkApplyProfileModal devices={selectedDevices} onClose={() => setBulkAction(null)} onDone={() => setSelected(new Set())} />
+      )}
+      {bulkAction === 'firmware' && (
+        <BulkFirmwareModal devices={selectedDevices} onClose={() => setBulkAction(null)} onDone={() => setSelected(new Set())} />
+      )}
+      {bulkAction === 'reboot' && (
+        <BulkRebootModal devices={selectedDevices} onClose={() => setBulkAction(null)} onDone={() => setSelected(new Set())} />
+      )}
     </div>
+  )
+}
+
+// ---- Bulk actions ----
+
+type BulkItemStatus = 'pending' | 'running' | 'success' | 'error' | 'skipped'
+interface BulkItem {
+  device: Device
+  status: BulkItemStatus
+  message?: string
+}
+
+function BulkResultList({ items }: { items: BulkItem[] }) {
+  return (
+    <ul className="max-h-64 divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-200">
+      {items.map((item) => (
+        <li key={item.device.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+          <div className="min-w-0">
+            <p className="truncate font-mono text-xs text-slate-700">{item.device.serial_number}</p>
+            {item.message && <p className="truncate text-xs text-slate-400">{item.message}</p>}
+          </div>
+          {item.status === 'pending' && <span className="shrink-0 text-xs text-slate-400">Menunggu</span>}
+          {item.status === 'running' && <RefreshCw className="h-4 w-4 shrink-0 animate-spin text-slate-400" />}
+          {item.status === 'success' && <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />}
+          {item.status === 'error' && <XCircle className="h-4 w-4 shrink-0 text-red-500" />}
+          {item.status === 'skipped' && <span className="shrink-0 text-xs text-amber-600">Dilewati</span>}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function BulkApplyProfileModal({ devices, onClose, onDone }: { devices: Device[]; onClose: () => void; onDone: () => void }) {
+  const { data: profilesResp } = useProvisioningProfiles()
+  const profiles = (profilesResp?.data ?? []).filter((p) => p.is_active)
+  const [profileId, setProfileId] = useState('')
+  const [items, setItems] = useState<BulkItem[] | null>(null)
+  const applyMutation = useApplyProfile()
+
+  const selectedProfile = profiles.find((p) => p.id === Number(profileId))
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    if (!selectedProfile) return
+    const initial: BulkItem[] = devices.map((device) => {
+      const vendorMismatch = selectedProfile.vendor_id != null && device.vendor_id !== selectedProfile.vendor_id
+      return { device, status: vendorMismatch ? 'skipped' : 'pending', message: vendorMismatch ? 'Vendor tidak cocok dengan profil' : undefined }
+    })
+    setItems(initial)
+
+    for (const item of initial) {
+      if (item.status === 'skipped') continue
+      setItems((prev) => prev!.map((it) => (it.device.id === item.device.id ? { ...it, status: 'running' } : it)))
+      try {
+        await applyMutation.mutateAsync({ deviceId: item.device.id, profileId: selectedProfile.id })
+        setItems((prev) => prev!.map((it) => (it.device.id === item.device.id ? { ...it, status: 'success' } : it)))
+      } catch {
+        setItems((prev) => prev!.map((it) => (it.device.id === item.device.id ? { ...it, status: 'error', message: 'Gagal' } : it)))
+      }
+    }
+    onDone()
+  }
+
+  const isRunning = items !== null && items.some((i) => i.status === 'pending' || i.status === 'running')
+
+  return (
+    <Modal title={`Terapkan Provisioning Profile ke ${devices.length} Device`} onClose={onClose}>
+      {items === null ? (
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <p className="text-xs text-slate-500">
+            Device dengan vendor berbeda dari profil (bila profil dibatasi ke vendor tertentu) akan otomatis dilewati.
+          </p>
+          <select required value={profileId} onChange={(e) => setProfileId(e.target.value)} className={inputCls}>
+            <option value="">Pilih profil...</option>
+            {profiles.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          <button type="submit" disabled={!profileId} className={`${primaryBtnCls} w-full`}>
+            Terapkan ke {devices.length} Device
+          </button>
+        </form>
+      ) : (
+        <div className="space-y-3">
+          <BulkResultList items={items} />
+          {!isRunning && (
+            <button onClick={onClose} className={`${primaryBtnCls} w-full`}>
+              Selesai
+            </button>
+          )}
+        </div>
+      )}
+    </Modal>
+  )
+}
+
+function BulkFirmwareModal({ devices, onClose, onDone }: { devices: Device[]; onClose: () => void; onDone: () => void }) {
+  const { data: vendorsResp } = useVendors()
+  const vendors = vendorsResp?.data ?? []
+  const vendorIdsInSelection = [...new Set(devices.map((d) => d.vendor_id).filter((v): v is number => v != null))]
+
+  const [vendorId, setVendorId] = useState(vendorIdsInSelection.length === 1 ? String(vendorIdsInSelection[0]) : '')
+  const [firmwareId, setFirmwareId] = useState('')
+  const [items, setItems] = useState<BulkItem[] | null>(null)
+  const { data: firmwareResp } = useFirmwareList(vendorId ? Number(vendorId) : undefined)
+  const firmwareOptions = firmwareResp?.data ?? []
+  const scheduleMutation = useScheduleFirmwareUpgrade()
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    if (!firmwareId || !vendorId) return
+    const targetVendorId = Number(vendorId)
+    const initial: BulkItem[] = devices.map((device) => {
+      const mismatch = device.vendor_id !== targetVendorId
+      return { device, status: mismatch ? 'skipped' : 'pending', message: mismatch ? 'Vendor device tidak cocok' : undefined }
+    })
+    setItems(initial)
+
+    for (const item of initial) {
+      if (item.status === 'skipped') continue
+      setItems((prev) => prev!.map((it) => (it.device.id === item.device.id ? { ...it, status: 'running' } : it)))
+      try {
+        await scheduleMutation.mutateAsync({ deviceId: item.device.id, firmwareId: Number(firmwareId) })
+        setItems((prev) => prev!.map((it) => (it.device.id === item.device.id ? { ...it, status: 'success' } : it)))
+      } catch {
+        setItems((prev) => prev!.map((it) => (it.device.id === item.device.id ? { ...it, status: 'error', message: 'Gagal' } : it)))
+      }
+    }
+    onDone()
+  }
+
+  const isRunning = items !== null && items.some((i) => i.status === 'pending' || i.status === 'running')
+
+  return (
+    <Modal title={`Jadwalkan Firmware Upgrade untuk ${devices.length} Device`} onClose={onClose}>
+      {items === null ? (
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <p className="text-xs text-slate-500">
+            Firmware spesifik per vendor — pilih satu vendor dulu. Device dari vendor lain di seleksi ini akan dilewati.
+          </p>
+          <select
+            required
+            value={vendorId}
+            onChange={(e) => {
+              setVendorId(e.target.value)
+              setFirmwareId('')
+            }}
+            className={inputCls}
+          >
+            <option value="">Pilih vendor...</option>
+            {vendors
+              .filter((v) => vendorIdsInSelection.includes(v.id))
+              .map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name} ({devices.filter((d) => d.vendor_id === v.id).length} device)
+                </option>
+              ))}
+          </select>
+          <select required value={firmwareId} onChange={(e) => setFirmwareId(e.target.value)} disabled={!vendorId} className={inputCls}>
+            <option value="">{vendorId ? 'Pilih firmware...' : 'Pilih vendor dulu'}</option>
+            {firmwareOptions.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.version} — {f.file_name}
+              </option>
+            ))}
+          </select>
+          <button type="submit" disabled={!firmwareId} className={`${primaryBtnCls} w-full`}>
+            Jadwalkan Upgrade
+          </button>
+        </form>
+      ) : (
+        <div className="space-y-3">
+          <BulkResultList items={items} />
+          {!isRunning && (
+            <button onClick={onClose} className={`${primaryBtnCls} w-full`}>
+              Selesai
+            </button>
+          )}
+        </div>
+      )}
+    </Modal>
+  )
+}
+
+function BulkRebootModal({ devices, onClose, onDone }: { devices: Device[]; onClose: () => void; onDone: () => void }) {
+  const [items, setItems] = useState<BulkItem[] | null>(null)
+  const createTaskMutation = useCreateTask()
+
+  async function handleConfirm() {
+    const initial: BulkItem[] = devices.map((device) => ({ device, status: 'pending' }))
+    setItems(initial)
+    for (const item of initial) {
+      setItems((prev) => prev!.map((it) => (it.device.id === item.device.id ? { ...it, status: 'running' } : it)))
+      try {
+        await createTaskMutation.mutateAsync({ device_id: item.device.id, task_type: 'REBOOT', priority: 2 })
+        setItems((prev) => prev!.map((it) => (it.device.id === item.device.id ? { ...it, status: 'success' } : it)))
+      } catch {
+        setItems((prev) => prev!.map((it) => (it.device.id === item.device.id ? { ...it, status: 'error', message: 'Gagal' } : it)))
+      }
+    }
+    onDone()
+  }
+
+  const isRunning = items !== null && items.some((i) => i.status === 'pending' || i.status === 'running')
+
+  return (
+    <Modal title={`Reboot ${devices.length} Device`} onClose={onClose}>
+      {items === null ? (
+        <div className="space-y-3">
+          <p className="text-sm text-slate-600">
+            Task reboot akan diantrekan (prioritas tinggi) ke {devices.length} device terpilih. Device yang sedang
+            offline akan reboot pada sesi Inform berikutnya atau saat Connection Request berhasil.
+          </p>
+          <button onClick={handleConfirm} className={`${primaryBtnCls} w-full`}>
+            <Power className="h-4 w-4" /> Reboot {devices.length} Device
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <BulkResultList items={items} />
+          {!isRunning && (
+            <button onClick={onClose} className={`${primaryBtnCls} w-full`}>
+              Selesai
+            </button>
+          )}
+        </div>
+      )}
+    </Modal>
   )
 }
