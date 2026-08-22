@@ -39,12 +39,16 @@ func (r *Router) createTask(c *echo.Context) error {
 }
 
 func (r *Router) listTasks(c *echo.Context) error {
+	actor := ActorFrom(c)
 	f := domain.TaskFilter{
 		DeviceID:     queryUint64(c, "device_id"),
 		TaskStatusID: queryUint64(c, "task_status_id"),
 		TaskTypeCode: c.QueryParam("task_type"),
+		// TenantID dari query hanya efektif utk superadmin — Tasks.List
+		// menimpanya dgn actor.TenantID utk non-superadmin (RBAC scope tenant).
+		TenantID: queryUint64(c, "tenant_id"),
 	}
-	tasks, total, err := r.Tasks.List(c.Request().Context(), f, paginationFromQuery(c))
+	tasks, total, err := r.Tasks.List(c.Request().Context(), actor, f, paginationFromQuery(c))
 	if err != nil {
 		return handleErr(c, err)
 	}
@@ -61,11 +65,12 @@ func (r *Router) taskStats(c *echo.Context) error {
 }
 
 func (r *Router) getTask(c *echo.Context) error {
+	actor := ActorFrom(c)
 	id, err := parseUint64Param(c, "id")
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "id tidak valid")
 	}
-	t, err := r.Tasks.Get(c.Request().Context(), id)
+	t, err := r.Tasks.Get(c.Request().Context(), actor, id)
 	if err != nil {
 		return handleErr(c, err)
 	}

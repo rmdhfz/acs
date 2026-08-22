@@ -128,7 +128,7 @@ func (r *taskRepository) CountByStatus(ctx context.Context, tenantID *uint64) ([
 func (r *taskRepository) List(ctx context.Context, f domain.TaskFilter, p domain.Pagination) ([]domain.Task, int, error) {
 	where := []string{"t.is_deleted = 0"}
 	args := []interface{}{}
-	joins := ""
+	joins := []string{}
 	if f.DeviceID != nil {
 		where = append(where, "t.device_id = ?")
 		args = append(args, *f.DeviceID)
@@ -138,20 +138,28 @@ func (r *taskRepository) List(ctx context.Context, f domain.TaskFilter, p domain
 		args = append(args, *f.TaskStatusID)
 	}
 	if f.TaskTypeCode != "" {
-		joins = "JOIN ref_task_types tt ON tt.id = t.task_type_id"
+		joins = append(joins, "JOIN ref_task_types tt ON tt.id = t.task_type_id")
 		where = append(where, "tt.code = ?")
 		args = append(args, f.TaskTypeCode)
 	}
+	if f.TenantID != nil {
+		// tasks tidak punya tenant_id langsung — resolve lewat device pemiliknya
+		// (RBAC scope tenant wajib, CLAUDE.md).
+		joins = append(joins, "JOIN devices d ON d.id = t.device_id")
+		where = append(where, "d.tenant_id = ?")
+		args = append(args, *f.TenantID)
+	}
+	joinSQL := strings.Join(joins, " ")
 	whereSQL := strings.Join(where, " AND ")
 
 	var total int
-	countQ := "SELECT COUNT(*) FROM tasks t " + joins + " WHERE " + whereSQL
+	countQ := "SELECT COUNT(*) FROM tasks t " + joinSQL + " WHERE " + whereSQL
 	if err := r.db.GetContext(ctx, &total, countQ, args...); err != nil {
 		return nil, 0, translateErr(err)
 	}
 
 	var rows []domain.Task
-	listQ := "SELECT t.* FROM tasks t " + joins + " WHERE " + whereSQL + " ORDER BY t.id DESC LIMIT ? OFFSET ?"
+	listQ := "SELECT t.* FROM tasks t " + joinSQL + " WHERE " + whereSQL + " ORDER BY t.id DESC LIMIT ? OFFSET ?"
 	args = append(args, p.Limit(), p.Offset())
 	if err := r.db.SelectContext(ctx, &rows, listQ, args...); err != nil {
 		return nil, 0, translateErr(err)

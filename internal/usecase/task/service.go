@@ -148,17 +148,45 @@ func (s *Service) EnqueueSetParameterValues(ctx context.Context, actor domain.Ac
 	})
 }
 
-func (s *Service) Get(ctx context.Context, id uint64) (*domain.Task, error) {
-	return s.tasks.GetByID(ctx, id)
+// requireTaskTenantScope memastikan actor non-superadmin hanya mengakses
+// task milik device yang tenant-nya sama dengan tenant actor (RBAC scope
+// tenant, CLAUDE.md) — pola sama seperti device.Service.requireTenantScope,
+// diduplikasi kecil di sini karena task->tenant harus di-resolve lewat
+// device pemiliknya dulu (tasks tidak punya tenant_id langsung).
+func (s *Service) requireTaskTenantScope(ctx context.Context, actor domain.Actor, t *domain.Task) error {
+	if actor.IsSuperadmin() {
+		return nil
+	}
+	dev, err := s.devices.GetByID(ctx, t.DeviceID)
+	if err != nil {
+		return err
+	}
+	if dev.TenantID == nil || actor.TenantID == nil || *actor.TenantID != *dev.TenantID {
+		return domain.ErrForbidden
+	}
+	return nil
 }
 
-func (s *Service) List(ctx context.Context, f domain.TaskFilter, p domain.Pagination) ([]domain.Task, int, error) {
+func (s *Service) Get(ctx context.Context, actor domain.Actor, id uint64) (*domain.Task, error) {
+	t, err := s.tasks.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.requireTaskTenantScope(ctx, actor, t); err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+func (s *Service) List(ctx context.Context, actor domain.Actor, f domain.TaskFilter, p domain.Pagination) ([]domain.Task, int, error) {
+	if !actor.IsSuperadmin() {
+		f.TenantID = actor.TenantID
+	}
 	return s.tasks.List(ctx, f, p)
 }
 
 // Stats — agregat untuk dashboard analitik (ROADMAP.md Fase 1), tenant-scoped
-// (berbeda dari List di atas yang saat ini TIDAK tenant-scoped — gap
-// terpisah yang sudah diketahui, lihat ROADMAP.md §Fase 0/2).
+// sama seperti List/Get di atas.
 func (s *Service) Stats(ctx context.Context, actor domain.Actor) ([]domain.TaskStatusCount, error) {
 	var tenantID *uint64
 	if !actor.IsSuperadmin() {
@@ -168,6 +196,13 @@ func (s *Service) Stats(ctx context.Context, actor domain.Actor) ([]domain.TaskS
 }
 
 func (s *Service) Cancel(ctx context.Context, actor domain.Actor, id uint64) error {
+	t, err := s.tasks.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err := s.requireTaskTenantScope(ctx, actor, t); err != nil {
+		return err
+	}
 	return s.tasks.Cancel(ctx, id, actor.UserIDPtr())
 }
 

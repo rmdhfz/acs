@@ -29,6 +29,9 @@ type TaskFilter struct {
 	DeviceID     *uint64
 	TaskStatusID *uint64
 	TaskTypeCode string
+	// TenantID — RBAC scope tenant (CLAUDE.md). Tasks tidak punya tenant_id
+	// langsung, di-resolve via JOIN ke devices di level repository.
+	TenantID *uint64
 }
 
 // TaskStatusCount — agregasi untuk dashboard analitik (ROADMAP.md Fase 1).
