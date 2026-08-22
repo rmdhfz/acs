@@ -58,8 +58,8 @@ Checklist ini dipecah per fase. **Jangan lompat ke Fase 1/2 sebelum Fase 0 seles
 - [x] `go build ./...`, `go vet ./...`, `go test ./...` berhasil lulus — divalidasi 2026-08-21 via image `golang:latest` (build ✅, vet ✅ bersih, test ✅ termasuk skenario retry/max_retries di `internal/usecase/task`)
 - [x] `docker-compose up` berhasil — divalidasi 2026-08-21: MariaDB healthy, migrasi `0001_init_schema` jalan bersih ("migrate up: selesai"), `acsd` listening di :8080 (REST) dan :7547 (CWMP)
 - [ ] Smoke test manual frontend di browser: login, lihat semua halaman baru (Tasks, Provisioning, Firmware, Catalog, Administration), coba satu alur create/edit di masing-masing — **belum bisa dilakukan Claude** (tidak ada tool browser di environment ini), REST API sudah dicek lewat curl/PowerShell tapi interaksi UI sungguhan butuh dicoba manual oleh user
-- [x] Commit awal ke git sebagai baseline — commit `6adf25a`, 2026-08-21 (lokal, belum di-push ke `origin` — konfirmasi dulu ke user sebelum push)
-- [x] Setup CI dasar (GitHub Actions) — `.github/workflows/ci.yml` dibuat (job backend: vet+build+test; job frontend: lint+build); **belum divalidasi jalan sungguhan di GitHub** karena belum di-push
+- [x] Commit awal ke git sebagai baseline — commit `6adf25a` (2026-08-21) + `cec904e` fix CWMP auth (2026-08-22), sudah di-push ke `origin/main` atas konfirmasi user
+- [x] Setup CI dasar (GitHub Actions) — `.github/workflows/ci.yml` dibuat (job backend: vet+build+test; job frontend: lint+build); divalidasi 2026-08-22 jalan hijau di GitHub sungguhan setelah push ke `origin/main` (run [32545559666](https://github.com/rmdhfz/acs/actions/runs/32545559666)) — kedua job lulus tanpa error
 - [x] Uji sesi CWMP end-to-end — divalidasi 2026-08-21 dengan simulasi Inform (event `0 BOOTSTRAP`) manual: InformResponse benar, device ter-upsert, event tercatat, sesi ditutup bersih (POST kosong -> 204, `device_sessions.status=CLOSED`)
 - [ ] Jalankan `/security-review` menyeluruh sebelum promosi ke fase berikutnya — temuan kritis di bawah **sudah diperbaiki**, review lain (RBAC endpoint lain, isolasi tenant di luar CWMP) belum menyeluruh
 
