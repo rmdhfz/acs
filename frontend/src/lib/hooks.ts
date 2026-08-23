@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './api'
 import type {
   ActivityLog,
+  CurrentTenant,
   Device,
   DeviceDiagnostic,
   DeviceEvent,
@@ -492,6 +493,34 @@ export function useSetTenantCWMPCredentials() {
     mutationFn: ({ tenantId, username, password }: { tenantId: number; username: string; password: string }) =>
       api.patch<void>(`/tenants/${tenantId}/cwmp-credentials`, { username, password }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tenants'] }),
+  })
+}
+
+// useCurrentTenant — dipanggil semua role (bukan cuma superadmin) utk
+// white-labeling (ROADMAP.md Fase 2). undefined = actor tanpa tenant
+// (superadmin global) -> Layout fallback ke branding default.
+export function useCurrentTenant() {
+  return useQuery({
+    queryKey: ['tenants', 'current'],
+    queryFn: () => api.get<CurrentTenant | undefined>('/tenants/current'),
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export interface UpdateTenantBrandingInput {
+  brand_name?: string | null
+  logo_url?: string | null
+  primary_color?: string | null
+}
+
+export function useUpdateTenantBranding() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ tenantId, input }: { tenantId: number; input: UpdateTenantBrandingInput }) =>
+      api.patch<void>(`/tenants/${tenantId}/branding`, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tenants'] })
+    },
   })
 }
 

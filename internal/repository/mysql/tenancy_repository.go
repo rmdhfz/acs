@@ -64,6 +64,25 @@ func (r *tenantRepository) SetCWMPInformCredentials(ctx context.Context, id uint
 	return translateErr(err)
 }
 
+func (r *tenantRepository) UpdateBranding(ctx context.Context, id uint64, brandName, logoURL, primaryColor *string, updatedBy *uint64) error {
+	// Existence dicek terpisah, bukan lewat RowsAffected dari UPDATE di bawah:
+	// driver mysql hanya menghitung baris yang NILAINYA berubah (bukan yang
+	// match WHERE) kecuali clientFoundRows diaktifkan di DSN -- submit ulang
+	// branding yang sama persis (no-op) akan salah dianggap "tenant tidak
+	// ditemukan" kalau kita pakai RowsAffected di sini.
+	var exists bool
+	if err := r.db.GetContext(ctx, &exists, `SELECT EXISTS(SELECT 1 FROM tenants WHERE id = ? AND is_deleted = 0)`, id); err != nil {
+		return translateErr(err)
+	}
+	if !exists {
+		return domain.ErrNotFound
+	}
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE tenants SET brand_name = ?, logo_url = ?, primary_color = ?, updated_by = ? WHERE id = ? AND is_deleted = 0`,
+		brandName, logoURL, primaryColor, updatedBy, id)
+	return translateErr(err)
+}
+
 func (r *tenantRepository) List(ctx context.Context, p domain.Pagination) ([]domain.Tenant, int, error) {
 	var total int
 	if err := r.db.GetContext(ctx, &total, `SELECT COUNT(*) FROM tenants WHERE is_deleted = 0`); err != nil {

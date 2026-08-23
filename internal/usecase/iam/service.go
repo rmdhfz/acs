@@ -6,6 +6,8 @@ package iam
 import (
 	"context"
 	"fmt"
+	"net/url"
+	"regexp"
 
 	"github.com/google/uuid"
 
@@ -94,6 +96,65 @@ func (s *Service) ListTenants(ctx context.Context, actor domain.Actor, p domain.
 		return nil, 0, err
 	}
 	return s.tenants.List(ctx, p)
+}
+
+// GetCurrentTenant — dipanggil frontend (semua role) utk resolve branding
+// (ROADMAP.md Fase 2) yang harus ditampilkan. Actor tanpa tenant (superadmin
+// global) mengembalikan nil, nil — frontend fallback ke branding default
+// "ACS Console", bukan error.
+func (s *Service) GetCurrentTenant(ctx context.Context, actor domain.Actor) (*domain.Tenant, error) {
+	if actor.TenantID == nil {
+		return nil, nil
+	}
+	return s.tenants.GetByID(ctx, *actor.TenantID)
+}
+
+var hexColorRe = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+
+// validateBranding — kolom ini bebas diisi lewat API langsung (bukan cuma
+// lewat form frontend yang punya guard-nya sendiri), jadi divalidasi lagi di
+// sini. Tanpa ini, nilai yang melebihi lebar kolom (primary_color CHAR(7),
+// logo_url VARCHAR(512)) jatuh sbg ER_DATA_TOO_LONG dari MariaDB yang tidak
+// dipetakan translateErr -> balik sbg 500 generik, bukan 400 informatif.
+func validateBranding(brandName, logoURL, primaryColor *string) error {
+	if brandName != nil && len(*brandName) > 128 {
+		return fmt.Errorf("%w: nama brand maksimal 128 karakter", domain.ErrInvalidInput)
+	}
+	if logoURL != nil {
+		u, err := url.Parse(*logoURL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return fmt.Errorf("%w: URL logo harus http/https yang valid", domain.ErrInvalidInput)
+		}
+		if len(*logoURL) > 512 {
+			return fmt.Errorf("%w: URL logo maksimal 512 karakter", domain.ErrInvalidInput)
+		}
+	}
+	if primaryColor != nil && !hexColorRe.MatchString(*primaryColor) {
+		return fmt.Errorf("%w: warna aksen harus format hex #rrggbb", domain.ErrInvalidInput)
+	}
+	return nil
+}
+
+// UpdateBranding — superadmin bisa utk tenant manapun; ADMIN hanya utk
+// tenant-nya sendiri (self-service, ROADMAP.md Fase 2, pola sama dgn
+// CreateUser). Field nil berarti "tidak diubah" tidak berlaku di sini --
+// ini full replace (form kirim state lengkap); nil eksplisit = kembali ke
+// default (kosongkan kolom).
+func (s *Service) UpdateBranding(ctx context.Context, actor domain.Actor, tenantID uint64, brandName, logoURL, primaryColor *string) error {
+	if err := auth.RequireRole(actor, domain.RoleAdmin); err != nil {
+		return err
+	}
+	if err := auth.RequireTenantScope(actor, &tenantID); err != nil {
+		return err
+	}
+	if err := validateBranding(brandName, logoURL, primaryColor); err != nil {
+		return err
+	}
+	if err := s.tenants.UpdateBranding(ctx, tenantID, brandName, logoURL, primaryColor, actor.UserIDPtr()); err != nil {
+		return err
+	}
+	_ = s.activity.Record(ctx, &domain.ActivityLog{UserID: actor.UserIDPtr(), Action: "UPDATE_TENANT_BRANDING", EntityType: "tenant", EntityID: &tenantID})
+	return nil
 }
 
 type CreateUserInput struct {

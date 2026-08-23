@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { useTheme, type Theme } from '../lib/theme'
+import { useCurrentTenant } from '../lib/hooks'
 import { CommandPalette } from './CommandPalette'
 import { NotificationBell } from './NotificationBell'
 import { NotificationProvider } from '../lib/notifications'
@@ -34,6 +35,18 @@ const NAV_ITEMS: { to: string; label: string; icon: typeof LayoutGrid; requireRo
 ]
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform ?? navigator.userAgent)
+
+// accentTextClass — warna aksen tenant (primary_color) bebas diisi admin
+// tenant, termasuk warna terang (mis. #ffffff). Tanpa cek kontras, teks nav
+// aktif yang di-hardcode putih akan tidak terbaca di atas latar terang.
+function accentTextClass(hex?: string | null): string {
+  if (!hex || !/^#[0-9a-fA-F]{6}$/.test(hex)) return 'text-white'
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  const yiq = (r * 299 + g * 587 + b * 114) / 1000
+  return yiq >= 150 ? 'text-slate-900' : 'text-white'
+}
 
 const THEME_CYCLE: Theme[] = ['system', 'light', 'dark']
 const THEME_ICON: Record<Theme, typeof Sun> = { system: Monitor, light: Sun, dark: Moon }
@@ -60,6 +73,14 @@ export function Layout() {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
+  // White-labeling (ROADMAP.md Fase 2) — undefined utk superadmin global
+  // (tanpa tenant) atau tenant yang belum set branding -> fallback default.
+  const { data: tenant } = useCurrentTenant()
+  const brandName = tenant?.brand_name || 'ACS Console'
+  const logoUrl = tenant?.logo_url
+  const accentStyle = tenant?.primary_color ? { backgroundColor: tenant.primary_color } : undefined
+  const accentTextCls = accentTextClass(tenant?.primary_color)
+
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -80,11 +101,18 @@ export function Layout() {
     <>
       <div className="flex h-16 items-center justify-between gap-2 border-b border-slate-200 px-5 dark:border-slate-800">
         <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900">
-            <Radio className="h-4 w-4" strokeWidth={2} />
-          </div>
-          <div>
-            <p className="text-sm font-semibold leading-none text-slate-900 dark:text-slate-100">ACS Console</p>
+          {logoUrl ? (
+            <img src={logoUrl} alt={brandName} className="h-8 w-8 shrink-0 rounded-lg object-cover" />
+          ) : (
+            <div
+              className={accentStyle ? `flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${accentTextCls}` : 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'}
+              style={accentStyle}
+            >
+              <Radio className="h-4 w-4" strokeWidth={2} />
+            </div>
+          )}
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold leading-none text-slate-900 dark:text-slate-100">{brandName}</p>
             <p className="mt-0.5 text-[11px] leading-none text-slate-400 dark:text-slate-500">Multi-Vendor TR-069</p>
           </div>
         </div>
@@ -117,10 +145,13 @@ export function Layout() {
             className={({ isActive }) =>
               `flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                 isActive
-                  ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
+                  ? accentStyle
+                    ? accentTextCls
+                    : 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
                   : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100'
               }`
             }
+            style={({ isActive }: { isActive: boolean }) => (isActive ? accentStyle : undefined)}
           >
             <item.icon className="h-4 w-4" strokeWidth={2} />
             {item.label}
@@ -160,7 +191,7 @@ export function Layout() {
           >
             <Menu className="h-5 w-5" />
           </button>
-          <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">ACS Console</span>
+          <span className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{brandName}</span>
           <div className="flex items-center gap-1">
             <ThemeToggle />
             <NotificationBell />

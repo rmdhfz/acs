@@ -173,7 +173,22 @@ export interface Tenant {
   name: string
   is_active: boolean
   cwmp_inform_username: string | null
+  brand_name: string | null
+  logo_url: string | null
+  primary_color: string | null
   created_at: string
+}
+
+// CurrentTenant — DTO sempit dari GET /tenants/current (dipanggil semua role
+// terautentikasi, bukan cuma superadmin). Sengaja tidak sama dengan `Tenant`
+// (yang punya cwmp_inform_username dkk) — endpoint itu tidak boleh
+// mengekspos field sensitif ke role non-superadmin.
+export interface CurrentTenant {
+  id: number
+  name: string
+  brand_name: string | null
+  logo_url: string | null
+  primary_color: string | null
 }
 
 export interface ProvisioningProfileParameter {

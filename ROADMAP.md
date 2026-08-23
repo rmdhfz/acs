@@ -4,7 +4,7 @@ Dokumen tracking hidup (living document) untuk membawa ACS ini dari "kerangka ar
 
 Update dokumen ini setiap kali sebuah item selesai atau prioritas berubah — jangan biarkan basi. Lihat `PRD.md` untuk requirement produk dan `TECH.md` untuk keputusan arsitektur; dokumen ini adalah **rencana eksekusi**, bukan pengganti keduanya.
 
-**Terakhir diperbarui:** 2026-08-21
+**Terakhir diperbarui:** 2026-08-23
 
 ---
 
@@ -113,7 +113,13 @@ Fix: `TaskFilter` dapat `TenantID` (resolve via JOIN devices), `task.Service.Lis
 
 ### Fase 2 — Enterprise / Multi-Tenant untuk Skala Group (10+ perusahaan)
 
-- [ ] White-labeling per tenant (logo, nama produk, warna aksen) di `Layout.tsx`
+- [x] White-labeling per tenant (logo, nama produk, warna aksen) di `Layout.tsx` — **selesai 2026-08-23**: migrasi `0003_tenant_branding` (kolom `brand_name`/`logo_url`/`primary_color` nullable di `tenants`), `GET /tenants/current` (semua role terautentikasi, DTO sempit) + `PATCH /tenants/:id/branding` (superadmin utk tenant manapun, ADMIN self-service tenant sendiri saja). `Layout.tsx` render brand name/logo/warna aksen di sidebar + top bar mobile, fallback ke "ACS Console" default. UI: tab "Branding" di Administration utk ADMIN non-superadmin, tombol "Branding" di tabel Tenants utk superadmin.
+
+  Direview `acs-code-reviewer` — **1 temuan tinggi + 3 sedang, semua diperbaiki sebelum commit:** (1) **[TINGGI]** `GET /tenants/current` awalnya mengembalikan seluruh struct `domain.Tenant` termasuk `cwmp_inform_username` (separuh shared secret Inform CWMP) ke SEMUA role terautentikasi termasuk NOC/VIEWER — diperbaiki dgn DTO respons sempit (`currentTenantResponse`/`CurrentTenant` FE, hanya `id/name/brand_name/logo_url/primary_color`); (2) **[SEDANG]** tidak ada validasi server-side utk `primary_color`/`logo_url`/`brand_name` — payload yg melebihi lebar kolom bisa jatuh jadi 500 generik alih-alih 400 — diperbaiki dgn `validateBranding` (regex hex color, scheme http/https wajib utk logo URL, batas panjang eksplisit); (3) **[SEDANG]** warna teks nav aktif di-hardcode putih saat tenant set warna aksen custom — tenant yg pilih warna terang (mis. `#ffffff`) bikin teks nav aktif tidak terbaca — diperbaiki dgn `accentTextClass` (hitung kontras YIQ, pilih teks hitam/putih otomatis); (4) **[SEDANG]** `RowsAffected` dari UPDATE tidak dicek, jadi `PATCH` ke tenant ID yang tidak ada tetap balas 204 — diperbaiki dgn existence-check terpisah sebelum UPDATE (bukan pakai `RowsAffected`, krn driver mysql tidak menghitung baris yg match tapi nilainya sama — submit ulang branding identik jangan sampai keliru dianggap 404). Duplikasi logic RBAC (`UpdateBranding` vs `auth.RequireTenantScope`) juga dikonsolidasi. 1 temuan rendah (RowsAffected tidak dicek di `SetCWMPInformCredentials` yang sudah ada sebelumnya) dicatat tapi tidak diperbaiki — pre-existing, di luar scope perubahan ini.
+
+  **Divalidasi end-to-end** ke MariaDB nyata (docker-compose): migrasi jalan bersih 2x (sebelum & sesudah fix review), kolom terkonfirmasi via `DESCRIBE`. Live REST test lengkap: superadmin PATCH tenant manapun (204), ADMIN self-service tenant sendiri (204), ADMIN lintas-tenant ditolak (403, DB terkonfirmasi tenant lain tidak berubah), NOC bisa baca (`GET /tenants/current` — DTO sempit terkonfirmasi tidak ada `cwmp_inform_username`/`tenant_uuid`/audit fields) tapi ditolak nulis (403), validasi hex color/URL scheme/panjang (400 utk masing2 kasus invalid), tenant ID tidak ada (404, bukan 404-palsu krn RowsAffected), resubmit branding identik tetap 204 (bukan 404-palsu). `go vet`/`build`/`test` dan `npm run build` lulus. Data uji dibersihkan dari DB dev setelahnya.
+
+  **Batasan yang jujur:** belum dicoba visual di browser sungguhan (tidak ada tool browser di environment ini) — tolong buka Administration > Branding (sbg ADMIN tenant) dan Administration > Tenants > tombol Branding (sbg superadmin) utk konfirmasi tampilannya oke, termasuk cek warna aksen custom di sidebar/nav.
 - [ ] Tenant admin self-service penuh: kelola user & role tenant sendiri tanpa perlu superadmin turun tangan
 - [x] Uji isolasi tenant end-to-end — **selesai 2026-08-22** (commit `0ac772a`): audit sistematis oleh `acs-security-reviewer` ke SELURUH endpoint REST (bukan spot-check). Ketemu **3 celah kritis** (eskalasi privilese lintas tenant via `POST /auth/tokens`, `GET /provisioning-profiles/:id` tanpa scope sama sekali, `apply-profile` tidak validasi tenant milik profile), 1 tinggi (`firmware-jobs` tanpa scope), 1 sedang (upload firmware harusnya superadmin-only). Semua diperbaiki & divalidasi live dgn 2 tenant + superadmin. Bonus: ketemu & perbaiki bug lama tak terkait (struct `ProvisioningProfileParameter` bikin endpoint itu selalu 500).
 - [x] `GET /vendors/:id/ouis` + tampilan Catalog UI — **selesai 2026-08-22** (commit `0ac772a`): endpoint baru + kolom "OUI Terdaftar" di tabel Vendors.
@@ -179,3 +185,4 @@ Item baru boleh ditandai selesai hanya jika:
 | Tanggal | Perubahan |
 |---|---|
 | 2026-08-21 | Dokumen dibuat. Snapshot kondisi awal dicatat, 3 fase + Fase 0 didefinisikan, agent `frontend-ux-builder` ditambahkan untuk menutup gap kerja frontend. |
+| 2026-08-23 | Fase 2 item pertama selesai: White-labeling per tenant. 1 temuan tinggi (kebocoran `cwmp_inform_username` lewat endpoint baru) + 3 sedang ditemukan `acs-code-reviewer` dan diperbaiki sebelum commit. |

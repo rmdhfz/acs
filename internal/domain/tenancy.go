@@ -16,6 +16,11 @@ type Tenant struct {
 	// (lihat usecase/session). PasswordEnc tidak pernah diekspos ke JSON.
 	CWMPInformUsername    *string `db:"cwmp_inform_username" json:"cwmp_inform_username"`
 	CWMPInformPasswordEnc []byte  `db:"cwmp_inform_password_enc" json:"-"`
+	// BrandName/LogoURL/PrimaryColor — white-labeling (ROADMAP.md Fase 2).
+	// LogoURL adalah URL eksternal (bukan upload lewat ACS).
+	BrandName    *string `db:"brand_name" json:"brand_name"`
+	LogoURL      *string `db:"logo_url" json:"logo_url"`
+	PrimaryColor *string `db:"primary_color" json:"primary_color"`
 	Audit
 }
 
@@ -29,6 +34,7 @@ type TenantRepository interface {
 	List(ctx context.Context, p Pagination) ([]Tenant, int, error)
 	Update(ctx context.Context, t *Tenant) error
 	SetCWMPInformCredentials(ctx context.Context, id uint64, username string, passwordEnc []byte, updatedBy *uint64) error
+	UpdateBranding(ctx context.Context, id uint64, brandName, logoURL, primaryColor *string, updatedBy *uint64) error
 	SoftDelete(ctx context.Context, id, deletedBy uint64) error
 }
 

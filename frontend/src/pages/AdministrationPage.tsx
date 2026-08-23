@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Building2, KeyRound, Plus, Users as UsersIcon, Wand2 } from 'lucide-react'
+import { Building2, KeyRound, Palette, Plus, Users as UsersIcon, Wand2 } from 'lucide-react'
 import { EmptyState } from '../components/EmptyState'
 import { StatusBadge } from '../components/StatusBadge'
 import { Modal } from '../components/Modal'
@@ -10,12 +10,15 @@ import { ApiError } from '../lib/api'
 import {
   useCreateTenant,
   useCreateUser,
+  useCurrentTenant,
   useRefs,
   useSetTenantCWMPCredentials,
   useTenants,
+  useUpdateTenantBranding,
   useUsers,
   type CreateTenantInput,
   type CreateUserInput,
+  type UpdateTenantBrandingInput,
 } from '../lib/hooks'
 import { formatDateTime } from '../lib/format'
 import type { Tenant } from '../lib/types'
@@ -25,11 +28,12 @@ const inputCls =
 const primaryBtnCls =
   'flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white'
 
-type Tab = 'users' | 'tenants'
+type Tab = 'users' | 'tenants' | 'branding'
 
 export function AdministrationPage() {
   const { hasRole } = useAuth()
   const isSuperadmin = hasRole('SUPERADMIN')
+  const isAdmin = hasRole('ADMIN')
   const [tab, setTab] = useState<Tab>('users')
 
   return (
@@ -39,14 +43,17 @@ export function AdministrationPage() {
         <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Kelola user dan tenant platform</p>
       </div>
 
-      {isSuperadmin && (
-        <div className="mb-4 flex gap-1 border-b border-slate-200">
+      {isAdmin && (
+        <div className="mb-4 flex gap-1 border-b border-slate-200 dark:border-slate-800">
           <TabButton active={tab === 'users'} onClick={() => setTab('users')} icon={UsersIcon} label="Users" />
-          <TabButton active={tab === 'tenants'} onClick={() => setTab('tenants')} icon={Building2} label="Tenants" />
+          {isSuperadmin && <TabButton active={tab === 'tenants'} onClick={() => setTab('tenants')} icon={Building2} label="Tenants" />}
+          {!isSuperadmin && <TabButton active={tab === 'branding'} onClick={() => setTab('branding')} icon={Palette} label="Branding" />}
         </div>
       )}
 
-      {tab === 'users' || !isSuperadmin ? <UsersTab isSuperadmin={isSuperadmin} /> : <TenantsTab />}
+      {tab === 'users' && <UsersTab isSuperadmin={isSuperadmin} />}
+      {tab === 'tenants' && isSuperadmin && <TenantsTab />}
+      {tab === 'branding' && !isSuperadmin && <MyBrandingTab />}
     </div>
   )
 }
@@ -242,6 +249,7 @@ function TenantsTab() {
   const tenants = data?.data ?? []
   const [showCreate, setShowCreate] = useState(false)
   const [rotateTarget, setRotateTarget] = useState<Tenant | null>(null)
+  const [brandingTarget, setBrandingTarget] = useState<Tenant | null>(null)
 
   return (
     <div>
@@ -291,13 +299,22 @@ function TenantsTab() {
                   </td>
                   <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{formatDateTime(t.created_at)}</td>
                   <td className="px-5 py-3.5 text-right">
-                    <button
-                      onClick={() => setRotateTarget(t)}
-                      className="flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
-                      title="Set/rotate shared secret Inform CWMP"
-                    >
-                      <KeyRound className="h-3.5 w-3.5" /> Kredensial CWMP
-                    </button>
+                    <div className="flex items-center justify-end gap-3">
+                      <button
+                        onClick={() => setBrandingTarget(t)}
+                        className="flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
+                        title="Edit branding (nama, logo, warna aksen)"
+                      >
+                        <Palette className="h-3.5 w-3.5" /> Branding
+                      </button>
+                      <button
+                        onClick={() => setRotateTarget(t)}
+                        className="flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
+                        title="Set/rotate shared secret Inform CWMP"
+                      >
+                        <KeyRound className="h-3.5 w-3.5" /> Kredensial CWMP
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -308,6 +325,7 @@ function TenantsTab() {
 
       {showCreate && <CreateTenantModal onClose={() => setShowCreate(false)} />}
       {rotateTarget && <RotateCWMPCredentialsModal tenant={rotateTarget} onClose={() => setRotateTarget(null)} />}
+      {brandingTarget && <EditBrandingModal tenant={brandingTarget} onClose={() => setBrandingTarget(null)} />}
     </div>
   )
 }
@@ -417,5 +435,133 @@ function RotateCWMPCredentialsModal({ tenant, onClose }: { tenant: Tenant; onClo
         </button>
       </form>
     </Modal>
+  )
+}
+
+function BrandingForm({
+  tenantId,
+  initialBrandName,
+  initialLogoUrl,
+  initialPrimaryColor,
+  onSaved,
+}: {
+  tenantId: number
+  initialBrandName: string
+  initialLogoUrl: string
+  initialPrimaryColor: string
+  onSaved?: () => void
+}) {
+  const [brandName, setBrandName] = useState(initialBrandName)
+  const [logoUrl, setLogoUrl] = useState(initialLogoUrl)
+  const [primaryColor, setPrimaryColor] = useState(initialPrimaryColor)
+  const [error, setError] = useState<string | null>(null)
+  const updateMutation = useUpdateTenantBranding()
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setError(null)
+    const input: UpdateTenantBrandingInput = {
+      brand_name: brandName.trim() || null,
+      logo_url: logoUrl.trim() || null,
+      primary_color: primaryColor.trim() || null,
+    }
+    try {
+      await updateMutation.mutateAsync({ tenantId, input })
+      onSaved?.()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Gagal menyimpan branding')
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-3">
+      <p className="text-xs text-slate-500 dark:text-slate-400">
+        Kosongkan field untuk kembali ke tampilan default ACS Console. Logo berupa URL eksternal (bukan upload file).
+      </p>
+      <div>
+        <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama Brand</label>
+        <input
+          value={brandName}
+          onChange={(e) => setBrandName(e.target.value)}
+          placeholder="ACS Console"
+          className={inputCls}
+        />
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">URL Logo</label>
+        <input
+          value={logoUrl}
+          onChange={(e) => setLogoUrl(e.target.value)}
+          placeholder="https://..."
+          className={`${inputCls} font-mono text-xs`}
+        />
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Warna Aksen</label>
+        <div className="flex items-center gap-2">
+          <input
+            type="color"
+            value={/^#[0-9a-fA-F]{6}$/.test(primaryColor) ? primaryColor : '#0f172a'}
+            onChange={(e) => setPrimaryColor(e.target.value)}
+            className="h-9 w-12 shrink-0 cursor-pointer rounded border border-slate-300 dark:border-slate-700"
+          />
+          <input
+            value={primaryColor}
+            onChange={(e) => setPrimaryColor(e.target.value)}
+            placeholder="#0f172a"
+            className={`${inputCls} font-mono text-xs`}
+          />
+        </div>
+      </div>
+      {error && <p className="text-sm text-red-600">{error}</p>}
+      <button type="submit" disabled={updateMutation.isPending} className={`${primaryBtnCls} w-full`}>
+        Simpan Branding
+      </button>
+    </form>
+  )
+}
+
+function EditBrandingModal({ tenant, onClose }: { tenant: Tenant; onClose: () => void }) {
+  return (
+    <Modal title={`Branding — ${tenant.name}`} onClose={onClose}>
+      <BrandingForm
+        tenantId={tenant.id}
+        initialBrandName={tenant.brand_name ?? ''}
+        initialLogoUrl={tenant.logo_url ?? ''}
+        initialPrimaryColor={tenant.primary_color ?? ''}
+        onSaved={onClose}
+      />
+    </Modal>
+  )
+}
+
+function MyBrandingTab() {
+  const { data: tenant, isLoading } = useCurrentTenant()
+
+  if (isLoading) return <PageSpinner />
+
+  if (!tenant) {
+    return (
+      <EmptyState
+        icon={Palette}
+        title="Tidak ada tenant"
+        description="Akun ini tidak terhubung ke tenant manapun, branding tidak berlaku."
+      />
+    )
+  }
+
+  return (
+    <div className="max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
+        Sesuaikan tampilan console untuk tenant <span className="font-medium text-slate-700 dark:text-slate-300">{tenant.name}</span>.
+        Perubahan berlaku untuk semua user di tenant ini.
+      </p>
+      <BrandingForm
+        tenantId={tenant.id}
+        initialBrandName={tenant.brand_name ?? ''}
+        initialLogoUrl={tenant.logo_url ?? ''}
+        initialPrimaryColor={tenant.primary_color ?? ''}
+      />
+    </div>
   )
 }

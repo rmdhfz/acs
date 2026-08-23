@@ -171,6 +171,10 @@ CREATE TABLE tenants (
     -- device tsb punya kredensial per-device sendiri. Lihat migrations/0002.
     cwmp_inform_username      VARCHAR(128)    NULL,
     cwmp_inform_password_enc  VARBINARY(255)  NULL COMMENT 'Terenkripsi (AES-GCM) di level aplikasi, bukan plaintext',
+    -- White-labeling (Fase 2, migrations/0003) — logo_url eksternal (bukan upload).
+    brand_name                VARCHAR(128)    NULL,
+    logo_url                  VARCHAR(512)    NULL,
+    primary_color             CHAR(7)         NULL,
     created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     created_by      BIGINT UNSIGNED NULL,
     updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

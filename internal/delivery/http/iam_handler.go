@@ -58,6 +58,59 @@ func (r *Router) setTenantCWMPCredentials(c *echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
+// currentTenantResponse — DTO sempit khusus endpoint ini. Beda dari
+// listTenants/createTenant (superadmin-only, boleh balikin domain.Tenant
+// utuh), endpoint ini dipanggil SEMUA role terautentikasi (ADMIN/NOC/VIEWER)
+// hanya untuk keperluan branding — jangan ikut expose field sensitif macam
+// cwmp_inform_username (setengah dari shared secret Inform CWMP) atau kolom
+// audit internal.
+type currentTenantResponse struct {
+	ID           uint64  `json:"id"`
+	Name         string  `json:"name"`
+	BrandName    *string `json:"brand_name"`
+	LogoURL      *string `json:"logo_url"`
+	PrimaryColor *string `json:"primary_color"`
+}
+
+// getCurrentTenant — dipanggil semua role (bukan cuma superadmin) utk
+// resolve branding tenant sendiri (ROADMAP.md Fase 2). Beda dari
+// listTenants (superadmin-only).
+func (r *Router) getCurrentTenant(c *echo.Context) error {
+	actor := ActorFrom(c)
+	t, err := r.IAM.GetCurrentTenant(c.Request().Context(), actor)
+	if err != nil {
+		return handleErr(c, err)
+	}
+	if t == nil {
+		return c.NoContent(http.StatusNoContent)
+	}
+	return c.JSON(http.StatusOK, currentTenantResponse{
+		ID: t.ID, Name: t.Name, BrandName: t.BrandName, LogoURL: t.LogoURL, PrimaryColor: t.PrimaryColor,
+	})
+}
+
+type updateTenantBrandingRequest struct {
+	BrandName    *string `json:"brand_name"`
+	LogoURL      *string `json:"logo_url"`
+	PrimaryColor *string `json:"primary_color"`
+}
+
+func (r *Router) updateTenantBranding(c *echo.Context) error {
+	actor := ActorFrom(c)
+	id, err := parseUint64Param(c, "id")
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "id tidak valid")
+	}
+	var req updateTenantBrandingRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "payload tidak valid")
+	}
+	if err := r.IAM.UpdateBranding(c.Request().Context(), actor, id, req.BrandName, req.LogoURL, req.PrimaryColor); err != nil {
+		return handleErr(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
 func (r *Router) listTenants(c *echo.Context) error {
 	actor := ActorFrom(c)
 	tenants, total, err := r.IAM.ListTenants(c.Request().Context(), actor, paginationFromQuery(c))

@@ -47,7 +47,11 @@ func (r *Router) Register(e *echo.Echo) {
 
 	authed.POST("/tenants", r.createTenant, RequireRoles(superadminOnly...))
 	authed.GET("/tenants", r.listTenants, RequireRoles(superadminOnly...))
+	authed.GET("/tenants/current", r.getCurrentTenant)
 	authed.PATCH("/tenants/:id/cwmp-credentials", r.setTenantCWMPCredentials, RequireRoles(superadminOnly...))
+	// Branding: superadmin utk tenant manapun, ADMIN utk tenant sendiri saja
+	// (dicek di usecase/iam) — role gate di sini cuma menyaring NOC/VIEWER.
+	authed.PATCH("/tenants/:id/branding", r.updateTenantBranding, RequireRoles(admin...))
 	authed.POST("/users", r.createUser, RequireRoles(admin...))
 	authed.GET("/users", r.listUsers, RequireRoles(admin...))
 
