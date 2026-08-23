@@ -33,6 +33,30 @@ func (r *Router) login(c *echo.Context) error {
 	})
 }
 
+type changeOwnPasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
+// changeOwnPassword -- user ganti password SENDIRI dgn verifikasi password
+// lama (BEDA dari resetUserPassword di iam_handler.go yang itu admin mereset
+// password ORANG LAIN). Actor diambil dari JWT (bukan :id di path) -- semua
+// role yang sudah login boleh memanggil ini, tidak ada RequireRoles di router.go.
+func (r *Router) changeOwnPassword(c *echo.Context) error {
+	actor := ActorFrom(c)
+	var req changeOwnPasswordRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "payload tidak valid")
+	}
+	if req.CurrentPassword == "" || req.NewPassword == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "current_password dan new_password wajib diisi")
+	}
+	if err := r.Auth.ChangeOwnPassword(c.Request().Context(), actor, req.CurrentPassword, req.NewPassword); err != nil {
+		return handleErr(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
 type issueTokenRequest struct {
 	Name      string     `json:"name"`
 	TenantID  *uint64    `json:"tenant_id"`

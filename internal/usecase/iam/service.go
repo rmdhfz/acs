@@ -24,11 +24,6 @@ import (
 // brute-force pada endpoint publik /cwmp (TECH.md/PRD.md §8).
 const minCWMPInformPasswordLen = 16
 
-// minUserPasswordLen — panjang minimum password akun user aplikasi (dipakai
-// admin-reset, lihat ResetUserPassword). Beda dari minCWMPInformPasswordLen
-// di atas yang itu untuk shared secret Inform CWMP, bukan password login.
-const minUserPasswordLen = 8
-
 type Service struct {
 	tenants  domain.TenantRepository
 	users    domain.UserRepository
@@ -103,6 +98,62 @@ func (s *Service) ListTenants(ctx context.Context, actor domain.Actor, p domain.
 		return nil, 0, err
 	}
 	return s.tenants.List(ctx, p)
+}
+
+// UpdateTenantInput -- partial update (field nil = tidak diubah), pola sama
+// dgn UpdateUserInput. IsActive adalah field utama motivasi endpoint ini
+// (ROADMAP.md: "tidak ada endpoint untuk menonaktifkan tenant") -- Code/Name
+// ikut diekspos sekalian krn TenantRepository.Update yang sudah ada memang
+// full-column, bukan krn diminta terpisah.
+type UpdateTenantInput struct {
+	Code     *string
+	Name     *string
+	IsActive *bool
+}
+
+// UpdateTenant -- superadmin only (kebijakan platform-level, sama seperti
+// CreateTenant/SetTaskQuota; BEDA dari UpdateBranding yang admin tenant boleh
+// self-service). PENTING soal dampak menonaktifkan tenant: user milik tenant
+// yang di-set IsActive=false TIDAK BISA login lagi setelah ini (usecase/auth.
+// Service.checkTenantActive, dipanggil dari Login DAN ResolveActor) -- bearer
+// token/JWT yang SUDAH diterbitkan sebelumnya pun langsung ditolak di request
+// berikutnya (ResolveActor dipanggil di setiap request lewat AuthMiddleware),
+// bukan menunggu sampai token itu expire. Lihat komentar lengkap di
+// checkTenantActive/ResolveActor soal trade-off query tambahan per request.
+func (s *Service) UpdateTenant(ctx context.Context, actor domain.Actor, tenantID uint64, in UpdateTenantInput) (*domain.Tenant, error) {
+	if err := auth.RequireRole(actor, domain.RoleSuperadmin); err != nil {
+		return nil, err
+	}
+	// createTenant menolak code/name kosong (lihat CreateTenant di file ini);
+	// UpdateTenant harus konsisten -- tanpa ini, PATCH {"code":""} lolos ke
+	// UPDATE (kolom NOT NULL tapi VARCHAR kosong tetap valid secara SQL,
+	// bukan error) dan mengosongkan data secara diam-diam (temuan
+	// acs-code-reviewer).
+	if in.Code != nil && *in.Code == "" {
+		return nil, fmt.Errorf("%w: code tidak boleh kosong", domain.ErrInvalidInput)
+	}
+	if in.Name != nil && *in.Name == "" {
+		return nil, fmt.Errorf("%w: name tidak boleh kosong", domain.ErrInvalidInput)
+	}
+	t, err := s.tenants.GetByID(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	if in.Code != nil {
+		t.Code = *in.Code
+	}
+	if in.Name != nil {
+		t.Name = *in.Name
+	}
+	if in.IsActive != nil {
+		t.IsActive = *in.IsActive
+	}
+	t.UpdatedBy = actor.UserIDPtr()
+	if err := s.tenants.Update(ctx, t); err != nil {
+		return nil, err
+	}
+	_ = s.activity.Record(ctx, &domain.ActivityLog{UserID: actor.UserIDPtr(), Action: "UPDATE_TENANT", EntityType: "tenant", EntityID: &t.ID})
+	return t, nil
 }
 
 // GetCurrentTenant — dipanggil frontend (semua role) utk resolve branding
@@ -333,14 +384,20 @@ func (s *Service) ResetUserPassword(ctx context.Context, actor domain.Actor, tar
 	if err != nil {
 		return err
 	}
-	if len(newPassword) < minUserPasswordLen {
-		return fmt.Errorf("%w: password minimal %d karakter", domain.ErrInvalidInput, minUserPasswordLen)
+	if len(newPassword) < domain.MinUserPasswordLen {
+		return fmt.Errorf("%w: password minimal %d karakter", domain.ErrInvalidInput, domain.MinUserPasswordLen)
 	}
 	hash, err := auth.HashPassword(newPassword)
 	if err != nil {
 		return err
 	}
 	if err := s.users.UpdatePassword(ctx, target.ID, hash, actor.UserIDPtr()); err != nil {
+		return err
+	}
+	// Reset lockout brute-force (failed_login_attempts/locked_until) sekalian
+	// -- admin mereset password = kasih kesempatan baru, jadi lockout lama
+	// (kalau ada) tidak masuk akal dipertahankan (CLAUDE.md instruksi item 1.4).
+	if err := s.users.ResetLoginLockout(ctx, target.ID); err != nil {
 		return err
 	}
 	_ = s.activity.Record(ctx, &domain.ActivityLog{UserID: actor.UserIDPtr(), TenantID: target.TenantID, Action: "RESET_USER_PASSWORD", EntityType: "user", EntityID: &target.ID})

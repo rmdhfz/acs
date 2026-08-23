@@ -204,6 +204,14 @@ CREATE TABLE users (
     full_name       VARCHAR(128)    NOT NULL,
     is_active       TINYINT(1)      NOT NULL DEFAULT 1,
     last_login_at   DATETIME        NULL,
+    -- Proteksi brute-force login (migrations/0008): failed_login_attempts
+    -- di-increment tiap password salah (usecase/auth.Service.Login); saat
+    -- mencapai threshold (auth.maxFailedLoginAttempts), locked_until diset
+    -- ke masa depan (now + auth.lockoutDuration) dan login ditolak selama
+    -- masa itu TANPA membedakan pesan error dari kredensial salah biasa
+    -- (menghindari kebocoran info validitas username ke penyerang).
+    failed_login_attempts INT UNSIGNED NOT NULL DEFAULT 0,
+    locked_until    DATETIME        NULL,
     created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     created_by      BIGINT UNSIGNED NULL,
     updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

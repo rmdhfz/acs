@@ -2,6 +2,7 @@ package http
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 
@@ -25,14 +26,29 @@ func AuthMiddleware(authSvc *auth.Service) echo.MiddlewareFunc {
 			}
 			tokenStr := strings.TrimPrefix(h, "Bearer ")
 
-			var actor *domain.Actor
-			var err error
-			if strings.HasPrefix(tokenStr, "acs_") {
-				actor, err = authSvc.AuthenticateAPIToken(c.Request().Context(), tokenStr)
-			} else {
-				actor, err = authSvc.ParseJWT(tokenStr)
+			// ResolveActor menyatukan parsing JWT/API token DAN cek tenant aktif
+			// (auth.ErrTenantInactive) -- lihat komentar lengkap di
+			// usecase/auth.Service.ResolveActor soal kenapa ini dicek di SETIAP
+			// request, bukan cuma saat login.
+			actor, err := authSvc.ResolveActor(c.Request().Context(), tokenStr)
+			if err != nil {
+				switch {
+				case errors.Is(err, auth.ErrTenantInactive):
+					return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
+				case errors.Is(err, auth.ErrInvalidToken):
+					return echo.NewHTTPError(http.StatusUnauthorized, "invalid token")
+				default:
+					// Error SISTEM (mis. DB timeout saat checkTenantActive),
+					// BUKAN token yang salah -- jangan disamarkan jadi 401
+					// "invalid token" (temuan review: itu menyulitkan on-call
+					// membedakan insiden nyata dari gangguan infrastruktur
+					// sesaat). Di-log server-side, klien dapat 500 generik
+					// tanpa detail error internal.
+					log.Printf("auth middleware: gagal resolve actor: %v", err)
+					return echo.NewHTTPError(http.StatusInternalServerError, "internal error")
+				}
 			}
-			if err != nil || actor == nil {
+			if actor == nil {
 				return echo.NewHTTPError(http.StatusUnauthorized, "invalid token")
 			}
 			c.Set(actorContextKey, *actor)
@@ -63,6 +79,12 @@ func RequireRoles(roles ...string) echo.MiddlewareFunc {
 
 func handleErr(c *echo.Context, err error) error {
 	switch {
+	// auth.ErrInvalidCredentials -- dipakai auth.Service.ChangeOwnPassword saat
+	// current_password tidak cocok (bukan cuma di Login). Bukan domain.Err*
+	// krn ini spesifik ke package auth (dan supaya pesan bisa disamakan dgn
+	// pesan login gagal biasa) -- dicek terpisah di sini, sebelum default 500.
+	case errors.Is(err, auth.ErrInvalidCredentials):
+		return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
 	case errors.Is(err, domain.ErrNotFound):
 		return echo.NewHTTPError(http.StatusNotFound, err.Error())
 	case errors.Is(err, domain.ErrForbidden):

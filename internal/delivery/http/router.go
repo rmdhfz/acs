@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v5/middleware"
 
 	"acs/internal/domain"
 	"acs/internal/usecase/auth"
@@ -46,7 +47,14 @@ type Router struct {
 func (r *Router) Register(e *echo.Echo) {
 	api := e.Group("/api/v1")
 
-	api.POST("/auth/login", r.login)
+	// Rate limit KHUSUS lebih ketat dari default REST 30 req/s (cmd/acsd/
+	// main.go) -- /auth/login adalah target brute-force paling jelas di
+	// seluruh REST API, dan proteksi lockout per-akun (auth.Service.Login)
+	// sendiri py celah TOCTOU thd request PARALEL (lihat komentar
+	// RecordFailedLogin) -- rate limit per-IP di sini membatasi throughput
+	// serangan secara independen sbg lapisan pertahanan kedua, bukan
+	// pengganti fix TOCTOU-nya (temuan acs-security-reviewer).
+	api.POST("/auth/login", r.login, middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(2)))
 	// GET /metrics: TIDAK diautentikasi (konvensi Prometheus exporter),
 	// endpoint read-only agregat lintas-tenant untuk operator platform — lihat
 	// komentar lengkap di metrics_handler.go & router.go field MetricsHandler
@@ -60,12 +68,21 @@ func (r *Router) Register(e *echo.Echo) {
 	superadminOnly := []string{domain.RoleSuperadmin}
 
 	authed.POST("/auth/tokens", r.issueAPIToken, RequireRoles(admin...))
+	// Self-service ganti password sendiri (BEDA dari admin-reset
+	// PATCH /users/:id/password di bawah) -- actor dari JWT langsung, bukan
+	// target :id, jadi semua role yang sudah login boleh (tidak ada
+	// RequireRoles di sini, sengaja).
+	authed.PATCH("/auth/password", r.changeOwnPassword)
 
 	authed.GET("/refs/:table", r.listRefs)
 
 	authed.POST("/tenants", r.createTenant, RequireRoles(superadminOnly...))
 	authed.GET("/tenants", r.listTenants, RequireRoles(superadminOnly...))
 	authed.GET("/tenants/current", r.getCurrentTenant)
+	// Activate/deactivate tenant (ROADMAP.md gap lama) -- superadmin only,
+	// sama seperti create tenant. Dampak IsActive=false ke Login/ResolveActor
+	// didokumentasikan di usecase/iam.UpdateTenant.
+	authed.PATCH("/tenants/:id", r.updateTenant, RequireRoles(superadminOnly...))
 	authed.PATCH("/tenants/:id/cwmp-credentials", r.setTenantCWMPCredentials, RequireRoles(superadminOnly...))
 	// Branding: superadmin utk tenant manapun, ADMIN utk tenant sendiri saja
 	// (dicek di usecase/iam) — role gate di sini cuma menyaring NOC/VIEWER.

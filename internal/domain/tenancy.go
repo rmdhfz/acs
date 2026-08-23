@@ -46,16 +46,22 @@ type TenantRepository interface {
 }
 
 type User struct {
-	ID           uint64   `db:"id" json:"id"`
-	UserUUID     string   `db:"user_uuid" json:"user_uuid"`
-	TenantID     *uint64  `db:"tenant_id" json:"tenant_id"`
-	Username     string   `db:"username" json:"username"`
-	Email        string   `db:"email" json:"email"`
-	PasswordHash string   `db:"password_hash" json:"-"`
-	FullName     string   `db:"full_name" json:"full_name"`
-	IsActive     bool     `db:"is_active" json:"is_active"`
+	ID           uint64     `db:"id" json:"id"`
+	UserUUID     string     `db:"user_uuid" json:"user_uuid"`
+	TenantID     *uint64    `db:"tenant_id" json:"tenant_id"`
+	Username     string     `db:"username" json:"username"`
+	Email        string     `db:"email" json:"email"`
+	PasswordHash string     `db:"password_hash" json:"-"`
+	FullName     string     `db:"full_name" json:"full_name"`
+	IsActive     bool       `db:"is_active" json:"is_active"`
 	LastLoginAt  *time.Time `db:"last_login_at" json:"last_login_at"`
-	Roles        []string `db:"-" json:"roles"`
+	// FailedLoginAttempts/LockedUntil -- proteksi brute-force login
+	// (migrations/0008, usecase/auth.Service.Login). Tidak diekspos ke JSON
+	// (json:"-"): ini state keamanan internal, bukan sesuatu yang perlu
+	// ditampilkan lewat API listing user manapun.
+	FailedLoginAttempts uint32     `db:"failed_login_attempts" json:"-"`
+	LockedUntil         *time.Time `db:"locked_until" json:"-"`
+	Roles               []string   `db:"-" json:"roles"`
 	Audit
 }
 
@@ -74,6 +80,24 @@ type UserRepository interface {
 	RolesByUserID(ctx context.Context, userID uint64) ([]string, error)
 	AssignRole(ctx context.Context, userID, roleID uint64, createdBy *uint64) error
 	RevokeRole(ctx context.Context, userID, roleID uint64) error
+	// RecordFailedLogin menaikkan failed_login_attempts DAN (kalau nilai
+	// setelah increment >= maxAttempts) sekaligus mengunci akun sampai
+	// `lockUntil`, sebagai SATU pernyataan UPDATE atomik. SENGAJA digabung,
+	// bukan dua method terpisah (increment lalu lock) -- versi dua-langkah
+	// sebelumnya py celah TOCTOU nyata: beberapa request login paralel utk
+	// username yang sama semuanya bisa membaca `locked_until` yang masih
+	// kosong sebelum salah satu sempat menerapkan lock, sehingga penyerang
+	// efektif dapat lebih dari `maxAttempts` percobaan gratis per batch
+	// paralel (ditemukan acs-security-reviewer). UPDATE tunggal ini
+	// memanfaatkan row-level locking MariaDB: increment & keputusan lock
+	// dihitung dari nilai baris SETELAH lock diperoleh, bukan dari snapshot
+	// baca terpisah sebelumnya.
+	RecordFailedLogin(ctx context.Context, id uint64, maxAttempts uint32, lockUntil time.Time) error
+	// ResetLoginLockout mengembalikan failed_login_attempts ke 0 dan
+	// mengosongkan locked_until -- dipanggil saat login berhasil ATAU saat
+	// admin mereset password user lain (ResetUserPassword, usecase/iam):
+	// reset password = kasih kesempatan baru, jadi lockout lama tidak relevan lagi.
+	ResetLoginLockout(ctx context.Context, id uint64) error
 }
 
 // APIToken adalah token API internal (lihat CLAUDE.md - tidak ada endpoint

@@ -244,6 +244,28 @@ func (r *userRepository) TouchLastLogin(ctx context.Context, id uint64, at time.
 	return translateErr(err)
 }
 
+// RecordFailedLogin -- SATU UPDATE atomik (increment + keputusan lock
+// dihitung dari nilai baris SETELAH row-lock diperoleh MariaDB), bukan
+// increment-lalu-SELECT-lalu-UPDATE terpisah seperti versi sebelumnya --
+// versi lama py celah TOCTOU nyata (lihat komentar interface
+// domain.UserRepository.RecordFailedLogin): request paralel bisa lolos
+// lockout krn semuanya membaca counter lama sebelum salah satu sempat commit.
+func (r *userRepository) RecordFailedLogin(ctx context.Context, id uint64, maxAttempts uint32, lockUntil time.Time) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE users SET
+			failed_login_attempts = failed_login_attempts + 1,
+			locked_until = CASE WHEN failed_login_attempts + 1 >= ? THEN ? ELSE locked_until END
+		WHERE id = ? AND is_deleted = 0`,
+		maxAttempts, lockUntil, id)
+	return translateErr(err)
+}
+
+func (r *userRepository) ResetLoginLockout(ctx context.Context, id uint64) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = ? AND is_deleted = 0`, id)
+	return translateErr(err)
+}
+
 func (r *userRepository) RolesByUserID(ctx context.Context, userID uint64) ([]string, error) {
 	var roles []string
 	err := r.db.SelectContext(ctx, &roles,

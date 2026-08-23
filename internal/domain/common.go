@@ -120,6 +120,18 @@ const (
 	RoleViewer     = "VIEWER"
 )
 
+// MinUserPasswordLen — panjang minimum password akun user aplikasi (login),
+// dipakai admin-reset (usecase/iam.ResetUserPassword) DAN ganti password
+// sendiri (usecase/auth.ChangeOwnPassword). SATU sumber kebenaran di domain
+// (bukan konstanta terpisah di masing-masing package usecase) supaya
+// kebijakan tidak bisa diam-diam drift antara dua jalur ubah-password yang
+// SEHARUSNYA menegakkan aturan yang sama persis (temuan acs-code-reviewer —
+// sebelumnya ada 2 konstanta terpisah bernilai sama, tidak dijaga compiler,
+// cuma komentar). BEDA dari shared secret Inform CWMP (lihat
+// vendor_parameter_mappings/tenants.cwmp_inform_password_enc) yang minimal
+// panjangnya jauh lebih ketat (16) krn itu bukan password login manusia.
+const MinUserPasswordLen = 8
+
 const (
 	DeviceStatusOnline        = "ONLINE"
 	DeviceStatusOffline       = "OFFLINE"

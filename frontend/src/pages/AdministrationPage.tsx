@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Building2, Gauge, KeyRound, Palette, Plus, Users as UsersIcon, Wand2 } from 'lucide-react'
+import { Building2, Gauge, KeyRound, Pencil, Palette, Plus, Shield, Trash2, Users as UsersIcon, Wand2 } from 'lucide-react'
 import { EmptyState } from '../components/EmptyState'
 import { StatusBadge } from '../components/StatusBadge'
 import { Modal } from '../components/Modal'
@@ -11,18 +11,23 @@ import {
   useCreateTenant,
   useCreateUser,
   useCurrentTenant,
+  useDeleteUser,
   useRefs,
+  useReplaceUserRoles,
+  useResetUserPassword,
   useSetTenantCWMPCredentials,
   useSetTenantTaskQuota,
   useTenants,
   useUpdateTenantBranding,
+  useUpdateUser,
   useUsers,
   type CreateTenantInput,
   type CreateUserInput,
   type UpdateTenantBrandingInput,
+  type UpdateUserInput,
 } from '../lib/hooks'
 import { formatDateTime } from '../lib/format'
-import type { Tenant } from '../lib/types'
+import type { Tenant, User } from '../lib/types'
 
 const inputCls =
   'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
@@ -76,13 +81,29 @@ function TabButton({ active, onClick, icon: Icon, label }: { active: boolean; on
 // ---- Users ----
 
 function UsersTab({ isSuperadmin }: { isSuperadmin: boolean }) {
+  const { user: currentUser } = useAuth()
   const { data: tenantsResp } = useTenants()
   const tenants = isSuperadmin ? tenantsResp?.data ?? [] : []
   const [tenantFilter, setTenantFilter] = useState('')
   const [showCreate, setShowCreate] = useState(false)
+  const [editTarget, setEditTarget] = useState<User | null>(null)
+  const [passwordTarget, setPasswordTarget] = useState<User | null>(null)
+  const [rolesTarget, setRolesTarget] = useState<User | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const { data, isLoading } = useUsers(tenantFilter ? Number(tenantFilter) : undefined)
   const users = data?.data ?? []
+  const deleteMutation = useDeleteUser()
+
+  async function handleDelete(u: User) {
+    if (!confirm(`Hapus user "${u.username}"? Aksi ini tidak bisa dibatalkan.`)) return
+    setDeleteError(null)
+    try {
+      await deleteMutation.mutateAsync(u.id)
+    } catch (err) {
+      setDeleteError(err instanceof ApiError ? err.message : 'Gagal menghapus user')
+    }
+  }
 
   return (
     <div>
@@ -104,6 +125,12 @@ function UsersTab({ isSuperadmin }: { isSuperadmin: boolean }) {
         </button>
       </div>
 
+      {deleteError && (
+        <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
+          {deleteError}
+        </div>
+      )}
+
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         {isLoading ? (
           <PageSpinner />
@@ -119,31 +146,72 @@ function UsersTab({ isSuperadmin }: { isSuperadmin: boolean }) {
                 <th className="px-5 py-3">Role</th>
                 <th className="px-5 py-3">Status</th>
                 <th className="px-5 py-3">Login Terakhir</th>
+                <th className="px-5 py-3"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {users.map((u) => (
-                <tr key={u.id}>
-                  <td className="px-5 py-3.5 font-mono text-xs text-slate-900 dark:text-slate-100">{u.username}</td>
-                  <td className="px-5 py-3.5 text-slate-700 dark:text-slate-300">{u.full_name || '-'}</td>
-                  <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{u.email || '-'}</td>
-                  <td className="px-5 py-3.5">
-                    <div className="flex flex-wrap gap-1">
-                      {u.roles.length === 0 ? <span className="text-xs text-slate-400 dark:text-slate-500">-</span> : u.roles.map((r) => <StatusBadge key={r} code="PROVISIONING" label={r} />)}
-                    </div>
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <StatusBadge code={u.is_active ? 'ONLINE' : 'OFFLINE'} label={u.is_active ? 'Aktif' : 'Nonaktif'} />
-                  </td>
-                  <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{formatDateTime(u.last_login_at)}</td>
-                </tr>
-              ))}
+              {users.map((u) => {
+                const isSelf = currentUser?.id === u.id
+                return (
+                  <tr key={u.id}>
+                    <td className="px-5 py-3.5 font-mono text-xs text-slate-900 dark:text-slate-100">{u.username}</td>
+                    <td className="px-5 py-3.5 text-slate-700 dark:text-slate-300">{u.full_name || '-'}</td>
+                    <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{u.email || '-'}</td>
+                    <td className="px-5 py-3.5">
+                      <div className="flex flex-wrap gap-1">
+                        {u.roles.length === 0 ? <span className="text-xs text-slate-400 dark:text-slate-500">-</span> : u.roles.map((r) => <StatusBadge key={r} code="PROVISIONING" label={r} />)}
+                      </div>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <StatusBadge code={u.is_active ? 'ONLINE' : 'OFFLINE'} label={u.is_active ? 'Aktif' : 'Nonaktif'} />
+                    </td>
+                    <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{formatDateTime(u.last_login_at)}</td>
+                    <td className="px-5 py-3.5 text-right">
+                      <div className="flex items-center justify-end gap-3">
+                        <button
+                          onClick={() => setEditTarget(u)}
+                          className="flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
+                          title="Edit nama/email/status aktif"
+                        >
+                          <Pencil className="h-3.5 w-3.5" /> Edit
+                        </button>
+                        <button
+                          onClick={() => setPasswordTarget(u)}
+                          className="flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
+                          title="Reset password user ini"
+                        >
+                          <KeyRound className="h-3.5 w-3.5" /> Reset Password
+                        </button>
+                        <button
+                          onClick={() => setRolesTarget(u)}
+                          className="flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
+                          title="Kelola role user ini"
+                        >
+                          <Shield className="h-3.5 w-3.5" /> Kelola Role
+                        </button>
+                        {!isSelf && (
+                          <button
+                            onClick={() => handleDelete(u)}
+                            className="flex items-center gap-1 text-xs font-medium text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
+                            title="Hapus user ini"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" /> Hapus
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         )}
       </div>
 
       {showCreate && <CreateUserModal isSuperadmin={isSuperadmin} tenants={tenants} onClose={() => setShowCreate(false)} />}
+      {editTarget && <EditUserModal user={editTarget} isSelf={currentUser?.id === editTarget.id} onClose={() => setEditTarget(null)} />}
+      {passwordTarget && <ResetPasswordModal user={passwordTarget} onClose={() => setPasswordTarget(null)} />}
+      {rolesTarget && <ManageRolesModal user={rolesTarget} onClose={() => setRolesTarget(null)} />}
     </div>
   )
 }
@@ -236,6 +304,145 @@ function CreateUserModal({
         {error && <p className="text-sm text-red-600">{error}</p>}
         <button type="submit" disabled={createMutation.isPending} className={`${primaryBtnCls} w-full`}>
           Buat User
+        </button>
+      </form>
+    </Modal>
+  )
+}
+
+function EditUserModal({ user, isSelf, onClose }: { user: User; isSelf: boolean; onClose: () => void }) {
+  const [fullName, setFullName] = useState(user.full_name)
+  const [email, setEmail] = useState(user.email)
+  const [isActive, setIsActive] = useState(user.is_active)
+  const [error, setError] = useState<string | null>(null)
+  const updateMutation = useUpdateUser()
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setError(null)
+    const input: UpdateUserInput = {
+      full_name: fullName,
+      email,
+      is_active: isActive,
+    }
+    try {
+      await updateMutation.mutateAsync({ userId: user.id, input })
+      onClose()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Gagal menyimpan perubahan user')
+    }
+  }
+
+  return (
+    <Modal title={`Edit User — ${user.username}`} onClose={onClose}>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama Lengkap</label>
+          <input value={fullName} onChange={(e) => setFullName(e.target.value)} className={inputCls} />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Email</label>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} />
+        </div>
+        <div>
+          <label className="flex items-center gap-1.5 text-sm text-slate-700 dark:text-slate-300">
+            <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
+            Akun aktif
+          </label>
+          {isSelf && (
+            <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+              Ini akun Anda sendiri — menonaktifkannya bisa ditolak backend (self-lockout guard).
+            </p>
+          )}
+        </div>
+        {error && <p className="text-sm text-red-600">{error}</p>}
+        <button type="submit" disabled={updateMutation.isPending} className={`${primaryBtnCls} w-full`}>
+          Simpan Perubahan
+        </button>
+      </form>
+    </Modal>
+  )
+}
+
+function ResetPasswordModal({ user, onClose }: { user: User; onClose: () => void }) {
+  const [newPassword, setNewPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const resetMutation = useResetUserPassword()
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setError(null)
+    try {
+      await resetMutation.mutateAsync({ userId: user.id, newPassword })
+      onClose()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Gagal mereset password')
+    }
+  }
+
+  return (
+    <Modal title={`Reset Password — ${user.username}`} onClose={onClose}>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          Password baru berlaku langsung — beri tahu pemilik akun ini melalui jalur aman di luar console.
+        </p>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Password Baru</label>
+          <input
+            required
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            className={inputCls}
+          />
+        </div>
+        {error && <p className="text-sm text-red-600">{error}</p>}
+        <button type="submit" disabled={resetMutation.isPending} className={`${primaryBtnCls} w-full`}>
+          Reset Password
+        </button>
+      </form>
+    </Modal>
+  )
+}
+
+function ManageRolesModal({ user, onClose }: { user: User; onClose: () => void }) {
+  const { data: roleRefs } = useRefs('ref_roles')
+  const [roleCodes, setRoleCodes] = useState<string[]>(user.roles)
+  const [error, setError] = useState<string | null>(null)
+  const replaceMutation = useReplaceUserRoles()
+
+  function toggleRole(code: string) {
+    setRoleCodes((prev) => (prev.includes(code) ? prev.filter((r) => r !== code) : [...prev, code]))
+  }
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setError(null)
+    try {
+      await replaceMutation.mutateAsync({ userId: user.id, roleCodes })
+      onClose()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Gagal menyimpan role')
+    }
+  }
+
+  return (
+    <Modal title={`Kelola Role — ${user.username}`} onClose={onClose}>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          Menyimpan akan mengganti seluruh set role user ini sesuai pilihan di bawah (bukan tambah/hapus satu-satu).
+        </p>
+        <div className="flex flex-wrap gap-3">
+          {roleRefs?.map((r) => (
+            <label key={r.id} className="flex items-center gap-1.5 text-sm text-slate-700 dark:text-slate-300">
+              <input type="checkbox" checked={roleCodes.includes(r.code)} onChange={() => toggleRole(r.code)} />
+              {r.name}
+            </label>
+          ))}
+        </div>
+        {error && <p className="text-sm text-red-600">{error}</p>}
+        <button type="submit" disabled={replaceMutation.isPending} className={`${primaryBtnCls} w-full`}>
+          Simpan Role
         </button>
       </form>
     </Modal>

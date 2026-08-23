@@ -567,3 +567,55 @@ export function useCreateUser() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
   })
 }
+
+export interface UpdateUserInput {
+  full_name?: string
+  email?: string
+  is_active?: boolean
+}
+
+// useUpdateUser — partial update (PATCH /users/:id), field yang tidak
+// disertakan di body tidak diubah backend. RBAC & self-lockout guard
+// (mis. ADMIN tidak bisa nonaktifkan akun sendiri) ditegakkan backend —
+// tampilkan pesan error 403-nya apa adanya di komponen, jangan diduplikasi.
+export function useUpdateUser() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ userId, input }: { userId: number; input: UpdateUserInput }) =>
+      api.patch<User>(`/users/${userId}`, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  })
+}
+
+// useResetUserPassword — admin mereset password user lain (PATCH
+// /users/:id/password). Tidak mengubah data yang tampil di tabel users,
+// jadi tidak perlu invalidate query.
+export function useResetUserPassword() {
+  return useMutation({
+    mutationFn: ({ userId, newPassword }: { userId: number; newPassword: string }) =>
+      api.patch<void>(`/users/${userId}/password`, { new_password: newPassword }),
+  })
+}
+
+// useReplaceUserRoles — full-replace role (bukan tambah/hapus satu-satu),
+// body role_codes menggantikan seluruh set role user tsb. Backend menolak
+// assign SUPERADMIN oleh non-superadmin, dan ADMIN mencabut role ADMIN
+// dari akun sendiri (self-lockout) — error 403-nya ditampilkan apa adanya.
+export function useReplaceUserRoles() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ userId, roleCodes }: { userId: number; roleCodes: string[] }) =>
+      api.patch<User>(`/users/${userId}/roles`, { role_codes: roleCodes }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  })
+}
+
+// useDeleteUser — soft-delete (DELETE /users/:id). Backend menolak ADMIN
+// menghapus akun sendiri (self-lockout guard).
+export function useDeleteUser() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (userId: number) => api.del<void>(`/users/${userId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  })
+}

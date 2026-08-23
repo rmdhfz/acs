@@ -88,7 +88,7 @@ func main() {
 	firmwareJobRepo := mysql.NewFirmwareUpgradeJobRepository(db)
 	diagnosticRepo := mysql.NewDeviceDiagnosticRepository(db)
 
-	authSvc := auth.NewService(userRepo, apiTokenRepo, activityLogRepo, cfg.JWTSecret, cfg.JWTExpiry)
+	authSvc := auth.NewService(userRepo, apiTokenRepo, tenantRepo, activityLogRepo, cfg.JWTSecret, cfg.JWTExpiry)
 	iamSvc := iam.NewService(tenantRepo, userRepo, refRepo, activityLogRepo, enc)
 	taskSvc := task.NewService(taskRepo, deviceRepo, deviceModelRepo, paramMappingRepo, refRepo, activityLogRepo, tenantRepo)
 	provisioningSvc := provisioning.NewService(profileRepo, profileParamRepo, ztRuleRepo, deviceRepo, taskSvc, activityLogRepo)

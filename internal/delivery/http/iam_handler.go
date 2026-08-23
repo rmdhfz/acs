@@ -134,6 +134,38 @@ func (r *Router) setTenantTaskQuota(c *echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
+// updateTenantRequest -- partial update, field nil = tidak diubah (pola sama
+// dgn updateUserRequest). IsActive adalah motivasi utama endpoint ini
+// (ROADMAP.md: aktivasi/nonaktifkan tenant lewat API, sebelumnya cuma bisa
+// lewat DB langsung).
+type updateTenantRequest struct {
+	Code     *string `json:"code"`
+	Name     *string `json:"name"`
+	IsActive *bool   `json:"is_active"`
+}
+
+// updateTenant -- superadmin only (RBAC gate di router.go + usecase/iam).
+// Dampak menonaktifkan tenant (user tenant itu tidak bisa login lagi, termasuk
+// yang bearer token-nya masih berlaku) didokumentasikan di usecase/iam.UpdateTenant.
+func (r *Router) updateTenant(c *echo.Context) error {
+	actor := ActorFrom(c)
+	id, err := parseUint64Param(c, "id")
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "id tidak valid")
+	}
+	var req updateTenantRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "payload tidak valid")
+	}
+	t, err := r.IAM.UpdateTenant(c.Request().Context(), actor, id, iam.UpdateTenantInput{
+		Code: req.Code, Name: req.Name, IsActive: req.IsActive,
+	})
+	if err != nil {
+		return handleErr(c, err)
+	}
+	return c.JSON(http.StatusOK, t)
+}
+
 func (r *Router) listTenants(c *echo.Context) error {
 	actor := ActorFrom(c)
 	tenants, total, err := r.IAM.ListTenants(c.Request().Context(), actor, paginationFromQuery(c))
