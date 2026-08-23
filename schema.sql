@@ -723,3 +723,59 @@ INSERT INTO ref_vendors (code, name) VALUES
     ('HUAWEI', 'Huawei Technologies'),
     ('FIBERHOME', 'FiberHome Technologies'),
     ('NOKIA', 'Nokia (eks Alcatel-Lucent)');
+
+-- migrations/0004_vendor_baseline_catalog: tambah Cdata + mapping parameter
+-- standar TR-098/TR-181. Lihat komentar lengkap di file migrasi tsb untuk
+-- daftar logical key yang SENGAJA tidak diisi (optical power, split WiFi
+-- 2.4G/5G, wan.ip_address) dan alasannya — jangan tambahkan tanpa konfirmasi
+-- dari dokumentasi resmi vendor/akses device nyata. `vendor_ouis` juga
+-- sengaja masih kosong untuk kelima vendor ini (belum ada OUI yang
+-- terverifikasi dari IEEE OUI registry saat migrasi dibuat).
+INSERT INTO ref_vendors (code, name, description) VALUES
+    ('CDATA', 'C-Data Technology Co., Ltd', 'Produsen ONU/OLT GPON/EPON, umum dipakai ISP kecil-menengah');
+
+INSERT INTO vendor_parameter_mappings
+    (vendor_id, data_model_version_id, device_model_id, logical_key, tr069_path, parameter_type_id, description)
+SELECT
+    v.id, dmv.id, NULL, k.logical_key, k.tr069_path, pt.id, k.description
+FROM ref_vendors v
+CROSS JOIN (SELECT id FROM ref_data_model_versions WHERE code = 'TR098') dmv
+CROSS JOIN (
+    SELECT 'device.manufacturer' AS logical_key, 'InternetGatewayDevice.DeviceInfo.Manufacturer' AS tr069_path, 'string' AS ptype, 'Nama manufacturer perangkat (TR-098 DeviceInfo, standar)' AS description
+    UNION ALL SELECT 'device.model_name', 'InternetGatewayDevice.DeviceInfo.ModelName', 'string', 'Nama model perangkat (TR-098 DeviceInfo, standar)'
+    UNION ALL SELECT 'device.serial_number', 'InternetGatewayDevice.DeviceInfo.SerialNumber', 'string', 'Serial number perangkat (TR-098 DeviceInfo, standar)'
+    UNION ALL SELECT 'device.software_version', 'InternetGatewayDevice.DeviceInfo.SoftwareVersion', 'string', 'Versi firmware/software (TR-098 DeviceInfo, standar)'
+    UNION ALL SELECT 'device.hardware_version', 'InternetGatewayDevice.DeviceInfo.HardwareVersion', 'string', 'Versi hardware (TR-098 DeviceInfo, standar)'
+    UNION ALL SELECT 'device.uptime', 'InternetGatewayDevice.DeviceInfo.UpTime', 'unsignedInt', 'Waktu sejak boot terakhir dalam detik (TR-098 DeviceInfo, standar)'
+    UNION ALL SELECT 'device.periodic_inform_interval', 'InternetGatewayDevice.ManagementServer.PeriodicInformInterval', 'unsignedInt', 'Interval Periodic Inform dalam detik (TR-098 ManagementServer, standar)'
+    UNION ALL SELECT 'device.connection_request_url', 'InternetGatewayDevice.ManagementServer.ConnectionRequestURL', 'string', 'URL Connection Request milik CPE (TR-098 ManagementServer, standar)'
+    UNION ALL SELECT 'wan.pppoe.username', 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.Username', 'string', 'Username PPPoE WAN — asumsi instance .1.1.1, lihat migrations/0004'
+    UNION ALL SELECT 'wan.pppoe.password', 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.Password', 'string', 'Password PPPoE WAN — asumsi instance .1.1.1, lihat migrations/0004'
+    UNION ALL SELECT 'wifi.ssid', 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID', 'string', 'SSID WiFi radio utama (instance 1) — tidak dibedakan 2.4G/5G, lihat migrations/0004'
+    UNION ALL SELECT 'wifi.wpa_passphrase', 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1.KeyPassphrase', 'string', 'WPA/WPA2 passphrase WiFi radio utama (instance 1), object PreSharedKey resmi TR-098 Amendment 2'
+) k
+LEFT JOIN ref_parameter_types pt ON pt.code = k.ptype
+WHERE v.code IN ('ZTE', 'HUAWEI', 'FIBERHOME', 'NOKIA', 'CDATA');
+
+INSERT INTO vendor_parameter_mappings
+    (vendor_id, data_model_version_id, device_model_id, logical_key, tr069_path, parameter_type_id, description)
+SELECT
+    v.id, dmv.id, NULL, k.logical_key, k.tr069_path, pt.id, k.description
+FROM ref_vendors v
+CROSS JOIN (SELECT id FROM ref_data_model_versions WHERE code = 'TR181') dmv
+CROSS JOIN (
+    SELECT 'device.manufacturer' AS logical_key, 'Device.DeviceInfo.Manufacturer' AS tr069_path, 'string' AS ptype, 'Nama manufacturer perangkat (TR-181 DeviceInfo, standar)' AS description
+    UNION ALL SELECT 'device.model_name', 'Device.DeviceInfo.ModelName', 'string', 'Nama model perangkat (TR-181 DeviceInfo, standar)'
+    UNION ALL SELECT 'device.serial_number', 'Device.DeviceInfo.SerialNumber', 'string', 'Serial number perangkat (TR-181 DeviceInfo, standar)'
+    UNION ALL SELECT 'device.software_version', 'Device.DeviceInfo.SoftwareVersion', 'string', 'Versi firmware/software (TR-181 DeviceInfo, standar)'
+    UNION ALL SELECT 'device.hardware_version', 'Device.DeviceInfo.HardwareVersion', 'string', 'Versi hardware (TR-181 DeviceInfo, standar)'
+    UNION ALL SELECT 'device.uptime', 'Device.DeviceInfo.UpTime', 'unsignedInt', 'Waktu sejak boot terakhir dalam detik (TR-181 DeviceInfo, standar)'
+    UNION ALL SELECT 'device.periodic_inform_interval', 'Device.ManagementServer.PeriodicInformInterval', 'unsignedInt', 'Interval Periodic Inform dalam detik (TR-181 ManagementServer, standar)'
+    UNION ALL SELECT 'device.connection_request_url', 'Device.ManagementServer.ConnectionRequestURL', 'string', 'URL Connection Request milik CPE (TR-181 ManagementServer, standar)'
+    UNION ALL SELECT 'wan.pppoe.username', 'Device.PPP.Interface.1.Username', 'string', 'Username PPPoE WAN — asumsi instance .1, lihat migrations/0004'
+    UNION ALL SELECT 'wan.pppoe.password', 'Device.PPP.Interface.1.Password', 'string', 'Password PPPoE WAN — asumsi instance .1, lihat migrations/0004'
+    UNION ALL SELECT 'wifi.ssid', 'Device.WiFi.SSID.1.SSID', 'string', 'SSID WiFi radio utama (instance 1) — tidak dibedakan 2.4G/5G, lihat migrations/0004'
+    UNION ALL SELECT 'wifi.wpa_passphrase', 'Device.WiFi.AccessPoint.1.Security.KeyPassphrase', 'string', 'WPA/WPA2 passphrase WiFi radio utama (instance 1), object AccessPoint.Security resmi TR-181'
+) k
+LEFT JOIN ref_parameter_types pt ON pt.code = k.ptype
+WHERE v.code IN ('ZTE', 'HUAWEI', 'FIBERHOME', 'NOKIA', 'CDATA');
