@@ -32,6 +32,7 @@ import (
 	"acs/internal/usecase/session"
 	"acs/internal/usecase/task"
 	"acs/pkg/cryptoutil"
+	"acs/pkg/objectstorage"
 )
 
 func main() {
@@ -49,6 +50,20 @@ func main() {
 	enc, err := cryptoutil.NewEncryptor(cfg.CredentialEncKey)
 	if err != nil {
 		log.Fatalf("cryptoutil: %v", err)
+	}
+
+	// ---- Object storage firmware (MinIO/S3-compatible, ROADMAP.md Fase 2) ----
+	minioCtx, minioCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	objStorage, err := objectstorage.New(minioCtx, objectstorage.Config{
+		Endpoint:  cfg.MinIOEndpoint,
+		AccessKey: cfg.MinIOAccessKey,
+		SecretKey: cfg.MinIOSecretKey,
+		Bucket:    cfg.MinIOBucket,
+		UseSSL:    cfg.MinIOUseSSL,
+	})
+	minioCancel()
+	if err != nil {
+		log.Fatalf("objectstorage: %v", err)
 	}
 
 	refRepo := mysql.NewRefRepository(db)
@@ -78,7 +93,7 @@ func main() {
 	taskSvc := task.NewService(taskRepo, deviceRepo, deviceModelRepo, paramMappingRepo, refRepo, activityLogRepo, tenantRepo)
 	provisioningSvc := provisioning.NewService(profileRepo, profileParamRepo, ztRuleRepo, deviceRepo, taskSvc, activityLogRepo)
 	deviceSvc := device.NewService(deviceRepo, vendorOUIRepo, deviceModelRepo, refRepo, deviceParamRepo, deviceEventRepo, opticalMetricRepo, enc, activityLogRepo)
-	firmwareSvc := firmware.NewService(firmwareFileRepo, firmwareJobRepo, deviceRepo, taskSvc, refRepo, activityLogRepo)
+	firmwareSvc := firmware.NewService(firmwareFileRepo, firmwareJobRepo, deviceRepo, taskSvc, refRepo, activityLogRepo, objStorage)
 	diagnosticsSvc := diagnostics.NewService(diagnosticRepo, deviceRepo, taskSvc, activityLogRepo)
 	sessionSvc := session.NewService(deviceSessionRepo, deviceEventRepo, deviceParamRepo, deviceRepo, tenantRepo, refRepo, deviceSvc, taskSvc, provisioningSvc, firmwareSvc, diagnosticsSvc, enc)
 

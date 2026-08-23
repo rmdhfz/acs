@@ -586,7 +586,7 @@ CREATE TABLE firmware_files (
     device_model_id     BIGINT UNSIGNED NULL,
     version              VARCHAR(64)     NOT NULL,
     file_name             VARCHAR(255)    NOT NULL,
-    file_path              VARCHAR(500)    NOT NULL,
+    storage_key            VARCHAR(500)    NOT NULL COMMENT 'Object key di object storage (MinIO/S3-compatible), bukan URL — presigned URL digenerate on-demand',
     file_size_bytes         BIGINT UNSIGNED NULL,
     checksum_sha256          CHAR(64)        NULL,
     release_notes            TEXT            NULL,

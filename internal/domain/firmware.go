@@ -6,19 +6,30 @@ import (
 )
 
 type FirmwareFile struct {
-	ID              uint64  `db:"id" json:"id"`
-	FirmwareUUID    string  `db:"firmware_uuid" json:"firmware_uuid"`
-	VendorID        uint64  `db:"vendor_id" json:"vendor_id"`
-	DeviceModelID   *uint64 `db:"device_model_id" json:"device_model_id"`
-	Version         string  `db:"version" json:"version"`
-	FileName        string  `db:"file_name" json:"file_name"`
-	FilePath        string  `db:"file_path" json:"file_path"`
-	FileSizeBytes   *uint64 `db:"file_size_bytes" json:"file_size_bytes"`
-	ChecksumSHA256  *string `db:"checksum_sha256" json:"checksum_sha256"`
-	ReleaseNotes    *string `db:"release_notes" json:"release_notes"`
-	IsActive        bool    `db:"is_active" json:"is_active"`
+	ID            uint64  `db:"id" json:"id"`
+	FirmwareUUID  string  `db:"firmware_uuid" json:"firmware_uuid"`
+	VendorID      uint64  `db:"vendor_id" json:"vendor_id"`
+	DeviceModelID *uint64 `db:"device_model_id" json:"device_model_id"`
+	Version       string  `db:"version" json:"version"`
+	FileName      string  `db:"file_name" json:"file_name"`
+	// StorageKey adalah object key di object storage (MinIO/S3-compatible),
+	// BUKAN URL — presigned URL digenerate on-demand tiap dibutuhkan lewat
+	// ObjectStorage.PresignedGetURL (jangan simpan URL presigned, cepat
+	// kedaluwarsa). Kolom DB: storage_key (di-rename dari file_path lama
+	// yang dulunya string bebas dari client, lihat migrations/0007).
+	StorageKey     string  `db:"storage_key" json:"storage_key"`
+	FileSizeBytes  *uint64 `db:"file_size_bytes" json:"file_size_bytes"`
+	ChecksumSHA256 *string `db:"checksum_sha256" json:"checksum_sha256"`
+	ReleaseNotes   *string `db:"release_notes" json:"release_notes"`
+	IsActive       bool    `db:"is_active" json:"is_active"`
 	Audit
 }
+
+// MaxFirmwareFileSizeBytes adalah batas ukuran file firmware yang diterima
+// endpoint upload (256MB — generous margin, firmware CPE residential/ONT
+// biasanya beberapa puluh MB). Dipakai handler (guard sebelum baca body ke
+// memory) dan usecase (defense-in-depth).
+const MaxFirmwareFileSizeBytes int64 = 256 << 20
 
 type FirmwareFileRepository interface {
 	Create(ctx context.Context, f *FirmwareFile) error

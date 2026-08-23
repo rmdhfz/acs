@@ -21,9 +21,9 @@ func (r *firmwareFileRepository) Create(ctx context.Context, f *domain.FirmwareF
 	now := time.Now()
 	f.CreatedAt, f.UpdatedAt = now, now
 	const q = `INSERT INTO firmware_files
-		(firmware_uuid, vendor_id, device_model_id, version, file_name, file_path, file_size_bytes,
+		(firmware_uuid, vendor_id, device_model_id, version, file_name, storage_key, file_size_bytes,
 		 checksum_sha256, release_notes, is_active, created_at, updated_at, created_by)
-		VALUES (:firmware_uuid, :vendor_id, :device_model_id, :version, :file_name, :file_path, :file_size_bytes,
+		VALUES (:firmware_uuid, :vendor_id, :device_model_id, :version, :file_name, :storage_key, :file_size_bytes,
 		 :checksum_sha256, :release_notes, :is_active, :created_at, :updated_at, :created_by)`
 	res, err := r.db.NamedExecContext(ctx, q, f)
 	if err != nil {

@@ -235,7 +235,9 @@ export interface FirmwareFile {
   device_model_id: number | null
   version: string
   file_name: string
-  file_path: string
+  // storage_key: object key di object storage (MinIO), bukan URL — presigned
+  // URL digenerate on-demand oleh backend saat penjadwalan upgrade.
+  storage_key: string
   file_size_bytes: number | null
   checksum_sha256: string | null
   release_notes: string | null

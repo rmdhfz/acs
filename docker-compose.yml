@@ -28,9 +28,39 @@ services:
       ACS_DB_DSN: acs:${ACS_DB_PASSWORD}@tcp(mariadb:3306)/acs?parseTime=true&loc=Local&charset=utf8mb4
       ACS_JWT_SECRET: ${ACS_JWT_SECRET}
       ACS_CREDENTIAL_ENC_KEY: ${ACS_CREDENTIAL_ENC_KEY}
+      # cmd/migrate tidak memakai MinIO sama sekali, tapi config.Load() yang
+      # dipakai bersama acsd mewajibkan var ini diisi (konsisten dengan
+      # ACS_JWT_SECRET/ACS_CREDENTIAL_ENC_KEY di atas yang juga tidak dipakai
+      # migrate tapi tetap wajib lewat validasi Load()).
+      ACS_MINIO_ENDPOINT: "minio:9000"
+      ACS_MINIO_ACCESS_KEY: ${ACS_MINIO_ACCESS_KEY}
+      ACS_MINIO_SECRET_KEY: ${ACS_MINIO_SECRET_KEY}
     depends_on:
       mariadb:
         condition: service_healthy
+
+  # Object storage firmware, S3-compatible (ROADMAP.md Fase 2 — keputusan
+  # user: MinIO untuk dev). Presigned URL yang digenerate acsd dikirim
+  # LANGSUNG ke CPE sebagai URL Download RPC CWMP (TECH.md §7) — di
+  # deployment nyata (bukan compose dev ini), endpoint MinIO harus reachable
+  # dari jaringan CPE fisik, bukan cuma dari ACS/dashboard.
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${ACS_MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${ACS_MINIO_SECRET_KEY}
+    volumes:
+      - acs-minio-data:/data
+    ports:
+      - "19000:9000"
+      - "19001:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   acsd:
     build: .
@@ -41,12 +71,19 @@ services:
       ACS_CWMP_ADDR: ":7547"
       ACS_JWT_SECRET: ${ACS_JWT_SECRET}
       ACS_CREDENTIAL_ENC_KEY: ${ACS_CREDENTIAL_ENC_KEY}
+      ACS_MINIO_ENDPOINT: "minio:9000"
+      ACS_MINIO_ACCESS_KEY: ${ACS_MINIO_ACCESS_KEY}
+      ACS_MINIO_SECRET_KEY: ${ACS_MINIO_SECRET_KEY}
+      ACS_MINIO_BUCKET: ${ACS_MINIO_BUCKET:-acs-firmware}
+      ACS_MINIO_USE_SSL: "false"
     ports:
       - "18080:8080"
       - "17547:7547"
     depends_on:
       migrate:
         condition: service_completed_successfully
+      minio:
+        condition: service_healthy
 
   # Observability (ROADMAP.md Fase 2, TECH.md §10) — scrape GET /api/v1/metrics
   # milik acsd tiap 15s (deploy/prometheus.yml) + alert rules dasar
@@ -67,3 +104,4 @@ services:
 volumes:
   acs-mariadb-data:
   acs-prometheus-data:
+  acs-minio-data:

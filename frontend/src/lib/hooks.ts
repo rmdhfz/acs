@@ -408,21 +408,29 @@ export function useFirmwareList(vendorId: number | undefined) {
   })
 }
 
+// UploadFirmwareInput: file firmware sungguhan (bukan lagi path string bebas)
+// — backend menghitung checksum SHA-256 sendiri dari isi file yang diterima,
+// bukan dipercaya dari client (FR-19).
 export interface UploadFirmwareInput {
   vendor_id: number
   device_model_id?: number
   version: string
-  file_name: string
-  file_path: string
-  file_size_bytes?: number
-  checksum_sha256?: string
   release_notes?: string
+  file: File
 }
 
 export function useUploadFirmware() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (input: UploadFirmwareInput) => api.post<FirmwareFile>('/firmware', input),
+    mutationFn: (input: UploadFirmwareInput) => {
+      const form = new FormData()
+      form.set('vendor_id', String(input.vendor_id))
+      if (input.device_model_id !== undefined) form.set('device_model_id', String(input.device_model_id))
+      form.set('version', input.version)
+      if (input.release_notes) form.set('release_notes', input.release_notes)
+      form.set('file', input.file)
+      return api.postForm<FirmwareFile>('/firmware', form)
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['firmware'] }),
   })
 }

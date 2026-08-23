@@ -1,18 +1,32 @@
-// Package firmware menangani upload metadata firmware dan penjadwalan
-// upgrade (TECH.md §7, FR-19/FR-20/FR-21). Upload file fisik (object storage
-// vs filesystem, lihat TECH.md §12) belum diputuskan — usecase ini hanya
-// mencatat metadata (path/checksum) yang sudah tersedia dari layer HTTP.
+// Package firmware menangani upload firmware sungguhan ke object storage
+// (MinIO/S3-compatible, ROADMAP.md Fase 2) dan penjadwalan upgrade (TECH.md
+// §7, FR-19/FR-20/FR-21). Handler HTTP hanya mem-parsing multipart request
+// dan meneruskan io.Reader mentah ke usecase ini — keputusan penamaan object
+// key, perhitungan checksum, dan orkestrasi upload/cleanup adalah business
+// logic yang sengaja ditaruh di sini (bukan di delivery/http, CLAUDE.md).
 package firmware
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
 	"acs/internal/domain"
 )
+
+// presignedDownloadExpiry — masa berlaku URL presigned MinIO yang dikirim
+// sebagai URL Download RPC CWMP. 1 jam cukup untuk CPE mulai mengunduh
+// (TR-069 Download RPC device biasanya mulai unduh segera setelah task
+// diterima) — keputusan produk yang sudah disepakati, lihat
+// domain.ObjectStorage.
+const presignedDownloadExpiry = 1 * time.Hour
 
 type Service struct {
 	files    domain.FirmwareFileRepository
@@ -21,6 +35,7 @@ type Service struct {
 	tasks    domain.TaskCreator
 	refs     domain.RefRepository
 	activity domain.ActivityLogRepository
+	storage  domain.ObjectStorage
 }
 
 func NewService(
@@ -30,8 +45,9 @@ func NewService(
 	tasks domain.TaskCreator,
 	refs domain.RefRepository,
 	activity domain.ActivityLogRepository,
+	storage domain.ObjectStorage,
 ) *Service {
-	return &Service{files: files, jobs: jobs, devices: devices, tasks: tasks, refs: refs, activity: activity}
+	return &Service{files: files, jobs: jobs, devices: devices, tasks: tasks, refs: refs, activity: activity, storage: storage}
 }
 
 // requireDeviceTenantScope — RBAC scope tenant (CLAUDE.md), dipakai tiap kali
@@ -46,41 +62,120 @@ func requireDeviceTenantScope(actor domain.Actor, deviceTenantID *uint64) error 
 	return nil
 }
 
+// UploadFirmwareInput membawa isi file firmware sungguhan (io.Reader mentah
+// dari multipart request, sudah dibuka handler) — bukan lagi path/checksum
+// string bebas dari client. FileSize HARUS akurat (dipakai MinIO PutObject);
+// handler mengisinya dari *multipart.FileHeader.Size yang dihitung Go dari
+// byte yang benar-benar diterima, bukan klaim client.
 type UploadFirmwareInput struct {
-	VendorID       uint64
-	DeviceModelID  *uint64
-	Version        string
-	FileName       string
-	FilePath       string
-	FileSizeBytes  *uint64
-	ChecksumSHA256 *string
-	ReleaseNotes   *string
+	VendorID      uint64
+	DeviceModelID *uint64
+	Version       string
+	FileName      string
+	File          io.Reader
+	FileSize      int64
+	ContentType   string
+	ReleaseNotes  *string
 }
 
+// UploadFirmware meng-upload isi file ke object storage lalu mencatat
+// metadatanya. Checksum SHA-256 SELALU dihitung di server dari isi file yang
+// benar-benar diterima (streaming lewat io.TeeReader saat upload) — nilai
+// checksum dari client (kalau ada) tidak pernah dipercaya (FR-19).
 func (s *Service) UploadFirmware(ctx context.Context, actor domain.Actor, in UploadFirmwareInput) (*domain.FirmwareFile, error) {
-	if in.ChecksumSHA256 == nil || *in.ChecksumSHA256 == "" {
-		return nil, fmt.Errorf("firmware: checksum_sha256 wajib diisi untuk validasi integritas (FR-19)")
+	if in.File == nil {
+		return nil, fmt.Errorf("%w: file firmware wajib diisi", domain.ErrInvalidInput)
 	}
+	if in.VendorID == 0 {
+		return nil, fmt.Errorf("%w: vendor_id wajib diisi", domain.ErrInvalidInput)
+	}
+	if strings.TrimSpace(in.Version) == "" {
+		return nil, fmt.Errorf("%w: version wajib diisi", domain.ErrInvalidInput)
+	}
+	if in.FileSize <= 0 || in.FileSize > domain.MaxFirmwareFileSizeBytes {
+		return nil, fmt.Errorf("%w: ukuran file firmware tidak valid atau melebihi batas maksimum (%d byte)", domain.ErrInvalidInput, domain.MaxFirmwareFileSizeBytes)
+	}
+
+	objectKey := buildFirmwareObjectKey(in.VendorID, in.FileName)
+	contentType := in.ContentType
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	hasher := sha256.New()
+	tee := io.TeeReader(in.File, hasher)
+	if err := s.storage.Upload(ctx, objectKey, tee, in.FileSize, contentType); err != nil {
+		return nil, fmt.Errorf("firmware: upload ke object storage gagal: %w", err)
+	}
+	checksum := hex.EncodeToString(hasher.Sum(nil))
+	size := uint64(in.FileSize)
+
 	f := &domain.FirmwareFile{
 		FirmwareUUID:   uuid.NewString(),
 		VendorID:       in.VendorID,
 		DeviceModelID:  in.DeviceModelID,
 		Version:        in.Version,
 		FileName:       in.FileName,
-		FilePath:       in.FilePath,
-		FileSizeBytes:  in.FileSizeBytes,
-		ChecksumSHA256: in.ChecksumSHA256,
+		StorageKey:     objectKey,
+		FileSizeBytes:  &size,
+		ChecksumSHA256: &checksum,
 		ReleaseNotes:   in.ReleaseNotes,
 		IsActive:       true,
 		Audit:          domain.Audit{CreatedBy: actor.UserIDPtr()},
 	}
 	if err := s.files.Create(ctx, f); err != nil {
+		// Cleanup: file sudah ter-upload tapi metadata gagal disimpan — jangan
+		// tinggalkan objek yatim di bucket.
+		_ = s.storage.Delete(ctx, objectKey)
 		return nil, err
 	}
 	_ = s.activity.Record(ctx, &domain.ActivityLog{
 		UserID: actor.UserIDPtr(), TenantID: actor.TenantID, Action: "UPLOAD_FIRMWARE", EntityType: "firmware_file", EntityID: &f.ID,
 	})
 	return f, nil
+}
+
+// buildFirmwareObjectKey menghasilkan object key yang tidak gampang ditebak
+// dan tidak bisa collision/overwrite tak sengaja (UUID + nama asli sebagai
+// bagian akhir, bukan satu-satunya bagian). filepath.Base + penyaringan
+// karakter mencegah path traversal lewat nama file yang dikontrol client
+// (mis. "../../etc/passwd" atau "..\\..\\secret").
+func buildFirmwareObjectKey(vendorID uint64, fileName string) string {
+	base := filepath.Base(fileName)
+	if base == "" || base == "." || base == ".." || base == string(filepath.Separator) {
+		base = "firmware.bin"
+	}
+	base = sanitizeObjectKeyPart(base)
+	if base == "" {
+		base = "firmware.bin"
+	}
+	// Batasi panjang bagian nama file -- ini dikontrol penuh oleh client lewat
+	// header Content-Disposition, tanpa batas nama file yang sangat panjang
+	// bisa membuat object key melebihi lebar kolom firmware_files.storage_key
+	// (VARCHAR(500)) atau limit key S3 (~1024 byte). Endpoint ini superadmin-
+	// only jadi bukan vektor eksploitasi eksternal, tapi dibatasi utk
+	// robustness (temuan acs-security-reviewer, review fitur MinIO).
+	const maxFileNamePartLen = 100
+	if len(base) > maxFileNamePartLen {
+		base = base[:maxFileNamePartLen]
+	}
+	return fmt.Sprintf("firmware/%d/%s_%s", vendorID, uuid.NewString(), base)
+}
+
+// sanitizeObjectKeyPart membatasi nama file ke karakter aman untuk object
+// key S3-compatible (alfanumerik, titik, strip, underscore) — karakter lain
+// (termasuk "/", "\\", null byte) diganti underscore.
+func sanitizeObjectKeyPart(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '.', r == '-', r == '_':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('_')
+		}
+	}
+	return strings.Trim(b.String(), "._")
 }
 
 func (s *Service) Get(ctx context.Context, id uint64) (*domain.FirmwareFile, error) {
@@ -106,7 +201,13 @@ func (s *Service) ScheduleUpgrade(ctx context.Context, actor domain.Actor, devic
 		return nil, err
 	}
 
-	downloadURL := fmt.Sprintf("/firmware/download/%s", fw.FirmwareUUID)
+	// Presigned URL MinIO LANGSUNG (bukan proxy lewat ACS) — keputusan
+	// produk yang sudah disepakati, lihat domain.ObjectStorage. Digenerate
+	// on-demand di sini (bukan disimpan) karena masa berlakunya pendek.
+	downloadURL, err := s.storage.PresignedGetURL(ctx, fw.StorageKey, presignedDownloadExpiry)
+	if err != nil {
+		return nil, fmt.Errorf("firmware: gagal membuat presigned URL: %w", err)
+	}
 	t, err := s.tasks.CreateTask(ctx, actor, domain.CreateTaskInput{
 		DeviceID: deviceID,
 		TaskType: domain.TaskTypeDownload,

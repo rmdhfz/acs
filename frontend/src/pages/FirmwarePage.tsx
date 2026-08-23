@@ -55,7 +55,7 @@ export function FirmwarePage() {
         ) : isLoading ? (
           <PageSpinner />
         ) : files.length === 0 ? (
-          <EmptyState icon={HardDrive} title="Belum ada firmware terdaftar" description="Metadata firmware (bukan file fisik) yang sudah ada di object storage/filesystem dicatat di sini." />
+          <EmptyState icon={HardDrive} title="Belum ada firmware terdaftar" description="File firmware yang diupload di sini disimpan di object storage (MinIO)." />
         ) : (
           <table className="w-full text-left text-sm">
             <thead>
@@ -95,9 +95,7 @@ function UploadFirmwareModal({ defaultVendorId, onClose }: { defaultVendorId: st
   const [vendorId, setVendorId] = useState(defaultVendorId)
   const [deviceModelId, setDeviceModelId] = useState('')
   const [version, setVersion] = useState('')
-  const [fileName, setFileName] = useState('')
-  const [filePath, setFilePath] = useState('')
-  const [checksum, setChecksum] = useState('')
+  const [file, setFile] = useState<File | null>(null)
   const [releaseNotes, setReleaseNotes] = useState('')
   const [error, setError] = useState<string | null>(null)
   const { data: models } = useDeviceModels(vendorId ? Number(vendorId) : undefined)
@@ -106,20 +104,22 @@ function UploadFirmwareModal({ defaultVendorId, onClose }: { defaultVendorId: st
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
+    if (!file) {
+      setError('Pilih file firmware terlebih dahulu')
+      return
+    }
     const input: UploadFirmwareInput = {
       vendor_id: Number(vendorId),
       device_model_id: deviceModelId ? Number(deviceModelId) : undefined,
       version,
-      file_name: fileName,
-      file_path: filePath,
-      checksum_sha256: checksum || undefined,
       release_notes: releaseNotes || undefined,
+      file,
     }
     try {
       await uploadMutation.mutateAsync(input)
       onClose()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Gagal mendaftarkan firmware')
+      setError(err instanceof ApiError ? err.message : 'Gagal mengupload firmware')
     }
   }
 
@@ -127,7 +127,7 @@ function UploadFirmwareModal({ defaultVendorId, onClose }: { defaultVendorId: st
     <Modal title="Daftarkan Firmware" onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-3">
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          File firmware harus sudah tersedia di object storage/filesystem — form ini hanya mencatat metadatanya (TECH.md §12).
+          File akan diupload langsung ke object storage (MinIO); checksum SHA-256 dihitung otomatis di server.
         </p>
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -166,16 +166,13 @@ function UploadFirmwareModal({ defaultVendorId, onClose }: { defaultVendorId: st
           <input required value={version} onChange={(e) => setVersion(e.target.value)} className={inputCls} />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama File</label>
-          <input required value={fileName} onChange={(e) => setFileName(e.target.value)} className={inputCls} />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Path File (object storage / filesystem)</label>
-          <input required value={filePath} onChange={(e) => setFilePath(e.target.value)} className={`${inputCls} font-mono text-xs`} />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Checksum SHA-256 (opsional)</label>
-          <input value={checksum} onChange={(e) => setChecksum(e.target.value)} className={`${inputCls} font-mono text-xs`} />
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">File Firmware</label>
+          <input
+            required
+            type="file"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            className={`${inputCls} file:mr-3 file:rounded-md file:border-0 file:bg-slate-900 file:px-3 file:py-1.5 file:text-xs file:text-white dark:file:bg-slate-100 dark:file:text-slate-900`}
+          />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Release Notes (opsional)</label>

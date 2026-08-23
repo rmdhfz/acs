@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -21,6 +22,14 @@ type Config struct {
 	// API dari browser (mis. http://localhost:5173 saat dev). Default dev
 	// mengizinkan localhost Vite; production wajib override eksplisit.
 	CORSAllowOrigins []string
+	// MinIO/S3-compatible object storage untuk firmware (ROADMAP.md Fase 2).
+	// Endpoint & kredensial WAJIB dari env, tidak ada default hardcoded —
+	// hanya nama bucket yang boleh punya default konstanta.
+	MinIOEndpoint  string
+	MinIOAccessKey string
+	MinIOSecretKey string
+	MinIOBucket    string
+	MinIOUseSSL    bool
 }
 
 func Load() (*Config, error) {
@@ -69,6 +78,26 @@ func Load() (*Config, error) {
 			cfg.CORSAllowOrigins = append(cfg.CORSAllowOrigins, o)
 		}
 	}
+
+	cfg.MinIOEndpoint = os.Getenv("ACS_MINIO_ENDPOINT")
+	if cfg.MinIOEndpoint == "" {
+		return nil, fmt.Errorf("config: ACS_MINIO_ENDPOINT wajib diisi")
+	}
+	cfg.MinIOAccessKey = os.Getenv("ACS_MINIO_ACCESS_KEY")
+	if cfg.MinIOAccessKey == "" {
+		return nil, fmt.Errorf("config: ACS_MINIO_ACCESS_KEY wajib diisi")
+	}
+	cfg.MinIOSecretKey = os.Getenv("ACS_MINIO_SECRET_KEY")
+	if cfg.MinIOSecretKey == "" {
+		return nil, fmt.Errorf("config: ACS_MINIO_SECRET_KEY wajib diisi")
+	}
+	cfg.MinIOBucket = getEnv("ACS_MINIO_BUCKET", "acs-firmware")
+
+	useSSL, err := strconv.ParseBool(getEnv("ACS_MINIO_USE_SSL", "false"))
+	if err != nil {
+		return nil, fmt.Errorf("config: ACS_MINIO_USE_SSL tidak valid: %w", err)
+	}
+	cfg.MinIOUseSSL = useSSL
 
 	return cfg, nil
 }

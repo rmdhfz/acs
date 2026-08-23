@@ -221,6 +221,41 @@ func (s *Service) requireTaskTenantScope(ctx context.Context, actor domain.Actor
 	return nil
 }
 
+// redactSensitiveParams menutupi field kredensial/URL sensitif di level atas
+// JSON task.Parameters (dipakai task tipe Download/Upload: "url" presigned
+// MinIO bertindak sbg bearer token -- siapa pun yang pegang bisa download
+// tanpa auth lain sampai kedaluwarsa -- plus opsional "username"/"password"
+// milik CPE) sebelum dikembalikan ke role yang tidak seharusnya melihatnya.
+// GET /tasks/GET /tasks/:id SENGAJA tidak digating role (NOC/VIEWER boleh
+// lihat status task utk monitoring operasional), tapi isi kredensial/URL
+// cuma boleh terlihat role yg memang bisa menjadwalkan task jenis ini sendiri
+// (ADMIN/SUPERADMIN, lihat RequireRoles(admin...) di POST /devices/:id/
+// firmware-upgrade) -- NOC/VIEWER cukup tahu statusnya, bukan isi
+// kredensialnya (temuan acs-security-reviewer, review fitur MinIO object
+// storage: presigned URL bocor ke role rendah lewat endpoint task generik).
+func redactSensitiveParams(params *[]byte, actor domain.Actor) {
+	if actor.IsSuperadmin() || actor.HasRole(domain.RoleAdmin) {
+		return
+	}
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(*params, &m); err != nil {
+		return
+	}
+	redacted := false
+	for _, key := range []string{"url", "username", "password"} {
+		if _, ok := m[key]; ok {
+			m[key] = json.RawMessage(`"[redacted]"`)
+			redacted = true
+		}
+	}
+	if !redacted {
+		return
+	}
+	if out, err := json.Marshal(m); err == nil {
+		*params = out
+	}
+}
+
 func (s *Service) Get(ctx context.Context, actor domain.Actor, id uint64) (*domain.Task, error) {
 	t, err := s.tasks.GetByID(ctx, id)
 	if err != nil {
@@ -229,6 +264,7 @@ func (s *Service) Get(ctx context.Context, actor domain.Actor, id uint64) (*doma
 	if err := s.requireTaskTenantScope(ctx, actor, t); err != nil {
 		return nil, err
 	}
+	redactSensitiveParams(&t.Parameters, actor)
 	return t, nil
 }
 
@@ -240,7 +276,14 @@ func (s *Service) List(ctx context.Context, actor domain.Actor, f domain.TaskFil
 		}
 		f.TenantID = tid
 	}
-	return s.tasks.List(ctx, f, p)
+	tasks, total, err := s.tasks.List(ctx, f, p)
+	if err != nil {
+		return nil, 0, err
+	}
+	for i := range tasks {
+		redactSensitiveParams(&tasks[i].Parameters, actor)
+	}
+	return tasks, total, nil
 }
 
 // Stats — agregat untuk dashboard analitik (ROADMAP.md Fase 1), tenant-scoped
