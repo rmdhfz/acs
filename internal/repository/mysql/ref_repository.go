@@ -33,7 +33,11 @@ func NewRefRepository(db *sqlx.DB) domain.RefRepository {
 
 func (r *refRepository) validate(table string) error {
 	if !refTableWhitelist[table] {
-		return fmt.Errorf("mysql: tabel ref tidak dikenal: %s", table)
+		// domain.ErrInvalidInput -- BUKAN error generik: tanpa wrap ini,
+		// handleErr (delivery/http/middleware.go) jatuh ke default case dan
+		// balas 500 utk permintaan tabel tak dikenal, padahal ini murni
+		// kesalahan input klien (400) -- ditemukan saat audit OpenAPI spec.
+		return fmt.Errorf("%w: tabel ref tidak dikenal: %s", domain.ErrInvalidInput, table)
 	}
 	return nil
 }

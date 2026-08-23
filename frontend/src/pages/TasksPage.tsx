@@ -6,7 +6,7 @@ import { Modal } from '../components/Modal'
 import { useAuth } from '../lib/auth'
 import { ApiError } from '../lib/api'
 import { findRefById, useCancelTask, useCreateTask, useRefs, useTasks, type TaskFilters } from '../lib/hooks'
-import { decodeBytesField, formatDateTime, formatRelativeTime } from '../lib/format'
+import { formatJSONField, formatDateTime, formatRelativeTime } from '../lib/format'
 
 const PAGE_SIZE = 25
 const inputCls =
@@ -187,11 +187,11 @@ export function TasksPage() {
                                 <dd className="text-red-600">{t.error_message ?? '-'}</dd>
                               </div>
                             </dl>
-                            {decodeBytesField(t.parameters) && (
+                            {formatJSONField(t.parameters) && (
                               <div className="mt-3">
                                 <p className="text-xs text-slate-400 dark:text-slate-500">Parameters</p>
                                 <pre className="mt-1 max-h-40 overflow-auto rounded-lg bg-slate-900 p-3 text-xs text-slate-200">
-                                  {decodeBytesField(t.parameters)}
+                                  {formatJSONField(t.parameters)}
                                 </pre>
                               </div>
                             )}

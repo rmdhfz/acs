@@ -27,7 +27,7 @@ import {
   useTriggerDiagnostic,
   useVendors,
 } from '../lib/hooks'
-import { decodeBytesField, formatDateTime, formatRelativeTime } from '../lib/format'
+import { formatJSONField, formatDateTime, formatRelativeTime } from '../lib/format'
 
 type Tab = 'overview' | 'parameters' | 'optical' | 'events' | 'tasks' | 'diagnostics' | 'firmware' | 'timeline'
 
@@ -501,7 +501,7 @@ function DiagnosticsTab({ deviceId, canTrigger }: { deviceId: number; canTrigger
         <Card>
           <ul className="divide-y divide-slate-100 dark:divide-slate-800">
             {diagnostics.map((d) => {
-              const result = decodeBytesField(d.result)
+              const result = formatJSONField(d.result)
               return (
                 <li key={d.id} className="px-5 py-3">
                   <div className="flex items-center justify-between gap-4 text-sm">

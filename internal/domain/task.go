@@ -1,4 +1,4 @@
-﻿package domain
+package domain
 
 import (
 	"context"
@@ -7,21 +7,31 @@ import (
 
 // Task adalah satu item antrean RPC CWMP untuk sebuah device (lihat TECH.md §4).
 type Task struct {
-	ID            uint64     `db:"id" json:"id"`
-	TaskUUID      string     `db:"task_uuid" json:"task_uuid"`
-	DeviceID      uint64     `db:"device_id" json:"device_id"`
-	TaskTypeID    uint64     `db:"task_type_id" json:"task_type_id"`
-	TaskStatusID  uint64     `db:"task_status_id" json:"task_status_id"`
-	Priority      uint8      `db:"priority" json:"priority"` // 1 = tertinggi, 9 = terendah (lihat schema.sql)
-	Parameters    []byte     `db:"parameters" json:"parameters"`
-	Response      []byte     `db:"response" json:"response"`
-	ErrorMessage  *string    `db:"error_message" json:"error_message"`
-	RetryCount    uint32     `db:"retry_count" json:"retry_count"`
-	MaxRetries    uint32     `db:"max_retries" json:"max_retries"`
-	ScheduledAt   *time.Time `db:"scheduled_at" json:"scheduled_at"`
-	ExpiresAt     *time.Time `db:"expires_at" json:"expires_at"`
-	SentAt        *time.Time `db:"sent_at" json:"sent_at"`
-	CompletedAt   *time.Time `db:"completed_at" json:"completed_at"`
+	ID           uint64 `db:"id" json:"id"`
+	TaskUUID     string `db:"task_uuid" json:"task_uuid"`
+	DeviceID     uint64 `db:"device_id" json:"device_id"`
+	TaskTypeID   uint64 `db:"task_type_id" json:"task_type_id"`
+	TaskStatusID uint64 `db:"task_status_id" json:"task_status_id"`
+	Priority     uint8  `db:"priority" json:"priority"` // 1 = tertinggi, 9 = terendah (lihat schema.sql)
+	// Parameters/Response bertipe domain.JSONRawMessage, BUKAN []byte -- keduanya
+	// SELALU berisi JSON (lihat komentar OutboundRPC di usecase/session dan
+	// cwmp/handler.go json.Marshal ke RawResponse). encoding/json men-
+	// treat []byte biasa sbg data BINER dan base64-encode saat serialisasi,
+	// sehingga POST /tasks menerima `parameters` sbg objek JSON biasa tapi
+	// GET /tasks mengembalikannya sbg string base64 -- asimetri request/
+	// response yang membingungkan klien (ditemukan saat audit OpenAPI spec).
+	// Dipakai JSONRawMessage (bukan json.RawMessage polos) krn kolomnya JSON
+	// NULL di schema.sql -- json.RawMessage stdlib tidak punya sql.Scanner
+	// sehingga gagal scan NULL (lihat komentar lengkap di domain/common.go).
+	Parameters   JSONRawMessage `db:"parameters" json:"parameters"`
+	Response     JSONRawMessage `db:"response" json:"response"`
+	ErrorMessage *string        `db:"error_message" json:"error_message"`
+	RetryCount   uint32         `db:"retry_count" json:"retry_count"`
+	MaxRetries   uint32         `db:"max_retries" json:"max_retries"`
+	ScheduledAt  *time.Time     `db:"scheduled_at" json:"scheduled_at"`
+	ExpiresAt    *time.Time     `db:"expires_at" json:"expires_at"`
+	SentAt       *time.Time     `db:"sent_at" json:"sent_at"`
+	CompletedAt  *time.Time     `db:"completed_at" json:"completed_at"`
 	Audit
 }
 
@@ -93,7 +103,7 @@ type TaskRepository interface {
 	List(ctx context.Context, f TaskFilter, p Pagination) ([]Task, int, error)
 	UpdateStatus(ctx context.Context, id, statusID uint64, updatedBy *uint64) error
 	MarkSent(ctx context.Context, id uint64, sentAt time.Time) error
-	MarkCompleted(ctx context.Context, id uint64, response []byte, completedAt time.Time) error
+	MarkCompleted(ctx context.Context, id uint64, response JSONRawMessage, completedAt time.Time) error
 	MarkFailed(ctx context.Context, id uint64, statusID uint64, errMsg string) error
 	SetErrorMessage(ctx context.Context, id uint64, errMsg string) error
 	IncrementRetry(ctx context.Context, id uint64) error

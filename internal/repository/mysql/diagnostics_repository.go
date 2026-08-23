@@ -59,7 +59,7 @@ func (r *deviceDiagnosticRepository) ListByDevice(ctx context.Context, deviceID 
 	return rows, total, nil
 }
 
-func (r *deviceDiagnosticRepository) UpdateResult(ctx context.Context, id uint64, status string, result []byte, executedAt time.Time) error {
+func (r *deviceDiagnosticRepository) UpdateResult(ctx context.Context, id uint64, status string, result domain.JSONRawMessage, executedAt time.Time) error {
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE device_diagnostics SET status = ?, result = ?, executed_at = ? WHERE id = ?`,
 		status, result, executedAt, id)

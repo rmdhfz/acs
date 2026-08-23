@@ -122,7 +122,7 @@ func (s *Service) CreateTask(ctx context.Context, actor domain.Actor, in domain.
 		TaskTypeID:   taskType.ID,
 		TaskStatusID: pendingStatus.ID,
 		Priority:     priority,
-		Parameters:   paramsJSON,
+		Parameters:   domain.JSONRawMessage(paramsJSON),
 		MaxRetries:   maxRetries,
 		ScheduledAt:  in.ScheduledAt,
 		ExpiresAt:    in.ExpiresAt,
@@ -233,7 +233,7 @@ func (s *Service) requireTaskTenantScope(ctx context.Context, actor domain.Actor
 // firmware-upgrade) -- NOC/VIEWER cukup tahu statusnya, bukan isi
 // kredensialnya (temuan acs-security-reviewer, review fitur MinIO object
 // storage: presigned URL bocor ke role rendah lewat endpoint task generik).
-func redactSensitiveParams(params *[]byte, actor domain.Actor) {
+func redactSensitiveParams(params *domain.JSONRawMessage, actor domain.Actor) {
 	if actor.IsSuperadmin() || actor.HasRole(domain.RoleAdmin) {
 		return
 	}
@@ -355,7 +355,7 @@ func (s *Service) MarkSent(ctx context.Context, taskID uint64) error {
 	return s.tasks.MarkSent(ctx, taskID, time.Now())
 }
 
-func (s *Service) Complete(ctx context.Context, taskID uint64, response []byte) error {
+func (s *Service) Complete(ctx context.Context, taskID uint64, response domain.JSONRawMessage) error {
 	return s.tasks.MarkCompleted(ctx, taskID, response, time.Now())
 }
 

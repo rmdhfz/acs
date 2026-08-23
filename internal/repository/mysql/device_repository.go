@@ -197,6 +197,18 @@ func (r *deviceParameterRepository) Upsert(ctx context.Context, p *domain.Device
 	return translateErr(err)
 }
 
+// deviceParameterUpsertChunk — batas jumlah baris per statement INSERT
+// multi-row (dipilih konservatif jauh di bawah batas placeholder MySQL
+// 65535, sekaligus menghindari statement SQL raksasa untuk device dgn ribuan
+// parameter dari GetParameterValues penuh, mis. full tree dump TR-098/TR-181).
+const deviceParameterUpsertChunk = 500
+
+// UpsertBatch — dipanggil usecase/session pada SETIAP respons GetParameterValues/
+// SetParameterValues sepanjang sesi CWMP (jalur panas, TECH.md §3), sehingga
+// SENGAJA memakai satu statement INSERT multi-row per chunk (bukan
+// NamedExecContext per baris dalam loop seperti sebelumnya) -- device dengan
+// ratusan parameter sebelumnya berarti ratusan round-trip DB terpisah per
+// sesi (ditemukan saat audit performa, ROADMAP.md).
 func (r *deviceParameterRepository) UpsertBatch(ctx context.Context, ps []domain.DeviceParameter) error {
 	if len(ps) == 0 {
 		return nil
@@ -205,17 +217,32 @@ func (r *deviceParameterRepository) UpsertBatch(ctx context.Context, ps []domain
 	if err != nil {
 		return translateErr(err)
 	}
-	const q = `INSERT INTO device_parameters (device_id, parameter_name, parameter_value, parameter_type_id, writable)
-		VALUES (:device_id, :parameter_name, :parameter_value, :parameter_type_id, :writable)
-		ON DUPLICATE KEY UPDATE parameter_value = VALUES(parameter_value),
-			parameter_type_id = VALUES(parameter_type_id), writable = VALUES(writable)`
-	for i := range ps {
-		if _, err := tx.NamedExecContext(ctx, q, &ps[i]); err != nil {
+	for start := 0; start < len(ps); start += deviceParameterUpsertChunk {
+		end := start + deviceParameterUpsertChunk
+		if end > len(ps) {
+			end = len(ps)
+		}
+		if err := upsertDeviceParameterChunk(ctx, tx, ps[start:end]); err != nil {
 			_ = tx.Rollback()
 			return translateErr(err)
 		}
 	}
 	return tx.Commit()
+}
+
+func upsertDeviceParameterChunk(ctx context.Context, tx *sqlx.Tx, chunk []domain.DeviceParameter) error {
+	placeholders := make([]string, len(chunk))
+	args := make([]interface{}, 0, len(chunk)*5)
+	for i, p := range chunk {
+		placeholders[i] = "(?, ?, ?, ?, ?)"
+		args = append(args, p.DeviceID, p.ParameterName, p.ParameterValue, p.ParameterTypeID, p.Writable)
+	}
+	q := `INSERT INTO device_parameters (device_id, parameter_name, parameter_value, parameter_type_id, writable)
+		VALUES ` + strings.Join(placeholders, ",") + `
+		ON DUPLICATE KEY UPDATE parameter_value = VALUES(parameter_value),
+			parameter_type_id = VALUES(parameter_type_id), writable = VALUES(writable)`
+	_, err := tx.ExecContext(ctx, q, args...)
+	return translateErr(err)
 }
 
 func (r *deviceParameterRepository) ListByDevice(ctx context.Context, deviceID uint64, prefix string) ([]domain.DeviceParameter, error) {

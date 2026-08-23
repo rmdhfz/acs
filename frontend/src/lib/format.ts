@@ -18,20 +18,19 @@ export function formatRelativeTime(iso: string | null): string {
   return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-// decodeBytesField membaca field Go []byte (di-encode base64 oleh
-// encoding/json) seperti Task.parameters/response atau DeviceDiagnostic.result,
-// lalu coba pretty-print sebagai JSON. Kembalikan null bila field kosong.
-export function decodeBytesField(value: string | null): string | null {
-  if (!value) return null
+// formatJSONField pretty-print field JSON mentah dari backend seperti
+// Task.parameters/response atau DeviceDiagnostic.result (domain.Task/
+// DeviceDiagnostic Go: json.RawMessage, bukan lagi []byte biasa -- browser
+// sudah otomatis mem-parsingnya jadi objek JS lewat fetch/response.json(),
+// TIDAK ada lagi base64 yang perlu di-decode manual di sini seperti
+// sebelumnya). Kembalikan null bila field kosong/null.
+export function formatJSONField(value: unknown): string | null {
+  if (value === null || value === undefined) return null
+  if (typeof value === 'string') return value
   try {
-    const decoded = atob(value)
-    try {
-      return JSON.stringify(JSON.parse(decoded), null, 2)
-    } catch {
-      return decoded
-    }
+    return JSON.stringify(value, null, 2)
   } catch {
-    return value
+    return String(value)
   }
 }
 

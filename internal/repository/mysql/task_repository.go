@@ -245,7 +245,7 @@ func (r *taskRepository) MarkSent(ctx context.Context, id uint64, sentAt time.Ti
 	return translateErr(err)
 }
 
-func (r *taskRepository) MarkCompleted(ctx context.Context, id uint64, response []byte, completedAt time.Time) error {
+func (r *taskRepository) MarkCompleted(ctx context.Context, id uint64, response domain.JSONRawMessage, completedAt time.Time) error {
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE tasks t JOIN ref_task_status s ON s.code = ? SET t.task_status_id = s.id, t.response = ?, t.completed_at = ? WHERE t.id = ?`,
 		domain.TaskStatusCompleted, response, completedAt, id)

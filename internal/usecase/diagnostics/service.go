@@ -70,7 +70,7 @@ func (s *Service) Trigger(ctx context.Context, actor domain.Actor, deviceID uint
 
 // HandleResult di-panggil usecase/session saat task GetParameterValues yang
 // mengambil hasil diagnostic (berkorelasi via TaskID) selesai atau gagal.
-func (s *Service) HandleResult(ctx context.Context, taskID uint64, result []byte, success bool) error {
+func (s *Service) HandleResult(ctx context.Context, taskID uint64, result domain.JSONRawMessage, success bool) error {
 	d, err := s.diagnostics.GetByTaskID(ctx, taskID)
 	if err != nil {
 		return err

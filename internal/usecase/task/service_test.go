@@ -57,9 +57,11 @@ func (f *fakeTaskRepo) UpdateStatus(_ context.Context, _ uint64, statusID uint64
 	f.statusHistory = append(f.statusHistory, statusID)
 	return nil
 }
-func (f *fakeTaskRepo) MarkSent(context.Context, uint64, time.Time) error              { return nil }
-func (f *fakeTaskRepo) MarkCompleted(context.Context, uint64, []byte, time.Time) error { return nil }
-func (f *fakeTaskRepo) MarkFailed(context.Context, uint64, uint64, string) error       { return nil }
+func (f *fakeTaskRepo) MarkSent(context.Context, uint64, time.Time) error { return nil }
+func (f *fakeTaskRepo) MarkCompleted(context.Context, uint64, domain.JSONRawMessage, time.Time) error {
+	return nil
+}
+func (f *fakeTaskRepo) MarkFailed(context.Context, uint64, uint64, string) error { return nil }
 func (f *fakeTaskRepo) SetErrorMessage(_ context.Context, _ uint64, msg string) error {
 	f.lastErrorMessage = msg
 	return nil

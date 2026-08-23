@@ -49,7 +49,10 @@ export interface Device {
   hardware_version: string | null
   ip_address: string | null
   connection_request_url: string | null
-  connection_request_username: string | null
+  // connection_request_username sengaja TIDAK ada di sini -- backend
+  // menyembunyikannya dari response (json:"-", domain/device.go) krn
+  // dikelompokkan CLAUDE.md sbg kredensial yg tidak boleh diekspos plaintext,
+  // konsisten dgn connection_request_password yg sudah lebih dulu tersembunyi.
   inform_username: string | null
   last_inform_at: string | null
   last_boot_event_at: string | null
@@ -97,8 +100,8 @@ export interface Task {
   task_type_id: number
   task_status_id: number
   priority: number
-  parameters: string | null
-  response: string | null
+  parameters: unknown | null
+  response: unknown | null
   error_message: string | null
   retry_count: number
   max_retries: number
@@ -280,7 +283,7 @@ export interface DeviceDiagnostic {
   task_id: number | null
   diagnostic_type: string
   status: string
-  result: string | null
+  result: unknown | null
   executed_at: string | null
   created_at: string
 }

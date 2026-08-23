@@ -194,14 +194,47 @@ func (r *userRepository) List(ctx context.Context, tenantID *uint64, p domain.Pa
 	if err != nil {
 		return nil, 0, translateErr(err)
 	}
-	for i := range rows {
-		roles, err := r.RolesByUserID(ctx, rows[i].ID)
-		if err != nil {
-			return nil, 0, err
-		}
-		rows[i].Roles = roles
+	if err := r.attachRoles(ctx, rows); err != nil {
+		return nil, 0, err
 	}
 	return rows, total, nil
+}
+
+// attachRoles mengisi field Roles utk sekumpulan user sekaligus lewat SATU
+// query IN(...), menggantikan RolesByUserID dipanggil per baris (N+1 --
+// audit performa: List() dgn page_size besar sebelumnya memicu 1+N query
+// roundtrip terpisah alih-alih satu JOIN).
+func (r *userRepository) attachRoles(ctx context.Context, rows []domain.User) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	ids := make([]uint64, len(rows))
+	for i, u := range rows {
+		ids[i] = u.ID
+	}
+	query, args, err := sqlx.In(
+		`SELECT ur.user_id, rr.code FROM user_roles ur
+		 JOIN ref_roles rr ON rr.id = ur.role_id AND rr.is_deleted = 0
+		 WHERE ur.user_id IN (?)`, ids)
+	if err != nil {
+		return translateErr(err)
+	}
+	query = r.db.Rebind(query)
+	var pairs []struct {
+		UserID uint64 `db:"user_id"`
+		Code   string `db:"code"`
+	}
+	if err := r.db.SelectContext(ctx, &pairs, query, args...); err != nil {
+		return translateErr(err)
+	}
+	byUser := make(map[uint64][]string, len(rows))
+	for _, p := range pairs {
+		byUser[p.UserID] = append(byUser[p.UserID], p.Code)
+	}
+	for i := range rows {
+		rows[i].Roles = byUser[rows[i].ID]
+	}
+	return nil
 }
 
 func (r *userRepository) Update(ctx context.Context, u *domain.User) error {

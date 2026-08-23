@@ -1,24 +1,27 @@
-﻿// Package domain berisi entities dan interface kontrak (repository & usecase)
+// Package domain berisi entities dan interface kontrak (repository & usecase)
 // sesuai Clean Architecture yang dipakai proyek ini — lihat TECH.md §2.
 package domain
 
 import (
 	"context"
+	"database/sql/driver"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 )
 
 var (
-	ErrNotFound         = errors.New("domain: data tidak ditemukan")
-	ErrConflict          = errors.New("domain: data sudah ada / konflik unique")
-	ErrInvalidInput      = errors.New("domain: input tidak valid")
-	ErrUnauthorized      = errors.New("domain: tidak terautentikasi")
-	ErrForbidden         = errors.New("domain: tidak punya akses")
-	ErrNoMatchingRule    = errors.New("domain: tidak ada aturan zero-touch yang cocok")
+	ErrNotFound       = errors.New("domain: data tidak ditemukan")
+	ErrConflict       = errors.New("domain: data sudah ada / konflik unique")
+	ErrInvalidInput   = errors.New("domain: input tidak valid")
+	ErrUnauthorized   = errors.New("domain: tidak terautentikasi")
+	ErrForbidden      = errors.New("domain: tidak punya akses")
+	ErrNoMatchingRule = errors.New("domain: tidak ada aturan zero-touch yang cocok")
 	// ErrQuotaExceeded — kuota tenant sudah tercapai (mis. max_pending_tasks,
 	// ROADMAP.md Fase 2). Di-map ke HTTP 429 Too Many Requests (delivery/http/middleware.go),
 	// beda dari ErrForbidden (403, soal wewenang) karena ini soal batas resource, bukan izin.
-	ErrQuotaExceeded     = errors.New("domain: kuota tenant sudah tercapai")
+	ErrQuotaExceeded = errors.New("domain: kuota tenant sudah tercapai")
 )
 
 // Audit adalah 7 kolom audit standar (lihat CLAUDE.md - Konvensi Skema Database #2).
@@ -84,6 +87,55 @@ func (p Pagination) Offset() int {
 	return (p.Page - 1) * p.Limit()
 }
 
+// JSONRawMessage sama seperti encoding/json.RawMessage (JSON mentah, di-emit
+// verbatim tanpa base64 -- lihat komentar Task.Parameters/Response di
+// domain/task.go) TAPI juga mengimplementasikan sql.Scanner/driver.Valuer.
+// json.RawMessage bawaan stdlib tidak mengimplementasikan sql.Scanner,
+// sehingga sqlx.GetContext/SelectContext gagal dgn "unsupported Scan, storing
+// driver.Value type <nil>" saat kolom JSON nullable (tasks.parameters/response,
+// device_diagnostics.result) bernilai NULL -- ditemukan saat validasi live
+// docker-compose end-to-end sesudah migrasi field-field tsb dari []byte ke
+// json.RawMessage biasa.
+type JSONRawMessage json.RawMessage
+
+func (m JSONRawMessage) MarshalJSON() ([]byte, error) {
+	if len(m) == 0 {
+		return []byte("null"), nil
+	}
+	return []byte(m), nil
+}
+
+func (m *JSONRawMessage) UnmarshalJSON(data []byte) error {
+	if m == nil {
+		return errors.New("domain.JSONRawMessage: UnmarshalJSON on nil pointer")
+	}
+	*m = append((*m)[0:0], data...)
+	return nil
+}
+
+func (m *JSONRawMessage) Scan(src interface{}) error {
+	if src == nil {
+		*m = nil
+		return nil
+	}
+	switch v := src.(type) {
+	case []byte:
+		*m = append(JSONRawMessage(nil), v...)
+	case string:
+		*m = JSONRawMessage(v)
+	default:
+		return fmt.Errorf("domain.JSONRawMessage: tipe Scan tidak didukung %T", src)
+	}
+	return nil
+}
+
+func (m JSONRawMessage) Value() (driver.Value, error) {
+	if len(m) == 0 {
+		return nil, nil
+	}
+	return []byte(m), nil
+}
+
 // RefLookup adalah baris generik dari salah satu tabel ref_* (lihat schema.sql §1).
 type RefLookup struct {
 	ID   uint64 `json:"id"`
@@ -133,11 +185,11 @@ const (
 const MinUserPasswordLen = 8
 
 const (
-	DeviceStatusOnline        = "ONLINE"
-	DeviceStatusOffline       = "OFFLINE"
-	DeviceStatusProvisioning  = "PROVISIONING"
-	DeviceStatusFaulty        = "FAULTY"
-	DeviceStatusUnregistered  = "UNREGISTERED"
+	DeviceStatusOnline         = "ONLINE"
+	DeviceStatusOffline        = "OFFLINE"
+	DeviceStatusProvisioning   = "PROVISIONING"
+	DeviceStatusFaulty         = "FAULTY"
+	DeviceStatusUnregistered   = "UNREGISTERED"
 	DeviceStatusDecommissioned = "DECOMMISSIONED"
 )
 
@@ -152,18 +204,18 @@ const (
 )
 
 const (
-	TaskTypeGetParameterValues      = "GET_PARAMETER_VALUES"
-	TaskTypeSetParameterValues      = "SET_PARAMETER_VALUES"
-	TaskTypeGetParameterNames       = "GET_PARAMETER_NAMES"
-	TaskTypeAddObject               = "ADD_OBJECT"
-	TaskTypeDeleteObject            = "DELETE_OBJECT"
-	TaskTypeReboot                  = "REBOOT"
-	TaskTypeFactoryReset            = "FACTORY_RESET"
-	TaskTypeDownload                = "DOWNLOAD"
-	TaskTypeUpload                  = "UPLOAD"
-	TaskTypeScheduleInform          = "SCHEDULE_INFORM"
-	TaskTypeSetParameterAttributes  = "SET_PARAMETER_ATTRIBUTES"
-	TaskTypeGetParameterAttributes  = "GET_PARAMETER_ATTRIBUTES"
+	TaskTypeGetParameterValues     = "GET_PARAMETER_VALUES"
+	TaskTypeSetParameterValues     = "SET_PARAMETER_VALUES"
+	TaskTypeGetParameterNames      = "GET_PARAMETER_NAMES"
+	TaskTypeAddObject              = "ADD_OBJECT"
+	TaskTypeDeleteObject           = "DELETE_OBJECT"
+	TaskTypeReboot                 = "REBOOT"
+	TaskTypeFactoryReset           = "FACTORY_RESET"
+	TaskTypeDownload               = "DOWNLOAD"
+	TaskTypeUpload                 = "UPLOAD"
+	TaskTypeScheduleInform         = "SCHEDULE_INFORM"
+	TaskTypeSetParameterAttributes = "SET_PARAMETER_ATTRIBUTES"
+	TaskTypeGetParameterAttributes = "GET_PARAMETER_ATTRIBUTES"
 )
 
 // Event code standar CWMP (Broadband Forum) — lihat CLAUDE.md, jangan diubah penulisannya.

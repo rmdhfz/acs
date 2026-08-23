@@ -322,7 +322,7 @@ func (s *Service) NextRequest(ctx context.Context, token string) (*OutboundRPC, 
 		return nil, true, err
 	}
 
-	return &OutboundRPC{TaskID: t.ID, TaskUUID: t.TaskUUID, TaskType: typeRef.Code, Parameters: t.Parameters}, false, nil
+	return &OutboundRPC{TaskID: t.ID, TaskUUID: t.TaskUUID, TaskType: typeRef.Code, Parameters: []byte(t.Parameters)}, false, nil
 }
 
 // ---- Respons RPC dari CPE (TECH.md §3/§4) ----
@@ -372,7 +372,7 @@ func (s *Service) HandleRPCResponse(ctx context.Context, resp RPCResponse) error
 		}
 		return err
 	}
-	if err := s.taskSvc.Complete(ctx, t.ID, resp.RawResponse); err != nil {
+	if err := s.taskSvc.Complete(ctx, t.ID, domain.JSONRawMessage(resp.RawResponse)); err != nil {
 		return err
 	}
 
@@ -386,7 +386,7 @@ func (s *Service) HandleRPCResponse(ctx context.Context, resp RPCResponse) error
 
 		// Coba korelasikan ke DeviceDiagnostic (bila task ini memang task
 		// pengambilan hasil diagnostic) — abaikan bila tidak ada korelasi.
-		if err := s.diagnosticsSvc.HandleResult(ctx, t.ID, resp.RawResponse, true); err != nil && !errors.Is(err, domain.ErrNotFound) {
+		if err := s.diagnosticsSvc.HandleResult(ctx, t.ID, domain.JSONRawMessage(resp.RawResponse), true); err != nil && !errors.Is(err, domain.ErrNotFound) {
 			_ = err
 		}
 	}
@@ -429,7 +429,7 @@ func (s *Service) handleTransferComplete(ctx context.Context, deviceID uint64, t
 
 	if tc.Success {
 		payload, _ := json.Marshal(map[string]string{"start_time": tc.StartTime, "complete_time": tc.CompleteTime})
-		if err := s.taskSvc.Complete(ctx, t.ID, payload); err != nil {
+		if err := s.taskSvc.Complete(ctx, t.ID, domain.JSONRawMessage(payload)); err != nil {
 			return err
 		}
 	} else if err := s.taskSvc.Fail(ctx, t, tc.ErrorMessage); err != nil {

@@ -1,4 +1,4 @@
-﻿package domain
+package domain
 
 import (
 	"context"
@@ -8,28 +8,36 @@ import (
 // Device adalah inventory CPE. Kredensial connection request & inform auth
 // disimpan terenkripsi (*_enc) — lihat pkg/cryptoutil dan CLAUDE.md.
 type Device struct {
-	ID                           uint64     `db:"id" json:"id"`
-	DeviceUUID                   string     `db:"device_uuid" json:"device_uuid"`
-	TenantID                     *uint64    `db:"tenant_id" json:"tenant_id"`
-	VendorID                     *uint64    `db:"vendor_id" json:"vendor_id"`
-	DeviceModelID                *uint64    `db:"device_model_id" json:"device_model_id"`
-	DeviceStatusID               uint64     `db:"device_status_id" json:"device_status_id"`
-	ProvisioningProfileID        *uint64    `db:"provisioning_profile_id" json:"provisioning_profile_id"`
-	OUI                          *string    `db:"oui" json:"oui"`
-	SerialNumber                 string     `db:"serial_number" json:"serial_number"`
-	ProductClass                 *string    `db:"product_class" json:"product_class"`
-	MACAddress                   *string    `db:"mac_address" json:"mac_address"`
-	SoftwareVersion              *string    `db:"software_version" json:"software_version"`
-	HardwareVersion              *string    `db:"hardware_version" json:"hardware_version"`
-	IPAddress                    *string    `db:"ip_address" json:"ip_address"`
-	ConnectionRequestURL         *string    `db:"connection_request_url" json:"connection_request_url"`
-	ConnectionRequestUsername    *string    `db:"connection_request_username" json:"connection_request_username"`
+	ID                    uint64  `db:"id" json:"id"`
+	DeviceUUID            string  `db:"device_uuid" json:"device_uuid"`
+	TenantID              *uint64 `db:"tenant_id" json:"tenant_id"`
+	VendorID              *uint64 `db:"vendor_id" json:"vendor_id"`
+	DeviceModelID         *uint64 `db:"device_model_id" json:"device_model_id"`
+	DeviceStatusID        uint64  `db:"device_status_id" json:"device_status_id"`
+	ProvisioningProfileID *uint64 `db:"provisioning_profile_id" json:"provisioning_profile_id"`
+	OUI                   *string `db:"oui" json:"oui"`
+	SerialNumber          string  `db:"serial_number" json:"serial_number"`
+	ProductClass          *string `db:"product_class" json:"product_class"`
+	MACAddress            *string `db:"mac_address" json:"mac_address"`
+	SoftwareVersion       *string `db:"software_version" json:"software_version"`
+	HardwareVersion       *string `db:"hardware_version" json:"hardware_version"`
+	IPAddress             *string `db:"ip_address" json:"ip_address"`
+	ConnectionRequestURL  *string `db:"connection_request_url" json:"connection_request_url"`
+	// ConnectionRequestUsername -- json:"-" (BUKAN diekspos apa adanya):
+	// CLAUDE.md mengelompokkan connection_request_username/password sbg
+	// sepasang kredensial yang sama-sama tidak boleh dikembalikan plaintext
+	// lewat API manapun, tapi versi sebelumnya cuma menyembunyikan
+	// password-nya (ConnectionRequestPasswordEnc di bawah) -- username-nya
+	// tetap bocor ke SEMUA role termasuk VIEWER (temuan audit OpenAPI spec).
+	// Tidak dipakai di frontend manapun saat ini (dicek langsung, bukan
+	// asumsi), jadi menyembunyikannya tidak menghilangkan fungsi UI apa pun.
+	ConnectionRequestUsername    *string    `db:"connection_request_username" json:"-"`
 	ConnectionRequestPasswordEnc []byte     `db:"connection_request_password_enc" json:"-"`
-	InformUsername                *string    `db:"inform_username" json:"inform_username"`
-	InformPasswordEnc              []byte     `db:"inform_password_enc" json:"-"`
-	LastInformAt                    *time.Time `db:"last_inform_at" json:"last_inform_at"`
-	LastBootEventAt                  *time.Time `db:"last_boot_event_at" json:"last_boot_event_at"`
-	Notes                              *string    `db:"notes" json:"notes"`
+	InformUsername               *string    `db:"inform_username" json:"inform_username"`
+	InformPasswordEnc            []byte     `db:"inform_password_enc" json:"-"`
+	LastInformAt                 *time.Time `db:"last_inform_at" json:"last_inform_at"`
+	LastBootEventAt              *time.Time `db:"last_boot_event_at" json:"last_boot_event_at"`
+	Notes                        *string    `db:"notes" json:"notes"`
 	Audit
 }
 
@@ -92,15 +100,15 @@ type DeviceParameterRepository interface {
 // DeviceSession — sesi CWMP aktif/historis. Memungkinkan app server stateless
 // (lihat TECH.md §3/§9): instance manapun bisa melanjutkan sesi via session_token.
 type DeviceSession struct {
-	ID          uint64     `db:"id" json:"id"`
-	DeviceID    uint64     `db:"device_id" json:"device_id"`
+	ID           uint64     `db:"id" json:"id"`
+	DeviceID     uint64     `db:"device_id" json:"device_id"`
 	SessionToken string     `db:"session_token" json:"session_token"`
 	CWMPID       *string    `db:"cwmp_id" json:"cwmp_id"`
-	Status        string     `db:"status" json:"status"` // OPEN, CLOSED, ERROR
-	RemoteIP       *string    `db:"remote_ip" json:"remote_ip"`
-	StartedAt       time.Time  `db:"started_at" json:"started_at"`
-	EndedAt          *time.Time `db:"ended_at" json:"ended_at"`
-	CreatedAt         time.Time  `db:"created_at" json:"created_at"`
+	Status       string     `db:"status" json:"status"` // OPEN, CLOSED, ERROR
+	RemoteIP     *string    `db:"remote_ip" json:"remote_ip"`
+	StartedAt    time.Time  `db:"started_at" json:"started_at"`
+	EndedAt      *time.Time `db:"ended_at" json:"ended_at"`
+	CreatedAt    time.Time  `db:"created_at" json:"created_at"`
 }
 
 const (
