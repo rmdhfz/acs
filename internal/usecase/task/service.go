@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 
 	"acs/internal/domain"
+	"acs/internal/usecase/auth"
 )
 
 type Service struct {
@@ -180,7 +181,11 @@ func (s *Service) Get(ctx context.Context, actor domain.Actor, id uint64) (*doma
 
 func (s *Service) List(ctx context.Context, actor domain.Actor, f domain.TaskFilter, p domain.Pagination) ([]domain.Task, int, error) {
 	if !actor.IsSuperadmin() {
-		f.TenantID = actor.TenantID
+		tid, err := auth.ScopedTenantFilter(actor)
+		if err != nil {
+			return nil, 0, err
+		}
+		f.TenantID = tid
 	}
 	return s.tasks.List(ctx, f, p)
 }
@@ -188,9 +193,9 @@ func (s *Service) List(ctx context.Context, actor domain.Actor, f domain.TaskFil
 // Stats — agregat untuk dashboard analitik (ROADMAP.md Fase 1), tenant-scoped
 // sama seperti List/Get di atas.
 func (s *Service) Stats(ctx context.Context, actor domain.Actor) ([]domain.TaskStatusCount, error) {
-	var tenantID *uint64
-	if !actor.IsSuperadmin() {
-		tenantID = actor.TenantID
+	tenantID, err := auth.ScopedTenantFilter(actor)
+	if err != nil {
+		return nil, err
 	}
 	return s.tasks.CountByStatus(ctx, tenantID)
 }

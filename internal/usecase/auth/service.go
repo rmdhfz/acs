@@ -180,3 +180,21 @@ func RequireTenantScope(actor domain.Actor, resourceTenantID *uint64) error {
 	}
 	return nil
 }
+
+// ScopedTenantFilter mengembalikan filter tenant_id yang aman dipakai di
+// query List/Stats: nil (tanpa filter WHERE tenant_id, lintas tenant) HANYA
+// valid untuk superadmin. Actor non-superadmin TANPA tenant_id (akun salah
+// konfigurasi — mis. dibuat tanpa tenant_id lewat cabang superadmin di
+// CreateUser) mengembalikan ErrForbidden, BUKAN nil: nil di titik pemanggilan
+// berarti "tanpa filter" di level SQL, yang kalau actor-nya bukan superadmin
+// berarti bocor data SELURUH tenant (celah ditemukan acs-security-reviewer
+// lewat audit menyeluruh, ROADMAP.md Fase 0).
+func ScopedTenantFilter(actor domain.Actor) (*uint64, error) {
+	if actor.IsSuperadmin() {
+		return nil, nil
+	}
+	if actor.TenantID == nil {
+		return nil, domain.ErrForbidden
+	}
+	return actor.TenantID, nil
+}

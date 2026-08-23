@@ -38,6 +38,9 @@ func (r *Router) createVendor(c *echo.Context) error {
 	if err := r.Vendors.Create(c.Request().Context(), v); err != nil {
 		return handleErr(c, err)
 	}
+	_ = r.Activity.Record(c.Request().Context(), &domain.ActivityLog{
+		UserID: actor.UserIDPtr(), Action: "CREATE_VENDOR", EntityType: "vendor", EntityID: &v.ID,
+	})
 	return c.JSON(http.StatusCreated, v)
 }
 
@@ -65,6 +68,9 @@ func (r *Router) addVendorOUI(c *echo.Context) error {
 	if err := r.VendorOUIs.Create(c.Request().Context(), o); err != nil {
 		return handleErr(c, err)
 	}
+	_ = r.Activity.Record(c.Request().Context(), &domain.ActivityLog{
+		UserID: actor.UserIDPtr(), Action: "ADD_VENDOR_OUI", EntityType: "vendor", EntityID: &vendorID,
+	})
 	return c.JSON(http.StatusCreated, o)
 }
 
@@ -118,6 +124,9 @@ func (r *Router) createDeviceModel(c *echo.Context) error {
 	if err := r.DeviceModels.Create(c.Request().Context(), m); err != nil {
 		return handleErr(c, err)
 	}
+	_ = r.Activity.Record(c.Request().Context(), &domain.ActivityLog{
+		UserID: actor.UserIDPtr(), Action: "CREATE_DEVICE_MODEL", EntityType: "device_model", EntityID: &m.ID,
+	})
 	return c.JSON(http.StatusCreated, m)
 }
 
@@ -151,5 +160,8 @@ func (r *Router) upsertParameterMapping(c *echo.Context) error {
 	if err := r.ParamMappings.Upsert(c.Request().Context(), m); err != nil {
 		return handleErr(c, err)
 	}
+	_ = r.Activity.Record(c.Request().Context(), &domain.ActivityLog{
+		UserID: actor.UserIDPtr(), Action: "UPSERT_VENDOR_PARAMETER_MAPPING", EntityType: "vendor_parameter_mapping", EntityID: &m.ID,
+	})
 	return c.JSON(http.StatusOK, m)
 }

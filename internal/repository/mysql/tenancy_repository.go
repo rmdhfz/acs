@@ -193,6 +193,27 @@ func (r *userRepository) Update(ctx context.Context, u *domain.User) error {
 	return translateErr(err)
 }
 
+func (r *userRepository) UpdatePassword(ctx context.Context, id uint64, passwordHash string, updatedBy *uint64) error {
+	// Existence dicek terpisah (bukan lewat RowsAffected) — pola sama seperti
+	// tenantRepository.UpdateBranding: driver mysql tidak menghitung baris yang
+	// nilainya tidak berubah, dan di sini kita juga sengaja tidak pernah
+	// membandingkan hash lama/baru (hash bcrypt selalu berbeda per pemanggilan
+	// meski password sama, jadi RowsAffected>0 bukan masalah nyata di sini,
+	// tapi existence-check tetap dipertahankan agar konsisten & agar caller
+	// dapat ErrNotFound yang jelas alih-alih sukses semu pada id yang tidak ada).
+	var exists bool
+	if err := r.db.GetContext(ctx, &exists, `SELECT EXISTS(SELECT 1 FROM users WHERE id = ? AND is_deleted = 0)`, id); err != nil {
+		return translateErr(err)
+	}
+	if !exists {
+		return domain.ErrNotFound
+	}
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE users SET password_hash = ?, updated_by = ? WHERE id = ? AND is_deleted = 0`,
+		passwordHash, updatedBy, id)
+	return translateErr(err)
+}
+
 func (r *userRepository) SoftDelete(ctx context.Context, id, deletedBy uint64) error {
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE users SET is_deleted = 1, deleted_at = ?, deleted_by = ? WHERE id = ?`,

@@ -58,6 +58,10 @@ type UserRepository interface {
 	GetByUsername(ctx context.Context, username string) (*User, error)
 	List(ctx context.Context, tenantID *uint64, p Pagination) ([]User, int, error)
 	Update(ctx context.Context, u *User) error
+	// UpdatePassword mengganti password_hash user (admin-reset atau ganti
+	// password sendiri) — terpisah dari Update karena Update tidak menyentuh
+	// kolom password_hash (lihat repository/mysql/tenancy_repository.go).
+	UpdatePassword(ctx context.Context, id uint64, passwordHash string, updatedBy *uint64) error
 	SoftDelete(ctx context.Context, id, deletedBy uint64) error
 	TouchLastLogin(ctx context.Context, id uint64, at time.Time) error
 	RolesByUserID(ctx context.Context, userID uint64) ([]string, error)

@@ -156,3 +156,95 @@ func (r *Router) listUsers(c *echo.Context) error {
 	}
 	return c.JSON(http.StatusOK, listResponse{Data: users, Total: total})
 }
+
+// updateUserRequest — partial update, field nil = tidak diubah (pola sama
+// dgn updateTenantBrandingRequest tapi semantik nil-nya beda: di sini nil
+// memang berarti "biarkan", bukan "kosongkan").
+type updateUserRequest struct {
+	FullName *string `json:"full_name"`
+	Email    *string `json:"email"`
+	IsActive *bool   `json:"is_active"`
+}
+
+// updateUser — RBAC & self-lockout guard ada di usecase/iam (bukan di sini,
+// CLAUDE.md: handler hanya parsing/validasi & memanggil usecase).
+func (r *Router) updateUser(c *echo.Context) error {
+	actor := ActorFrom(c)
+	id, err := parseUint64Param(c, "id")
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "id tidak valid")
+	}
+	var req updateUserRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "payload tidak valid")
+	}
+	u, err := r.IAM.UpdateUser(c.Request().Context(), actor, id, iam.UpdateUserInput{
+		FullName: req.FullName, Email: req.Email, IsActive: req.IsActive,
+	})
+	if err != nil {
+		return handleErr(c, err)
+	}
+	return c.JSON(http.StatusOK, u)
+}
+
+type resetUserPasswordRequest struct {
+	NewPassword string `json:"new_password"`
+}
+
+// resetUserPassword — admin-reset password user lain. Response tidak pernah
+// mengandung password (plaintext ataupun hash) — 204 saja (CLAUDE.md §8).
+func (r *Router) resetUserPassword(c *echo.Context) error {
+	actor := ActorFrom(c)
+	id, err := parseUint64Param(c, "id")
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "id tidak valid")
+	}
+	var req resetUserPasswordRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "payload tidak valid")
+	}
+	if req.NewPassword == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "new_password wajib diisi")
+	}
+	if err := r.IAM.ResetUserPassword(c.Request().Context(), actor, id, req.NewPassword); err != nil {
+		return handleErr(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
+type replaceUserRolesRequest struct {
+	RoleCodes []string `json:"role_codes"`
+}
+
+// replaceUserRoles — full-replace assignment role user (role yang tidak
+// disebut di role_codes akan dicabut). Guard privilege-escalation & self-
+// lockout ada di usecase/iam.
+func (r *Router) replaceUserRoles(c *echo.Context) error {
+	actor := ActorFrom(c)
+	id, err := parseUint64Param(c, "id")
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "id tidak valid")
+	}
+	var req replaceUserRolesRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "payload tidak valid")
+	}
+	u, err := r.IAM.ReplaceUserRoles(c.Request().Context(), actor, id, req.RoleCodes)
+	if err != nil {
+		return handleErr(c, err)
+	}
+	return c.JSON(http.StatusOK, u)
+}
+
+// deleteUser — soft delete (is_deleted=1). Self-lockout guard ada di usecase/iam.
+func (r *Router) deleteUser(c *echo.Context) error {
+	actor := ActorFrom(c)
+	id, err := parseUint64Param(c, "id")
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "id tidak valid")
+	}
+	if err := r.IAM.DeleteUser(c.Request().Context(), actor, id); err != nil {
+		return handleErr(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}

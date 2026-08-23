@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"acs/internal/domain"
+	"acs/internal/usecase/auth"
 	"acs/pkg/cryptoutil"
 )
 
@@ -42,22 +43,12 @@ func NewService(
 	}
 }
 
-func requireTenantScope(actor domain.Actor, resourceTenantID *uint64) error {
-	if actor.IsSuperadmin() {
-		return nil
-	}
-	if resourceTenantID == nil || actor.TenantID == nil || *actor.TenantID != *resourceTenantID {
-		return domain.ErrForbidden
-	}
-	return nil
-}
-
 func (s *Service) Get(ctx context.Context, actor domain.Actor, id uint64) (*domain.Device, error) {
 	d, err := s.devices.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	if err := requireTenantScope(actor, d.TenantID); err != nil {
+	if err := auth.RequireTenantScope(actor, d.TenantID); err != nil {
 		return nil, err
 	}
 	return d, nil
@@ -65,7 +56,11 @@ func (s *Service) Get(ctx context.Context, actor domain.Actor, id uint64) (*doma
 
 func (s *Service) List(ctx context.Context, actor domain.Actor, f domain.DeviceFilter, p domain.Pagination) ([]domain.Device, int, error) {
 	if !actor.IsSuperadmin() {
-		f.TenantID = actor.TenantID
+		tid, err := auth.ScopedTenantFilter(actor)
+		if err != nil {
+			return nil, 0, err
+		}
+		f.TenantID = tid
 	}
 	return s.devices.List(ctx, f, p)
 }
@@ -77,9 +72,9 @@ type DeviceStats struct {
 }
 
 func (s *Service) Stats(ctx context.Context, actor domain.Actor) (*DeviceStats, error) {
-	var tenantID *uint64
-	if !actor.IsSuperadmin() {
-		tenantID = actor.TenantID
+	tenantID, err := auth.ScopedTenantFilter(actor)
+	if err != nil {
+		return nil, err
 	}
 	byStatus, err := s.devices.CountByStatus(ctx, tenantID)
 	if err != nil {

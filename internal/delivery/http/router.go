@@ -29,6 +29,11 @@ type Router struct {
 	DeviceModels  domain.DeviceModelRepository
 	ParamMappings domain.VendorParameterMappingRepository
 	Refs          domain.RefRepository
+	// Activity — dipakai langsung dari handler catalog (bukan lewat usecase)
+	// khusus utk mutasi data vendor/model/mapping global, supaya ada jejak
+	// audit siapa mengubah data referensi lintas-tenant ini (temuan
+	// acs-security-reviewer, ROADMAP.md Fase 0 audit menyeluruh).
+	Activity domain.ActivityLogRepository
 }
 
 func (r *Router) Register(e *echo.Echo) {
@@ -54,6 +59,13 @@ func (r *Router) Register(e *echo.Echo) {
 	authed.PATCH("/tenants/:id/branding", r.updateTenantBranding, RequireRoles(admin...))
 	authed.POST("/users", r.createUser, RequireRoles(admin...))
 	authed.GET("/users", r.listUsers, RequireRoles(admin...))
+	// Self-service tenant admin (ROADMAP.md Fase 2): superadmin bisa ke user
+	// manapun, ADMIN dibatasi ke user satu tenant + guard self-lockout —
+	// keduanya dicek di usecase/iam, role gate di sini cuma menyaring NOC/VIEWER.
+	authed.PATCH("/users/:id", r.updateUser, RequireRoles(admin...))
+	authed.PATCH("/users/:id/password", r.resetUserPassword, RequireRoles(admin...))
+	authed.PATCH("/users/:id/roles", r.replaceUserRoles, RequireRoles(admin...))
+	authed.DELETE("/users/:id", r.deleteUser, RequireRoles(admin...))
 
 	authed.GET("/devices", r.listDevices)
 	authed.GET("/devices/stats", r.deviceStats)

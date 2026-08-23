@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"acs/internal/domain"
+	"acs/internal/usecase/auth"
 )
 
 type Service struct {
@@ -36,25 +37,15 @@ func NewService(
 	}
 }
 
-func requireTenantScope(actor domain.Actor, resourceTenantID *uint64) error {
-	if actor.IsSuperadmin() {
-		return nil
-	}
-	if resourceTenantID == nil || actor.TenantID == nil || *actor.TenantID != *resourceTenantID {
-		return domain.ErrForbidden
-	}
-	return nil
-}
-
 // requireProfileReadScope mengizinkan baca/terapkan profile milik tenant
 // sendiri ATAU profile global (tenant_id NULL, dibuat superadmin sbg default
 // lintas tenant — FR-17, konsisten dgn provisioningProfileRepository.List()
 // yang juga menampilkan tenant_id NULL ke semua tenant). Beda dari
-// requireTenantScope di atas (dipakai utk MUTASI profile — Create/Update/
-// Delete) yang sengaja menolak tenant_id nil utk non-superadmin: profile
-// global cuma boleh DIEDIT/DIHAPUS superadmin (supaya tidak ada satu tenant
-// diam-diam mengubah default bersama), tapi boleh DIBACA/DITERAPKAN semua
-// tenant.
+// auth.RequireTenantScope di bawah (dipakai utk MUTASI profile — Create/
+// Update/Delete) yang sengaja menolak tenant_id nil utk non-superadmin:
+// profile global cuma boleh DIEDIT/DIHAPUS superadmin (supaya tidak ada satu
+// tenant diam-diam mengubah default bersama), tapi boleh DIBACA/DITERAPKAN
+// semua tenant.
 func requireProfileReadScope(actor domain.Actor, resourceTenantID *uint64) error {
 	if actor.IsSuperadmin() || resourceTenantID == nil {
 		return nil
@@ -78,7 +69,7 @@ type CreateProfileInput struct {
 }
 
 func (s *Service) CreateProfile(ctx context.Context, actor domain.Actor, in CreateProfileInput) (*domain.ProvisioningProfile, error) {
-	if err := requireTenantScope(actor, in.TenantID); err != nil {
+	if err := auth.RequireTenantScope(actor, in.TenantID); err != nil {
 		return nil, err
 	}
 	p := &domain.ProvisioningProfile{
@@ -122,7 +113,20 @@ func (s *Service) Get(ctx context.Context, actor domain.Actor, id uint64) (*doma
 	return p, params, nil
 }
 
-func (s *Service) List(ctx context.Context, tenantID *uint64, p domain.Pagination) ([]domain.ProvisioningProfile, int, error) {
+// List — queryTenantID datang dari query param `tenant_id`, cuma dipakai
+// kalau actor superadmin (filter opsional lintas tenant). Actor non-superadmin
+// SELALU dipaksa ke tenant-nya sendiri, mengabaikan queryTenantID — mencegah
+// spoofing lewat query param, dan menolak (bukan diam-diam pass-through nil)
+// kalau actor.TenantID kosong (lihat auth.ScopedTenantFilter).
+func (s *Service) List(ctx context.Context, actor domain.Actor, queryTenantID *uint64, p domain.Pagination) ([]domain.ProvisioningProfile, int, error) {
+	tenantID := queryTenantID
+	if !actor.IsSuperadmin() {
+		tid, err := auth.ScopedTenantFilter(actor)
+		if err != nil {
+			return nil, 0, err
+		}
+		tenantID = tid
+	}
 	return s.profiles.List(ctx, tenantID, p)
 }
 
@@ -131,7 +135,7 @@ func (s *Service) UpdateProfile(ctx context.Context, actor domain.Actor, p *doma
 	if err != nil {
 		return err
 	}
-	if err := requireTenantScope(actor, existing.TenantID); err != nil {
+	if err := auth.RequireTenantScope(actor, existing.TenantID); err != nil {
 		return err
 	}
 	p.UpdatedBy = actor.UserIDPtr()
@@ -143,6 +147,10 @@ func (s *Service) UpdateProfile(ctx context.Context, actor domain.Actor, p *doma
 			return err
 		}
 	}
+	_ = s.activity.Record(ctx, &domain.ActivityLog{
+		UserID: actor.UserIDPtr(), TenantID: actor.TenantID,
+		Action: "UPDATE_PROVISIONING_PROFILE", EntityType: "provisioning_profile", EntityID: &p.ID,
+	})
 	return nil
 }
 
@@ -151,10 +159,17 @@ func (s *Service) DeleteProfile(ctx context.Context, actor domain.Actor, id uint
 	if err != nil {
 		return err
 	}
-	if err := requireTenantScope(actor, p.TenantID); err != nil {
+	if err := auth.RequireTenantScope(actor, p.TenantID); err != nil {
 		return err
 	}
-	return s.profiles.SoftDelete(ctx, id, actor.UserID)
+	if err := s.profiles.SoftDelete(ctx, id, actor.UserID); err != nil {
+		return err
+	}
+	_ = s.activity.Record(ctx, &domain.ActivityLog{
+		UserID: actor.UserIDPtr(), TenantID: actor.TenantID,
+		Action: "DELETE_PROVISIONING_PROFILE", EntityType: "provisioning_profile", EntityID: &id,
+	})
+	return nil
 }
 
 // ApplyProfile mengantre task SetParameterValues berisi seluruh parameter
@@ -167,7 +182,7 @@ func (s *Service) ApplyProfile(ctx context.Context, actor domain.Actor, deviceID
 	if err != nil {
 		return nil, err
 	}
-	if err := requireTenantScope(actor, dev.TenantID); err != nil {
+	if err := auth.RequireTenantScope(actor, dev.TenantID); err != nil {
 		return nil, err
 	}
 	profile, err := s.profiles.GetByID(ctx, profileID)
@@ -278,16 +293,34 @@ func matchSQLLike(pattern, s string) bool {
 	return compiled.MatchString(s)
 }
 
-func (s *Service) ListZeroTouchRules(ctx context.Context, tenantID *uint64) ([]domain.ZeroTouchRule, error) {
+// ListZeroTouchRules — pola sama seperti List (profile) di atas: queryTenantID
+// cuma berlaku utk superadmin, non-superadmin selalu dipaksa ke tenant sendiri
+// dan ditolak (bukan fail-open) kalau actor.TenantID kosong.
+func (s *Service) ListZeroTouchRules(ctx context.Context, actor domain.Actor, queryTenantID *uint64) ([]domain.ZeroTouchRule, error) {
+	tenantID := queryTenantID
+	if !actor.IsSuperadmin() {
+		tid, err := auth.ScopedTenantFilter(actor)
+		if err != nil {
+			return nil, err
+		}
+		tenantID = tid
+	}
 	return s.rules.ListActiveOrdered(ctx, tenantID)
 }
 
 func (s *Service) CreateZeroTouchRule(ctx context.Context, actor domain.Actor, r *domain.ZeroTouchRule) error {
-	if err := requireTenantScope(actor, r.TenantID); err != nil {
+	if err := auth.RequireTenantScope(actor, r.TenantID); err != nil {
 		return err
 	}
 	r.CreatedBy = actor.UserIDPtr()
-	return s.rules.Create(ctx, r)
+	if err := s.rules.Create(ctx, r); err != nil {
+		return err
+	}
+	_ = s.activity.Record(ctx, &domain.ActivityLog{
+		UserID: actor.UserIDPtr(), TenantID: actor.TenantID,
+		Action: "CREATE_ZERO_TOUCH_RULE", EntityType: "zero_touch_rule", EntityID: &r.ID,
+	})
+	return nil
 }
 
 func (s *Service) UpdateZeroTouchRule(ctx context.Context, actor domain.Actor, r *domain.ZeroTouchRule) error {
@@ -295,11 +328,18 @@ func (s *Service) UpdateZeroTouchRule(ctx context.Context, actor domain.Actor, r
 	if err != nil {
 		return err
 	}
-	if err := requireTenantScope(actor, existing.TenantID); err != nil {
+	if err := auth.RequireTenantScope(actor, existing.TenantID); err != nil {
 		return err
 	}
 	r.UpdatedBy = actor.UserIDPtr()
-	return s.rules.Update(ctx, r)
+	if err := s.rules.Update(ctx, r); err != nil {
+		return err
+	}
+	_ = s.activity.Record(ctx, &domain.ActivityLog{
+		UserID: actor.UserIDPtr(), TenantID: actor.TenantID,
+		Action: "UPDATE_ZERO_TOUCH_RULE", EntityType: "zero_touch_rule", EntityID: &r.ID,
+	})
+	return nil
 }
 
 func (s *Service) DeleteZeroTouchRule(ctx context.Context, actor domain.Actor, id uint64) error {
@@ -307,8 +347,15 @@ func (s *Service) DeleteZeroTouchRule(ctx context.Context, actor domain.Actor, i
 	if err != nil {
 		return err
 	}
-	if err := requireTenantScope(actor, r.TenantID); err != nil {
+	if err := auth.RequireTenantScope(actor, r.TenantID); err != nil {
 		return err
 	}
-	return s.rules.SoftDelete(ctx, id, actor.UserID)
+	if err := s.rules.SoftDelete(ctx, id, actor.UserID); err != nil {
+		return err
+	}
+	_ = s.activity.Record(ctx, &domain.ActivityLog{
+		UserID: actor.UserIDPtr(), TenantID: actor.TenantID,
+		Action: "DELETE_ZERO_TOUCH_RULE", EntityType: "zero_touch_rule", EntityID: &id,
+	})
+	return nil
 }

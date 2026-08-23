@@ -69,11 +69,7 @@ func (r *Router) getProfile(c *echo.Context) error {
 
 func (r *Router) listProfiles(c *echo.Context) error {
 	actor := ActorFrom(c)
-	tenantID := actor.TenantID
-	if actor.IsSuperadmin() {
-		tenantID = queryUint64(c, "tenant_id")
-	}
-	profiles, total, err := r.Provisioning.List(c.Request().Context(), tenantID, paginationFromQuery(c))
+	profiles, total, err := r.Provisioning.List(c.Request().Context(), actor, queryUint64(c, "tenant_id"), paginationFromQuery(c))
 	if err != nil {
 		return handleErr(c, err)
 	}
@@ -160,11 +156,7 @@ type ztRuleRequest struct {
 
 func (r *Router) listZTRules(c *echo.Context) error {
 	actor := ActorFrom(c)
-	tenantID := actor.TenantID
-	if actor.IsSuperadmin() {
-		tenantID = queryUint64(c, "tenant_id")
-	}
-	rules, err := r.Provisioning.ListZeroTouchRules(c.Request().Context(), tenantID)
+	rules, err := r.Provisioning.ListZeroTouchRules(c.Request().Context(), actor, queryUint64(c, "tenant_id"))
 	if err != nil {
 		return handleErr(c, err)
 	}

@@ -98,7 +98,7 @@ func main() {
 		Auth: authSvc, IAM: iamSvc, Devices: deviceSvc, Tasks: taskSvc, Provisioning: provisioningSvc,
 		Firmware: firmwareSvc, Diagnostics: diagnosticsSvc,
 		Vendors: vendorRepo, VendorOUIs: vendorOUIRepo, DeviceModels: deviceModelRepo, ParamMappings: paramMappingRepo,
-		Refs: refRepo,
+		Refs: refRepo, Activity: activityLogRepo,
 	}
 	router.Register(restEcho)
 
