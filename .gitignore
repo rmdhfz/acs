@@ -2,6 +2,10 @@
 /bin/
 *.exe
 *.test
+/acsd
+/migrate
+/seed-admin
+/loadtest
 
 # Env lokal (jangan commit secret) - lihat .env.example untuk template
 .env
