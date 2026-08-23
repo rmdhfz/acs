@@ -87,6 +87,25 @@ func (s *Service) Stats(ctx context.Context, actor domain.Actor) (*DeviceStats, 
 	return &DeviceStats{ByStatus: byStatus, ByVendor: byVendor}, nil
 }
 
+// PlatformStats — sama seperti Stats tapi SELALU lintas seluruh tenant, tanpa
+// perlu domain.Actor sama sekali. Dipakai HANYA oleh internal/metrics
+// (endpoint observability /metrics, ROADMAP.md Fase 2) yang memang platform-
+// level, bukan endpoint per-tenant milik BSS/portal NOC. Sengaja method
+// terpisah, bukan Stats dipanggil dengan actor superadmin palsu — supaya
+// domain.Actor/RBAC tetap murni cuma untuk jalur yang benar-benar butuh
+// otorisasi (temuan acs-code-reviewer, review fitur observability).
+func (s *Service) PlatformStats(ctx context.Context) (*DeviceStats, error) {
+	byStatus, err := s.devices.CountByStatus(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	byVendor, err := s.devices.CountByVendor(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &DeviceStats{ByStatus: byStatus, ByVendor: byVendor}, nil
+}
+
 type UpdateDeviceInput struct {
 	Notes                     *string
 	ConnectionRequestURL      *string

@@ -24,6 +24,10 @@ type Service struct {
 	paramMappings domain.VendorParameterMappingRepository
 	refs          domain.RefRepository
 	activity      domain.ActivityLogRepository
+	// tenants — dipakai HANYA untuk resolve max_pending_tasks tenant pemilik
+	// device saat CreateTask (kuota task queue per tenant, ROADMAP.md Fase 2).
+	// Boleh nil di test unit yang tidak menyentuh CreateTask (lihat service_test.go).
+	tenants domain.TenantRepository
 }
 
 func NewService(
@@ -33,10 +37,12 @@ func NewService(
 	paramMappings domain.VendorParameterMappingRepository,
 	refs domain.RefRepository,
 	activity domain.ActivityLogRepository,
+	tenants domain.TenantRepository,
 ) *Service {
 	return &Service{
 		tasks: tasks, devices: devices, deviceModels: deviceModels,
 		paramMappings: paramMappings, refs: refs, activity: activity,
+		tenants: tenants,
 	}
 }
 
@@ -93,6 +99,9 @@ func (s *Service) CreateTask(ctx context.Context, actor domain.Actor, in domain.
 	if err != nil {
 		return nil, err
 	}
+	if err := s.enforceTenantTaskQuota(ctx, dev); err != nil {
+		return nil, err
+	}
 	paramsJSON, err := json.Marshal(in.Parameters)
 	if err != nil {
 		return nil, fmt.Errorf("task: parameters tidak valid: %w", err)
@@ -127,6 +136,50 @@ func (s *Service) CreateTask(ctx context.Context, actor domain.Actor, in domain.
 		Action: "CREATE_TASK", EntityType: "task", EntityID: &t.ID,
 	})
 	return t, nil
+}
+
+// enforceTenantTaskQuota menolak pembuatan task baru bila tenant pemilik
+// device sudah punya task PENDING >= max_pending_tasks tenant tsb
+// (ROADMAP.md Fase 2 — kuota task queue per tenant, mencegah satu tenant
+// menghabiskan resource task queue bersama). Scope kuota ini SENGAJA HANYA
+// task queue -- BUKAN rate limit koneksi/sesi CWMP itu sendiri (di luar
+// cakupan, CLAUDE.md: sesi CWMP stateful butuh perubahan lebih invasif).
+// Device tanpa tenant (belum tercatat/superadmin-managed) atau tenant tanpa
+// kuota (max_pending_tasks NULL) tidak dibatasi sama sekali.
+func (s *Service) enforceTenantTaskQuota(ctx context.Context, dev *domain.Device) error {
+	if dev.TenantID == nil || s.tenants == nil {
+		return nil
+	}
+	tenant, err := s.tenants.GetByID(ctx, *dev.TenantID)
+	if err != nil {
+		return err
+	}
+	if tenant.MaxPendingTasks == nil {
+		return nil
+	}
+	// CountPendingForTenant, BUKAN List(): query COUNT murni (satu query, tanpa
+	// ikut fetch baris task lengkap termasuk kolom JSON parameters yang tidak
+	// dipakai di sini) -- ini jalur panas, dipanggil di setiap CreateTask utk
+	// tenant yang punya kuota. Cakupan status PENDING+QUEUED disamakan dengan
+	// HasPendingForDevice, bukan cuma PENDING, supaya konsisten kalau status
+	// QUEUED mulai dipakai di masa depan.
+	//
+	// Catatan jujur soal race (TOCTOU): count dan insert task baru di bawah
+	// bukan operasi atomik (tanpa SELECT...FOR UPDATE/transaksi) -- beberapa
+	// request paralel utk tenant yang sama bisa membuat total pending
+	// melewati batas sebesar jumlah request yang lolos di window race
+	// tsb. Diterima apa adanya (reviewer acs-security-reviewer +
+	// acs-code-reviewer: severity rendah/sedang, ini kuota lunak utk cegah
+	// satu tenant memonopoli resource bersama, bukan boundary keamanan) --
+	// tidak diperbaiki dgn locking supaya tidak overengineer fitur ini.
+	total, err := s.tasks.CountPendingForTenant(ctx, *dev.TenantID)
+	if err != nil {
+		return err
+	}
+	if uint32(total) >= *tenant.MaxPendingTasks {
+		return fmt.Errorf("%w: tenant sudah punya %d task pending (batas %d)", domain.ErrQuotaExceeded, total, *tenant.MaxPendingTasks)
+	}
+	return nil
 }
 
 // EnqueueSetParameterValues mengimplementasikan domain.TaskEnqueuer — dipakai
@@ -198,6 +251,32 @@ func (s *Service) Stats(ctx context.Context, actor domain.Actor) ([]domain.TaskS
 		return nil, err
 	}
 	return s.tasks.CountByStatus(ctx, tenantID)
+}
+
+// PlatformStats — sama seperti Stats tapi SELALU lintas seluruh tenant, tanpa
+// domain.Actor. Dipakai HANYA oleh internal/metrics (endpoint /metrics,
+// ROADMAP.md Fase 2) — lihat komentar PlatformStats di device.Service utk
+// alasan lengkap kenapa ini method terpisah, bukan Stats dgn actor palsu.
+func (s *Service) PlatformStats(ctx context.Context) ([]domain.TaskStatusCount, error) {
+	return s.tasks.CountByStatus(ctx, nil)
+}
+
+// AvgCompletionSeconds — rata-rata waktu penyelesaian task COMPLETED dalam
+// `window` terakhir, lintas seluruh tenant (metrik observability TECH.md §10,
+// dipakai HANYA internal/metrics — tidak ada endpoint REST per-tenant untuk
+// ini, jadi sengaja tanpa domain.Actor/tenant-scope sama sekali, bukan
+// dipanggil dgn actor superadmin palsu). nil berarti tidak ada task selesai
+// dalam window.
+func (s *Service) AvgCompletionSeconds(ctx context.Context, window time.Duration) (*float64, error) {
+	return s.tasks.AvgCompletionSeconds(ctx, nil, time.Now().Add(-window))
+}
+
+// ErrorCountsByVendor — jumlah task FAILED saat ini per vendor, lintas
+// seluruh tenant (metrik observability TECH.md §10, indikasi masalah
+// kompatibilitas parameter mapping vendor tsb) — dipakai HANYA
+// internal/metrics, pola sama seperti AvgCompletionSeconds di atas.
+func (s *Service) ErrorCountsByVendor(ctx context.Context) ([]domain.TaskVendorErrorCount, error) {
+	return s.tasks.CountFailedByVendor(ctx, nil)
 }
 
 func (s *Service) Cancel(ctx context.Context, actor domain.Actor, id uint64) error {

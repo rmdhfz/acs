@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"context"
+	"database/sql"
 	"strings"
 	"time"
 
@@ -105,6 +106,20 @@ func (r *taskRepository) HasPendingForDevice(ctx context.Context, deviceID uint6
 	return count > 0, nil
 }
 
+func (r *taskRepository) CountPendingForTenant(ctx context.Context, tenantID uint64) (int, error) {
+	var count int
+	err := r.db.GetContext(ctx, &count,
+		`SELECT COUNT(*) FROM tasks t
+		 JOIN devices d ON d.id = t.device_id
+		 JOIN ref_task_status s ON s.id = t.task_status_id
+		 WHERE d.tenant_id = ? AND t.is_deleted = 0 AND s.code IN (?, ?)`,
+		tenantID, domain.TaskStatusPending, domain.TaskStatusQueued)
+	if err != nil {
+		return 0, translateErr(err)
+	}
+	return count, nil
+}
+
 // CountByStatus meng-agregasi jumlah task per status. tasks tidak punya
 // tenant_id langsung (task melekat ke device) — JOIN devices dibutuhkan
 // hanya saat tenantID != nil untuk membatasi scope tenant (dashboard, FR-26).
@@ -119,6 +134,56 @@ func (r *taskRepository) CountByStatus(ctx context.Context, tenantID *uint64) ([
 	}
 	var rows []domain.TaskStatusCount
 	q := "SELECT t.task_status_id, COUNT(*) AS cnt FROM tasks t " + joins + " WHERE " + where + " GROUP BY t.task_status_id"
+	if err := r.db.SelectContext(ctx, &rows, q, args...); err != nil {
+		return nil, translateErr(err)
+	}
+	return rows, nil
+}
+
+// AvgCompletionSeconds meng-agregasi rata-rata waktu penyelesaian task
+// COMPLETED sejak `since` (metrik observability TECH.md §10). Query-on-scrape
+// atas data historis, bukan instrumentasi per-request — lihat komentar
+// interface di domain/task.go dan internal/metrics/collector.go.
+func (r *taskRepository) AvgCompletionSeconds(ctx context.Context, tenantID *uint64, since time.Time) (*float64, error) {
+	where := "t.is_deleted = 0 AND t.completed_at IS NOT NULL AND t.completed_at >= ?"
+	args := []interface{}{since}
+	joins := ""
+	if tenantID != nil {
+		joins = "JOIN devices d ON d.id = t.device_id"
+		where += " AND d.tenant_id = ?"
+		args = append(args, *tenantID)
+	}
+	q := "SELECT AVG(TIMESTAMPDIFF(SECOND, t.created_at, t.completed_at)) FROM tasks t " + joins + " WHERE " + where
+	var avg sql.NullFloat64
+	if err := r.db.GetContext(ctx, &avg, q, args...); err != nil {
+		return nil, translateErr(err)
+	}
+	if !avg.Valid {
+		return nil, nil
+	}
+	v := avg.Float64
+	return &v, nil
+}
+
+// CountFailedByVendor meng-agregasi jumlah task FAILED saat ini per vendor
+// (metrik observability TECH.md §10 — indikasi masalah kompatibilitas
+// parameter mapping vendor tertentu). JOIN devices dibutuhkan baik untuk
+// vendor_id maupun (opsional) tenant_id, beda dengan CountByStatus yang
+// hanya JOIN saat tenant-scoped.
+func (r *taskRepository) CountFailedByVendor(ctx context.Context, tenantID *uint64) ([]domain.TaskVendorErrorCount, error) {
+	where := "t.is_deleted = 0 AND s.code = ?"
+	args := []interface{}{domain.TaskStatusFailed}
+	if tenantID != nil {
+		where += " AND d.tenant_id = ?"
+		args = append(args, *tenantID)
+	}
+	q := `SELECT d.vendor_id AS vendor_id, COUNT(*) AS cnt
+		FROM tasks t
+		JOIN devices d ON d.id = t.device_id
+		JOIN ref_task_status s ON s.id = t.task_status_id
+		WHERE ` + where + `
+		GROUP BY d.vendor_id`
+	var rows []domain.TaskVendorErrorCount
 	if err := r.db.SelectContext(ctx, &rows, q, args...); err != nil {
 		return nil, translateErr(err)
 	}

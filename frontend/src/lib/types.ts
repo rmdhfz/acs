@@ -176,6 +176,9 @@ export interface Tenant {
   brand_name: string | null
   logo_url: string | null
   primary_color: string | null
+  // max_pending_tasks — kuota task queue tenant ini (ROADMAP.md Fase 2).
+  // null = tidak dibatasi.
+  max_pending_tasks: number | null
   created_at: string
 }
 

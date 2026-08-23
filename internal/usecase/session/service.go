@@ -62,6 +62,14 @@ func NewService(
 	}
 }
 
+// CountOpenSessions — jumlah sesi CWMP berstatus OPEN saat ini (metrik
+// observability TECH.md §10, dipakai internal/metrics.Collector). Lintas
+// seluruh tenant — device_sessions tidak menyimpan tenant_id langsung dan
+// metrik ini utk operator platform, bukan dashboard tenant.
+func (s *Service) CountOpenSessions(ctx context.Context) (int, error) {
+	return s.sessions.CountOpen(ctx)
+}
+
 // ---- Inform ----
 
 type InformEvent struct {

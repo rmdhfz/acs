@@ -175,6 +175,12 @@ CREATE TABLE tenants (
     brand_name                VARCHAR(128)    NULL,
     logo_url                  VARCHAR(512)    NULL,
     primary_color             CHAR(7)         NULL,
+    -- Kuota task queue per tenant (Fase 2, migrations/0005) — mencegah satu
+    -- tenant menghabiskan resource task queue bersama. NULL = tidak dibatasi
+    -- (default aman utk tenant existing yang belum diset). Scope kuota ini
+    -- HANYA task queue (jumlah task PENDING milik tenant), BUKAN rate limit
+    -- koneksi/sesi CWMP itu sendiri (itu di luar cakupan perubahan ini).
+    max_pending_tasks         INT UNSIGNED    NULL,
     created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     created_by      BIGINT UNSIGNED NULL,
     updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -414,6 +420,7 @@ CREATE TABLE device_sessions (
     ended_at        DATETIME        NULL,
     created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     KEY idx_device_sessions_device (device_id),
+    KEY idx_device_sessions_status (status),
     UNIQUE KEY uq_device_sessions_token (session_token),
     CONSTRAINT fk_device_sessions_device FOREIGN KEY (device_id) REFERENCES devices (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
@@ -483,6 +490,8 @@ CREATE TABLE tasks (
     UNIQUE KEY uq_tasks_uuid (task_uuid),
     KEY idx_tasks_device_status_priority (device_id, task_status_id, priority),
     KEY idx_tasks_type (task_type_id),
+    KEY idx_tasks_completed_at (completed_at),
+    KEY idx_tasks_status (task_status_id),
     CONSTRAINT fk_tasks_device FOREIGN KEY (device_id) REFERENCES devices (id),
     CONSTRAINT fk_tasks_type FOREIGN KEY (task_type_id) REFERENCES ref_task_types (id),
     CONSTRAINT fk_tasks_status FOREIGN KEY (task_status_id) REFERENCES ref_task_status (id)

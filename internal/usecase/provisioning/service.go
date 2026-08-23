@@ -246,6 +246,19 @@ func (s *Service) EvaluateZeroTouch(ctx context.Context, actor domain.Actor, dev
 			continue
 		}
 		if _, err := s.ApplyProfile(ctx, actor, dev.ID, r.ProvisioningProfileID); err != nil {
+			// Rule COCOK tapi apply GAGAL (mis. kuota task queue tenant
+			// penuh, ROADMAP.md Fase 2) HARUS tetap kelihatan operator/NOC --
+			// FR-15 eksplisit bilang device tidak boleh silently diabaikan.
+			// Sebelum ada kuota task queue, error di titik ini nyaris tidak
+			// pernah terjadi; sekarang jalur ini nyata bisa kena, jadi wajib
+			// dicatat, bukan cuma dikembalikan sbg error yang lalu ditelan
+			// caller (usecase/session sengaja tidak menggagalkan Inform demi
+			// event lain, lihat komentar di sana).
+			desc := err.Error()
+			_ = s.activity.Record(ctx, &domain.ActivityLog{
+				TenantID: dev.TenantID, Action: "ZERO_TOUCH_APPLY_FAILED", EntityType: "device", EntityID: &dev.ID,
+				Description: &desc,
+			})
 			return nil, err
 		}
 		_ = s.activity.Record(ctx, &domain.ActivityLog{

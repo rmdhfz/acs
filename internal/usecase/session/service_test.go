@@ -90,6 +90,9 @@ func (f *fakeTenantRepoAuth) SetCWMPInformCredentials(context.Context, uint64, s
 func (f *fakeTenantRepoAuth) UpdateBranding(context.Context, uint64, *string, *string, *string, *uint64) error {
 	return nil
 }
+func (f *fakeTenantRepoAuth) SetTaskQuota(context.Context, uint64, *uint32, *uint64) error {
+	return nil
+}
 func (f *fakeTenantRepoAuth) SoftDelete(context.Context, uint64, uint64) error { return nil }
 
 // testFixture membangun Service dengan hanya field yang dipakai

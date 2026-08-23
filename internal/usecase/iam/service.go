@@ -164,6 +164,22 @@ func (s *Service) UpdateBranding(ctx context.Context, actor domain.Actor, tenant
 	return nil
 }
 
+// SetTaskQuota mengubah batas task PENDING sebuah tenant (nil = tidak
+// dibatasi). BEDA dari UpdateBranding: ini kebijakan platform-level (kuota
+// resource bersama, ROADMAP.md Fase 2), bukan self-service tenant -- hanya
+// superadmin yang boleh, ADMIN tenant sendiri sekalipun tidak bisa menaikkan
+// kuotanya sendiri lewat endpoint ini.
+func (s *Service) SetTaskQuota(ctx context.Context, actor domain.Actor, tenantID uint64, maxPendingTasks *uint32) error {
+	if err := auth.RequireRole(actor, domain.RoleSuperadmin); err != nil {
+		return err
+	}
+	if err := s.tenants.SetTaskQuota(ctx, tenantID, maxPendingTasks, actor.UserIDPtr()); err != nil {
+		return err
+	}
+	_ = s.activity.Record(ctx, &domain.ActivityLog{UserID: actor.UserIDPtr(), Action: "SET_TENANT_TASK_QUOTA", EntityType: "tenant", EntityID: &tenantID})
+	return nil
+}
+
 type CreateUserInput struct {
 	TenantID  *uint64
 	Username  string

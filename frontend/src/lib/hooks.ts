@@ -524,6 +524,18 @@ export function useUpdateTenantBranding() {
   })
 }
 
+// useSetTenantTaskQuota — kebijakan platform-level (superadmin only, beda
+// dari branding yang self-service tenant, lihat ROADMAP.md Fase 2). null
+// berarti tidak dibatasi.
+export function useSetTenantTaskQuota() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ tenantId, maxPendingTasks }: { tenantId: number; maxPendingTasks: number | null }) =>
+      api.patch<void>(`/tenants/${tenantId}/task-quota`, { max_pending_tasks: maxPendingTasks }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tenants'] }),
+  })
+}
+
 export function useUsers(tenantId?: number) {
   return useQuery({
     queryKey: ['users', tenantId],

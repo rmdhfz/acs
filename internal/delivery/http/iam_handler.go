@@ -111,6 +111,29 @@ func (r *Router) updateTenantBranding(c *echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
+type setTenantTaskQuotaRequest struct {
+	MaxPendingTasks *uint32 `json:"max_pending_tasks"`
+}
+
+// setTenantTaskQuota — superadmin only (kebijakan platform-level, bukan
+// self-service tenant, lihat usecase/iam.SetTaskQuota). max_pending_tasks
+// null berarti tidak dibatasi.
+func (r *Router) setTenantTaskQuota(c *echo.Context) error {
+	actor := ActorFrom(c)
+	id, err := parseUint64Param(c, "id")
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "id tidak valid")
+	}
+	var req setTenantTaskQuotaRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "payload tidak valid")
+	}
+	if err := r.IAM.SetTaskQuota(c.Request().Context(), actor, id, req.MaxPendingTasks); err != nil {
+		return handleErr(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
 func (r *Router) listTenants(c *echo.Context) error {
 	actor := ActorFrom(c)
 	tenants, total, err := r.IAM.ListTenants(c.Request().Context(), actor, paginationFromQuery(c))

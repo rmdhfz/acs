@@ -15,10 +15,13 @@ import (
 
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"acs/internal/config"
 	deliverycwmp "acs/internal/delivery/cwmp"
 	deliveryhttp "acs/internal/delivery/http"
+	"acs/internal/metrics"
 	"acs/internal/repository/mysql"
 	"acs/internal/usecase/auth"
 	"acs/internal/usecase/device"
@@ -72,12 +75,23 @@ func main() {
 
 	authSvc := auth.NewService(userRepo, apiTokenRepo, activityLogRepo, cfg.JWTSecret, cfg.JWTExpiry)
 	iamSvc := iam.NewService(tenantRepo, userRepo, refRepo, activityLogRepo, enc)
-	taskSvc := task.NewService(taskRepo, deviceRepo, deviceModelRepo, paramMappingRepo, refRepo, activityLogRepo)
+	taskSvc := task.NewService(taskRepo, deviceRepo, deviceModelRepo, paramMappingRepo, refRepo, activityLogRepo, tenantRepo)
 	provisioningSvc := provisioning.NewService(profileRepo, profileParamRepo, ztRuleRepo, deviceRepo, taskSvc, activityLogRepo)
 	deviceSvc := device.NewService(deviceRepo, vendorOUIRepo, deviceModelRepo, refRepo, deviceParamRepo, deviceEventRepo, opticalMetricRepo, enc, activityLogRepo)
 	firmwareSvc := firmware.NewService(firmwareFileRepo, firmwareJobRepo, deviceRepo, taskSvc, refRepo, activityLogRepo)
 	diagnosticsSvc := diagnostics.NewService(diagnosticRepo, deviceRepo, taskSvc, activityLogRepo)
 	sessionSvc := session.NewService(deviceSessionRepo, deviceEventRepo, deviceParamRepo, deviceRepo, tenantRepo, refRepo, deviceSvc, taskSvc, provisioningSvc, firmwareSvc, diagnosticsSvc, enc)
+
+	// ---- Observability: metrics Prometheus (TECH.md §10, ROADMAP.md Fase 2) ----
+	// Registry terpisah (bukan prometheus.DefaultRegisterer) supaya /metrics
+	// HANYA mengekspos metrik agregat ACS di atas — tidak ikut membocorkan
+	// metrik proses Go bawaan client_golang (go_*, process_*) yang biasanya
+	// auto-register ke DefaultRegisterer; ini keputusan cakupan minimal
+	// sesuai scope sesi ini, bukan larangan permanen menambah metrik proses
+	// nanti kalau dibutuhkan.
+	metricsRegistry := prometheus.NewRegistry()
+	metricsRegistry.MustRegister(metrics.NewCollector(deviceSvc, taskSvc, sessionSvc, refRepo))
+	metricsHandler := promhttp.HandlerFor(metricsRegistry, promhttp.HandlerOpts{})
 
 	// ---- REST API internal (BSS/OSS, portal NOC) ----
 	restEcho := echo.New()
@@ -99,6 +113,7 @@ func main() {
 		Firmware: firmwareSvc, Diagnostics: diagnosticsSvc,
 		Vendors: vendorRepo, VendorOUIs: vendorOUIRepo, DeviceModels: deviceModelRepo, ParamMappings: paramMappingRepo,
 		Refs: refRepo, Activity: activityLogRepo,
+		MetricsHandler: metricsHandler,
 	}
 	router.Register(restEcho)
 

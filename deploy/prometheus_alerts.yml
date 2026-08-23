@@ -1,0 +1,45 @@
+# Alert rules dasar sesuai TECH.md §10:
+#   "Alert saat backlog PENDING menumpuk melewati threshold, atau error rate
+#    per vendor naik tiba-tiba (indikasi firmware baru yang berubah perilaku)."
+#
+# BATASAN (dicatat eksplisit, bukan disembunyikan): TIDAK ADA Alertmanager di
+# stack ini (ROADMAP.md Fase 2 — di luar scope sesi ini). Alert di bawah HANYA
+# muncul di tab "Alerts" pada Prometheus UI (http://localhost:19090/alerts),
+# TIDAK ada notifikasi keluar (Slack/email/dst) saat firing.
+#
+# Threshold (50 task PENDING, 10 task FAILED per vendor) adalah nilai awal
+# yang masuk akal untuk mendeteksi anomali di lingkungan dev/kecil — perlu
+# ditinjau ulang begitu ada data volume produksi nyata (sama seperti catatan
+# TECH.md §9 soal partisi tabel log, belum final untuk skala besar).
+groups:
+  - name: acs-observability
+    rules:
+      # (a) Backlog PENDING menumpuk — TECH.md §10.
+      - alert: ACSTaskQueueBacklogPending
+        expr: acs_task_queue_depth{status="PENDING"} > 50
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Backlog task PENDING menumpuk ({{ $value }} task)"
+          description: >-
+            acs_task_queue_depth{status="PENDING"} sudah > 50 selama >= 5
+            menit. Indikasi task worker/sesi CWMP tidak mengimbangi laju
+            enqueue task, atau backlog device offline massal.
+
+      # (b) Error rate per vendor naik — TECH.md §10. acs_task_failed_current
+      # adalah gauge (snapshot state DB "FAILED saat ini"), bukan counter
+      # kumulatif — JANGAN dibungkus rate()/increase() di query manapun.
+      # Lihat komentar di internal/metrics/collector.go.
+      - alert: ACSTaskErrorRateByVendor
+        expr: acs_task_failed_current > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Task FAILED tinggi untuk vendor {{ $labels.vendor }} ({{ $value }} task)"
+          description: >-
+            acs_task_failed_current untuk vendor "{{ $labels.vendor }}" sudah
+            > 10 selama >= 5 menit — indikasi masalah kompatibilitas
+            parameter mapping atau firmware baru yang mengubah perilaku CPE
+            vendor tsb.

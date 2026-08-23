@@ -83,6 +83,24 @@ func (r *tenantRepository) UpdateBranding(ctx context.Context, id uint64, brandN
 	return translateErr(err)
 }
 
+func (r *tenantRepository) SetTaskQuota(ctx context.Context, id uint64, maxPendingTasks *uint32, updatedBy *uint64) error {
+	// Existence dicek terpisah, bukan lewat RowsAffected -- pola sama seperti
+	// UpdateBranding di atas: driver mysql hanya menghitung baris yang
+	// NILAINYA berubah, jadi submit ulang kuota yang sama persis (no-op) akan
+	// salah dianggap "tenant tidak ditemukan" kalau kita pakai RowsAffected.
+	var exists bool
+	if err := r.db.GetContext(ctx, &exists, `SELECT EXISTS(SELECT 1 FROM tenants WHERE id = ? AND is_deleted = 0)`, id); err != nil {
+		return translateErr(err)
+	}
+	if !exists {
+		return domain.ErrNotFound
+	}
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE tenants SET max_pending_tasks = ?, updated_by = ? WHERE id = ? AND is_deleted = 0`,
+		maxPendingTasks, updatedBy, id)
+	return translateErr(err)
+}
+
 func (r *tenantRepository) List(ctx context.Context, p domain.Pagination) ([]domain.Tenant, int, error) {
 	var total int
 	if err := r.db.GetContext(ctx, &total, `SELECT COUNT(*) FROM tenants WHERE is_deleted = 0`); err != nil {

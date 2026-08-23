@@ -40,6 +40,16 @@ type TaskStatusCount struct {
 	Count        int    `db:"cnt" json:"count"`
 }
 
+// TaskVendorErrorCount — agregasi jumlah task FAILED SAAT INI per vendor
+// (ROADMAP.md Fase 2, metrik observability TECH.md §10: "error rate per
+// vendor" mengindikasikan masalah kompatibilitas parameter mapping). VendorID
+// nil berarti device pemilik task belum ter-resolve vendor-nya (mis. belum
+// pernah Inform/OUI tidak dikenal).
+type TaskVendorErrorCount struct {
+	VendorID *uint64 `db:"vendor_id" json:"vendor_id"`
+	Count    int     `db:"cnt" json:"count"`
+}
+
 type TaskRepository interface {
 	Create(ctx context.Context, t *Task) error
 	GetByID(ctx context.Context, id uint64) (*Task, error)
@@ -48,10 +58,29 @@ type TaskRepository interface {
 	// (superadmin). Butuh JOIN devices karena tasks tidak punya tenant_id
 	// langsung.
 	CountByStatus(ctx context.Context, tenantID *uint64) ([]TaskStatusCount, error)
+	// AvgCompletionSeconds — rata-rata TIMESTAMPDIFF(SECOND, created_at,
+	// completed_at) untuk task COMPLETED yang completed_at-nya >= since
+	// (metrik observability TECH.md §10 "rata-rata waktu penyelesaian task").
+	// Sengaja diagregasi via AVG SQL atas data historis di DB, BUKAN
+	// histogram real-time — lihat internal/metrics/collector.go untuk alasan
+	// lengkap kenapa ini gauge, bukan histogram/summary Prometheus asli.
+	// Mengembalikan nil bila tidak ada task selesai dalam window tsb.
+	AvgCompletionSeconds(ctx context.Context, tenantID *uint64, since time.Time) (*float64, error)
+	// CountFailedByVendor — agregasi GROUP BY vendor_id utk task berstatus
+	// FAILED saat ini (snapshot state, bukan counter kumulatif). Butuh JOIN
+	// devices (sama seperti CountByStatus) utk resolve vendor_id & tenant_id.
+	CountFailedByVendor(ctx context.Context, tenantID *uint64) ([]TaskVendorErrorCount, error)
 	// NextForDevice mengambil task PENDING milik device, terurut priority ASC
 	// (1 = tertinggi dieksekusi lebih dulu), created_at ASC.
 	NextForDevice(ctx context.Context, deviceID uint64) (*Task, error)
 	HasPendingForDevice(ctx context.Context, deviceID uint64) (bool, error)
+	// CountPendingForTenant — hitung task PENDING+QUEUED (sama seperti
+	// HasPendingForDevice) milik SATU tenant, lewat JOIN devices (tasks tidak
+	// punya tenant_id langsung). Dipakai kuota task queue per tenant
+	// (enforceTenantTaskQuota, ROADMAP.md Fase 2) — query COUNT murni,
+	// sengaja BUKAN List() yang juga fetch baris lengkap (termasuk kolom
+	// JSON parameters) padahal cuma butuh angkanya di jalur panas ini.
+	CountPendingForTenant(ctx context.Context, tenantID uint64) (int, error)
 	// GetSentForDevice mengembalikan task SENT paling baru milik device —
 	// dipakai usecase/session untuk mengorelasikan respons RPC CPE ke task
 	// yang dikirim, karena dalam satu sesi hanya ada satu task in-flight

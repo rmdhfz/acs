@@ -4,6 +4,8 @@
 package http
 
 import (
+	"net/http"
+
 	"github.com/labstack/echo/v5"
 
 	"acs/internal/domain"
@@ -34,12 +36,23 @@ type Router struct {
 	// audit siapa mengubah data referensi lintas-tenant ini (temuan
 	// acs-security-reviewer, ROADMAP.md Fase 0 audit menyeluruh).
 	Activity domain.ActivityLogRepository
+	// MetricsHandler membungkus promhttp.HandlerFor(registry, ...) yang
+	// dikonstruksi cmd/acsd/main.go (internal/metrics.Collector) — router.go
+	// sengaja tidak import paket prometheus langsung, cukup meneruskan
+	// http.Handler generik (lihat metrics_handler.go, TECH.md §10).
+	MetricsHandler http.Handler
 }
 
 func (r *Router) Register(e *echo.Echo) {
 	api := e.Group("/api/v1")
 
 	api.POST("/auth/login", r.login)
+	// GET /metrics: TIDAK diautentikasi (konvensi Prometheus exporter),
+	// endpoint read-only agregat lintas-tenant untuk operator platform — lihat
+	// komentar lengkap di metrics_handler.go & router.go field MetricsHandler
+	// soal kenapa ini pengecualian yang aman terhadap aturan "tidak ada
+	// endpoint tanpa autentikasi" (CLAUDE.md, yang menyasar endpoint mutasi).
+	api.GET("/metrics", r.metrics)
 
 	authed := api.Group("", AuthMiddleware(r.Auth))
 	admin := []string{domain.RoleAdmin, domain.RoleSuperadmin}
@@ -57,6 +70,9 @@ func (r *Router) Register(e *echo.Echo) {
 	// Branding: superadmin utk tenant manapun, ADMIN utk tenant sendiri saja
 	// (dicek di usecase/iam) — role gate di sini cuma menyaring NOC/VIEWER.
 	authed.PATCH("/tenants/:id/branding", r.updateTenantBranding, RequireRoles(admin...))
+	// Kuota task queue: kebijakan platform-level, superadmin only (bukan
+	// self-service tenant seperti branding di atas) — lihat usecase/iam.SetTaskQuota.
+	authed.PATCH("/tenants/:id/task-quota", r.setTenantTaskQuota, RequireRoles(superadminOnly...))
 	authed.POST("/users", r.createUser, RequireRoles(admin...))
 	authed.GET("/users", r.listUsers, RequireRoles(admin...))
 	// Self-service tenant admin (ROADMAP.md Fase 2): superadmin bisa ke user

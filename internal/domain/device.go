@@ -114,6 +114,12 @@ type DeviceSessionRepository interface {
 	GetByToken(ctx context.Context, token string) (*DeviceSession, error)
 	UpdateStatus(ctx context.Context, id uint64, status string, endedAt *time.Time) error
 	SetCWMPID(ctx context.Context, id uint64, cwmpID string) error
+	// CountOpen — jumlah sesi CWMP berstatus OPEN saat ini, lintas seluruh
+	// tenant (metrik observability TECH.md §10). device_sessions tidak
+	// menyimpan tenant_id langsung dan metrik ini utk operator platform,
+	// sehingga sengaja tidak tenant-scoped (beda dgn CountByStatus milik
+	// DeviceRepository/TaskRepository yang menerima tenantID nullable).
+	CountOpen(ctx context.Context) (int, error)
 }
 
 // DeviceEvent — histori event Inform, audit minimal (created_at saja) sesuai

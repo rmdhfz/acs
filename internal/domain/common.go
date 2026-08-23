@@ -15,6 +15,10 @@ var (
 	ErrUnauthorized      = errors.New("domain: tidak terautentikasi")
 	ErrForbidden         = errors.New("domain: tidak punya akses")
 	ErrNoMatchingRule    = errors.New("domain: tidak ada aturan zero-touch yang cocok")
+	// ErrQuotaExceeded — kuota tenant sudah tercapai (mis. max_pending_tasks,
+	// ROADMAP.md Fase 2). Di-map ke HTTP 429 Too Many Requests (delivery/http/middleware.go),
+	// beda dari ErrForbidden (403, soal wewenang) karena ini soal batas resource, bukan izin.
+	ErrQuotaExceeded     = errors.New("domain: kuota tenant sudah tercapai")
 )
 
 // Audit adalah 7 kolom audit standar (lihat CLAUDE.md - Konvensi Skema Database #2).

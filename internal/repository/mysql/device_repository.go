@@ -280,6 +280,18 @@ func (r *deviceSessionRepository) SetCWMPID(ctx context.Context, id uint64, cwmp
 	return translateErr(err)
 }
 
+// CountOpen — metrik observability TECH.md §10 (acs_cwmp_sessions_open),
+// lintas seluruh tenant, lihat komentar domain.DeviceSessionRepository.
+func (r *deviceSessionRepository) CountOpen(ctx context.Context) (int, error) {
+	var count int
+	err := r.db.GetContext(ctx, &count,
+		`SELECT COUNT(*) FROM device_sessions WHERE status = ?`, domain.SessionStatusOpen)
+	if err != nil {
+		return 0, translateErr(err)
+	}
+	return count, nil
+}
+
 // ---- DeviceEvent ----
 
 type deviceEventRepository struct{ db *sqlx.DB }

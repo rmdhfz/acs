@@ -73,6 +73,8 @@ func handleErr(c *echo.Context, err error) error {
 		return echo.NewHTTPError(http.StatusConflict, err.Error())
 	case errors.Is(err, domain.ErrInvalidInput):
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	case errors.Is(err, domain.ErrQuotaExceeded):
+		return echo.NewHTTPError(http.StatusTooManyRequests, err.Error())
 	default:
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}

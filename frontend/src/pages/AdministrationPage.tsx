@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Building2, KeyRound, Palette, Plus, Users as UsersIcon, Wand2 } from 'lucide-react'
+import { Building2, Gauge, KeyRound, Palette, Plus, Users as UsersIcon, Wand2 } from 'lucide-react'
 import { EmptyState } from '../components/EmptyState'
 import { StatusBadge } from '../components/StatusBadge'
 import { Modal } from '../components/Modal'
@@ -13,6 +13,7 @@ import {
   useCurrentTenant,
   useRefs,
   useSetTenantCWMPCredentials,
+  useSetTenantTaskQuota,
   useTenants,
   useUpdateTenantBranding,
   useUsers,
@@ -250,6 +251,7 @@ function TenantsTab() {
   const [showCreate, setShowCreate] = useState(false)
   const [rotateTarget, setRotateTarget] = useState<Tenant | null>(null)
   const [brandingTarget, setBrandingTarget] = useState<Tenant | null>(null)
+  const [quotaTarget, setQuotaTarget] = useState<Tenant | null>(null)
 
   return (
     <div>
@@ -278,6 +280,7 @@ function TenantsTab() {
                 <th className="px-5 py-3">Nama</th>
                 <th className="px-5 py-3">Status</th>
                 <th className="px-5 py-3">Shared Secret CWMP</th>
+                <th className="px-5 py-3">Kuota Task</th>
                 <th className="px-5 py-3">Dibuat</th>
                 <th className="px-5 py-3"></th>
               </tr>
@@ -297,6 +300,13 @@ function TenantsTab() {
                       <StatusBadge code="FAULTY" label="Belum diset" />
                     )}
                   </td>
+                  <td className="px-5 py-3.5 text-slate-600 dark:text-slate-400">
+                    {t.max_pending_tasks == null ? (
+                      <span className="text-xs text-slate-400 dark:text-slate-500">Tidak dibatasi</span>
+                    ) : (
+                      <span className="font-mono text-xs">{t.max_pending_tasks} pending</span>
+                    )}
+                  </td>
                   <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{formatDateTime(t.created_at)}</td>
                   <td className="px-5 py-3.5 text-right">
                     <div className="flex items-center justify-end gap-3">
@@ -314,6 +324,13 @@ function TenantsTab() {
                       >
                         <KeyRound className="h-3.5 w-3.5" /> Kredensial CWMP
                       </button>
+                      <button
+                        onClick={() => setQuotaTarget(t)}
+                        className="flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
+                        title="Atur kuota task queue tenant (superadmin only)"
+                      >
+                        <Gauge className="h-3.5 w-3.5" /> Kuota Task
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -326,6 +343,7 @@ function TenantsTab() {
       {showCreate && <CreateTenantModal onClose={() => setShowCreate(false)} />}
       {rotateTarget && <RotateCWMPCredentialsModal tenant={rotateTarget} onClose={() => setRotateTarget(null)} />}
       {brandingTarget && <EditBrandingModal tenant={brandingTarget} onClose={() => setBrandingTarget(null)} />}
+      {quotaTarget && <EditTaskQuotaModal tenant={quotaTarget} onClose={() => setQuotaTarget(null)} />}
     </div>
   )
 }
@@ -432,6 +450,60 @@ function RotateCWMPCredentialsModal({ tenant, onClose }: { tenant: Tenant; onClo
         {error && <p className="text-sm text-red-600">{error}</p>}
         <button type="submit" disabled={setCredsMutation.isPending} className={`${primaryBtnCls} w-full`}>
           Simpan
+        </button>
+      </form>
+    </Modal>
+  )
+}
+
+// EditTaskQuotaModal — kebijakan platform-level (superadmin only, RBAC di
+// backend juga menolak ADMIN non-superadmin, lihat usecase/iam.SetTaskQuota).
+// Kosongkan field = tidak dibatasi (null), beda dari branding di atas yang
+// self-service tenant.
+function EditTaskQuotaModal({ tenant, onClose }: { tenant: Tenant; onClose: () => void }) {
+  const [value, setValue] = useState(tenant.max_pending_tasks != null ? String(tenant.max_pending_tasks) : '')
+  const [error, setError] = useState<string | null>(null)
+  const setQuotaMutation = useSetTenantTaskQuota()
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setError(null)
+    const trimmed = value.trim()
+    const maxPendingTasks = trimmed === '' ? null : Number(trimmed)
+    if (maxPendingTasks !== null && (!Number.isInteger(maxPendingTasks) || maxPendingTasks < 0)) {
+      setError('Kuota harus bilangan bulat non-negatif, atau kosongkan untuk tidak dibatasi')
+      return
+    }
+    try {
+      await setQuotaMutation.mutateAsync({ tenantId: tenant.id, maxPendingTasks })
+      onClose()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Gagal menyimpan kuota task')
+    }
+  }
+
+  return (
+    <Modal title={`Kuota Task — ${tenant.name}`} onClose={onClose}>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          Batas jumlah task berstatus PENDING milik tenant ini lintas semua device-nya — mencegah satu tenant
+          menghabiskan resource task queue bersama. Kosongkan untuk tidak dibatasi. Ini bukan pembatas koneksi/sesi
+          CWMP itu sendiri.
+        </p>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Maks. Task Pending</label>
+          <input
+            type="number"
+            min={0}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="Tidak dibatasi"
+            className={inputCls}
+          />
+        </div>
+        {error && <p className="text-sm text-red-600">{error}</p>}
+        <button type="submit" disabled={setQuotaMutation.isPending} className={`${primaryBtnCls} w-full`}>
+          Simpan Kuota
         </button>
       </form>
     </Modal>

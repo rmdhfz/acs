@@ -21,6 +21,10 @@ type Tenant struct {
 	BrandName    *string `db:"brand_name" json:"brand_name"`
 	LogoURL      *string `db:"logo_url" json:"logo_url"`
 	PrimaryColor *string `db:"primary_color" json:"primary_color"`
+	// MaxPendingTasks — kuota task queue per tenant (ROADMAP.md Fase 2, migrations/0005).
+	// NULL = tidak dibatasi. HANYA membatasi jumlah task PENDING, bukan rate
+	// limit koneksi/sesi CWMP (lihat usecase/task.Service.CreateTask).
+	MaxPendingTasks *uint32 `db:"max_pending_tasks" json:"max_pending_tasks"`
 	Audit
 }
 
@@ -35,6 +39,9 @@ type TenantRepository interface {
 	Update(ctx context.Context, t *Tenant) error
 	SetCWMPInformCredentials(ctx context.Context, id uint64, username string, passwordEnc []byte, updatedBy *uint64) error
 	UpdateBranding(ctx context.Context, id uint64, brandName, logoURL, primaryColor *string, updatedBy *uint64) error
+	// SetTaskQuota mengubah batas task PENDING tenant (nil = tidak dibatasi).
+	// Kebijakan platform-level, superadmin only (lihat usecase/iam.SetTaskQuota).
+	SetTaskQuota(ctx context.Context, id uint64, maxPendingTasks *uint32, updatedBy *uint64) error
 	SoftDelete(ctx context.Context, id, deletedBy uint64) error
 }
 
