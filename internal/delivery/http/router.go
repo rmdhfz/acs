@@ -68,6 +68,11 @@ func (r *Router) Register(e *echo.Echo) {
 	superadminOnly := []string{domain.RoleSuperadmin}
 
 	authed.POST("/auth/tokens", r.issueAPIToken, RequireRoles(admin...))
+	// GET/DELETE gated sama seperti penerbitannya (admin...) -- token API
+	// hanya bisa dikelola oleh role yang juga bisa menerbitkannya, bukan
+	// self-service ke semua role (beda dari PATCH /auth/password di bawah).
+	authed.GET("/auth/tokens", r.listAPITokens, RequireRoles(admin...))
+	authed.DELETE("/auth/tokens/:id", r.revokeAPIToken, RequireRoles(admin...))
 	// Self-service ganti password sendiri (BEDA dari admin-reset
 	// PATCH /users/:id/password di bawah) -- actor dari JWT langsung, bukan
 	// target :id, jadi semua role yang sudah login boleh (tidak ada

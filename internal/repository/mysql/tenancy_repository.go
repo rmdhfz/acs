@@ -354,6 +354,18 @@ func (r *apiTokenRepository) GetByHash(ctx context.Context, tokenHash string) (*
 	return &t, nil
 }
 
+// GetByID sengaja TIDAK memfilter revoked_at/expires_at (beda dari GetByHash)
+// -- dipakai RevokeAPIToken utk resolve tenant pemilik token sebelum
+// authorization check, token yang sudah revoked/expired tetap harus bisa
+// ditemukan (idempotent revoke, dan supaya admin bisa audit token lama).
+func (r *apiTokenRepository) GetByID(ctx context.Context, id uint64) (*domain.APIToken, error) {
+	var t domain.APIToken
+	if err := r.db.GetContext(ctx, &t, `SELECT * FROM api_tokens WHERE id = ?`, id); err != nil {
+		return nil, translateErr(err)
+	}
+	return &t, nil
+}
+
 func (r *apiTokenRepository) Revoke(ctx context.Context, id uint64) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE api_tokens SET revoked_at = ? WHERE id = ?`, time.Now(), id)
 	return translateErr(err)
@@ -366,6 +378,27 @@ func (r *apiTokenRepository) ListByUser(ctx context.Context, userID uint64) ([]d
 		return nil, translateErr(err)
 	}
 	return rows, nil
+}
+
+func (r *apiTokenRepository) List(ctx context.Context, tenantID *uint64, p domain.Pagination) ([]domain.APIToken, int, error) {
+	where := "1=1"
+	args := []interface{}{}
+	if tenantID != nil {
+		where = "tenant_id = ?"
+		args = append(args, *tenantID)
+	}
+	var total int
+	if err := r.db.GetContext(ctx, &total, "SELECT COUNT(*) FROM api_tokens WHERE "+where, args...); err != nil {
+		return nil, 0, translateErr(err)
+	}
+	var rows []domain.APIToken
+	args = append(args, p.Limit(), p.Offset())
+	err := r.db.SelectContext(ctx, &rows,
+		"SELECT * FROM api_tokens WHERE "+where+" ORDER BY id DESC LIMIT ? OFFSET ?", args...)
+	if err != nil {
+		return nil, 0, translateErr(err)
+	}
+	return rows, total, nil
 }
 
 // ---- ActivityLog ----

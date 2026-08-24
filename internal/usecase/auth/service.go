@@ -311,7 +311,38 @@ func (s *Service) AuthenticateAPIToken(ctx context.Context, plain string) (*doma
 	return &actor, nil
 }
 
-func (s *Service) RevokeAPIToken(ctx context.Context, id uint64) error {
+// ListAPITokens — GET /auth/tokens: superadmin lintas seluruh tenant (opsional
+// filter tenantID), non-superadmin dipaksa ke tenant sendiri (auth.ScopedTenantFilter,
+// pola sama dgn iam.Service.ListUsers) TERLEPAS siapa yang menerbitkan
+// token tsb -- ADMIN perlu bisa melihat/mencabut token yang diterbitkan ADMIN
+// lain di tenant yang sama (mis. karyawan penerbit token sudah resign),
+// bukan cuma token milik dirinya sendiri.
+func (s *Service) ListAPITokens(ctx context.Context, actor domain.Actor, tenantID *uint64, p domain.Pagination) ([]domain.APIToken, int, error) {
+	if !actor.IsSuperadmin() {
+		tid, err := ScopedTenantFilter(actor)
+		if err != nil {
+			return nil, 0, err
+		}
+		tenantID = tid
+	}
+	return s.tokens.List(ctx, tenantID, p)
+}
+
+// RevokeAPIToken — DELETE /auth/tokens/:id: superadmin bebas, non-superadmin
+// hanya boleh mencabut token milik tenant-nya sendiri (RequireTenantScope,
+// pola sama dgn requireUserMutationScope di usecase/iam: resolve dulu baru
+// cek scope). Tanpa cek ini, ADMIN tenant A bisa menebak/enumerasi id token
+// lalu mencabut token tenant B secara sembarangan (DoS terhadap integrasi
+// tenant lain) -- kelas celah yang sama dgn yang sudah diperbaiki di
+// IssueAPIToken di atas.
+func (s *Service) RevokeAPIToken(ctx context.Context, actor domain.Actor, id uint64) error {
+	tok, err := s.tokens.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err := RequireTenantScope(actor, tok.TenantID); err != nil {
+		return err
+	}
 	return s.tokens.Revoke(ctx, id)
 }
 

@@ -88,3 +88,28 @@ func (r *Router) issueAPIToken(c *echo.Context) error {
 		"uuid":  rec.TokenUUID,
 	})
 }
+
+// listAPITokens -- RBAC/tenant-scope penuh ada di usecase (Auth.ListAPITokens),
+// handler hanya parsing query & memanggil usecase (CLAUDE.md).
+func (r *Router) listAPITokens(c *echo.Context) error {
+	actor := ActorFrom(c)
+	tokens, total, err := r.Auth.ListAPITokens(c.Request().Context(), actor, queryUint64(c, "tenant_id"), paginationFromQuery(c))
+	if err != nil {
+		return handleErr(c, err)
+	}
+	return c.JSON(http.StatusOK, listResponse{Data: tokens, Total: total})
+}
+
+// revokeAPIToken -- RBAC/tenant-scope penuh ada di usecase
+// (Auth.RevokeAPIToken: resolve tenant pemilik token dulu baru cek scope).
+func (r *Router) revokeAPIToken(c *echo.Context) error {
+	actor := ActorFrom(c)
+	id, err := parseUint64Param(c, "id")
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "id tidak valid")
+	}
+	if err := r.Auth.RevokeAPIToken(c.Request().Context(), actor, id); err != nil {
+		return handleErr(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}

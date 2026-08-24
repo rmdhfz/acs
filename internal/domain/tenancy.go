@@ -102,25 +102,54 @@ type UserRepository interface {
 
 // APIToken adalah token API internal (lihat CLAUDE.md - tidak ada endpoint
 // mutasi tanpa autentikasi). TokenHash disimpan hash-nya saja (bukan token asli).
+//
+// UpdatedAt/UpdatedBy WAJIB ada di sini krn kolomnya memang ada di tabel
+// api_tokens (schema.sql) -- tanpa keduanya, SEMUA query `SELECT *` di
+// apiTokenRepository (termasuk GetByHash yang dipakai jalur autentikasi API
+// token pada SETIAP request) gagal dgn "missing destination name updated_at",
+// membuat autentikasi via API token acs_... TIDAK PERNAH berfungsi sama
+// sekali terhadap skema nyata -- baru ketahuan saat live-test end-to-end
+// (ResolveActor membungkus error ini jadi generik "invalid token" 401,
+// menutupi akar masalahnya).
+//
+// Scopes bertipe JSONRawMessage (bukan []byte polos) mengikuti pola
+// domain.JSONRawMessage (lihat domain/common.go) -- kolomnya JSON di skema,
+// sama seperti Task.Parameters/Response, meski saat ini belum ada jalur yang
+// mengisinya (IssueAPIToken belum expose scopes granular).
 type APIToken struct {
-	ID        uint64     `db:"id" json:"id"`
-	TokenUUID string     `db:"token_uuid" json:"token_uuid"`
-	UserID    *uint64    `db:"user_id" json:"user_id"`
-	TenantID  *uint64    `db:"tenant_id" json:"tenant_id"`
-	Name      string     `db:"name" json:"name"`
-	TokenHash string     `db:"token_hash" json:"-"`
-	Scopes    []byte     `db:"scopes" json:"scopes"`
-	ExpiresAt *time.Time `db:"expires_at" json:"expires_at"`
-	RevokedAt *time.Time `db:"revoked_at" json:"revoked_at"`
-	CreatedAt time.Time  `db:"created_at" json:"created_at"`
-	CreatedBy *uint64    `db:"created_by" json:"created_by"`
+	ID        uint64         `db:"id" json:"id"`
+	TokenUUID string         `db:"token_uuid" json:"token_uuid"`
+	UserID    *uint64        `db:"user_id" json:"user_id"`
+	TenantID  *uint64        `db:"tenant_id" json:"tenant_id"`
+	Name      string         `db:"name" json:"name"`
+	TokenHash string         `db:"token_hash" json:"-"`
+	Scopes    JSONRawMessage `db:"scopes" json:"scopes"`
+	ExpiresAt *time.Time     `db:"expires_at" json:"expires_at"`
+	RevokedAt *time.Time     `db:"revoked_at" json:"revoked_at"`
+	CreatedAt time.Time      `db:"created_at" json:"created_at"`
+	CreatedBy *uint64        `db:"created_by" json:"created_by"`
+	UpdatedAt time.Time      `db:"updated_at" json:"updated_at"`
+	UpdatedBy *uint64        `db:"updated_by" json:"updated_by"`
 }
 
 type APITokenRepository interface {
 	Create(ctx context.Context, t *APIToken) error
 	GetByHash(ctx context.Context, tokenHash string) (*APIToken, error)
+	// GetByID dipakai RevokeAPIToken utk resolve tenant pemilik token SEBELUM
+	// mencabutnya (RBAC scope tenant, sama pola dgn requireUserMutationScope
+	// di usecase/iam) -- BEDA dari GetByHash yg dipakai jalur autentikasi
+	// (memfilter revoked_at/expires_at), GetByID sengaja tidak memfilter itu
+	// supaya token yang sudah revoked/expired tetap bisa dilihat/diaudit.
+	GetByID(ctx context.Context, id uint64) (*APIToken, error)
 	Revoke(ctx context.Context, id uint64) error
 	ListByUser(ctx context.Context, userID uint64) ([]APIToken, error)
+	// List — utk GET /auth/tokens: tenantID nil = lintas seluruh tenant (HANYA
+	// valid dipanggil dgn actor superadmin, lihat auth.ScopedTenantFilter),
+	// non-nil = scoped ke satu tenant (ADMIN cuma lihat token tenant sendiri,
+	// bukan cuma token yang dia terbitkan sendiri -- supaya ADMIN bisa cabut
+	// token yang diterbitkan ADMIN lain di tenant yang sama, mis. saat
+	// karyawan yang menerbitkan token tsb sudah resign).
+	List(ctx context.Context, tenantID *uint64, p Pagination) ([]APIToken, int, error)
 }
 
 type ActivityLog struct {

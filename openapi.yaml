@@ -182,6 +182,91 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+    get:
+      operationId: listAPITokens
+      tags: [Auth]
+      summary: Daftar API token yang pernah diterbitkan (untuk dikelola/dicabut)
+      description: |
+        ADMIN/SUPERADMIN — gating role SAMA seperti penerbitan token
+        (`POST /auth/tokens`), bukan self-service ke semua role. Non-superadmin
+        SELALU dipaksa ke tenant miliknya sendiri (parameter `tenant_id` diabaikan
+        bila diisi tenant lain) dan melihat SELURUH token milik tenant tsb —
+        bukan cuma token yang diterbitkan actor sendiri — supaya ADMIN bisa
+        mencabut token yang diterbitkan ADMIN lain di tenant yang sama (mis.
+        karyawan penerbit token sudah resign). Nilai `token` plaintext TIDAK
+        pernah muncul di sini (hanya saat `POST /auth/tokens` pertama kali).
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantIdQuery'
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: Daftar API token.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/APITokenListResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role tidak cukup.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /auth/tokens/{id}:
+    delete:
+      operationId: revokeAPIToken
+      tags: [Auth]
+      summary: Mencabut (revoke) satu API token
+      description: |
+        ADMIN/SUPERADMIN. Non-superadmin hanya boleh mencabut token milik
+        tenant-nya sendiri — mencoba mencabut token tenant lain ditolak `403`,
+        TIDAK PERNAH diam-diam berhasil. **Catatan jujur soal enumerasi**: `id`
+        tidak ada sama sekali → `404`, `id` ada tapi milik tenant lain → `403`
+        — kedua kode ini berbeda, sehingga non-superadmin YANG MENEBAK id
+        secara berurutan bisa membedakan "id belum pernah dipakai" dari "id
+        ini token milik tenant lain yang (pernah) ada". Diterima apa adanya
+        (severity rendah — `id` adalah PK internal BIGINT sekuensial pada
+        endpoint admin-only, bukan identifier publik, dan pola 404-vs-403 yang
+        sama juga berlaku di endpoint lain di API ini), bukan dianggap
+        kebocoran isi/kepemilikan token. Mencabut token yang sudah revoked
+        sebelumnya tetap `204` (idempotent), bukan error.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '204':
+          description: Token berhasil dicabut (atau memang sudah revoked sebelumnya).
+        '400':
+          description: "`id` tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role tidak cukup, atau non-superadmin mencoba mencabut token tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Token tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   /auth/password:
     patch:
       operationId: changeOwnPassword
@@ -2322,6 +2407,41 @@ components:
         id: { type: integer, format: int64 }
         uuid: { type: string, format: uuid }
       required: [token, id, uuid]
+
+    APIToken:
+      type: object
+      description: |
+        Metadata satu API token (dari `GET /auth/tokens`). Nilai token
+        PLAINTEXT tidak pernah ada di sini — hanya `token_hash` yang tersimpan
+        di database, dan field itu sendiri disembunyikan dari response
+        (`json:"-"` di Go, lihat domain/tenancy.go).
+      properties:
+        id: { type: integer, format: int64 }
+        token_uuid: { type: string, format: uuid }
+        user_id: { type: integer, format: int64, nullable: true, description: "User yang menerbitkan token ini." }
+        tenant_id: { type: integer, format: int64, nullable: true }
+        name: { type: string }
+        scopes:
+          type: object
+          nullable: true
+          description: "Belum ada jalur yang mengisi field ini (selalu `null` saat ini) — dicadangkan utk scope granular per-token di masa depan."
+        expires_at: { type: string, format: date-time, nullable: true }
+        revoked_at: { type: string, format: date-time, nullable: true, description: "NULL berarti masih aktif." }
+        created_at: { type: string, format: date-time }
+        created_by: { type: integer, format: int64, nullable: true }
+        updated_at: { type: string, format: date-time }
+        updated_by: { type: integer, format: int64, nullable: true }
+      required: [id, token_uuid, name, created_at, updated_at]
+
+    APITokenListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          nullable: true
+          items: { $ref: '#/components/schemas/APIToken' }
+        total: { type: integer }
+      required: [data, total]
 
     # ---------- Tenants ----------
     Tenant:

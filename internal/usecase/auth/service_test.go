@@ -75,15 +75,36 @@ func (f *fakeUserRepoAuth) ResetLoginLockout(_ context.Context, id uint64) error
 	return nil
 }
 
-type fakeTokenRepoAuth struct{}
+type fakeTokenRepoAuth struct {
+	byID       map[uint64]*domain.APIToken
+	revokedIDs []uint64
+}
 
 func (f *fakeTokenRepoAuth) Create(context.Context, *domain.APIToken) error { return nil }
 func (f *fakeTokenRepoAuth) GetByHash(context.Context, string) (*domain.APIToken, error) {
 	return nil, domain.ErrNotFound
 }
-func (f *fakeTokenRepoAuth) Revoke(context.Context, uint64) error { return nil }
+func (f *fakeTokenRepoAuth) GetByID(_ context.Context, id uint64) (*domain.APIToken, error) {
+	if t, ok := f.byID[id]; ok {
+		return t, nil
+	}
+	return nil, domain.ErrNotFound
+}
+func (f *fakeTokenRepoAuth) Revoke(_ context.Context, id uint64) error {
+	f.revokedIDs = append(f.revokedIDs, id)
+	return nil
+}
 func (f *fakeTokenRepoAuth) ListByUser(context.Context, uint64) ([]domain.APIToken, error) {
 	return nil, nil
+}
+func (f *fakeTokenRepoAuth) List(_ context.Context, tenantID *uint64, _ domain.Pagination) ([]domain.APIToken, int, error) {
+	var out []domain.APIToken
+	for _, t := range f.byID {
+		if tenantID == nil || (t.TenantID != nil && *t.TenantID == *tenantID) {
+			out = append(out, *t)
+		}
+	}
+	return out, len(out), nil
 }
 
 type fakeTenantRepoAuthTest struct {
@@ -292,6 +313,109 @@ func TestCheckTenantActive(t *testing.T) {
 		}
 		if !errors.Is(err, systemErr) {
 			t.Fatalf("error = %v, want propagated systemErr", err)
+		}
+	})
+}
+
+func TestRevokeAPIToken_TenantScope(t *testing.T) {
+	tenantA, tenantB := uint64(1), uint64(2)
+	tokenA := &domain.APIToken{ID: 10, TenantID: &tenantA}
+	tokenB := &domain.APIToken{ID: 20, TenantID: &tenantB}
+	tokenGlobal := &domain.APIToken{ID: 30, TenantID: nil}
+
+	t.Run("ADMIN tenant A mencabut token tenant sendiri -> berhasil", func(t *testing.T) {
+		tokens := &fakeTokenRepoAuth{byID: map[uint64]*domain.APIToken{10: tokenA}}
+		svc := NewService(&fakeUserRepoAuth{}, tokens, &fakeTenantRepoAuthTest{}, &fakeActivityRepoAuth{}, []byte("test-secret-at-least-32-bytes!!"), time.Hour)
+		actor := domain.Actor{UserID: 1, TenantID: &tenantA, Roles: []string{domain.RoleAdmin}}
+		if err := svc.RevokeAPIToken(context.Background(), actor, 10); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(tokens.revokedIDs) != 1 || tokens.revokedIDs[0] != 10 {
+			t.Fatalf("Revoke tidak terpanggil dgn id yang benar: %v", tokens.revokedIDs)
+		}
+	})
+
+	t.Run("ADMIN tenant A mencoba mencabut token tenant B -> ErrForbidden, TIDAK terpanggil", func(t *testing.T) {
+		tokens := &fakeTokenRepoAuth{byID: map[uint64]*domain.APIToken{20: tokenB}}
+		svc := NewService(&fakeUserRepoAuth{}, tokens, &fakeTenantRepoAuthTest{}, &fakeActivityRepoAuth{}, []byte("test-secret-at-least-32-bytes!!"), time.Hour)
+		actor := domain.Actor{UserID: 1, TenantID: &tenantA, Roles: []string{domain.RoleAdmin}}
+		if err := svc.RevokeAPIToken(context.Background(), actor, 20); !errors.Is(err, domain.ErrForbidden) {
+			t.Fatalf("error = %v, want ErrForbidden", err)
+		}
+		if len(tokens.revokedIDs) != 0 {
+			t.Fatal("Revoke() TERPANGGIL padahal harusnya diblokir sebelum sampai ke repository -- token tenant lain bisa dicabut sembarangan (DoS lintas tenant)")
+		}
+	})
+
+	t.Run("ADMIN mencoba mencabut token global (tenant_id NULL) -> ErrForbidden", func(t *testing.T) {
+		tokens := &fakeTokenRepoAuth{byID: map[uint64]*domain.APIToken{30: tokenGlobal}}
+		svc := NewService(&fakeUserRepoAuth{}, tokens, &fakeTenantRepoAuthTest{}, &fakeActivityRepoAuth{}, []byte("test-secret-at-least-32-bytes!!"), time.Hour)
+		actor := domain.Actor{UserID: 1, TenantID: &tenantA, Roles: []string{domain.RoleAdmin}}
+		if err := svc.RevokeAPIToken(context.Background(), actor, 30); !errors.Is(err, domain.ErrForbidden) {
+			t.Fatalf("error = %v, want ErrForbidden", err)
+		}
+	})
+
+	t.Run("SUPERADMIN bebas mencabut token tenant manapun", func(t *testing.T) {
+		tokens := &fakeTokenRepoAuth{byID: map[uint64]*domain.APIToken{20: tokenB}}
+		svc := NewService(&fakeUserRepoAuth{}, tokens, &fakeTenantRepoAuthTest{}, &fakeActivityRepoAuth{}, []byte("test-secret-at-least-32-bytes!!"), time.Hour)
+		actor := domain.Actor{UserID: 1, Roles: []string{domain.RoleSuperadmin}}
+		if err := svc.RevokeAPIToken(context.Background(), actor, 20); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("token tidak ditemukan -> ErrNotFound, bukan ErrForbidden", func(t *testing.T) {
+		tokens := &fakeTokenRepoAuth{byID: map[uint64]*domain.APIToken{}}
+		svc := NewService(&fakeUserRepoAuth{}, tokens, &fakeTenantRepoAuthTest{}, &fakeActivityRepoAuth{}, []byte("test-secret-at-least-32-bytes!!"), time.Hour)
+		actor := domain.Actor{UserID: 1, TenantID: &tenantA, Roles: []string{domain.RoleAdmin}}
+		if err := svc.RevokeAPIToken(context.Background(), actor, 999); !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("error = %v, want ErrNotFound", err)
+		}
+	})
+}
+
+func TestListAPITokens_TenantScope(t *testing.T) {
+	tenantA, tenantB := uint64(1), uint64(2)
+	byID := map[uint64]*domain.APIToken{
+		10: {ID: 10, TenantID: &tenantA},
+		20: {ID: 20, TenantID: &tenantB},
+	}
+
+	t.Run("ADMIN tenant A hanya melihat token tenant sendiri, walau tenant_id lain diminta", func(t *testing.T) {
+		tokens := &fakeTokenRepoAuth{byID: byID}
+		svc := NewService(&fakeUserRepoAuth{}, tokens, &fakeTenantRepoAuthTest{}, &fakeActivityRepoAuth{}, []byte("test-secret-at-least-32-bytes!!"), time.Hour)
+		actor := domain.Actor{UserID: 1, TenantID: &tenantA, Roles: []string{domain.RoleAdmin}}
+		// actor secara sengaja meminta tenantB (mis. lewat query ?tenant_id=2) --
+		// harus DIABAIKAN/ditimpa ke tenant sendiri, bukan dipercaya mentah.
+		got, total, err := svc.ListAPITokens(context.Background(), actor, &tenantB, domain.Pagination{})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if total != 1 || len(got) != 1 || got[0].ID != 10 {
+			t.Fatalf("hasil = %+v (total=%d), want hanya token id=10 milik tenant sendiri", got, total)
+		}
+	})
+
+	t.Run("SUPERADMIN tanpa filter melihat lintas seluruh tenant", func(t *testing.T) {
+		tokens := &fakeTokenRepoAuth{byID: byID}
+		svc := NewService(&fakeUserRepoAuth{}, tokens, &fakeTenantRepoAuthTest{}, &fakeActivityRepoAuth{}, []byte("test-secret-at-least-32-bytes!!"), time.Hour)
+		actor := domain.Actor{UserID: 1, Roles: []string{domain.RoleSuperadmin}}
+		got, total, err := svc.ListAPITokens(context.Background(), actor, nil, domain.Pagination{})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if total != 2 || len(got) != 2 {
+			t.Fatalf("hasil total=%d, want 2 (lintas seluruh tenant)", total)
+		}
+	})
+
+	t.Run("non-superadmin tanpa tenant_id sama sekali -> ErrForbidden, bukan bocor lintas tenant", func(t *testing.T) {
+		tokens := &fakeTokenRepoAuth{byID: byID}
+		svc := NewService(&fakeUserRepoAuth{}, tokens, &fakeTenantRepoAuthTest{}, &fakeActivityRepoAuth{}, []byte("test-secret-at-least-32-bytes!!"), time.Hour)
+		actor := domain.Actor{UserID: 1, Roles: []string{domain.RoleAdmin}} // TenantID nil -- akun salah konfigurasi
+		if _, _, err := svc.ListAPITokens(context.Background(), actor, nil, domain.Pagination{}); !errors.Is(err, domain.ErrForbidden) {
+			t.Fatalf("error = %v, want ErrForbidden", err)
 		}
 	})
 }
