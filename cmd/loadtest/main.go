@@ -42,8 +42,14 @@ import (
 )
 
 func buildInform(serial string) ([]byte, error) {
-	env := cwmpxml.NewEnvelope("loadtest-1", cwmpxml.Body{
+	// ns: simulasi CPE nyata yang mendeklarasikan cwmp-1-2 (mayoritas
+	// implementasi TR-069) — lihat pkg/cwmpxml/rpc.go soal kenapa XMLName di
+	// sini wajib di-set eksplisit sekarang (namespace tidak lagi hardcoded
+	// di tag struct, lihat komentar lengkap di rpc.go).
+	const ns = cwmpxml.NSCWMP
+	env := cwmpxml.NewEnvelope("loadtest-1", ns, cwmpxml.Body{
 		Inform: &cwmpxml.Inform{
+			XMLName: cwmpxml.RPCName(ns, "Inform"),
 			DeviceId: cwmpxml.DeviceIDStruct{
 				Manufacturer: "LoadTest", OUI: "AABBCC", ProductClass: "LoadTestModel", SerialNumber: serial,
 			},

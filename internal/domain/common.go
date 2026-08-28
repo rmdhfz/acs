@@ -154,6 +154,23 @@ const (
 	RefTableDeviceStatus      = "ref_device_status"
 	RefTableParameterTypes    = "ref_parameter_types"
 	RefTableRoles             = "ref_roles"
+	// RefTableZtpTriggerEvent — kapan zero_touch_rules dievaluasi relatif thd
+	// event CWMP Inform (migrations/0009).
+	RefTableZtpTriggerEvent = "ref_ztp_trigger_event"
+	// RefTableFirmwareRolloutStatus — status lifecycle firmware_rollout_batches
+	// (migrations/0011).
+	RefTableFirmwareRolloutStatus = "ref_firmware_rollout_status"
+	// RefTableWebhookEventTypes — jenis event webhook (migrations/0013).
+	RefTableWebhookEventTypes = "ref_webhook_event_types"
+)
+
+// Kode ref_webhook_event_types (migrations/0013) — jenis event yang dapat
+// dikirim ACS sebagai webhook keluar. Hanya kode yang benar-benar sudah
+// di-wire di usecase yang ada di sini.
+const (
+	WebhookEventDeviceFault          = "DEVICE_FAULT"
+	WebhookEventParameterValueChange = "PARAMETER_VALUE_CHANGE"
+	WebhookEventTaskFailed           = "TASK_FAILED"
 )
 
 // RefRepository adalah akses generik ke tabel ref_* — menghindari 9 repository
@@ -218,6 +235,26 @@ const (
 	TaskTypeGetParameterAttributes = "GET_PARAMETER_ATTRIBUTES"
 )
 
+// Kode ref_ztp_trigger_event (migrations/0009) — kapan sebuah zero_touch_rules
+// dievaluasi relatif thd event CWMP Inform. BOOTSTRAP_ONLY adalah nilai
+// backfill rule existing (perilaku lama sebelum migrasi ini, jangan diubah
+// penulisannya di sini tanpa migrasi data yang sepadan).
+const (
+	ZtpTriggerEventBootstrapOnly   = "BOOTSTRAP_ONLY"
+	ZtpTriggerEventBootstrapOrBoot = "BOOTSTRAP_OR_BOOT"
+	ZtpTriggerEventEveryInform     = "EVERY_INFORM"
+)
+
+// Kode ref_firmware_rollout_status (migrations/0011) — status lifecycle satu
+// firmware_rollout_batches (canary/staged rollout).
+const (
+	FirmwareRolloutStatusPending                = "PENDING"
+	FirmwareRolloutStatusInProgress             = "IN_PROGRESS"
+	FirmwareRolloutStatusPausedFailureThreshold = "PAUSED_FAILURE_THRESHOLD"
+	FirmwareRolloutStatusCompleted              = "COMPLETED"
+	FirmwareRolloutStatusCancelled              = "CANCELLED"
+)
+
 // Event code standar CWMP (Broadband Forum) — lihat CLAUDE.md, jangan diubah penulisannya.
 const (
 	EventCodeBootstrap                  = "0 BOOTSTRAP"
@@ -235,4 +272,27 @@ const (
 	EventCodeMScheduleInform            = "M ScheduleInform"
 	EventCodeMDownload                  = "M Download"
 	EventCodeMUpload                    = "M Upload"
+)
+
+// Kode fault CWMP standar (Broadband Forum TR-069 Annex A, dikirim CPE lewat
+// cwmp:Fault) yang mendapat penanganan KHUSUS di usecase/session.handleFault
+// selain alur retry generik (task.Service.Fail/failOrRetry) — lihat
+// TECH.md §3/§4 dan komentar handleFault. Kode fault lain di luar ini TETAP
+// lewat alur retry-lalu-gagal generik yang sudah ada, tidak berubah. Ini
+// kode fault standar spec (bukan kuirk satu vendor), jadi wajar ditangani di
+// sini (bukan internal/vendor_adapter/ yang khusus penyimpangan non-standar
+// per CLAUDE.md).
+const (
+	// FaultCodeInvalidParameterName — 9005: parameter yang diminta memang
+	// tidak ada pada device ini. Retry request identik akan gagal identik
+	// setiap kali, sehingga task ditandai FAILED segera (task.Service.
+	// FailPermanently), TIDAK lewat siklus max_retries seperti fault lain.
+	FaultCodeInvalidParameterName = "9005"
+	// FaultCodeInvalidArguments — 9003: pada task GET_PARAMETER_VALUES,
+	// umumnya berarti CPE menolak krn ParameterNames terlalu panjang (kuirk
+	// umum lintas vendor, bukan satu vendor spesifik). Ditangani dgn
+	// memecah daftar nama jadi dua task baru (task.Service.
+	// SplitGetParameterValuesOnFault) alih-alih retry request identik.
+	// Untuk task type lain, 9003 tetap lewat alur retry generik biasa.
+	FaultCodeInvalidArguments = "9003"
 )

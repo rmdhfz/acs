@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
-import { findRefIdByCode, useDeviceStats, useRefs, useTaskStats } from './hooks'
+import { findRefIdByCode, useDeviceStats, useRefs, useTaskStats, useWebhookFailedCount } from './hooks'
 
 // Notifikasi di sini berbasis POLLING (refetchInterval 5 detik yang sudah
 // dipakai useTaskStats/useDeviceStats), BUKAN push/WebSocket sungguhan —
@@ -34,6 +34,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const { data: deviceStatusRefs } = useRefs('ref_device_status')
   const { data: taskStats } = useTaskStats()
   const { data: deviceStats } = useDeviceStats()
+  const { data: webhookStats } = useWebhookFailedCount()
 
   const failedId = findRefIdByCode(taskStatusRefs, 'FAILED')
   const pendingId = findRefIdByCode(taskStatusRefs, 'PENDING')
@@ -41,6 +42,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   const prevFailed = useRef<number | null>(null)
   const prevOffline = useRef<number | null>(null)
+  const prevWebhookFailed = useRef<number | null>(null)
   const wasOverBacklog = useRef(false)
 
   function push(message: string, tone: AppNotification['tone']) {
@@ -79,6 +81,16 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     prevOffline.current = offlineCount
   }, [deviceStats, offlineId])
 
+  useEffect(() => {
+    if (!webhookStats) return
+    const failedCount = webhookStats.count ?? 0
+    if (prevWebhookFailed.current !== null && failedCount > prevWebhookFailed.current) {
+      const delta = failedCount - prevWebhookFailed.current
+      push(`${delta} webhook delivery gagal (total ${failedCount} FAILED)`, 'error')
+    }
+    prevWebhookFailed.current = failedCount
+  }, [webhookStats])
+
   function markAllRead() {
     setUnreadCount(0)
   }
@@ -99,3 +111,4 @@ export function useNotifications() {
   if (!ctx) throw new Error('useNotifications harus dipakai di dalam NotificationProvider')
   return ctx
 }
+

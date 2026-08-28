@@ -142,6 +142,37 @@ CREATE TABLE ref_parameter_types (
     UNIQUE KEY uq_ref_parameter_types_code (code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE ref_ztp_trigger_event (
+    id              BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    code            VARCHAR(32)     NOT NULL COMMENT 'BOOTSTRAP_ONLY, BOOTSTRAP_OR_BOOT, EVERY_INFORM',
+    name            VARCHAR(128)    NOT NULL,
+    description     VARCHAR(255)    NULL,
+    created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_by      BIGINT UNSIGNED NULL,
+    updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    updated_by      BIGINT UNSIGNED NULL,
+    deleted_at      DATETIME        NULL,
+    deleted_by      BIGINT UNSIGNED NULL,
+    is_deleted      TINYINT(1)      NOT NULL DEFAULT 0,
+    UNIQUE KEY uq_ref_ztp_trigger_event_code (code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Kapan sebuah zero_touch_rules dievaluasi relatif thd event CWMP Inform (migrations/0009)';
+
+CREATE TABLE ref_firmware_rollout_status (
+    id              BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    code            VARCHAR(32)     NOT NULL COMMENT 'PENDING, IN_PROGRESS, PAUSED_FAILURE_THRESHOLD, COMPLETED, CANCELLED',
+    name            VARCHAR(128)    NOT NULL,
+    created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_by      BIGINT UNSIGNED NULL,
+    updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    updated_by      BIGINT UNSIGNED NULL,
+    deleted_at      DATETIME        NULL,
+    deleted_by      BIGINT UNSIGNED NULL,
+    is_deleted      TINYINT(1)      NOT NULL DEFAULT 0,
+    UNIQUE KEY uq_ref_firmware_rollout_status_code (code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Status lifecycle satu firmware_rollout_batches (migrations/0011)';
+
 CREATE TABLE ref_roles (
     id              BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     code            VARCHAR(32)     NOT NULL COMMENT 'SUPERADMIN, ADMIN, NOC, VIEWER',
@@ -329,6 +360,15 @@ CREATE TABLE vendor_parameter_mappings (
     vendor_id               BIGINT UNSIGNED NOT NULL,
     data_model_version_id   BIGINT UNSIGNED NOT NULL,
     device_model_id         BIGINT UNSIGNED NULL COMMENT 'Diisi bila mapping hanya berlaku untuk model spesifik (override)',
+    -- software_version_pattern (migrations/0010): pola SQL LIKE thd
+    -- devices.software_version, gaya sama seperti zero_touch_rules.serial_pattern.
+    -- NULL = generik lintas versi software. Ditambahkan sbg member composite
+    -- unique key SETELAH device_model_id, mengikuti pola nullable-in-key yang
+    -- sudah ada di kolom tsb (lihat catatan lengkap ttg semantik NULL di
+    -- MariaDB UNIQUE KEY pada migrations/0010). Resolve() memprioritaskan
+    -- baris dgn pattern yang cocok (LIKE) sebelum fallback ke baris tanpa
+    -- pattern -- lihat internal/repository/mysql/catalog_repository.go.
+    software_version_pattern VARCHAR(255)   NULL,
     logical_key             VARCHAR(128)    NOT NULL COMMENT 'cth: wifi.5g.ssid, wan.pppoe.username, device.optical.rx_power',
     tr069_path              VARCHAR(512)    NOT NULL,
     parameter_type_id       BIGINT UNSIGNED NULL,
@@ -342,7 +382,7 @@ CREATE TABLE vendor_parameter_mappings (
     is_deleted               TINYINT(1)      NOT NULL DEFAULT 0,
     KEY idx_vpm_vendor_dmv (vendor_id, data_model_version_id),
     KEY idx_vpm_device_model (device_model_id),
-    UNIQUE KEY uq_vpm_scope_key (vendor_id, data_model_version_id, device_model_id, logical_key),
+    UNIQUE KEY uq_vpm_scope_key (vendor_id, data_model_version_id, device_model_id, logical_key, software_version_pattern),
     CONSTRAINT fk_vpm_vendor FOREIGN KEY (vendor_id) REFERENCES ref_vendors (id),
     CONSTRAINT fk_vpm_dmv FOREIGN KEY (data_model_version_id) REFERENCES ref_data_model_versions (id),
     CONSTRAINT fk_vpm_device_model FOREIGN KEY (device_model_id) REFERENCES device_models (id),
@@ -422,6 +462,7 @@ CREATE TABLE device_sessions (
     device_id       BIGINT UNSIGNED NOT NULL,
     session_token   VARCHAR(64)     NOT NULL,
     cwmp_id         VARCHAR(64)     NULL COMMENT 'ID CWMP dari header SOAP, untuk korelasi request/response',
+    cwmp_namespace  VARCHAR(64)     NULL COMMENT 'Namespace CWMP yang dideklarasikan CPE pada Inform sesi ini, mis. urn:dslforum-org:cwmp-1-2',
     status          VARCHAR(16)     NOT NULL DEFAULT 'OPEN' COMMENT 'OPEN, CLOSED, ERROR',
     remote_ip       VARCHAR(45)     NULL,
     started_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -557,7 +598,16 @@ CREATE TABLE zero_touch_rules (
     device_model_id         BIGINT UNSIGNED NULL,
     oui                     CHAR(6)         NULL,
     serial_pattern          VARCHAR(255)    NULL COMMENT 'Pola SQL LIKE, mis. "ZTE%"',
-    provisioning_profile_id BIGINT UNSIGNED NOT NULL,
+    -- Kolom precondition tambahan (migrations/0009) -- lihat komentar lengkap
+    -- di file migrasi tsb utk alasan desain & batasan (CHECK pairing dsb).
+    software_version_pattern VARCHAR(255)   NULL COMMENT 'Pola SQL LIKE thd devices.software_version, dievaluasi sama seperti serial_pattern',
+    match_parameter_name     VARCHAR(512)   NULL COMMENT 'Nama device_parameters.parameter_name -- precondition opsional, wajib berpasangan dgn match_parameter_value_pattern',
+    match_parameter_value_pattern VARCHAR(255) NULL COMMENT 'Pola SQL LIKE thd device_parameters.parameter_value milik match_parameter_name',
+    provisioning_profile_id BIGINT UNSIGNED NULL COMMENT 'NULLABLE sejak migrations/0009 -- rule boleh hanya memicu reboot dan/atau firmware push',
+    -- Kolom aksi tambahan (migrations/0009).
+    post_apply_reboot       TINYINT(1)      NOT NULL DEFAULT 0 COMMENT 'Jika 1, enqueue task REBOOT setelah aksi lain rule ini diterapkan',
+    firmware_file_id        BIGINT UNSIGNED NULL COMMENT 'Jika diisi, enqueue task Download firmware ini ke device yang cocok',
+    trigger_event_id        BIGINT UNSIGNED NOT NULL COMMENT 'FK ref_ztp_trigger_event -- kapan rule ini dievaluasi (migrations/0009)',
     priority                INT UNSIGNED    NOT NULL DEFAULT 100 COMMENT 'Angka lebih kecil dievaluasi lebih dulu',
     is_active               TINYINT(1)      NOT NULL DEFAULT 1,
     created_at              DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -571,12 +621,17 @@ CREATE TABLE zero_touch_rules (
     KEY idx_ztr_vendor (vendor_id),
     KEY idx_ztr_model (device_model_id),
     KEY idx_ztr_priority (priority),
+    KEY idx_ztr_firmware (firmware_file_id),
+    KEY idx_ztr_trigger_event (trigger_event_id),
     CONSTRAINT fk_ztr_tenant FOREIGN KEY (tenant_id) REFERENCES tenants (id),
     CONSTRAINT fk_ztr_vendor FOREIGN KEY (vendor_id) REFERENCES ref_vendors (id),
     CONSTRAINT fk_ztr_model FOREIGN KEY (device_model_id) REFERENCES device_models (id),
-    CONSTRAINT fk_ztr_profile FOREIGN KEY (provisioning_profile_id) REFERENCES provisioning_profiles (id)
+    CONSTRAINT fk_ztr_profile FOREIGN KEY (provisioning_profile_id) REFERENCES provisioning_profiles (id),
+    CONSTRAINT fk_ztr_firmware FOREIGN KEY (firmware_file_id) REFERENCES firmware_files (id),
+    CONSTRAINT fk_ztr_trigger_event FOREIGN KEY (trigger_event_id) REFERENCES ref_ztp_trigger_event (id),
+    CONSTRAINT chk_ztr_match_parameter_pair CHECK ((match_parameter_name IS NULL) = (match_parameter_value_pattern IS NULL))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  COMMENT='Aturan pencocokan device baru (event BOOTSTRAP) ke provisioning profile';
+  COMMENT='Aturan pencocokan device baru ke provisioning profile / reboot / firmware push, kapan dievaluasi ditentukan trigger_event_id';
 
 -- Sekarang FK provisioning_profile_id di tabel devices bisa ditambahkan
 ALTER TABLE devices
@@ -618,6 +673,13 @@ CREATE TABLE firmware_upgrade_jobs (
     job_uuid             CHAR(36)        NOT NULL,
     device_id            BIGINT UNSIGNED NOT NULL,
     firmware_id           BIGINT UNSIGNED NOT NULL,
+    -- rollout_batch_id/wave_number (migrations/0011): link balik opsional ke
+    -- firmware_rollout_batches (canary/staged rollout) -- NULL utk job
+    -- ScheduleUpgrade satuan (perilaku lama, tidak berubah). Device-tracking
+    -- TETAP di tabel ini (bukan diduplikasi ke tabel baru), sesuai TECH.md §11
+    -- soal tidak menduplikasi entity yang sudah ada.
+    rollout_batch_id      BIGINT UNSIGNED NULL COMMENT 'Diisi bila job dibuat sbg bagian dari firmware_rollout_batches',
+    wave_number            INT UNSIGNED   NULL COMMENT 'Wave ke berapa (dlm rollout_batch_id) job ini dibuat -- utk hitung success/failure rate per wave',
     task_id                BIGINT UNSIGNED NULL COMMENT 'Task Download terkait di tabel tasks',
     task_status_id           BIGINT UNSIGNED NOT NULL,
     from_version              VARCHAR(64)     NULL,
@@ -633,13 +695,60 @@ CREATE TABLE firmware_upgrade_jobs (
     UNIQUE KEY uq_firmware_upgrade_jobs_uuid (job_uuid),
     KEY idx_fuj_device (device_id),
     KEY idx_fuj_firmware (firmware_id),
+    KEY idx_fuj_rollout_batch (rollout_batch_id),
+    KEY idx_fuj_rollout_batch_wave (rollout_batch_id, wave_number),
     KEY idx_fuj_task (task_id),
     KEY idx_fuj_status (task_status_id),
     CONSTRAINT fk_fuj_device FOREIGN KEY (device_id) REFERENCES devices (id),
     CONSTRAINT fk_fuj_firmware FOREIGN KEY (firmware_id) REFERENCES firmware_files (id),
     CONSTRAINT fk_fuj_task FOREIGN KEY (task_id) REFERENCES tasks (id),
-    CONSTRAINT fk_fuj_status FOREIGN KEY (task_status_id) REFERENCES ref_task_status (id)
+    CONSTRAINT fk_fuj_status FOREIGN KEY (task_status_id) REFERENCES ref_task_status (id),
+    CONSTRAINT fk_fuj_rollout_batch FOREIGN KEY (rollout_batch_id) REFERENCES firmware_rollout_batches (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- firmware_rollout_batches (migrations/0011): rencana canary/staged rollout
+-- firmware ke populasi device bertahap per wave. Target populasi dipilih via
+-- vendor_id/device_model_id -- bentuk filter yang SAMA dgn domain.DeviceFilter
+-- yang sudah dipakai listing device lain (internal/domain/device.go), supaya
+-- usecase orchestration (belum diimplementasikan di sini) tinggal reuse
+-- DeviceRepository.List utk resolve populasi. Individual per-device job TETAP
+-- di firmware_upgrade_jobs (di atas, kolom rollout_batch_id/wave_number) --
+-- tidak menduplikasi device-tracking di tabel ini.
+CREATE TABLE firmware_rollout_batches (
+    id                          BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    batch_uuid                  CHAR(36)        NOT NULL,
+    tenant_id                   BIGINT UNSIGNED NULL COMMENT 'NULL = rollout lintas-tenant/global',
+    firmware_file_id            BIGINT UNSIGNED NOT NULL,
+    vendor_id                   BIGINT UNSIGNED NULL COMMENT 'Kriteria seleksi populasi target -- NULL = tidak difilter vendor',
+    device_model_id             BIGINT UNSIGNED NULL COMMENT 'Kriteria seleksi populasi target -- NULL = tidak difilter model',
+    wave_percentage             TINYINT UNSIGNED NOT NULL DEFAULT 10 COMMENT 'Persentase populasi per wave, mis. 10 = 10% per wave',
+    max_failure_rate_percent    TINYINT UNSIGNED NOT NULL DEFAULT 10 COMMENT 'Ambang tingkat gagal per wave (%) sebelum rollout di-pause otomatis',
+    current_wave                INT UNSIGNED    NOT NULL DEFAULT 0 COMMENT 'Wave terakhir yang sudah/sedang dijalankan (bookkeeping progres, diperbarui usecase orchestration)',
+    status_id                   BIGINT UNSIGNED NOT NULL,
+    notes                       VARCHAR(255)    NULL,
+    scheduled_at                DATETIME        NULL COMMENT 'Diisi bila batch baru boleh dijalankan (wave 1) setelah waktu tertentu',
+    started_at                  DATETIME        NULL,
+    completed_at                DATETIME        NULL,
+    created_at                  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_by                  BIGINT UNSIGNED NULL,
+    updated_at                  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    updated_by                  BIGINT UNSIGNED NULL,
+    deleted_at                  DATETIME        NULL,
+    deleted_by                  BIGINT UNSIGNED NULL,
+    is_deleted                  TINYINT(1)      NOT NULL DEFAULT 0,
+    UNIQUE KEY uq_firmware_rollout_batches_uuid (batch_uuid),
+    KEY idx_frb_tenant (tenant_id),
+    KEY idx_frb_firmware (firmware_file_id),
+    KEY idx_frb_vendor (vendor_id),
+    KEY idx_frb_device_model (device_model_id),
+    KEY idx_frb_status (status_id),
+    CONSTRAINT fk_frb_tenant FOREIGN KEY (tenant_id) REFERENCES tenants (id),
+    CONSTRAINT fk_frb_firmware FOREIGN KEY (firmware_file_id) REFERENCES firmware_files (id),
+    CONSTRAINT fk_frb_vendor FOREIGN KEY (vendor_id) REFERENCES ref_vendors (id),
+    CONSTRAINT fk_frb_device_model FOREIGN KEY (device_model_id) REFERENCES device_models (id),
+    CONSTRAINT fk_frb_status FOREIGN KEY (status_id) REFERENCES ref_firmware_rollout_status (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Rencana canary/staged rollout firmware ke populasi device bertahap per wave';
 
 -- =====================================================================
 -- 8. DIAGNOSTICS
@@ -735,6 +844,23 @@ INSERT INTO ref_roles (code, name) VALUES
     ('NOC', 'NOC / Operator'),
     ('VIEWER', 'Viewer / read-only');
 
+-- migrations/0009: kapan zero_touch_rules dievaluasi relatif thd event Inform.
+INSERT INTO ref_ztp_trigger_event (code, name, description) VALUES
+    ('BOOTSTRAP_ONLY', 'Hanya saat Bootstrap',
+        'Rule dievaluasi hanya saat event CWMP "0 BOOTSTRAP" -- perilaku default/lama, dipakai sbg nilai backfill rule existing'),
+    ('BOOTSTRAP_OR_BOOT', 'Bootstrap atau Boot',
+        'Rule dievaluasi saat event "0 BOOTSTRAP" ATAU "1 BOOT"'),
+    ('EVERY_INFORM', 'Setiap Inform',
+        'Rule dievaluasi pada setiap Inform, tanpa memandang event code');
+
+-- migrations/0011: status lifecycle firmware_rollout_batches.
+INSERT INTO ref_firmware_rollout_status (code, name) VALUES
+    ('PENDING', 'Menunggu dimulai'),
+    ('IN_PROGRESS', 'Sedang berjalan'),
+    ('PAUSED_FAILURE_THRESHOLD', 'Dijeda -- ambang gagal wave terlampaui'),
+    ('COMPLETED', 'Selesai -- seluruh wave sukses diterapkan'),
+    ('CANCELLED', 'Dibatalkan operator');
+
 INSERT INTO ref_vendors (code, name) VALUES
     ('ZTE', 'ZTE Corporation'),
     ('HUAWEI', 'Huawei Technologies'),
@@ -796,3 +922,82 @@ CROSS JOIN (
 ) k
 LEFT JOIN ref_parameter_types pt ON pt.code = k.ptype
 WHERE v.code IN ('ZTE', 'HUAWEI', 'FIBERHOME', 'NOKIA', 'CDATA');
+
+-- =====================================================================
+-- Webhook keluar (typed event -> BSS/OSS/NMS) — migrations/0013
+-- =====================================================================
+
+CREATE TABLE ref_webhook_event_types (
+    id              BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    code            VARCHAR(48)     NOT NULL COMMENT 'DEVICE_FAULT, PARAMETER_VALUE_CHANGE, TASK_FAILED',
+    name            VARCHAR(128)    NOT NULL,
+    description     VARCHAR(255)    NULL,
+    created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_by      BIGINT UNSIGNED NULL,
+    updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    updated_by      BIGINT UNSIGNED NULL,
+    deleted_at      DATETIME        NULL,
+    deleted_by      BIGINT UNSIGNED NULL,
+    is_deleted      TINYINT(1)      NOT NULL DEFAULT 0,
+    UNIQUE KEY uq_ref_webhook_event_types_code (code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Jenis event yang bisa dikirim ACS sebagai webhook (migrations/0013)';
+
+INSERT INTO ref_webhook_event_types (code, name, description) VALUES
+    ('DEVICE_FAULT', 'Device Fault',
+        'CPE mengirim cwmp:Fault dalam sesi CWMP (RPC gagal di sisi CPE)'),
+    ('PARAMETER_VALUE_CHANGE', 'Parameter Value Change',
+        'CPE mengirim event CWMP "4 VALUE CHANGE"'),
+    ('TASK_FAILED', 'Task Failed',
+        'Task queue mencapai status FAILED terminal (habis retry)');
+
+CREATE TABLE webhook_subscriptions (
+    id                  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    subscription_uuid   CHAR(36)        NOT NULL,
+    tenant_id           BIGINT UNSIGNED NULL COMMENT 'NULL = subscription global lintas tenant (SUPERADMIN saja)',
+    event_type_id       BIGINT UNSIGNED NOT NULL,
+    name                VARCHAR(128)    NOT NULL,
+    target_url          VARCHAR(500)    NOT NULL,
+    secret_enc          VARBINARY(255)  NOT NULL COMMENT 'Secret HMAC-SHA256, AES-GCM at-rest (pkg/cryptoutil)',
+    is_active           TINYINT(1)      NOT NULL DEFAULT 1,
+    description         VARCHAR(255)    NULL,
+    created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_by          BIGINT UNSIGNED NULL,
+    updated_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    updated_by          BIGINT UNSIGNED NULL,
+    deleted_at          DATETIME        NULL,
+    deleted_by          BIGINT UNSIGNED NULL,
+    is_deleted          TINYINT(1)      NOT NULL DEFAULT 0,
+    UNIQUE KEY uq_webhook_subscriptions_uuid (subscription_uuid),
+    KEY idx_webhook_subscriptions_tenant (tenant_id),
+    KEY idx_webhook_subscriptions_dispatch (event_type_id, is_active, is_deleted),
+    CONSTRAINT fk_webhook_subscriptions_tenant FOREIGN KEY (tenant_id) REFERENCES tenants (id),
+    CONSTRAINT fk_webhook_subscriptions_event_type FOREIGN KEY (event_type_id) REFERENCES ref_webhook_event_types (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Langganan webhook per (tenant, jenis event, URL target) — migrations/0013';
+
+-- LOG volume tinggi: audit minimal (created_at/updated_at saja), tanpa
+-- soft-delete — trade-off eksplisit demi throughput tulis (CLAUDE.md §2).
+CREATE TABLE webhook_deliveries (
+    id                  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    delivery_uuid       CHAR(36)        NOT NULL,
+    subscription_id     BIGINT UNSIGNED NOT NULL,
+    event_type_id       BIGINT UNSIGNED NOT NULL,
+    payload             JSON            NOT NULL,
+    status              VARCHAR(16)     NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING, DELIVERED, FAILED',
+    attempt_count       INT UNSIGNED    NOT NULL DEFAULT 0,
+    max_attempts        INT UNSIGNED    NOT NULL DEFAULT 6,
+    response_status     INT             NULL,
+    error_message       VARCHAR(500)    NULL,
+    next_attempt_at     DATETIME        NULL,
+    delivered_at        DATETIME        NULL,
+    created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_webhook_deliveries_uuid (delivery_uuid),
+    KEY idx_webhook_deliveries_subscription (subscription_id),
+    KEY idx_webhook_deliveries_worker (status, next_attempt_at),
+    CONSTRAINT fk_webhook_deliveries_subscription FOREIGN KEY (subscription_id) REFERENCES webhook_subscriptions (id),
+    CONSTRAINT fk_webhook_deliveries_event_type FOREIGN KEY (event_type_id) REFERENCES ref_webhook_event_types (id),
+    CONSTRAINT chk_webhook_deliveries_status CHECK (status IN ('PENDING', 'DELIVERED', 'FAILED'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Log setiap percobaan pengiriman webhook (audit minimal) — migrations/0013';

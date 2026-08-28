@@ -416,7 +416,14 @@ function MappingsTab() {
                 <tr key={m.id}>
                   <td className="px-5 py-3.5 font-mono text-xs text-slate-700 dark:text-slate-300">{m.logical_key}</td>
                   <td className="px-5 py-3.5 font-mono text-xs text-slate-500 dark:text-slate-400">{m.tr069_path}</td>
-                  <td className="px-5 py-3.5 text-xs text-slate-500 dark:text-slate-400">{m.device_model_id ? `Model #${m.device_model_id}` : 'Semua model vendor'}</td>
+                  <td className="px-5 py-3.5 text-xs text-slate-500 dark:text-slate-400">
+                    {[
+                      m.device_model_id ? `Model #${m.device_model_id}` : 'Semua model vendor',
+                      m.software_version_pattern ? `sw LIKE ${m.software_version_pattern}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -435,6 +442,7 @@ function CreateMappingModal({ vendorId, onClose }: { vendorId: number; onClose: 
   const { data: models } = useDeviceModels(vendorId)
   const [dmVersionId, setDmVersionId] = useState('')
   const [deviceModelId, setDeviceModelId] = useState('')
+  const [softwareVersionPattern, setSoftwareVersionPattern] = useState('')
   const [logicalKey, setLogicalKey] = useState('')
   const [tr069Path, setTr069Path] = useState('')
   const [parameterTypeId, setParameterTypeId] = useState('')
@@ -449,6 +457,7 @@ function CreateMappingModal({ vendorId, onClose }: { vendorId: number; onClose: 
       vendor_id: vendorId,
       data_model_version_id: Number(dmVersionId),
       device_model_id: deviceModelId ? Number(deviceModelId) : undefined,
+      software_version_pattern: softwareVersionPattern || undefined,
       logical_key: logicalKey,
       tr069_path: tr069Path,
       parameter_type_id: parameterTypeId ? Number(parameterTypeId) : undefined,
@@ -513,6 +522,10 @@ function CreateMappingModal({ vendorId, onClose }: { vendorId: number; onClose: 
               </option>
             ))}
           </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Software Version Pattern (opsional — SQL LIKE, mapping lebih spesifik menang)</label>
+          <input value={softwareVersionPattern} onChange={(e) => setSoftwareVersionPattern(e.target.value)} placeholder="mis. V5.% — kosong = berlaku lintas semua versi" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Deskripsi (opsional)</label>

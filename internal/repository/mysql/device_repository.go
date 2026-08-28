@@ -268,6 +268,49 @@ func (r *deviceParameterRepository) Get(ctx context.Context, deviceID uint64, na
 	return &p, nil
 }
 
+// ---- DeviceConfigSnapshot ----
+
+type deviceConfigSnapshotRepository struct{ db *sqlx.DB }
+
+func NewDeviceConfigSnapshotRepository(db *sqlx.DB) domain.DeviceConfigSnapshotRepository {
+	return &deviceConfigSnapshotRepository{db: db}
+}
+
+func (r *deviceConfigSnapshotRepository) Create(ctx context.Context, s *domain.DeviceConfigSnapshot) error {
+	const q = `INSERT INTO device_config_snapshots (device_id, snapshot_data, created_at)
+		VALUES (:device_id, :snapshot_data, :created_at)`
+	res, err := r.db.NamedExecContext(ctx, q, s)
+	if err != nil {
+		return translateErr(err)
+	}
+	id, _ := res.LastInsertId()
+	s.ID = uint64(id)
+	return nil
+}
+
+func (r *deviceConfigSnapshotRepository) ListByDevice(ctx context.Context, deviceID uint64, p domain.Pagination) ([]domain.DeviceConfigSnapshot, int, error) {
+	var total int
+	if err := r.db.GetContext(ctx, &total, `SELECT COUNT(*) FROM device_config_snapshots WHERE device_id = ?`, deviceID); err != nil {
+		return nil, 0, translateErr(err)
+	}
+	var rows []domain.DeviceConfigSnapshot
+	err := r.db.SelectContext(ctx, &rows,
+		`SELECT * FROM device_config_snapshots WHERE device_id = ? ORDER BY id DESC LIMIT ? OFFSET ?`,
+		deviceID, p.Limit(), p.Offset())
+	if err != nil {
+		return nil, 0, translateErr(err)
+	}
+	return rows, total, nil
+}
+
+func (r *deviceConfigSnapshotRepository) GetByID(ctx context.Context, id uint64) (*domain.DeviceConfigSnapshot, error) {
+	var s domain.DeviceConfigSnapshot
+	if err := r.db.GetContext(ctx, &s, `SELECT * FROM device_config_snapshots WHERE id = ?`, id); err != nil {
+		return nil, translateErr(err)
+	}
+	return &s, nil
+}
+
 // ---- DeviceSession ----
 
 type deviceSessionRepository struct{ db *sqlx.DB }
@@ -304,6 +347,11 @@ func (r *deviceSessionRepository) UpdateStatus(ctx context.Context, id uint64, s
 
 func (r *deviceSessionRepository) SetCWMPID(ctx context.Context, id uint64, cwmpID string) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE device_sessions SET cwmp_id = ? WHERE id = ?`, cwmpID, id)
+	return translateErr(err)
+}
+
+func (r *deviceSessionRepository) SetCWMPNamespace(ctx context.Context, id uint64, namespace string) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE device_sessions SET cwmp_namespace = ? WHERE id = ?`, namespace, id)
 	return translateErr(err)
 }
 

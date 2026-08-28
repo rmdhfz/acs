@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/coreos/go-oidc/v3/oidc"
+	"golang.org/x/oauth2"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
@@ -73,10 +75,28 @@ type Service struct {
 	activity  domain.ActivityLogRepository
 	jwtSecret []byte
 	jwtExpiry time.Duration
+
+	oidcProvider *oidc.Provider
+	oauth2Config *oauth2.Config
 }
 
-func NewService(users domain.UserRepository, tokens domain.APITokenRepository, tenants domain.TenantRepository, activity domain.ActivityLogRepository, jwtSecret []byte, jwtExpiry time.Duration) *Service {
-	return &Service{users: users, tokens: tokens, tenants: tenants, activity: activity, jwtSecret: jwtSecret, jwtExpiry: jwtExpiry}
+func NewService(users domain.UserRepository, tokens domain.APITokenRepository, tenants domain.TenantRepository, activity domain.ActivityLogRepository, jwtSecret []byte, jwtExpiry time.Duration, issuer, clientID, clientSecret, redirectURL string) *Service {
+	s := &Service{users: users, tokens: tokens, tenants: tenants, activity: activity, jwtSecret: jwtSecret, jwtExpiry: jwtExpiry}
+	if issuer != "" && clientID != "" {
+		ctx := context.Background()
+		provider, err := oidc.NewProvider(ctx, issuer)
+		if err == nil {
+			s.oidcProvider = provider
+			s.oauth2Config = &oauth2.Config{
+				ClientID:     clientID,
+				ClientSecret: clientSecret,
+				RedirectURL:  redirectURL,
+				Endpoint:     provider.Endpoint(),
+				Scopes:       []string{oidc.ScopeOpenID, "profile", "email"},
+			}
+		}
+	}
+	return s
 }
 
 func HashPassword(password string) (string, error) {
@@ -390,4 +410,75 @@ func ScopedTenantFilter(actor domain.Actor) (*uint64, error) {
 		return nil, domain.ErrForbidden
 	}
 	return actor.TenantID, nil
+}
+
+// ---- OIDC Integration ----
+
+func (s *Service) HasOIDC() bool {
+	return s.oidcProvider != nil && s.oauth2Config != nil
+}
+
+func (s *Service) GetOIDCAuthURL(state string) (string, error) {
+	if !s.HasOIDC() {
+		return "", errors.New("auth: OIDC tidak dikonfigurasi")
+	}
+	return s.oauth2Config.AuthCodeURL(state), nil
+}
+
+func (s *Service) OIDCLogin(ctx context.Context, code string) (*domain.User, string, error) {
+	if !s.HasOIDC() {
+		return nil, "", errors.New("auth: OIDC tidak dikonfigurasi")
+	}
+
+	oauth2Token, err := s.oauth2Config.Exchange(ctx, code)
+	if err != nil {
+		return nil, "", fmt.Errorf("auth: gagal menukar kode OIDC: %w", err)
+	}
+
+	rawIDToken, ok := oauth2Token.Extra("id_token").(string)
+	if !ok {
+		return nil, "", errors.New("auth: tidak ada id_token pada respons OIDC")
+	}
+
+	verifier := s.oidcProvider.Verifier(&oidc.Config{ClientID: s.oauth2Config.ClientID})
+	idToken, err := verifier.Verify(ctx, rawIDToken)
+	if err != nil {
+		return nil, "", fmt.Errorf("auth: gagal memverifikasi id_token: %w", err)
+	}
+
+	var claims struct {
+		Email string `json:"email"`
+		Name  string `json:"name"`
+		Groups []string `json:"groups"` // Bisa didapat dari Azure AD / Okta claims
+	}
+	if err := idToken.Claims(&claims); err != nil {
+		return nil, "", fmt.Errorf("auth: gagal mengekstrak claims: %w", err)
+	}
+
+	if claims.Email == "" {
+		return nil, "", errors.New("auth: email tidak ditemukan dalam claims OIDC")
+	}
+
+	// Cek apakah user ada berdasarkan email
+	u, err := s.users.GetByUsername(ctx, claims.Email) // Kita asumsikan username = email untuk OIDC
+	if err != nil {
+		// Jika belum ada, auto-provisioning bisa dilakukan di sini, tapi untuk saat ini:
+		return nil, "", errors.New("auth: akun OIDC belum terdaftar, hubungi admin")
+	}
+
+	if !u.IsActive {
+		return nil, "", ErrInvalidCredentials
+	}
+
+	if err := s.checkTenantActive(ctx, u.TenantID); err != nil {
+		return nil, "", err
+	}
+
+	token, err := s.issueJWT(u)
+	if err != nil {
+		return nil, "", err
+	}
+	_ = s.users.TouchLastLogin(ctx, u.ID, time.Now())
+	_ = s.activity.Record(ctx, &domain.ActivityLog{UserID: &u.ID, TenantID: u.TenantID, Action: "OIDC_LOGIN", EntityType: "user", EntityID: &u.ID})
+	return u, token, nil
 }

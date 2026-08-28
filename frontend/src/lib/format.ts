@@ -46,3 +46,7 @@ export function formatDateTime(iso: string | null): string {
     minute: '2-digit',
   })
 }
+
+// Alias pendek untuk dipakai di halaman baru (WebhooksPage, dll.)
+export const fmtDatetime = formatDateTime
+

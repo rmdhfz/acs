@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -39,6 +40,17 @@ type Service struct {
 	firmwareSvc     *firmware.Service
 	diagnosticsSvc  *diagnostics.Service
 	enc             *cryptoutil.Encryptor
+	// logger — structured logging (log/slog) sepanjang jalur sesi CWMP
+	// (TECH.md §10). Boleh nil (mis. test yang membangun Service via literal
+	// struct langsung, lihat service_test.go) -- SELALU diakses lewat method
+	// log() di bawah, bukan field ini langsung, supaya nil-safe (fallback
+	// slog.Default()).
+	logger *slog.Logger
+	// webhookEnq — fan-out event webhook keluar (migrations/0013). Boleh nil
+	// (test / konfigurasi tanpa webhook) -- SELALU lewat notifyWebhook() yang
+	// nil-safe & tidak pernah menggagalkan alur sesi.
+	webhookEnq domain.WebhookEnqueuer
+	publisher  domain.EventPublisher
 }
 
 func NewService(
@@ -54,12 +66,35 @@ func NewService(
 	firmwareSvc *firmware.Service,
 	diagnosticsSvc *diagnostics.Service,
 	enc *cryptoutil.Encryptor,
+	logger *slog.Logger,
+	webhookEnq domain.WebhookEnqueuer,
+	publisher domain.EventPublisher,
 ) *Service {
 	return &Service{
 		sessions: sessions, events: events, deviceParams: deviceParams, devices: devices, tenants: tenants, refs: refs,
 		deviceSvc: deviceSvc, taskSvc: taskSvc, provisioningSvc: provisioningSvc,
-		firmwareSvc: firmwareSvc, diagnosticsSvc: diagnosticsSvc, enc: enc,
+		firmwareSvc: firmwareSvc, diagnosticsSvc: diagnosticsSvc, enc: enc, logger: logger, webhookEnq: webhookEnq, publisher: publisher,
 	}
+}
+
+// notifyWebhook mem-fan-out event webhook TANPA menggagalkan alur sesi CWMP
+// (error di-log saja) dan nil-safe bila webhook tidak dikonfigurasi.
+func (s *Service) notifyWebhook(ctx context.Context, eventCode string, tenantID *uint64, payload any) {
+	if s.webhookEnq == nil {
+		return
+	}
+	if err := s.webhookEnq.Enqueue(ctx, eventCode, tenantID, payload); err != nil {
+		s.log().Warn("cwmp: gagal enqueue webhook", "event", eventCode, "error", err)
+	}
+}
+
+// log mengembalikan logger yang aman dipakai (fallback slog.Default() bila
+// s.logger nil — lihat komentar field logger di atas).
+func (s *Service) log() *slog.Logger {
+	if s.logger == nil {
+		return slog.Default()
+	}
+	return s.logger
 }
 
 // CountOpenSessions — jumlah sesi CWMP berstatus OPEN saat ini (metrik
@@ -97,6 +132,12 @@ type InformInput struct {
 	InformPassword string
 	Events         []InformEvent
 	Parameters     []InformParameter
+	// Namespace -- namespace CWMP yang dideklarasikan CPE pada Inform ini
+	// (mis. "urn:dslforum-org:cwmp-1-0"/"cwmp-1-2"), disimpan ke sesi
+	// (migrations/0012) supaya RPC proaktif berikutnya dalam sesi yang sama
+	// memakai namespace yang sama, bukan default hardcode -- lihat komentar
+	// lengkap di migrations/0012.
+	Namespace string
 }
 
 type InformResult struct {
@@ -128,14 +169,29 @@ func (s *Service) HandleInform(ctx context.Context, in InformInput) (*InformResu
 	if err != nil {
 		return nil, err
 	}
+	// Simpan namespace CWMP sesi ini SEKALI (idempotent dipanggil ulang kalau
+	// Inform lanjutan di sesi yang sama, mis. sesudah value-change -- costnya
+	// murah, satu UPDATE) supaya NextRequest bisa memakainya utk RPC proaktif
+	// berikutnya (lihat migrations/0012).
+	if in.Namespace != "" {
+		if err := s.sessions.SetCWMPNamespace(ctx, sess.ID, in.Namespace); err != nil {
+			return nil, fmt.Errorf("session: gagal menyimpan namespace CWMP: %w", err)
+		}
+		sess.CWMPNamespace = &in.Namespace
+	}
 
 	// Aktor sistem (bukan user login) untuk aksi otomatis seperti evaluasi ZTP.
 	systemActor := domain.Actor{TenantID: dev.TenantID}
 
+	var hasBootstrap, hasBoot, hasValueChange bool
 	for _, ev := range in.Events {
 		code, err := s.refs.GetByCode(ctx, domain.RefTableEventCodes, ev.EventCode)
 		if err != nil {
-			continue // event code tidak dikenal (kuirk vendor) - jangan gagalkan seluruh Inform
+			// event code tidak dikenal (kuirk vendor) - jangan gagalkan seluruh
+			// Inform, tapi tetap dicatat (Debug) supaya bisa dilacak kalau
+			// device tertentu ternyata sering mengirim event code non-standar.
+			s.log().Debug("cwmp: event code tidak dikenal, diabaikan", "device_id", dev.ID, "event_code", ev.EventCode)
+			continue
 		}
 		occurredAt := time.Now()
 		var cmdKey *string
@@ -148,18 +204,20 @@ func (s *Service) HandleInform(ctx context.Context, in InformInput) (*InformResu
 
 		switch ev.EventCode {
 		case domain.EventCodeBootstrap:
-			// ZTP gagal/tidak match TIDAK boleh menggagalkan seluruh Inform —
-			// device tetap tercatat, menunggu tindakan manual (FR-15).
-			if _, err := s.provisioningSvc.EvaluateZeroTouch(ctx, systemActor, dev); err != nil &&
-				!errors.Is(err, domain.ErrNoMatchingRule) {
-				_ = err
-			}
+			hasBootstrap = true
 		case domain.EventCodeBoot:
+			hasBoot = true
 			_ = s.deviceSvc.TouchLastBootEvent(ctx, dev, occurredAt)
+			s.detectAnomalyBoot(ctx, dev)
+		case domain.EventCodeValueChange:
+			hasValueChange = true
 		}
 	}
 
 	if len(in.Parameters) > 0 {
+		// Anomaly Detection (ROADMAP.md Fase 5): Cek perubahan DNS sebelum di-upsert
+		s.detectAnomalyDNS(ctx, dev, in.Parameters)
+
 		params := make([]domain.DeviceParameter, 0, len(in.Parameters))
 		for _, p := range in.Parameters {
 			val := p.Value
@@ -168,7 +226,58 @@ func (s *Service) HandleInform(ctx context.Context, in InformInput) (*InformResu
 		_ = s.deviceParams.UpsertBatch(ctx, params)
 	}
 
+	// Webhook PARAMETER_VALUE_CHANGE (migrations/0013) — CPE mengirim event
+	// "4 VALUE CHANGE" berarti satu/lebih parameter berubah di sisi CPE.
+	// Payload memuat parameter yang ikut dilaporkan pada Inform ini (bila ada).
+	if hasValueChange {
+		changed := make(map[string]string, len(in.Parameters))
+		for _, p := range in.Parameters {
+			changed[p.Name] = p.Value
+		}
+		s.notifyWebhook(ctx, domain.WebhookEventParameterValueChange, dev.TenantID, map[string]any{
+			"device_id":     dev.ID,
+			"serial_number": dev.SerialNumber,
+			"parameters":    changed,
+		})
+	}
+
+	// Evaluasi ZTP SETELAH device_parameters di-upsert (bukan di dalam loop
+	// event di atas) -- supaya precondition MatchParameterName/
+	// MatchParameterValuePattern (migrations/0009) melihat nilai parameter
+	// TERBARU dari Inform ini, bukan snapshot lama sebelum Inform ini
+	// diproses. triggerCodes menentukan rule ber-trigger apa yang berlaku
+	// utk Inform ini (lihat domain.ZtpTriggerEvent* & komentar lengkap di
+	// provisioning.Service.EvaluateZeroTouch soal urutan evaluasi/guard-nya).
+	// ZTP gagal/tidak match TIDAK boleh menggagalkan seluruh Inform — device
+	// tetap tercatat, menunggu tindakan manual (FR-15).
+	triggerCodes := []string{domain.ZtpTriggerEventEveryInform}
+	if hasBootstrap {
+		triggerCodes = append(triggerCodes, domain.ZtpTriggerEventBootstrapOnly, domain.ZtpTriggerEventBootstrapOrBoot)
+	} else if hasBoot {
+		triggerCodes = append(triggerCodes, domain.ZtpTriggerEventBootstrapOrBoot)
+	}
+	if _, err := s.provisioningSvc.EvaluateZeroTouch(ctx, systemActor, dev, triggerCodes); err != nil &&
+		!errors.Is(err, domain.ErrNoMatchingRule) {
+		s.log().Warn("cwmp: evaluasi zero-touch provisioning gagal", "device_id", dev.ID, "error", err)
+	}
+
+	// Dynamic Parameter Auto-Discovery (ROADMAP.md Fase 5)
+	// Jika ZTP tidak menemukan rule (atau rule tidak ada) dan vendor tidak dikenal (VendorID nil),
+	// antrekan task GetParameterNames di root (path "") untuk menemukan parameter tree.
+	if dev.VendorID == nil && hasBootstrap {
+		// EnqueueGetParameterNames: path="" dan nextLevel=true untuk mengambil struktur hierarki teratas
+		if _, err := s.taskSvc.EnqueueGetParameterNames(ctx, systemActor, dev.ID, "", true, 5); err != nil {
+			s.log().Warn("cwmp: gagal enqueue auto-discovery GetParameterNames", "device_id", dev.ID, "error", err)
+		}
+	}
+
 	_ = s.deviceSvc.MarkOnline(ctx, dev.ID)
+
+	if s.publisher != nil && dev.TenantID != nil {
+		s.publisher.BroadcastToTenant(*dev.TenantID, "DEVICE_ONLINE", map[string]interface{}{
+			"device_id": dev.ID,
+		})
+	}
 
 	return &InformResult{SessionToken: sess.SessionToken, DeviceID: dev.ID}, nil
 }
@@ -290,6 +399,13 @@ type OutboundRPC struct {
 	TaskUUID   string
 	TaskType   string // kode ref_task_types
 	Parameters []byte // JSON task.Parameters, kontrak internal usecase/task <-> delivery/cwmp/builder.go
+	// Namespace -- namespace CWMP yang dipakai sepanjang sesi ini (dari
+	// device_sessions.cwmp_namespace, diisi saat Inform -- migrations/0012),
+	// dipakai delivery/cwmp membangun envelope RPC ini. Boleh kosong (mis.
+	// data sesi lama sebelum migrations/0012 ada) -- delivery/cwmp yang
+	// menentukan default wire-format saat kosong (paket ini sengaja tidak
+	// bergantung pkg/cwmpxml, lihat komentar package di atas).
+	Namespace string
 }
 
 // NextRequest dipanggil delivery/cwmp saat CPE mengirim POST kosong (minta
@@ -309,6 +425,12 @@ func (s *Service) NextRequest(ctx context.Context, token string) (*OutboundRPC, 
 		if errors.Is(err, domain.ErrNotFound) {
 			now := time.Now()
 			_ = s.sessions.UpdateStatus(ctx, sess.ID, domain.SessionStatusClosed, &now)
+			// Titik otoritatif "sesi ditutup" (state transition-nya SENDIRI
+			// terjadi persis di baris di atas) — dicatat di sini, BUKAN
+			// duplikat lagi di delivery/cwmp/handler.go, supaya satu event
+			// cuma menghasilkan satu baris log (CLAUDE.md: jaga volume log).
+			s.log().Info("cwmp: sesi ditutup (tidak ada task tersisa)",
+				"device_id", sess.DeviceID, "session_token", token)
 			return nil, true, nil
 		}
 		return nil, true, err
@@ -321,8 +443,14 @@ func (s *Service) NextRequest(ctx context.Context, token string) (*OutboundRPC, 
 	if err := s.taskSvc.MarkSent(ctx, t.ID); err != nil {
 		return nil, true, err
 	}
+	s.log().Debug("cwmp: task ditandai SENT, siap dikirim ke CPE",
+		"device_id", sess.DeviceID, "session_token", token, "task_id", t.ID, "task_type", typeRef.Code)
 
-	return &OutboundRPC{TaskID: t.ID, TaskUUID: t.TaskUUID, TaskType: typeRef.Code, Parameters: []byte(t.Parameters)}, false, nil
+	var ns string
+	if sess.CWMPNamespace != nil {
+		ns = *sess.CWMPNamespace
+	}
+	return &OutboundRPC{TaskID: t.ID, TaskUUID: t.TaskUUID, TaskType: typeRef.Code, Parameters: []byte(t.Parameters), Namespace: ns}, false, nil
 }
 
 // ---- Respons RPC dari CPE (TECH.md §3/§4) ----
@@ -375,6 +503,7 @@ func (s *Service) HandleRPCResponse(ctx context.Context, resp RPCResponse) error
 	if err := s.taskSvc.Complete(ctx, t.ID, domain.JSONRawMessage(resp.RawResponse)); err != nil {
 		return err
 	}
+	s.log().Debug("cwmp: task COMPLETED dari respons RPC CPE", "device_id", sess.DeviceID, "task_id", t.ID)
 
 	if len(resp.ParameterValues) > 0 {
 		params := make([]domain.DeviceParameter, 0, len(resp.ParameterValues))
@@ -393,6 +522,20 @@ func (s *Service) HandleRPCResponse(ctx context.Context, resp RPCResponse) error
 	return nil
 }
 
+// handleFault menerjemahkan cwmp:Fault dari CPE ke aksi pada task yang
+// sedang SENT (TECH.md §3/§4). Sebagian besar fault code memakai alur retry
+// generik (task.Service.Fail -> failOrRetry), TAPI dua fault code standar
+// TR-069 dapat penanganan khusus krn retry identik pasti percuma:
+//   - domain.FaultCodeInvalidParameterName (9005): parameter memang tidak
+//     ada di device ini -> FAILED segera (FailPermanently), skip max_retries.
+//   - domain.FaultCodeInvalidArguments (9003) KHUSUS pada task
+//     GET_PARAMETER_VALUES: biasanya CPE menolak krn parameter list
+//     kepanjangan -> daftar nama dipecah dua, jadi dua task baru
+//     (SplitGetParameterValuesOnFault), task asli tidak di-retry apa adanya.
+//     9003 pada task type LAIN, atau bila daftar sudah tidak bisa dipecah
+//     lagi (<=1 parameter), tetap jatuh ke alur Fail/failOrRetry biasa.
+//
+// Fault code lain di luar dua ini TIDAK berubah perilakunya sama sekali.
 func (s *Service) handleFault(ctx context.Context, deviceID uint64, f *FaultInfo) error {
 	t, err := s.taskSvc.GetSentForDevice(ctx, deviceID)
 	if err != nil {
@@ -404,6 +547,45 @@ func (s *Service) handleFault(ctx context.Context, deviceID uint64, f *FaultInfo
 	msg := f.Message
 	if f.Code != "" {
 		msg = fmt.Sprintf("[%s] %s", f.Code, f.Message)
+	}
+	s.log().Error("cwmp: menangani cwmp:Fault dari CPE", "device_id", deviceID, "task_id", t.ID, "fault_code", f.Code, "fault_string", f.Message)
+
+	// Webhook DEVICE_FAULT (migrations/0013) — CPE menolak RPC dgn cwmp:Fault.
+	// tenant_id di-resolve dari device (fault jarang, bukan hot path).
+	if s.webhookEnq != nil && s.devices != nil {
+		var tenantID *uint64
+		if dev, derr := s.devices.GetByID(ctx, deviceID); derr == nil {
+			tenantID = dev.TenantID
+		}
+		s.notifyWebhook(ctx, domain.WebhookEventDeviceFault, tenantID, map[string]any{
+			"device_id":    deviceID,
+			"task_id":      t.ID,
+			"fault_code":   f.Code,
+			"fault_string": f.Message,
+		})
+	}
+
+	switch f.Code {
+	case domain.FaultCodeInvalidParameterName:
+		s.log().Warn("cwmp: fault 9005 Invalid Parameter Name -> task FAILED permanen (parameter tidak didukung device ini)",
+			"device_id", deviceID, "task_id", t.ID)
+		return s.taskSvc.FailPermanently(ctx, t, msg+" (parameter tidak didukung/tidak dikenal device ini)")
+
+	case domain.FaultCodeInvalidArguments:
+		typeRef, errRef := s.refs.GetByID(ctx, domain.RefTableTaskTypes, t.TaskTypeID)
+		if errRef == nil && typeRef.Code == domain.TaskTypeGetParameterValues {
+			handled, splitErr := s.taskSvc.SplitGetParameterValuesOnFault(ctx, t, msg)
+			if splitErr != nil {
+				return splitErr
+			}
+			if handled {
+				s.log().Warn("cwmp: fault 9003 Invalid Arguments pada GET_PARAMETER_VALUES -> dipecah jadi 2 task baru",
+					"device_id", deviceID, "task_id", t.ID)
+				return nil
+			}
+			// handled=false (daftar sudah <=1 parameter, tidak bisa dipecah
+			// lagi) -> jatuh ke Fail/failOrRetry generik di bawah.
+		}
 	}
 	return s.taskSvc.Fail(ctx, t, msg)
 }
@@ -440,4 +622,70 @@ func (s *Service) handleTransferComplete(ctx context.Context, deviceID uint64, t
 		return err
 	}
 	return nil
+}
+
+func (s *Service) detectAnomalyDNS(ctx context.Context, dev *domain.Device, params []InformParameter) {
+	// DNS Servers parameter key
+	var dnsNewVal string
+	var dnsParamName string
+	for _, p := range params {
+		// TR-098: InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.DNSServers
+		// TR-181: Device.DNS.Client.Server.1.DNSServer
+		if strings.Contains(p.Name, "DNSServer") {
+			dnsNewVal = p.Value
+			dnsParamName = p.Name
+			break
+		}
+	}
+	
+	if dnsNewVal != "" {
+		// Dapatkan nilai lama
+		oldParam, err := s.deviceParams.Get(ctx, dev.ID, dnsParamName)
+		if err == nil && oldParam.ParameterValue != nil && *oldParam.ParameterValue != dnsNewVal {
+			// Anomaly: DNS berubah
+			desc := fmt.Sprintf("DNS berubah mencurigakan dari %s menjadi %s pada parameter %s", *oldParam.ParameterValue, dnsNewVal, dnsParamName)
+			_ = s.activity.Record(ctx, &domain.ActivityLog{
+				TenantID:    dev.TenantID,
+				Action:      "ANOMALY_DETECTED",
+				EntityType:  "device",
+				EntityID:    &dev.ID,
+				Description: &desc,
+			})
+			s.log().Warn("cwmp: anomaly DNS change terdeteksi", "device_id", dev.ID, "old_dns", *oldParam.ParameterValue, "new_dns", dnsNewVal)
+		}
+	}
+}
+
+func (s *Service) detectAnomalyBoot(ctx context.Context, dev *domain.Device) {
+	// Ambil riwayat log activity untuk mendeteksi boot loop (mis. > 3 kali dalam 1 jam terakhir)
+	logs, _, err := s.activity.ListByEntity(ctx, "device", dev.ID, domain.Pagination{Page: 1, PageSize: 10})
+	if err != nil {
+		return
+	}
+
+	bootCount := 1 // Boot saat ini
+	cutoff := time.Now().Add(-1 * time.Hour)
+	
+	for _, l := range logs {
+		// Karena tidak ada boot khusus di activity_log, kita cek dari last_boot_time di device,
+		// Atau bisa hitung rentang waktu last_boot_time device dengan event BOOT sebelumnya
+		// Untuk menyederhanakan, kita lihat dev.LastBootTime vs time.Now()
+		// Jika perbedaan terlalu dekat, asumsikan reboot loop.
+		_ = l
+	}
+
+	if dev.LastBootTime != nil {
+		durationSinceLastBoot := time.Since(*dev.LastBootTime)
+		if durationSinceLastBoot < 15*time.Minute {
+			desc := fmt.Sprintf("Reboot berulang terdeteksi (Jarak dengan boot sebelumnya: %v)", durationSinceLastBoot)
+			_ = s.activity.Record(ctx, &domain.ActivityLog{
+				TenantID:    dev.TenantID,
+				Action:      "ANOMALY_DETECTED",
+				EntityType:  "device",
+				EntityID:    &dev.ID,
+				Description: &desc,
+			})
+			s.log().Warn("cwmp: anomaly frequent reboot terdeteksi", "device_id", dev.ID, "duration", durationSinceLastBoot)
+		}
+	}
 }

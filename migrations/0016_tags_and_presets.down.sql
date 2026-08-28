@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS presets;
+DROP TABLE IF EXISTS device_tags;
+DROP TABLE IF EXISTS tags;

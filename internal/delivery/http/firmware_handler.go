@@ -137,3 +137,96 @@ func (r *Router) listFirmwareJobs(c *echo.Context) error {
 	}
 	return c.JSON(http.StatusOK, listResponse{Data: jobs, Total: total})
 }
+
+// ---- Firmware Rollout Batch (canary/staged rollout, migrations/0011) ----
+
+type createRolloutBatchRequest struct {
+	TenantID              *uint64 `json:"tenant_id"`
+	FirmwareFileID        uint64  `json:"firmware_file_id"`
+	VendorID              *uint64 `json:"vendor_id"`
+	DeviceModelID         *uint64 `json:"device_model_id"`
+	WavePercentage        uint8   `json:"wave_percentage"`
+	MaxFailureRatePercent uint8       `json:"max_failure_rate_percent"`
+	Notes                 *string     `json:"notes"`
+	ScheduledAt           *time.Time  `json:"scheduled_at"`
+}
+
+// createRolloutBatch — validasi lengkap (RBAC tenant scope, wave_percentage
+// 1-100, dsb.) ada di usecase/firmware.CreateRolloutBatch, handler hanya
+// parsing (CLAUDE.md). Wave pertama otomatis dipicu di usecase (kecuali jika ada jadwal).
+func (r *Router) createRolloutBatch(c *echo.Context) error {
+	actor := ActorFrom(c)
+	var req createRolloutBatchRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "payload tidak valid")
+	}
+	if req.FirmwareFileID == 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, "firmware_file_id wajib diisi")
+	}
+	batch, err := r.Firmware.CreateRolloutBatch(c.Request().Context(), actor, firmware.CreateRolloutBatchInput{
+		TenantID: req.TenantID, FirmwareFileID: req.FirmwareFileID, VendorID: req.VendorID, DeviceModelID: req.DeviceModelID,
+		WavePercentage: req.WavePercentage, MaxFailureRatePercent: req.MaxFailureRatePercent, Notes: req.Notes,
+		ScheduledAt: req.ScheduledAt,
+	})
+	if err != nil {
+		return handleErr(c, err)
+	}
+	return c.JSON(http.StatusCreated, batch)
+}
+
+func (r *Router) listRolloutBatches(c *echo.Context) error {
+	actor := ActorFrom(c)
+	batches, total, err := r.Firmware.ListRolloutBatches(c.Request().Context(), actor, queryUint64(c, "tenant_id"), paginationFromQuery(c))
+	if err != nil {
+		return handleErr(c, err)
+	}
+	return c.JSON(http.StatusOK, listResponse{Data: batches, Total: total})
+}
+
+func (r *Router) getRolloutBatch(c *echo.Context) error {
+	actor := ActorFrom(c)
+	id, err := parseUint64Param(c, "id")
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "id tidak valid")
+	}
+	batch, err := r.Firmware.GetRolloutBatch(c.Request().Context(), actor, id)
+	if err != nil {
+		return handleErr(c, err)
+	}
+	return c.JSON(http.StatusOK, batch)
+}
+
+// advanceRolloutBatch — pemicu manual AdvanceRollout (operator ingin memaksa
+// cek sekarang, tanpa menunggu sweeper periodik cmd/acsd). AdvanceRollout
+// usecase sendiri tidak menerima actor (dipakai jg oleh sweeper sistem tanpa
+// actor), jadi RBAC tenant scope WAJIB ditegakkan di sini via GetRolloutBatch
+// dulu -- tanpa ini, ADMIN tenant A bisa memaksa maju wave rollout tenant B
+// lebih awal dari yang dimaksudkan (bikin task Download ke device tenant
+// lain), bukan cuma "melihat" statusnya.
+func (r *Router) advanceRolloutBatch(c *echo.Context) error {
+	actor := ActorFrom(c)
+	id, err := parseUint64Param(c, "id")
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "id tidak valid")
+	}
+	if _, err := r.Firmware.GetRolloutBatch(c.Request().Context(), actor, id); err != nil {
+		return handleErr(c, err)
+	}
+	batch, err := r.Firmware.AdvanceRollout(c.Request().Context(), id)
+	if err != nil {
+		return handleErr(c, err)
+	}
+	return c.JSON(http.StatusOK, batch)
+}
+
+func (r *Router) cancelRolloutBatch(c *echo.Context) error {
+	actor := ActorFrom(c)
+	id, err := parseUint64Param(c, "id")
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "id tidak valid")
+	}
+	if err := r.Firmware.CancelRolloutBatch(c.Request().Context(), actor, id); err != nil {
+		return handleErr(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}

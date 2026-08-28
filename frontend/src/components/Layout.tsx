@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import {
+  Bell,
   Building2,
   Cable,
   FileSliders,
@@ -30,6 +31,8 @@ const NAV_ITEMS: { to: string; label: string; icon: typeof LayoutGrid; requireRo
   { to: '/tasks', label: 'Tasks', icon: ListChecks },
   { to: '/provisioning', label: 'Provisioning', icon: FileSliders },
   { to: '/firmware', label: 'Firmware', icon: HardDrive },
+  { to: '/files', label: 'Files', icon: HardDrive },
+  { to: '/webhooks', label: 'Webhooks', icon: Bell, requireRole: 'ADMIN' },
   { to: '/catalog', label: 'Catalog Vendor', icon: Cable, requireRole: 'SUPERADMIN' },
   { to: '/administration', label: 'Administration', icon: Building2, requireRole: 'ADMIN' },
 ]

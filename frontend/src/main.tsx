@@ -6,6 +6,7 @@ import './index.css'
 import App from './App.tsx'
 import { AuthProvider } from './lib/auth.tsx'
 import { ThemeProvider } from './lib/theme.tsx'
+import { WebSocketProvider } from './lib/ws.tsx'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -22,7 +23,9 @@ createRoot(document.getElementById('root')!).render(
       <ThemeProvider>
         <BrowserRouter>
           <AuthProvider>
-            <App />
+            <WebSocketProvider>
+              <App />
+            </WebSocketProvider>
           </AuthProvider>
         </BrowserRouter>
       </ThemeProvider>

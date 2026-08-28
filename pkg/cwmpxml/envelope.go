@@ -129,9 +129,22 @@ func Marshal(env *Envelope) ([]byte, error) {
 	return append([]byte(xml.Header), out...), nil
 }
 
-// NewEnvelope membuat envelope kosong dengan namespace standar dan header ID,
-// siap diisi salah satu field Body oleh pemanggil.
-func NewEnvelope(id string, body Body) *Envelope {
+// NewEnvelope membuat envelope kosong dengan namespace CWMP siap diisi salah
+// satu field Body oleh pemanggil, dan header ID.
+//
+// ns adalah namespace URI CWMP yang dipakai untuk envelope ini — SEHARUSNYA
+// namespace yang sama dengan yang dideklarasikan CPE ybs sendiri (lihat
+// Body.Namespace(), diresolve di internal/delivery/cwmp/handler.go), bukan
+// selalu NSCWMP (cwmp-1-2) hardcoded seperti sebelumnya — beberapa vendor
+// (mis. Huawei, per catatan investigasi arsitektur) sensitif terhadap
+// namespace balasan ACS yang tidak cocok dengan yang mereka pakai sendiri.
+// ns kosong (mis. tidak ada informasi namespace dari request saat ini —
+// lihat komentar di handler.go soal kapan ini terjadi) fallback ke NSCWMP,
+// perilaku identik dengan sebelum perubahan ini.
+func NewEnvelope(id, ns string, body Body) *Envelope {
+	if ns == "" {
+		ns = NSCWMP
+	}
 	var header *Header
 	if id != "" {
 		header = &Header{ID: &HeaderID{MustUnderstand: "1", Value: id}}
@@ -140,9 +153,93 @@ func NewEnvelope(id string, body Body) *Envelope {
 		XMLNSSoapEnv: NSSoapEnv,
 		XMLNSXSD:     NSXSD,
 		XMLNSXSI:     NSXSI,
-		XMLNSCWMP:    NSCWMP,
+		XMLNSCWMP:    ns,
 		Header:       header,
 		Body:         body,
+	}
+}
+
+// RPCName membuat xml.Name untuk elemen RPC CWMP outbound (ACS -> CPE) pada
+// namespace ns, fallback ke NSCWMP bila ns kosong. Dipakai setiap tempat yang
+// mengkonstruksi salah satu struct RPC di rpc.go untuk pengiriman ke CPE
+// (lihat delivery/cwmp/builder.go) — struct RPC di rpc.go SENGAJA tidak lagi
+// punya namespace hardcoded di tag `xml:"..."` field XMLName-nya (lihat
+// komentar di rpc.go), jadi nilai Name runtime dari sinilah yang menentukan
+// namespace elemen saat di-marshal.
+func RPCName(ns, local string) xml.Name {
+	if ns == "" {
+		ns = NSCWMP
+	}
+	return xml.Name{Space: ns, Local: local}
+}
+
+// Namespace mengembalikan namespace URI (xmlns) yang BENAR-BENAR dipakai CPE
+// pada elemen RPC method yang terisi di Body ini, hasil capture Unmarshal
+// (lihat komentar field XMLName tanpa tag literal di rpc.go). "" bila Body
+// kosong/tidak dikenali/field tsb tidak membawa namespace CWMP (mis. Fault
+// adalah elemen SOAP biasa, bukan elemen ber-namespace cwmp) — pemanggil
+// (delivery/cwmp/handler.go) fallback ke NSCWMP lewat NewEnvelope/RPCName di
+// atas dalam kasus ini.
+func (b Body) Namespace() string {
+	switch {
+	case b.Inform != nil:
+		return b.Inform.XMLName.Space
+	case b.InformResponse != nil:
+		return b.InformResponse.XMLName.Space
+	case b.GetParameterValues != nil:
+		return b.GetParameterValues.XMLName.Space
+	case b.GetParameterValuesResponse != nil:
+		return b.GetParameterValuesResponse.XMLName.Space
+	case b.SetParameterValues != nil:
+		return b.SetParameterValues.XMLName.Space
+	case b.SetParameterValuesResponse != nil:
+		return b.SetParameterValuesResponse.XMLName.Space
+	case b.GetParameterNames != nil:
+		return b.GetParameterNames.XMLName.Space
+	case b.GetParameterNamesResponse != nil:
+		return b.GetParameterNamesResponse.XMLName.Space
+	case b.AddObject != nil:
+		return b.AddObject.XMLName.Space
+	case b.AddObjectResponse != nil:
+		return b.AddObjectResponse.XMLName.Space
+	case b.DeleteObject != nil:
+		return b.DeleteObject.XMLName.Space
+	case b.DeleteObjectResponse != nil:
+		return b.DeleteObjectResponse.XMLName.Space
+	case b.Reboot != nil:
+		return b.Reboot.XMLName.Space
+	case b.RebootResponse != nil:
+		return b.RebootResponse.XMLName.Space
+	case b.FactoryReset != nil:
+		return b.FactoryReset.XMLName.Space
+	case b.FactoryResetResponse != nil:
+		return b.FactoryResetResponse.XMLName.Space
+	case b.Download != nil:
+		return b.Download.XMLName.Space
+	case b.DownloadResponse != nil:
+		return b.DownloadResponse.XMLName.Space
+	case b.Upload != nil:
+		return b.Upload.XMLName.Space
+	case b.UploadResponse != nil:
+		return b.UploadResponse.XMLName.Space
+	case b.TransferComplete != nil:
+		return b.TransferComplete.XMLName.Space
+	case b.TransferCompleteResponse != nil:
+		return b.TransferCompleteResponse.XMLName.Space
+	case b.ScheduleInform != nil:
+		return b.ScheduleInform.XMLName.Space
+	case b.ScheduleInformResponse != nil:
+		return b.ScheduleInformResponse.XMLName.Space
+	case b.SetParameterAttributes != nil:
+		return b.SetParameterAttributes.XMLName.Space
+	case b.SetParameterAttributesResponse != nil:
+		return b.SetParameterAttributesResponse.XMLName.Space
+	case b.GetParameterAttributes != nil:
+		return b.GetParameterAttributes.XMLName.Space
+	case b.GetParameterAttributesResponse != nil:
+		return b.GetParameterAttributesResponse.XMLName.Space
+	default:
+		return ""
 	}
 }
 

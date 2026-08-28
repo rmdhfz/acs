@@ -139,8 +139,14 @@ func (r *zeroTouchRuleRepository) Create(ctx context.Context, ru *domain.ZeroTou
 	now := time.Now()
 	ru.CreatedAt, ru.UpdatedAt = now, now
 	const q = `INSERT INTO zero_touch_rules
-		(tenant_id, vendor_id, device_model_id, oui, serial_pattern, provisioning_profile_id, priority, is_active, created_at, updated_at, created_by)
-		VALUES (:tenant_id, :vendor_id, :device_model_id, :oui, :serial_pattern, :provisioning_profile_id, :priority, :is_active, :created_at, :updated_at, :created_by)`
+		(tenant_id, vendor_id, device_model_id, oui, serial_pattern, software_version_pattern,
+		 match_parameter_name, match_parameter_value_pattern, provisioning_profile_id,
+		 post_apply_reboot, firmware_file_id, trigger_event_id, priority, is_active,
+		 created_at, updated_at, created_by)
+		VALUES (:tenant_id, :vendor_id, :device_model_id, :oui, :serial_pattern, :software_version_pattern,
+		 :match_parameter_name, :match_parameter_value_pattern, :provisioning_profile_id,
+		 :post_apply_reboot, :firmware_file_id, :trigger_event_id, :priority, :is_active,
+		 :created_at, :updated_at, :created_by)`
 	res, err := r.db.NamedExecContext(ctx, q, ru)
 	if err != nil {
 		return translateErr(err)
@@ -180,7 +186,10 @@ func (r *zeroTouchRuleRepository) ListActiveOrdered(ctx context.Context, tenantI
 
 func (r *zeroTouchRuleRepository) Update(ctx context.Context, ru *domain.ZeroTouchRule) error {
 	const q = `UPDATE zero_touch_rules SET vendor_id = :vendor_id, device_model_id = :device_model_id,
-		oui = :oui, serial_pattern = :serial_pattern, provisioning_profile_id = :provisioning_profile_id,
+		oui = :oui, serial_pattern = :serial_pattern, software_version_pattern = :software_version_pattern,
+		match_parameter_name = :match_parameter_name, match_parameter_value_pattern = :match_parameter_value_pattern,
+		provisioning_profile_id = :provisioning_profile_id, post_apply_reboot = :post_apply_reboot,
+		firmware_file_id = :firmware_file_id, trigger_event_id = :trigger_event_id,
 		priority = :priority, is_active = :is_active, updated_by = :updated_by WHERE id = :id AND is_deleted = 0`
 	_, err := r.db.NamedExecContext(ctx, q, ru)
 	return translateErr(err)

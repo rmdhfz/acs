@@ -37,6 +37,8 @@ type Device struct {
 	InformPasswordEnc            []byte     `db:"inform_password_enc" json:"-"`
 	LastInformAt                 *time.Time `db:"last_inform_at" json:"last_inform_at"`
 	LastBootEventAt              *time.Time `db:"last_boot_event_at" json:"last_boot_event_at"`
+	Latitude                     *float64   `db:"latitude" json:"latitude"`
+	Longitude                    *float64   `db:"longitude" json:"longitude"`
 	Notes                        *string    `db:"notes" json:"notes"`
 	Audit
 }
@@ -97,18 +99,38 @@ type DeviceParameterRepository interface {
 	Get(ctx context.Context, deviceID uint64, name string) (*DeviceParameter, error)
 }
 
+// DeviceConfigSnapshot menyimpan status parameter full pada waktu tertentu
+type DeviceConfigSnapshot struct {
+	ID           uint64          `db:"id" json:"id"`
+	DeviceID     uint64          `db:"device_id" json:"device_id"`
+	SnapshotData JSONRawMessage  `db:"snapshot_data" json:"snapshot_data"`
+	CreatedAt    time.Time       `db:"created_at" json:"created_at"`
+}
+
+type DeviceConfigSnapshotRepository interface {
+	Create(ctx context.Context, s *DeviceConfigSnapshot) error
+	ListByDevice(ctx context.Context, deviceID uint64, p Pagination) ([]DeviceConfigSnapshot, int, error)
+	GetByID(ctx context.Context, id uint64) (*DeviceConfigSnapshot, error)
+}
+
 // DeviceSession — sesi CWMP aktif/historis. Memungkinkan app server stateless
 // (lihat TECH.md §3/§9): instance manapun bisa melanjutkan sesi via session_token.
 type DeviceSession struct {
-	ID           uint64     `db:"id" json:"id"`
-	DeviceID     uint64     `db:"device_id" json:"device_id"`
-	SessionToken string     `db:"session_token" json:"session_token"`
-	CWMPID       *string    `db:"cwmp_id" json:"cwmp_id"`
-	Status       string     `db:"status" json:"status"` // OPEN, CLOSED, ERROR
-	RemoteIP     *string    `db:"remote_ip" json:"remote_ip"`
-	StartedAt    time.Time  `db:"started_at" json:"started_at"`
-	EndedAt      *time.Time `db:"ended_at" json:"ended_at"`
-	CreatedAt    time.Time  `db:"created_at" json:"created_at"`
+	ID           uint64  `db:"id" json:"id"`
+	DeviceID     uint64  `db:"device_id" json:"device_id"`
+	SessionToken string  `db:"session_token" json:"session_token"`
+	CWMPID       *string `db:"cwmp_id" json:"cwmp_id"`
+	// CWMPNamespace -- namespace CWMP yang dideklarasikan CPE pada Inform
+	// sesi ini (migrations/0012), dipakai ulang utk SELURUH RPC proaktif
+	// yang dikirim ACS sepanjang sesi yang sama (lihat NextRequest) --
+	// bukan cuma balasan InformResponse yang sama-request. Lihat komentar
+	// lengkap di migrations/0012 soal bug yang diperbaiki ini.
+	CWMPNamespace *string    `db:"cwmp_namespace" json:"cwmp_namespace"`
+	Status        string     `db:"status" json:"status"` // OPEN, CLOSED, ERROR
+	RemoteIP      *string    `db:"remote_ip" json:"remote_ip"`
+	StartedAt     time.Time  `db:"started_at" json:"started_at"`
+	EndedAt       *time.Time `db:"ended_at" json:"ended_at"`
+	CreatedAt     time.Time  `db:"created_at" json:"created_at"`
 }
 
 const (
@@ -122,6 +144,9 @@ type DeviceSessionRepository interface {
 	GetByToken(ctx context.Context, token string) (*DeviceSession, error)
 	UpdateStatus(ctx context.Context, id uint64, status string, endedAt *time.Time) error
 	SetCWMPID(ctx context.Context, id uint64, cwmpID string) error
+	// SetCWMPNamespace — dipanggil SEKALI per sesi saat Inform diproses (lihat
+	// migrations/0012 & komentar CWMPNamespace di atas).
+	SetCWMPNamespace(ctx context.Context, id uint64, namespace string) error
 	// CountOpen — jumlah sesi CWMP berstatus OPEN saat ini, lintas seluruh
 	// tenant (metrik observability TECH.md §10). device_sessions tidak
 	// menyimpan tenant_id langsung dan metrik ini utk operator platform,

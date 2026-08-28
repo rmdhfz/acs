@@ -11,6 +11,8 @@ import { FirmwarePage } from './pages/FirmwarePage'
 import { CatalogPage } from './pages/CatalogPage'
 import { AdministrationPage } from './pages/AdministrationPage'
 import { TenantOnboardingWizard } from './pages/TenantOnboardingWizard'
+import { WebhooksPage } from './pages/WebhooksPage'
+import FilesPage from './pages/FilesPage'
 
 function App() {
   return (
@@ -30,6 +32,8 @@ function App() {
         <Route path="/tasks" element={<TasksPage />} />
         <Route path="/provisioning" element={<ProvisioningPage />} />
         <Route path="/firmware" element={<FirmwarePage />} />
+        <Route path="/files" element={<FilesPage />} />
+        <Route path="/webhooks" element={<WebhooksPage />} />
         <Route path="/catalog" element={<CatalogPage />} />
         <Route path="/administration" element={<AdministrationPage />} />
         <Route path="/administration/onboarding" element={<TenantOnboardingWizard />} />

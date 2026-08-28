@@ -1,9 +1,9 @@
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { ClipboardList, Clock3, Router, Wifi, WifiOff } from 'lucide-react'
+import { Activity, ClipboardList, Clock3, Router, Wifi, WifiOff } from 'lucide-react'
 import { StatCard } from '../components/StatCard'
 import { PageSpinner } from '../components/Spinner'
 import { EmptyState } from '../components/EmptyState'
-import { findRefById, findRefIdByCode, useDeviceStats, useRefs, useTaskStats, useVendors } from '../lib/hooks'
+import { findRefById, findRefIdByCode, useCwmpSessionsCount, useDeviceStats, useRefs, useTaskStats, useVendors } from '../lib/hooks'
 import { useTheme } from '../lib/theme'
 
 // Warna selaras dengan STATUS_STYLES di components/StatusBadge.tsx supaya
@@ -48,6 +48,7 @@ export function DashboardPage() {
 
   const { data: deviceStats, isLoading: deviceStatsLoading } = useDeviceStats()
   const { data: taskStats, isLoading: taskStatsLoading } = useTaskStats()
+  const { data: cwmpSessions, isLoading: cwmpSessionsLoading } = useCwmpSessionsCount()
 
   const onlineId = findRefIdByCode(statusRefs, 'ONLINE')
   const offlineId = findRefIdByCode(statusRefs, 'OFFLINE')
@@ -59,6 +60,7 @@ export function DashboardPage() {
   const onlineCount = byStatus.find((s) => s.device_status_id === onlineId)?.count ?? 0
   const offlineCount = byStatus.find((s) => s.device_status_id === offlineId)?.count ?? 0
   const pendingTaskCount = taskStats?.find((t) => t.task_status_id === pendingTaskId)?.count ?? 0
+  const activeSessionsCount = cwmpSessions?.count ?? 0
 
   const statusChartData = byStatus.map((s) => {
     const ref = findRefById(statusRefs, s.device_status_id)
@@ -84,11 +86,12 @@ export function DashboardPage() {
         <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Ringkasan status seluruh perangkat CPE dan antrean task secara real-time</p>
       </div>
 
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-5">
         <StatCard label="Total Device" value={totalDevices} icon={Router} tone="default" loading={deviceStatsLoading} />
         <StatCard label="Online" value={onlineCount} icon={Wifi} tone="emerald" loading={deviceStatsLoading} />
         <StatCard label="Offline" value={offlineCount} icon={WifiOff} tone="red" loading={deviceStatsLoading} />
         <StatCard label="Task Pending" value={pendingTaskCount} icon={Clock3} tone="amber" loading={taskStatsLoading} />
+        <StatCard label="Sesi Aktif" value={activeSessionsCount} icon={Activity} tone="blue" loading={cwmpSessionsLoading} />
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">

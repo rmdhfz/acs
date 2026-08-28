@@ -30,6 +30,18 @@ type Config struct {
 	MinIOSecretKey string
 	MinIOBucket    string
 	MinIOUseSSL    bool
+	// LogLevel — level minimum log/slog terstruktur (DEBUG/INFO/WARN/ERROR,
+	// default INFO). Dipakai cmd/acsd utk konfigurasi slog.Logger tunggal yang
+	// dipakai bersama delivery/cwmp & usecase/session (observability TECH.md
+	// §10) — supaya production bisa menaikkan verbosity (DEBUG, per-RPC) saat
+	// investigasi tanpa redeploy kode.
+	LogLevel   string
+	RedisAddr  string
+
+	OIDCIssuer       string
+	OIDCClientID     string
+	OIDCClientSecret string
+	OIDCRedirectURL  string
 }
 
 func Load() (*Config, error) {
@@ -74,9 +86,20 @@ func Load() (*Config, error) {
 
 	origins := getEnv("ACS_CORS_ALLOW_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
 	for _, o := range strings.Split(origins, ",") {
-		if o = strings.TrimSpace(o); o != "" {
+		o = strings.TrimSpace(o)
+		if o != "" {
+			if !strings.HasPrefix(o, "http://") && !strings.HasPrefix(o, "https://") {
+				return nil, fmt.Errorf("config: origin CORS tidak valid (harus http/https): %s", o)
+			}
 			cfg.CORSAllowOrigins = append(cfg.CORSAllowOrigins, o)
 		}
+	}
+	// Echo middleware.CORSConfig menganggap AllowOrigins kosong sebagai
+	// "izinkan semua origin" (*), yang merupakan risiko keamanan besar bila
+	// ada salah konfigurasi. Pastikan setidaknya localhost diizinkan bila
+	// ternyata origin ter-parse kosong.
+	if len(cfg.CORSAllowOrigins) == 0 {
+		cfg.CORSAllowOrigins = []string{"http://localhost:5173"}
 	}
 
 	cfg.MinIOEndpoint = os.Getenv("ACS_MINIO_ENDPOINT")
@@ -92,12 +115,20 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("config: ACS_MINIO_SECRET_KEY wajib diisi")
 	}
 	cfg.MinIOBucket = getEnv("ACS_MINIO_BUCKET", "acs-firmware")
+	cfg.LogLevel = getEnv("ACS_LOG_LEVEL", "INFO")
 
 	useSSL, err := strconv.ParseBool(getEnv("ACS_MINIO_USE_SSL", "false"))
 	if err != nil {
 		return nil, fmt.Errorf("config: ACS_MINIO_USE_SSL tidak valid: %w", err)
 	}
 	cfg.MinIOUseSSL = useSSL
+
+	cfg.RedisAddr = getEnv("ACS_REDIS_ADDR", "localhost:6379")
+
+	cfg.OIDCIssuer = os.Getenv("ACS_OIDC_ISSUER")
+	cfg.OIDCClientID = os.Getenv("ACS_OIDC_CLIENT_ID")
+	cfg.OIDCClientSecret = os.Getenv("ACS_OIDC_CLIENT_SECRET")
+	cfg.OIDCRedirectURL = getEnv("ACS_OIDC_REDIRECT_URL", "http://localhost:8080/api/v1/auth/oidc/callback")
 
 	return cfg, nil
 }

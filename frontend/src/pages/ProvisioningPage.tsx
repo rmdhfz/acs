@@ -12,9 +12,11 @@ import {
   useDeleteProfile,
   useDeleteZTRule,
   useDeviceModels,
+  useFirmwareList,
   useParameterMappings,
   useProvisioningProfile,
   useProvisioningProfiles,
+  useRefs,
   useUpdateProfile,
   useUpdateZTRule,
   useVendors,
@@ -335,10 +337,17 @@ function ProfileModal({ id, onClose }: { id: number | undefined; onClose: () => 
 
 // ---- Zero-Touch Rules ----
 
+const TRIGGER_LABELS: Record<string, string> = {
+  BOOTSTRAP_ONLY: 'Saat Bootstrap',
+  BOOTSTRAP_OR_BOOT: 'Bootstrap / Boot',
+  EVERY_INFORM: 'Setiap Inform',
+}
+
 function ZTRulesTab({ canManage }: { canManage: boolean }) {
   const { data: rules, isLoading } = useZeroTouchRules()
   const { data: vendorsResp } = useVendors()
   const { data: profilesResp } = useProvisioningProfiles()
+  const { data: triggerRefs } = useRefs('ref_ztp_trigger_event')
   const vendors = vendorsResp?.data ?? []
   const profiles = profilesResp?.data ?? []
   const [modalId, setModalId] = useState<number | 'new' | null>(null)
@@ -364,8 +373,9 @@ function ZTRulesTab({ canManage }: { canManage: boolean }) {
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                 <th className="px-5 py-3">Prioritas</th>
+                <th className="px-5 py-3">Trigger</th>
                 <th className="px-5 py-3">Kriteria</th>
-                <th className="px-5 py-3">Profil</th>
+                <th className="px-5 py-3">Aksi</th>
                 <th className="px-5 py-3">Status</th>
                 <th className="px-5 py-3"></th>
               </tr>
@@ -377,16 +387,32 @@ function ZTRulesTab({ canManage }: { canManage: boolean }) {
                   <tr key={r.id} onClick={() => canManage && setModalId(r.id)} className={canManage ? 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50' : ''}>
                     <td className="px-5 py-3.5 tabular-nums text-slate-600 dark:text-slate-400">{r.priority}</td>
                     <td className="px-5 py-3.5 text-xs text-slate-600 dark:text-slate-400">
+                      {(() => {
+                        const code = triggerRefs?.find((t) => t.id === r.trigger_event_id)?.code
+                        return code ? TRIGGER_LABELS[code] ?? code : `#${r.trigger_event_id}`
+                      })()}
+                    </td>
+                    <td className="px-5 py-3.5 text-xs text-slate-600 dark:text-slate-400">
                       {[
                         r.vendor_id ? vendors.find((v) => v.id === r.vendor_id)?.name ?? `vendor#${r.vendor_id}` : null,
                         r.oui ? `OUI ${r.oui}` : null,
                         r.serial_pattern ? `serial LIKE ${r.serial_pattern}` : null,
+                        r.software_version_pattern ? `sw LIKE ${r.software_version_pattern}` : null,
+                        r.match_parameter_name ? `${r.match_parameter_name} LIKE ${r.match_parameter_value_pattern}` : null,
                       ]
                         .filter(Boolean)
                         .join(' · ') || 'Semua device'}
                     </td>
-                    <td className="px-5 py-3.5 text-slate-700 dark:text-slate-300">
-                      {profiles.find((p) => p.id === r.provisioning_profile_id)?.name ?? `#${r.provisioning_profile_id}`}
+                    <td className="px-5 py-3.5 text-xs text-slate-700 dark:text-slate-300">
+                      {[
+                        r.provisioning_profile_id
+                          ? `Profil: ${profiles.find((p) => p.id === r.provisioning_profile_id)?.name ?? `#${r.provisioning_profile_id}`}`
+                          : null,
+                        r.firmware_file_id ? `Firmware #${r.firmware_file_id}` : null,
+                        r.post_apply_reboot ? 'Reboot' : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' + ') || '—'}
                     </td>
                     <td className="px-5 py-3.5">
                       <StatusBadge code={r.is_active ? 'ONLINE' : 'OFFLINE'} label={r.is_active ? 'Aktif' : 'Nonaktif'} />
@@ -422,6 +448,7 @@ function ZTRuleModal({ id, onClose }: { id: number | undefined; onClose: () => v
   const existing = isEdit ? rules?.find((r) => r.id === id) : undefined
   const { data: vendorsResp } = useVendors()
   const { data: profilesResp } = useProvisioningProfiles()
+  const { data: triggerRefs } = useRefs('ref_ztp_trigger_event')
   const vendors = vendorsResp?.data ?? []
   const profiles = profilesResp?.data ?? []
 
@@ -429,12 +456,28 @@ function ZTRuleModal({ id, onClose }: { id: number | undefined; onClose: () => v
   const [deviceModelId, setDeviceModelId] = useState('')
   const [oui, setOui] = useState('')
   const [serialPattern, setSerialPattern] = useState('')
+  const [softwareVersionPattern, setSoftwareVersionPattern] = useState('')
+  const [matchParamName, setMatchParamName] = useState('')
+  const [matchParamValue, setMatchParamValue] = useState('')
+  const [triggerEventId, setTriggerEventId] = useState('')
   const [profileId, setProfileId] = useState('')
+  const [postApplyReboot, setPostApplyReboot] = useState(false)
+  const [firmwareFileId, setFirmwareFileId] = useState('')
   const [priority, setPriority] = useState('10')
   const [isActive, setIsActive] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const { data: models } = useDeviceModels(vendorId ? Number(vendorId) : undefined)
+  const { data: firmwareResp } = useFirmwareList(vendorId ? Number(vendorId) : undefined)
+  const firmwareFiles = firmwareResp?.data ?? []
+
+  // Default trigger untuk rule baru: BOOTSTRAP_ONLY (perilaku lama ZTP).
+  useEffect(() => {
+    if (!isEdit && !triggerEventId && triggerRefs) {
+      const def = triggerRefs.find((t) => t.code === 'BOOTSTRAP_ONLY')
+      if (def) setTriggerEventId(def.id.toString())
+    }
+  }, [isEdit, triggerEventId, triggerRefs])
 
   useEffect(() => {
     if (existing) {
@@ -442,7 +485,13 @@ function ZTRuleModal({ id, onClose }: { id: number | undefined; onClose: () => v
       setDeviceModelId(existing.device_model_id?.toString() ?? '')
       setOui(existing.oui ?? '')
       setSerialPattern(existing.serial_pattern ?? '')
-      setProfileId(existing.provisioning_profile_id.toString())
+      setSoftwareVersionPattern(existing.software_version_pattern ?? '')
+      setMatchParamName(existing.match_parameter_name ?? '')
+      setMatchParamValue(existing.match_parameter_value_pattern ?? '')
+      setTriggerEventId(existing.trigger_event_id.toString())
+      setProfileId(existing.provisioning_profile_id?.toString() ?? '')
+      setPostApplyReboot(existing.post_apply_reboot)
+      setFirmwareFileId(existing.firmware_file_id?.toString() ?? '')
       setPriority(existing.priority.toString())
       setIsActive(existing.is_active)
     }
@@ -454,12 +503,32 @@ function ZTRuleModal({ id, onClose }: { id: number | undefined; onClose: () => v
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
+
+    if (!triggerEventId) {
+      setError('Trigger event wajib dipilih.')
+      return
+    }
+    if (!!matchParamName !== !!matchParamValue) {
+      setError('Match Parameter Name & Value Pattern harus diisi berpasangan (keduanya atau tidak sama sekali).')
+      return
+    }
+    if (!profileId && !postApplyReboot && !firmwareFileId) {
+      setError('Rule harus punya minimal satu aksi: apply profil, reboot, atau push firmware.')
+      return
+    }
+
     const input: ZTRuleFormInput = {
       vendor_id: vendorId ? Number(vendorId) : undefined,
       device_model_id: deviceModelId ? Number(deviceModelId) : undefined,
       oui: oui || undefined,
       serial_pattern: serialPattern || undefined,
-      provisioning_profile_id: Number(profileId),
+      software_version_pattern: softwareVersionPattern || undefined,
+      match_parameter_name: matchParamName || undefined,
+      match_parameter_value_pattern: matchParamValue || undefined,
+      provisioning_profile_id: profileId ? Number(profileId) : undefined,
+      post_apply_reboot: postApplyReboot,
+      firmware_file_id: firmwareFileId ? Number(firmwareFileId) : undefined,
+      trigger_event_id: Number(triggerEventId),
       priority: Number(priority),
       is_active: isActive,
     }
@@ -481,6 +550,20 @@ function ZTRuleModal({ id, onClose }: { id: number | undefined; onClose: () => v
     <Modal title={isEdit ? 'Edit Zero-Touch Rule' : 'Zero-Touch Rule Baru'} onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-3">
         <p className="text-xs text-slate-500 dark:text-slate-400">Kriteria dikombinasikan dengan AND — kosongkan yang tidak dipakai. Rule prioritas terkecil dievaluasi lebih dulu.</p>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Trigger — kapan rule dievaluasi</label>
+          <select required value={triggerEventId} onChange={(e) => setTriggerEventId(e.target.value)} className={inputCls}>
+            <option value="">Pilih trigger...</option>
+            {triggerRefs?.map((t) => (
+              <option key={t.id} value={t.id}>
+                {TRIGGER_LABELS[t.code] ?? t.name}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+            <span className="font-medium">Saat Bootstrap</span>: perilaku lama, sekali seumur hidup device. <span className="font-medium">Setiap Inform</span>: pengawasan berkelanjutan — hati-hati memasangkan dengan aksi Reboot.
+          </p>
+        </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Vendor</label>
           <select
@@ -521,9 +604,25 @@ function ZTRuleModal({ id, onClose }: { id: number | undefined; onClose: () => v
           </div>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Provisioning Profile</label>
-          <select required value={profileId} onChange={(e) => setProfileId(e.target.value)} className={inputCls}>
-            <option value="">Pilih profil...</option>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Software Version Pattern (SQL LIKE)</label>
+          <input value={softwareVersionPattern} onChange={(e) => setSoftwareVersionPattern(e.target.value)} placeholder="mis. V5.%" className={inputCls} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Match Parameter Name</label>
+            <input value={matchParamName} onChange={(e) => setMatchParamName(e.target.value)} placeholder="mis. ...WANPPPConnection.1.Enable" className={`${inputCls} font-mono text-xs`} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Match Value Pattern (SQL LIKE)</label>
+            <input value={matchParamValue} onChange={(e) => setMatchParamValue(e.target.value)} placeholder="mis. 0" className={inputCls} />
+          </div>
+        </div>
+
+        <p className="border-t border-slate-200 pt-3 text-xs font-medium text-slate-600 dark:border-slate-800 dark:text-slate-400">Aksi — minimal satu wajib</p>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Provisioning Profile (opsional)</label>
+          <select value={profileId} onChange={(e) => setProfileId(e.target.value)} className={inputCls}>
+            <option value="">Tidak apply profil</option>
             {profiles.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
@@ -531,6 +630,22 @@ function ZTRuleModal({ id, onClose }: { id: number | undefined; onClose: () => v
             ))}
           </select>
         </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Push Firmware (opsional)</label>
+          <select value={firmwareFileId} onChange={(e) => setFirmwareFileId(e.target.value)} disabled={!vendorId} className={inputCls}>
+            <option value="">Tidak push firmware{vendorId ? '' : ' — pilih vendor dulu'}</option>
+            {firmwareFiles.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.version} ({f.file_name})
+              </option>
+            ))}
+          </select>
+        </div>
+        <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+          <input type="checkbox" checked={postApplyReboot} onChange={(e) => setPostApplyReboot(e.target.checked)} />
+          Reboot device setelah aksi lain diterapkan
+        </label>
+
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Priority</label>

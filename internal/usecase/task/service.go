@@ -20,6 +20,7 @@ import (
 type Service struct {
 	tasks         domain.TaskRepository
 	devices       domain.DeviceRepository
+	deviceParams  domain.DeviceParameterRepository // Ditambahkan untuk auto-discovery worker
 	deviceModels  domain.DeviceModelRepository
 	paramMappings domain.VendorParameterMappingRepository
 	refs          domain.RefRepository
@@ -28,22 +29,51 @@ type Service struct {
 	// device saat CreateTask (kuota task queue per tenant, ROADMAP.md Fase 2).
 	// Boleh nil di test unit yang tidak menyentuh CreateTask (lihat service_test.go).
 	tenants domain.TenantRepository
+	// webhookEnq — fan-out event TASK_FAILED (migrations/0013). Boleh nil;
+	// selalu lewat notifyTaskFailed() yang nil-safe & tidak menggagalkan alur.
+	webhookEnq domain.WebhookEnqueuer
+	publisher  domain.EventPublisher
 }
 
 func NewService(
 	tasks domain.TaskRepository,
 	devices domain.DeviceRepository,
+	deviceParams domain.DeviceParameterRepository,
 	deviceModels domain.DeviceModelRepository,
 	paramMappings domain.VendorParameterMappingRepository,
 	refs domain.RefRepository,
 	activity domain.ActivityLogRepository,
 	tenants domain.TenantRepository,
+	webhookEnq domain.WebhookEnqueuer,
+	publisher domain.EventPublisher,
 ) *Service {
 	return &Service{
-		tasks: tasks, devices: devices, deviceModels: deviceModels,
+		tasks: tasks, devices: devices, deviceParams: deviceParams, deviceModels: deviceModels,
 		paramMappings: paramMappings, refs: refs, activity: activity,
-		tenants: tenants,
+		tenants: tenants, webhookEnq: webhookEnq, publisher: publisher,
 	}
+}
+
+// notifyTaskFailed mem-fan-out webhook TASK_FAILED (migrations/0013) untuk
+// task yang mencapai status FAILED terminal. Nil-safe & best-effort — tidak
+// pernah menggagalkan alur task queue.
+func (s *Service) notifyTaskFailed(ctx context.Context, t *domain.Task, errMsg string) {
+	if s.webhookEnq == nil {
+		return
+	}
+	var tenantID *uint64
+	if s.devices != nil {
+		if dev, err := s.devices.GetByID(ctx, t.DeviceID); err == nil {
+			tenantID = dev.TenantID
+		}
+	}
+	_ = s.webhookEnq.Enqueue(ctx, domain.WebhookEventTaskFailed, tenantID, map[string]any{
+		"task_id":       t.ID,
+		"task_uuid":     t.TaskUUID,
+		"device_id":     t.DeviceID,
+		"task_type_id":  t.TaskTypeID,
+		"error_message": errMsg,
+	})
 }
 
 // ResolveParameterPath menerjemahkan logical key (mis. "wifi.5g.ssid") ke raw
@@ -67,7 +97,7 @@ func (s *Service) ResolveParameterPath(ctx context.Context, deviceID uint64, key
 	if err != nil {
 		return "", err
 	}
-	m, err := s.paramMappings.Resolve(ctx, *dev.VendorID, dm.DataModelVersionID, dev.DeviceModelID, key)
+	m, err := s.paramMappings.Resolve(ctx, *dev.VendorID, dm.DataModelVersionID, dev.DeviceModelID, key, dev.SoftwareVersion)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return "", fmt.Errorf("task: tidak ada vendor_parameter_mappings untuk logical key %q pada device ini (kirim raw TR-069 path bila belum dipetakan, lihat FR-12)", key)
@@ -80,6 +110,20 @@ func (s *Service) ResolveParameterPath(ctx context.Context, deviceID uint64, key
 func looksLikeRawPath(key string) bool {
 	return strings.HasPrefix(key, "InternetGatewayDevice.") || strings.HasPrefix(key, "Device.")
 }
+
+// MaxGetParameterValuesNamesPerTask adalah ambang batas jumlah parameter
+// name dalam SATU task GET_PARAMETER_VALUES sebelum proaktif dipecah jadi
+// beberapa task berurutan saat task tsb DIBUAT (bukan menunggu CPE menolak
+// lewat cwmp:Fault 9003 "Invalid Arguments" — lihat penanganan REAKTIF di
+// SplitGetParameterValuesOnFault). Banyak implementasi CPE membatasi ukuran
+// request SOAP/jumlah parameter per RPC — ini kuirk umum lintas vendor
+// (bukan satu vendor spesifik), jadi wajar sbg default di layer task,
+// bukan internal/vendor_adapter/ (CLAUDE.md). Nilai 50 dipilih sbg default
+// yang aman utk mayoritas implementasi CPE tanpa riset per-vendor spesifik;
+// task yang dihasilkan tetap diproses satu-per-satu sesuai priority/
+// created_at seperti task lain manapun (TECH.md §3/§4: satu task in-flight
+// per device per sesi, BUKAN mekanisme paralel khusus).
+const MaxGetParameterValuesNamesPerTask = 50
 
 func (s *Service) CreateTask(ctx context.Context, actor domain.Actor, in domain.CreateTaskInput) (*domain.Task, error) {
 	dev, err := s.devices.GetByID(ctx, in.DeviceID)
@@ -95,6 +139,23 @@ func (s *Service) CreateTask(ctx context.Context, actor domain.Actor, in domain.
 	if err != nil {
 		return nil, fmt.Errorf("task: tipe task tidak dikenal %q: %w", in.TaskType, err)
 	}
+
+	// Proactive chunking (lihat komentar MaxGetParameterValuesNamesPerTask) —
+	// dicek SEBELUM kuota/status pending & SEBELUM baris Task tunggal
+	// dibentuk, supaya satu request oversized otomatis jadi beberapa task
+	// berurutan. Tiap chunk melalui CreateTask normal secara rekursif
+	// (quota/RBAC/audit tetap ditegakkan per baris task, konsisten dgn task
+	// manapun) — trade-off yang disadari: kalau kuota tenant habis di
+	// tengah proses chunking, sebagian chunk bisa sudah terlanjur dibuat
+	// sebelum error dikembalikan (sama semangatnya dgn catatan TOCTOU di
+	// enforceTenantTaskQuota, bukan boundary keamanan, jadi diterima apa
+	// adanya alih-alih menambah transaksi lintas-row demi ini).
+	if taskType.Code == domain.TaskTypeGetParameterValues {
+		if names, ok := extractParameterNames(in.Parameters); ok && len(names) > MaxGetParameterValuesNamesPerTask {
+			return s.createChunkedGetParameterValues(ctx, actor, in, names)
+		}
+	}
+
 	pendingStatus, err := s.refs.GetByCode(ctx, domain.RefTableTaskStatus, domain.TaskStatusPending)
 	if err != nil {
 		return nil, err
@@ -135,7 +196,76 @@ func (s *Service) CreateTask(ctx context.Context, actor domain.Actor, in domain.
 		UserID: actor.UserIDPtr(), TenantID: actor.TenantID,
 		Action: "CREATE_TASK", EntityType: "task", EntityID: &t.ID,
 	})
+
+	// WS Event
+	if s.publisher != nil && dev.TenantID != nil {
+		s.publisher.BroadcastToTenant(*dev.TenantID, "TASK_CREATED", map[string]interface{}{
+			"task_id":   t.ID,
+			"device_id": t.DeviceID,
+		})
+	}
+
 	return t, nil
+}
+
+// createChunkedGetParameterValues memecah satu permintaan GET_PARAMETER_VALUES
+// bervolume besar (> MaxGetParameterValuesNamesPerTask) jadi beberapa task
+// berurutan, masing-masing <= MaxGetParameterValuesNamesPerTask nama.
+// Mengembalikan task chunk PERTAMA (yang akan dieksekusi lebih dulu sesuai
+// urutan priority/created_at ASC seperti task lain manapun, TECH.md §4) sbg
+// representasi ke pemanggil — pemanggil yang butuh SEMUA task hasil pecahan
+// (mis. untuk melacak status lengkap) bisa query ulang lewat List dgn
+// device_id+task_type yang sama.
+func (s *Service) createChunkedGetParameterValues(ctx context.Context, actor domain.Actor, in domain.CreateTaskInput, names []string) (*domain.Task, error) {
+	var first *domain.Task
+	for start := 0; start < len(names); start += MaxGetParameterValuesNamesPerTask {
+		end := start + MaxGetParameterValuesNamesPerTask
+		if end > len(names) {
+			end = len(names)
+		}
+		chunkIn := in
+		chunkIn.Parameters = map[string]interface{}{"names": names[start:end]}
+		t, err := s.CreateTask(ctx, actor, chunkIn)
+		if err != nil {
+			return nil, err
+		}
+		if first == nil {
+			first = t
+		}
+	}
+	return first, nil
+}
+
+// parseGetParameterValuesNames mengekstrak "names" ([]string) dari payload
+// JSON mentah task.Parameters bertipe GET_PARAMETER_VALUES (lihat kontrak
+// bentuk JSON di delivery/cwmp/builder.go#BuildRequestBody).
+func parseGetParameterValuesNames(raw []byte) ([]string, bool) {
+	var p struct {
+		Names []string `json:"names"`
+	}
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return nil, false
+	}
+	return p.Names, len(p.Names) > 0
+}
+
+// extractParameterNames sama seperti parseGetParameterValuesNames tapi
+// menerima in.Parameters (map[string]interface{}) SEBELUM di-marshal jadi
+// JSON tersimpan — dipakai CreateTask utk deteksi proactive chunking.
+// Round-trip lewat json.Marshal/Unmarshal SENGAJA dipakai (bukan type
+// assertion manual) krn representasi runtime "names" bisa []string
+// (pemanggil internal, mis. SplitGetParameterValuesOnFault) MAUPUN
+// []interface{} (hasil decode JSON body REST API mentah lewat
+// encoding/json ke map[string]interface{}, lihat
+// delivery/http/task_handler.go createTaskRequest.Parameters) — round-trip
+// ini menormalkan keduanya jadi satu bentuk yang sama tanpa type-switch
+// manual utk semua kemungkinan tipe yang bisa dihasilkan decoder JSON.
+func extractParameterNames(params map[string]interface{}) ([]string, bool) {
+	raw, err := json.Marshal(params)
+	if err != nil {
+		return nil, false
+	}
+	return parseGetParameterValuesNames(raw)
 }
 
 // enforceTenantTaskQuota menolak pembuatan task baru bila tenant pemilik
@@ -199,6 +329,18 @@ func (s *Service) EnqueueSetParameterValues(ctx context.Context, actor domain.Ac
 		TaskType:   domain.TaskTypeSetParameterValues,
 		Priority:   priority,
 		Parameters: map[string]interface{}{"values": resolved},
+	})
+}
+
+// EnqueueReboot mengimplementasikan domain.TaskEnqueuer — dipakai aksi
+// PostApplyReboot pada ZeroTouchRule (migrations/0009, usecase/provisioning).
+// REBOOT tidak butuh resolusi logical key/parameter apa pun (beda dari
+// EnqueueSetParameterValues), jadi cukup CreateTask langsung.
+func (s *Service) EnqueueReboot(ctx context.Context, actor domain.Actor, deviceID uint64, priority uint8) (*domain.Task, error) {
+	return s.CreateTask(ctx, actor, domain.CreateTaskInput{
+		DeviceID: deviceID,
+		TaskType: domain.TaskTypeReboot,
+		Priority: priority,
 	})
 }
 
@@ -352,16 +494,109 @@ func (s *Service) GetByUUID(ctx context.Context, uuid string) (*domain.Task, err
 }
 
 func (s *Service) MarkSent(ctx context.Context, taskID uint64) error {
-	return s.tasks.MarkSent(ctx, taskID, time.Now())
+	err := s.tasks.MarkSent(ctx, taskID, time.Now())
+	if err == nil {
+		s.publishTaskStatusEvent(ctx, taskID, domain.TaskStatusSent)
+	}
+	return err
 }
 
 func (s *Service) Complete(ctx context.Context, taskID uint64, response domain.JSONRawMessage) error {
-	return s.tasks.MarkCompleted(ctx, taskID, response, time.Now())
+	err := s.tasks.MarkCompleted(ctx, taskID, response, time.Now())
+	if err == nil {
+		s.publishTaskStatusEvent(ctx, taskID, domain.TaskStatusCompleted)
+		
+		// Hook Auto-Discovery
+		if t, err := s.tasks.GetByID(ctx, taskID); err == nil && t.TaskType == domain.TaskTypeGetParameterNames {
+			go s.handleAutoDiscoveryResponse(context.Background(), t, response)
+		}
+	}
+	return err
 }
 
 // Fail menandai task gagal (dari cwmp:Fault CPE) dengan retry hingga max_retries.
 func (s *Service) Fail(ctx context.Context, t *domain.Task, errMsg string) error {
 	return s.failOrRetry(ctx, t, domain.TaskStatusFailed, errMsg)
+}
+
+// FailPermanently menandai task FAILED SEGERA, TANPA melalui siklus retry
+// max_retries biasa (failOrRetry) — dipakai utk kasus yang pasti akan gagal
+// identik pada percobaan berikutnya (mis. cwmp:Fault domain.
+// FaultCodeInvalidParameterName "9005": parameter memang tidak ada di device
+// ini, retry tidak akan mengubah hasil), atau task yang sudah digantikan
+// task pecahan lain (lihat SplitGetParameterValuesOnFault). retry_count
+// tetap di-increment (mencatat bahwa 1 percobaan terjadi, konsisten dgn
+// failOrRetry), tapi TIDAK dibandingkan ke max_retries sama sekali —
+// langsung MarkFailed.
+// SENGAJA tidak memicu webhook TASK_FAILED di sini: pemakainya adalah kasus
+// "gagal terduga" (9005 param-not-found — sudah memicu DEVICE_FAULT dari
+// usecase/session, jadi TASK_FAILED akan duplikat) atau task yang digantikan
+// task pecahan (bukan kegagalan operasional). TASK_FAILED hanya dari
+// failOrRetry (retry/timeout habis).
+func (s *Service) FailPermanently(ctx context.Context, t *domain.Task, errMsg string) error {
+	if err := s.tasks.IncrementRetry(ctx, t.ID); err != nil {
+		return err
+	}
+	status, err := s.refs.GetByCode(ctx, domain.RefTableTaskStatus, domain.TaskStatusFailed)
+	if err != nil {
+		return err
+	}
+	err = s.tasks.MarkFailed(ctx, t.ID, status.ID, errMsg)
+	if err == nil {
+		s.publishTaskStatusEvent(ctx, t.ID, domain.TaskStatusFailed)
+	}
+	return err
+}
+
+// SplitGetParameterValuesOnFault menangani cwmp:Fault domain.
+// FaultCodeInvalidArguments "9003" pada task GET_PARAMETER_VALUES yang SUDAH
+// TERKIRIM (reaktif) — beda dari proactive chunking
+// (createChunkedGetParameterValues, dicek saat task DIBUAT) yang mencegah
+// task oversized terbentuk sejak awal. Banyak implementasi CPE membalas 9003
+// generik saat menolak request krn ParameterNames-nya kepanjangan (kuirk
+// umum lintas vendor, bukan satu vendor spesifik — CLAUDE.md soal
+// vendor_adapter). Alih-alih retry request identik yg pasti gagal lagi lewat
+// failOrRetry, daftar nama dipecah dua & masing2 jadi task GET_PARAMETER_VALUES
+// baru; task asli ditandai FAILED (lewat FailPermanently, BUKAN balik ke
+// PENDING) krn sudah digantikan task pecahan tsb.
+//
+// Return (false, nil) bila task ini TIDAK BISA dipecah lagi (<= 1 parameter
+// name) — pemanggil (usecase/session.Service.handleFault) HARUS fallback ke
+// Fail/failOrRetry normal pada kasus ini, task ini TIDAK disentuh sama sekali.
+func (s *Service) SplitGetParameterValuesOnFault(ctx context.Context, t *domain.Task, faultMsg string) (bool, error) {
+	names, ok := parseGetParameterValuesNames(t.Parameters)
+	if !ok || len(names) <= 1 {
+		return false, nil
+	}
+
+	dev, err := s.devices.GetByID(ctx, t.DeviceID)
+	if err != nil {
+		return false, err
+	}
+	// Aktor sistem (bukan user login) — dipicu cwmp:Fault dari CPE, bukan
+	// tindakan operator (pola sama seperti systemActor di
+	// usecase/session/service.go#HandleInform utk aksi ZTP otomatis).
+	actor := domain.Actor{TenantID: dev.TenantID}
+
+	mid := len(names) / 2
+	chunks := [][]string{names[:mid], names[mid:]}
+	for _, chunk := range chunks {
+		if _, err := s.CreateTask(ctx, actor, domain.CreateTaskInput{
+			DeviceID:   t.DeviceID,
+			TaskType:   domain.TaskTypeGetParameterValues,
+			Priority:   t.Priority,
+			MaxRetries: t.MaxRetries,
+			Parameters: map[string]interface{}{"names": chunk},
+		}); err != nil {
+			return false, err
+		}
+	}
+
+	msg := fmt.Sprintf("%s (dipecah jadi %d task GetParameterValues baru krn parameter list ditolak CPE)", faultMsg, len(chunks))
+	if err := s.FailPermanently(ctx, t, msg); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // Timeout menandai task time-out menunggu respons CPE, dengan retry hingga max_retries.
@@ -387,6 +622,25 @@ func (s *Service) TimeoutStaleSent(ctx context.Context, threshold time.Duration)
 	return count, nil
 }
 
+func (s *Service) publishTaskStatusEvent(ctx context.Context, taskID uint64, status string) {
+	if s.publisher == nil {
+		return
+	}
+	t, err := s.tasks.GetByID(ctx, taskID)
+	if err != nil {
+		return
+	}
+	dev, err := s.devices.GetByID(ctx, t.DeviceID)
+	if err != nil || dev.TenantID == nil {
+		return
+	}
+	s.publisher.BroadcastToTenant(*dev.TenantID, "TASK_STATUS_CHANGED", map[string]interface{}{
+		"task_id":   t.ID,
+		"device_id": t.DeviceID,
+		"status":    status,
+	})
+}
+
 // failOrRetry: retry_count bertambah 1; jika sudah mencapai/melewati
 // max_retries task ditandai gagal permanen (finalStatusCode), selain itu
 // dikembalikan ke PENDING agar dicoba lagi pada sesi berikutnya (TECH.md §4).
@@ -405,5 +659,63 @@ func (s *Service) failOrRetry(ctx context.Context, t *domain.Task, finalStatusCo
 	if err != nil {
 		return err
 	}
-	return s.tasks.UpdateStatus(ctx, t.ID, status.ID, nil)
+	if err := s.tasks.UpdateStatus(ctx, t.ID, status.ID, nil); err != nil {
+		return err
+	}
+	
+	s.publishTaskStatusEvent(ctx, t.ID, statusCode)
+
+	if statusCode == domain.TaskStatusFailed {
+		s.notifyTaskFailed(ctx, t, errMsg)
+	}
+	return nil
+}
+
+func (s *Service) handleAutoDiscoveryResponse(ctx context.Context, t *domain.Task, response domain.JSONRawMessage) {
+	// Parse GetParameterNamesResponse
+	var b struct {
+		ParameterList struct {
+			Items []struct {
+				Name     string `json:"Name"`
+				Writable bool   `json:"Writable"`
+			} `json:"Items"`
+		} `json:"ParameterList"`
+	}
+	if err := json.Unmarshal(response, &b); err != nil {
+		return
+	}
+
+	params := make([]domain.DeviceParameter, 0, len(b.ParameterList.Items))
+	var namesToGet []string
+	for _, item := range b.ParameterList.Items {
+		// Simpan nama parameter dengan nilai kosong sebagai placeholder
+		val := ""
+		params = append(params, domain.DeviceParameter{
+			DeviceID:      t.DeviceID,
+			ParameterName: item.Name,
+			ParameterValue: &val, // Harus pointer ke string sesuai skema
+		})
+		
+		// Kumpulkan leaf nodes (yang bukan parent object) untuk GetParameterValues
+		// Biasanya leaf nodes tidak berakhiran dengan "."
+		if !strings.HasSuffix(item.Name, ".") {
+			namesToGet = append(namesToGet, item.Name)
+		}
+	}
+
+	if len(params) > 0 {
+		_ = s.deviceParams.UpsertBatch(ctx, params)
+	}
+
+	// Queue task GetParameterValues untuk leaf nodes yang ditemukan (untuk mengisi nilainya)
+	if len(namesToGet) > 0 {
+		// Chunking sudah ditangani oleh CreateTask jika lebih dari MaxGetParameterValuesNamesPerTask
+		systemActor := domain.Actor{Roles: []string{domain.RoleSuperadmin}} // Bypass RBAC untuk operasi internal sistem
+		_, _ = s.CreateTask(ctx, systemActor, domain.CreateTaskInput{
+			DeviceID:   t.DeviceID,
+			TaskType:   domain.TaskTypeGetParameterValues,
+			Priority:   5, // Prioritas rendah (background discovery)
+			Parameters: map[string]interface{}{"names": namesToGet},
+		})
+	}
 }

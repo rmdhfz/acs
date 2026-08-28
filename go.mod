@@ -11,6 +11,10 @@ require (
 	github.com/labstack/echo/v5 v5.3.1
 	github.com/minio/minio-go/v7 v7.3.0
 	github.com/prometheus/client_golang v1.24.1
+	github.com/redis/go-redis/v9 v9.7.0
+	github.com/coreos/go-oidc/v3 v3.12.0
+	github.com/gorilla/websocket v1.5.3
+	golang.org/x/oauth2 v0.26.0
 	golang.org/x/crypto v0.55.0
 )
 

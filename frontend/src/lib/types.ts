@@ -56,6 +56,8 @@ export interface Device {
   inform_username: string | null
   last_inform_at: string | null
   last_boot_event_at: string | null
+  latitude: number | null
+  longitude: number | null
   notes: string | null
   created_at: string
   updated_at: string
@@ -163,6 +165,9 @@ export interface VendorParameterMapping {
   vendor_id: number
   data_model_version_id: number
   device_model_id: number | null
+  // Pola SQL LIKE opsional thd devices.software_version (migrations/0010).
+  // NULL = mapping generik lintas versi software.
+  software_version_pattern: string | null
   logical_key: string
   tr069_path: string
   parameter_type_id: number | null
@@ -226,9 +231,42 @@ export interface ZeroTouchRule {
   device_model_id: number | null
   oui: string | null
   serial_pattern: string | null
-  provisioning_profile_id: number
+  // Precondition tambahan (migrations/0009). match_parameter_name &
+  // match_parameter_value_pattern wajib berpasangan (keduanya null atau
+  // keduanya terisi).
+  software_version_pattern: string | null
+  match_parameter_name: string | null
+  match_parameter_value_pattern: string | null
+  // Nullable sejak migrations/0009 — rule boleh hanya memicu reboot dan/atau
+  // firmware push tanpa menerapkan provisioning profile.
+  provisioning_profile_id: number | null
+  post_apply_reboot: boolean
+  firmware_file_id: number | null
+  // FK ref_ztp_trigger_event — kapan rule dievaluasi (BOOTSTRAP_ONLY /
+  // BOOTSTRAP_OR_BOOT / EVERY_INFORM). Wajib.
+  trigger_event_id: number
   priority: number
   is_active: boolean
+}
+
+// FirmwareRolloutBatch — rencana canary/staged rollout firmware ke populasi
+// device bertahap per wave (migrations/0011). Status via ref_firmware_rollout_status.
+export interface FirmwareRolloutBatch {
+  id: number
+  batch_uuid: string
+  tenant_id: number | null
+  firmware_file_id: number
+  vendor_id: number | null
+  device_model_id: number | null
+  wave_percentage: number
+  max_failure_rate_percent: number
+  current_wave: number
+  status_id: number
+  notes: string | null
+  scheduled_at: string | null
+  started_at: string | null
+  completed_at: string | null
+  created_at: string
 }
 
 export interface FirmwareFile {
@@ -287,3 +325,40 @@ export interface DeviceDiagnostic {
   executed_at: string | null
   created_at: string
 }
+
+export interface GenericFile {
+  id: number
+  file_uuid: string
+  tenant_id: number | null
+  file_type: string
+  vendor_id: number | null
+  device_model_id: number | null
+  version: string | null
+  file_name: string
+  storage_key: string
+  file_size_bytes: number
+  created_at: string
+}
+
+
+export interface Tag {
+  id: number
+  tenant_id: number | null
+  name: string
+  color: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface Preset {
+  id: number
+  tenant_id: number | null
+  name: string
+  weight: number
+  precondition: string
+  configurations: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+

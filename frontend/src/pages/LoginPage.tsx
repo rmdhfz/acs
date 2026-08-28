@@ -86,6 +86,22 @@ export function LoginPage() {
               {isSubmitting && <Spinner className="h-4 w-4 text-white" />}
               Masuk
             </button>
+
+            <div className="relative my-4">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-slate-200 dark:border-slate-800" />
+              </div>
+              <div className="relative flex justify-center text-xs">
+                <span className="bg-white px-2 text-slate-500 dark:bg-slate-900 dark:text-slate-400">Atau</span>
+              </div>
+            </div>
+
+            <a
+              href="/api/v1/auth/oidc/login"
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              Login with SSO
+            </a>
           </div>
         </form>
       </div>

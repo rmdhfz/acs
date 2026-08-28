@@ -56,11 +56,22 @@ func (f *createErrFirmwareFileRepo) Create(context.Context, *domain.FirmwareFile
 
 type fakeFirmwareJobRepo struct {
 	created *domain.FirmwareUpgradeJob
+	// jobs -- seluruh job "tersimpan" (baik pre-seeded test maupun hasil
+	// Create), dipakai ListByRolloutBatch/CountByRolloutWave sungguhan alih-
+	// alih no-op, supaya TestAdvanceRollout_* menguji logika Service yang
+	// sesungguhnya membaca balik state, bukan cuma nilai preset terisolasi.
+	jobs []domain.FirmwareUpgradeJob
+	// waveStatusCounts -- kalau diisi non-nil, CountByRolloutWave langsung
+	// mengembalikan ini (override) tanpa menghitung dari jobs -- dipakai test
+	// yang ingin menguji skenario status murni tanpa perlu menyusun jobs
+	// detail (mis. reklasifikasi stale->TIMEOUT).
+	waveStatusCounts []domain.FirmwareRolloutWaveStatusCount
 }
 
 func (f *fakeFirmwareJobRepo) Create(_ context.Context, j *domain.FirmwareUpgradeJob) error {
-	j.ID = 1
+	j.ID = uint64(len(f.jobs) + 1)
 	f.created = j
+	f.jobs = append(f.jobs, *j)
 	return nil
 }
 func (f *fakeFirmwareJobRepo) GetByID(context.Context, uint64) (*domain.FirmwareUpgradeJob, error) {
@@ -72,8 +83,88 @@ func (f *fakeFirmwareJobRepo) GetByTaskID(context.Context, uint64) (*domain.Firm
 func (f *fakeFirmwareJobRepo) ListByDevice(context.Context, uint64, domain.Pagination) ([]domain.FirmwareUpgradeJob, int, error) {
 	return nil, 0, nil
 }
-func (f *fakeFirmwareJobRepo) UpdateStatus(context.Context, uint64, uint64, *string) error { return nil }
-func (f *fakeFirmwareJobRepo) MarkStarted(context.Context, uint64, time.Time) error        { return nil }
+func (f *fakeFirmwareJobRepo) ListByRolloutBatch(_ context.Context, batchID uint64, waveNumber *uint32, p domain.Pagination) ([]domain.FirmwareUpgradeJob, int, error) {
+	var matched []domain.FirmwareUpgradeJob
+	for _, j := range f.jobs {
+		if j.RolloutBatchID == nil || *j.RolloutBatchID != batchID {
+			continue
+		}
+		if waveNumber != nil && (j.WaveNumber == nil || *j.WaveNumber != *waveNumber) {
+			continue
+		}
+		matched = append(matched, j)
+	}
+	limit := p.Limit()
+	if limit > len(matched) {
+		limit = len(matched)
+	}
+	return matched[:limit], len(matched), nil
+}
+func (f *fakeFirmwareJobRepo) CountByRolloutWave(_ context.Context, batchID uint64, waveNumber *uint32, _ time.Time, _ uint64) ([]domain.FirmwareRolloutWaveStatusCount, error) {
+	if f.waveStatusCounts != nil {
+		return f.waveStatusCounts, nil
+	}
+	counts := map[uint64]int{}
+	for _, j := range f.jobs {
+		if j.RolloutBatchID == nil || *j.RolloutBatchID != batchID {
+			continue
+		}
+		if waveNumber != nil && (j.WaveNumber == nil || *j.WaveNumber != *waveNumber) {
+			continue
+		}
+		counts[j.TaskStatusID]++
+	}
+	out := make([]domain.FirmwareRolloutWaveStatusCount, 0, len(counts))
+	for statusID, cnt := range counts {
+		out = append(out, domain.FirmwareRolloutWaveStatusCount{TaskStatusID: statusID, Count: cnt})
+	}
+	return out, nil
+}
+func (f *fakeFirmwareJobRepo) UpdateStatus(context.Context, uint64, uint64, *string) error {
+	return nil
+}
+func (f *fakeFirmwareJobRepo) MarkStarted(context.Context, uint64, time.Time) error { return nil }
+
+// fakeFirmwareRolloutRepo — no-op minimal by default (cukup utk test yang
+// tidak menyentuh alur rollout batch, lihat internal/usecase/task/
+// service_test.go utk pola sama), TAPI batch/lastUpdated bisa diisi test
+// yang MEMANG menguji AdvanceRollout (lihat TestAdvanceRollout_*).
+type fakeFirmwareRolloutRepo struct {
+	batch       *domain.FirmwareRolloutBatch
+	lastUpdated *domain.FirmwareRolloutBatch // salinan batch persis sesaat sebelum Update dipanggil
+}
+
+func (f *fakeFirmwareRolloutRepo) Create(context.Context, *domain.FirmwareRolloutBatch) error {
+	return nil
+}
+func (f *fakeFirmwareRolloutRepo) GetByID(_ context.Context, id uint64) (*domain.FirmwareRolloutBatch, error) {
+	if f.batch == nil || f.batch.ID != id {
+		return nil, domain.ErrNotFound
+	}
+	cp := *f.batch
+	return &cp, nil
+}
+func (f *fakeFirmwareRolloutRepo) GetByUUID(context.Context, string) (*domain.FirmwareRolloutBatch, error) {
+	return nil, domain.ErrNotFound
+}
+func (f *fakeFirmwareRolloutRepo) List(context.Context, *uint64, domain.Pagination) ([]domain.FirmwareRolloutBatch, int, error) {
+	return nil, 0, nil
+}
+func (f *fakeFirmwareRolloutRepo) Update(_ context.Context, b *domain.FirmwareRolloutBatch) error {
+	cp := *b
+	f.lastUpdated = &cp
+	f.batch = &cp
+	return nil
+}
+func (f *fakeFirmwareRolloutRepo) SoftDelete(context.Context, uint64, uint64) error { return nil }
+
+// RunWithAdvanceLock -- fake tanpa MariaDB tidak bisa mensimulasikan named
+// lock sungguhan, jadi cukup jalankan fn langsung (selalu "berhasil dapat
+// lock") -- memadai utk test yang tidak menyentuh alur rollout batch.
+func (f *fakeFirmwareRolloutRepo) RunWithAdvanceLock(ctx context.Context, _ uint64, fn func(context.Context) error) (bool, error) {
+	return true, fn(ctx)
+}
+
 func (f *fakeFirmwareJobRepo) MarkCompleted(context.Context, uint64, string, time.Time) error {
 	return nil
 }
@@ -81,6 +172,10 @@ func (f *fakeFirmwareJobRepo) MarkCompleted(context.Context, uint64, string, tim
 type fakeDeviceRepoFW struct {
 	dev *domain.Device
 	err error
+	// population -- daftar device dikembalikan List (dipakai
+	// resolveRolloutWaveTargets), diabaikan filter DeviceFilter-nya (test
+	// yang memakai ini sudah menyiapkan populasi yang relevan sendiri).
+	population []domain.Device
 }
 
 func (f *fakeDeviceRepoFW) Create(context.Context, *domain.Device) error { return nil }
@@ -96,8 +191,16 @@ func (f *fakeDeviceRepoFW) GetByUUID(context.Context, string) (*domain.Device, e
 func (f *fakeDeviceRepoFW) GetByOUISerial(context.Context, string, string) (*domain.Device, error) {
 	return nil, domain.ErrNotFound
 }
-func (f *fakeDeviceRepoFW) List(context.Context, domain.DeviceFilter, domain.Pagination) ([]domain.Device, int, error) {
-	return nil, 0, nil
+func (f *fakeDeviceRepoFW) List(_ context.Context, _ domain.DeviceFilter, p domain.Pagination) ([]domain.Device, int, error) {
+	start := p.Offset()
+	if start > len(f.population) {
+		start = len(f.population)
+	}
+	end := start + p.Limit()
+	if end > len(f.population) {
+		end = len(f.population)
+	}
+	return f.population[start:end], len(f.population), nil
 }
 func (f *fakeDeviceRepoFW) CountByStatus(context.Context, *uint64) ([]domain.DeviceStatusCount, error) {
 	return nil, nil
@@ -127,10 +230,15 @@ func (f *fakeTaskCreatorFW) CreateTask(_ context.Context, _ domain.Actor, in dom
 	return &domain.Task{ID: 1}, nil
 }
 
-type fakeRefRepoFW struct{ ids map[string]uint64 }
+// fakeRefRepoFW -- ids DIKUNCI per (table, code), BUKAN cuma code, karena
+// beberapa kode ref_* di proyek ini bertabrakan nilai string-nya antar tabel
+// berbeda (mis. domain.TaskStatusPending == domain.FirmwareRolloutStatusPending
+// == "PENDING") -- tanpa awareness tabel, test yang menyentuh KEDUA jenis ref
+// sekaligus (mis. TestAdvanceRollout_*) akan salah ambil ID.
+type fakeRefRepoFW struct{ ids map[string]map[string]uint64 } // table -> code -> id
 
-func (f *fakeRefRepoFW) GetByCode(_ context.Context, _ string, code string) (domain.RefLookup, error) {
-	id, ok := f.ids[code]
+func (f *fakeRefRepoFW) GetByCode(_ context.Context, table string, code string) (domain.RefLookup, error) {
+	id, ok := f.ids[table][code]
 	if !ok {
 		return domain.RefLookup{}, domain.ErrNotFound
 	}
@@ -198,8 +306,10 @@ func newTestService(files domain.FirmwareFileRepository, storage domain.ObjectSt
 	jobs := &fakeFirmwareJobRepo{}
 	devices := &fakeDeviceRepoFW{}
 	tasks := &fakeTaskCreatorFW{}
-	refs := &fakeRefRepoFW{ids: map[string]uint64{domain.TaskStatusPending: 1, domain.TaskStatusCompleted: 2, domain.TaskStatusFailed: 3}}
-	svc := NewService(files, jobs, devices, tasks, refs, &fakeActivityLogFW{}, storage)
+	refs := &fakeRefRepoFW{ids: map[string]map[string]uint64{
+		domain.RefTableTaskStatus: {domain.TaskStatusPending: 1, domain.TaskStatusCompleted: 2, domain.TaskStatusFailed: 3},
+	}}
+	svc := NewService(files, jobs, &fakeFirmwareRolloutRepo{}, devices, tasks, refs, &fakeActivityLogFW{}, storage)
 	return svc, jobs, devices, tasks, refs
 }
 
@@ -371,6 +481,186 @@ func TestScheduleUpgrade_UsesPresignedURLFromObjectStorage(t *testing.T) {
 	gotURL, _ := tasks.lastInput.Parameters["url"].(string)
 	if !strings.HasPrefix(gotURL, "https://minio.local/"+firmware.StorageKey) {
 		t.Fatalf("url task Download = %q, want presigned URL dari object storage", gotURL)
+	}
+}
+
+func uint64Ptr(v uint64) *uint64 { return &v }
+
+// ---- AdvanceRollout (canary/staged firmware rollout) ----
+
+const (
+	rtStatusPending   = 101
+	rtStatusInProg    = 102
+	rtStatusPaused    = 103
+	rtStatusCompleted = 104
+	rtStatusCancelled = 105
+
+	taskStatusPending   = 1
+	taskStatusQueued    = 2
+	taskStatusSent      = 3
+	taskStatusCompleted = 4
+	taskStatusFailed    = 5
+	taskStatusCancelled = 6
+	taskStatusTimeout   = 7
+)
+
+// newRolloutTestService -- refs lengkap (task status DAN firmware rollout
+// status sekaligus, dgn ID terpisah krn beberapa kode bertabrakan string,
+// lihat komentar fakeRefRepoFW), dipakai KHUSUS test AdvanceRollout.
+func newRolloutTestService() (*Service, *fakeFirmwareRolloutRepo, *fakeFirmwareJobRepo, *fakeDeviceRepoFW) {
+	files := &fakeFirmwareFileRepo{byID: map[uint64]*domain.FirmwareFile{1: {ID: 1, Version: "2.0.0", StorageKey: "fw/1.bin"}}}
+	storage := newFakeObjectStorage()
+	storage.objects["fw/1.bin"] = []byte("content")
+	jobs := &fakeFirmwareJobRepo{}
+	devices := &fakeDeviceRepoFW{}
+	tasks := &fakeTaskCreatorFW{}
+	rollouts := &fakeFirmwareRolloutRepo{}
+	refs := &fakeRefRepoFW{ids: map[string]map[string]uint64{
+		domain.RefTableTaskStatus: {
+			domain.TaskStatusPending: taskStatusPending, domain.TaskStatusQueued: taskStatusQueued,
+			domain.TaskStatusSent: taskStatusSent, domain.TaskStatusCompleted: taskStatusCompleted,
+			domain.TaskStatusFailed: taskStatusFailed, domain.TaskStatusCancelled: taskStatusCancelled,
+			domain.TaskStatusTimeout: taskStatusTimeout,
+		},
+		domain.RefTableFirmwareRolloutStatus: {
+			domain.FirmwareRolloutStatusPending: rtStatusPending, domain.FirmwareRolloutStatusInProgress: rtStatusInProg,
+			domain.FirmwareRolloutStatusPausedFailureThreshold: rtStatusPaused,
+			domain.FirmwareRolloutStatusCompleted:              rtStatusCompleted, domain.FirmwareRolloutStatusCancelled: rtStatusCancelled,
+		},
+	}}
+	svc := NewService(files, jobs, rollouts, devices, tasks, refs, &fakeActivityLogFW{}, storage)
+	return svc, rollouts, jobs, devices
+}
+
+func TestAdvanceRollout_WaveInFlight_NoOp(t *testing.T) {
+	svc, rollouts, jobs, devices := newRolloutTestService()
+	rollouts.batch = &domain.FirmwareRolloutBatch{ID: 1, FirmwareFileID: 1, WavePercentage: 50, MaxFailureRatePercent: 30, CurrentWave: 1, StatusID: rtStatusInProg}
+	wave := uint32(1)
+	jobs.jobs = []domain.FirmwareUpgradeJob{
+		{ID: 1, DeviceID: 10, RolloutBatchID: uint64Ptr(1), WaveNumber: &wave, TaskStatusID: taskStatusSent},
+	}
+	devices.population = []domain.Device{{ID: 10}, {ID: 11}}
+
+	got, err := svc.AdvanceRollout(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.CurrentWave != 1 || got.StatusID != rtStatusInProg {
+		t.Fatalf("batch berubah padahal wave masih in-flight: %+v", got)
+	}
+	if rollouts.lastUpdated != nil {
+		t.Fatal("Update TIDAK seharusnya terpanggil selagi wave masih in-flight")
+	}
+}
+
+func TestAdvanceRollout_WaveComplete_AdvancesToNextWave(t *testing.T) {
+	svc, rollouts, jobs, devices := newRolloutTestService()
+	rollouts.batch = &domain.FirmwareRolloutBatch{ID: 1, FirmwareFileID: 1, WavePercentage: 50, MaxFailureRatePercent: 30, CurrentWave: 1, StatusID: rtStatusInProg}
+	wave := uint32(1)
+	jobs.jobs = []domain.FirmwareUpgradeJob{
+		{ID: 1, DeviceID: 10, RolloutBatchID: uint64Ptr(1), WaveNumber: &wave, TaskStatusID: taskStatusCompleted},
+	}
+	// Populasi 4 device, wave 1 (50%) sudah menarget device 10 -- wave 2
+	// seharusnya menarget SISA yang belum ditarget (11,12,13), diambil
+	// 50% dari TOTAL populasi asli (4*50%=2 device), bukan 50% dari sisa.
+	devices.population = []domain.Device{{ID: 10}, {ID: 11}, {ID: 12}, {ID: 13}}
+	// fakeDeviceRepoFW.GetByID (dipakai scheduleUpgradeJob) mengembalikan
+	// SATU dev statis ini apa pun ID yang diminta -- cukup utk test ini
+	// krn tidak menguji per-device tenant-scope, cuma jumlah/wave job baru.
+	devices.dev = &domain.Device{ID: 0}
+
+	got, err := svc.AdvanceRollout(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.CurrentWave != 2 {
+		t.Fatalf("CurrentWave = %d, want 2", got.CurrentWave)
+	}
+	if got.StatusID != rtStatusInProg {
+		t.Fatalf("StatusID = %d, want IN_PROGRESS (%d)", got.StatusID, rtStatusInProg)
+	}
+	// 2 job baru (device 11,12) seharusnya ditambahkan utk wave 2, TIDAK
+	// menyentuh device 10 (sudah ditarget wave 1) atau 13 (sisa utk wave 3).
+	var wave2Devices []uint64
+	for _, j := range jobs.jobs {
+		if j.WaveNumber != nil && *j.WaveNumber == 2 {
+			wave2Devices = append(wave2Devices, j.DeviceID)
+		}
+	}
+	if len(wave2Devices) != 2 {
+		t.Fatalf("job wave 2 = %v, want 2 device baru", wave2Devices)
+	}
+}
+
+func TestAdvanceRollout_FailureRateExceeded_Pauses(t *testing.T) {
+	svc, rollouts, jobs, devices := newRolloutTestService()
+	rollouts.batch = &domain.FirmwareRolloutBatch{ID: 1, FirmwareFileID: 1, WavePercentage: 50, MaxFailureRatePercent: 30, CurrentWave: 1, StatusID: rtStatusInProg}
+	wave := uint32(1)
+	// 1 dari 2 job GAGAL -- failure rate 50% > batas 30%.
+	jobs.jobs = []domain.FirmwareUpgradeJob{
+		{ID: 1, DeviceID: 10, RolloutBatchID: uint64Ptr(1), WaveNumber: &wave, TaskStatusID: taskStatusFailed},
+		{ID: 2, DeviceID: 11, RolloutBatchID: uint64Ptr(1), WaveNumber: &wave, TaskStatusID: taskStatusCompleted},
+	}
+	devices.population = []domain.Device{{ID: 10}, {ID: 11}}
+
+	got, err := svc.AdvanceRollout(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.StatusID != rtStatusPaused {
+		t.Fatalf("StatusID = %d, want PAUSED_FAILURE_THRESHOLD (%d)", got.StatusID, rtStatusPaused)
+	}
+	if got.CurrentWave != 1 {
+		t.Fatalf("CurrentWave tidak seharusnya maju saat dipause: got %d", got.CurrentWave)
+	}
+}
+
+func TestAdvanceRollout_PopulationExhausted_Completes(t *testing.T) {
+	svc, rollouts, jobs, devices := newRolloutTestService()
+	rollouts.batch = &domain.FirmwareRolloutBatch{ID: 1, FirmwareFileID: 1, WavePercentage: 50, MaxFailureRatePercent: 30, CurrentWave: 1, StatusID: rtStatusInProg}
+	wave := uint32(1)
+	jobs.jobs = []domain.FirmwareUpgradeJob{
+		{ID: 1, DeviceID: 10, RolloutBatchID: uint64Ptr(1), WaveNumber: &wave, TaskStatusID: taskStatusCompleted},
+	}
+	// Populasi HANYA device 10 -- sudah ditarget wave 1, tidak ada sisa.
+	devices.population = []domain.Device{{ID: 10}}
+
+	got, err := svc.AdvanceRollout(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.StatusID != rtStatusCompleted {
+		t.Fatalf("StatusID = %d, want COMPLETED (%d)", got.StatusID, rtStatusCompleted)
+	}
+	if got.CompletedAt == nil {
+		t.Fatal("CompletedAt seharusnya terisi saat batch selesai")
+	}
+}
+
+// TestAdvanceRollout_ZeroScheduled_Pauses menguji fix utk temuan review kode:
+// SEMUA percobaan jadwal wave gagal (mis. kuota task queue tenant habis)
+// TIDAK boleh diam-diam retry selamanya -- harus PAUSED, bukan tetap
+// IN_PROGRESS dgn CurrentWave maju padahal 0 device benar-benar dijadwalkan.
+func TestAdvanceRollout_ZeroScheduled_Pauses(t *testing.T) {
+	tenantID := uint64(1)
+	svc, rollouts, _, devices := newRolloutTestService()
+	rollouts.batch = &domain.FirmwareRolloutBatch{ID: 1, TenantID: &tenantID, FirmwareFileID: 1, WavePercentage: 100, MaxFailureRatePercent: 30, CurrentWave: 0, StatusID: rtStatusPending}
+	// Device DENGAN tenant BERBEDA dari batch -- scheduleUpgradeJob akan
+	// gagal krn requireDeviceTenantScope (mensimulasikan "gagal dijadwalkan"
+	// tanpa perlu memalsukan error kuota terpisah).
+	otherTenant := uint64(2)
+	devices.population = []domain.Device{{ID: 10, TenantID: &otherTenant}}
+	devices.dev = &domain.Device{ID: 10, TenantID: &otherTenant}
+
+	got, err := svc.AdvanceRollout(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.StatusID != rtStatusPaused {
+		t.Fatalf("StatusID = %d, want PAUSED_FAILURE_THRESHOLD (%d) -- 0 device berhasil dijadwalkan seharusnya pause, bukan diam-diam retry selamanya", got.StatusID, rtStatusPaused)
+	}
+	if got.CurrentWave != 0 {
+		t.Fatalf("CurrentWave = %d, want tetap 0 (tidak ada wave yang benar-benar berjalan)", got.CurrentWave)
 	}
 }
 

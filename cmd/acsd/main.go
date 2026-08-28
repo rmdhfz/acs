@@ -6,9 +6,11 @@ package main
 import (
 	"context"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -21,18 +23,24 @@ import (
 	"acs/internal/config"
 	deliverycwmp "acs/internal/delivery/cwmp"
 	deliveryhttp "acs/internal/delivery/http"
+	"acs/internal/delivery/ws"
+	"acs/internal/domain"
 	"acs/internal/metrics"
 	"acs/internal/repository/mysql"
+	"acs/internal/repository/redisrepo"
 	"acs/internal/usecase/auth"
 	"acs/internal/usecase/device"
 	"acs/internal/usecase/diagnostics"
+	"acs/internal/usecase/file"
 	"acs/internal/usecase/firmware"
 	"acs/internal/usecase/iam"
 	"acs/internal/usecase/provisioning"
 	"acs/internal/usecase/session"
 	"acs/internal/usecase/task"
+	"acs/internal/usecase/webhook"
 	"acs/pkg/cryptoutil"
 	"acs/pkg/objectstorage"
+	"acs/pkg/redisutil"
 )
 
 func main() {
@@ -40,6 +48,16 @@ func main() {
 	if err != nil {
 		log.Fatalf("config: %v", err)
 	}
+
+	// Logger terstruktur (log/slog, JSON) — SATU instance dipakai bersama
+	// jalur CWMP (delivery/cwmp, usecase/session) sesuai observability
+	// TECH.md §10, alih-alih memperkenalkan library logging kedua. Level
+	// dikontrol ACS_LOG_LEVEL (default INFO) supaya production bisa menaikkan
+	// verbosity (DEBUG = detail per-RPC) tanpa redeploy. slog.SetDefault jaga
+	// konsistensi dgn kode lain yang mungkin memakai slog.Default() tanpa
+	// instance eksplisit (mis. pustaka pihak ketiga).
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: parseLogLevel(cfg.LogLevel)}))
+	slog.SetDefault(logger)
 
 	db, err := mysql.Connect(cfg.DBDSN)
 	if err != nil {
@@ -77,7 +95,8 @@ func main() {
 	paramMappingRepo := mysql.NewVendorParameterMappingRepository(db)
 	deviceRepo := mysql.NewDeviceRepository(db)
 	deviceParamRepo := mysql.NewDeviceParameterRepository(db)
-	deviceSessionRepo := mysql.NewDeviceSessionRepository(db)
+	deviceSessionRepoMysql := mysql.NewDeviceSessionRepository(db)
+	configSnapshotRepo := mysql.NewDeviceConfigSnapshotRepository(db)
 	deviceEventRepo := mysql.NewDeviceEventRepository(db)
 	opticalMetricRepo := mysql.NewDeviceOpticalMetricRepository(db)
 	taskRepo := mysql.NewTaskRepository(db)
@@ -86,16 +105,42 @@ func main() {
 	ztRuleRepo := mysql.NewZeroTouchRuleRepository(db)
 	firmwareFileRepo := mysql.NewFirmwareFileRepository(db)
 	firmwareJobRepo := mysql.NewFirmwareUpgradeJobRepository(db)
+	firmwareRolloutRepo := mysql.NewFirmwareRolloutBatchRepository(db)
 	diagnosticRepo := mysql.NewDeviceDiagnosticRepository(db)
+	webhookSubRepo := mysql.NewWebhookSubscriptionRepository(db)
+	webhookDeliveryRepo := mysql.NewWebhookDeliveryRepository(db)
+	fileRepo := mysql.NewFileRepository(db)
 
-	authSvc := auth.NewService(userRepo, apiTokenRepo, tenantRepo, activityLogRepo, cfg.JWTSecret, cfg.JWTExpiry)
+	redisClient, err := redisutil.NewClient(cfg.RedisAddr, logger)
+	if err != nil {
+		logger.Warn("redis: gagal koneksi, session cache dinonaktifkan", "error", err)
+	}
+	var deviceSessionRepo domain.DeviceSessionRepository = deviceSessionRepoMysql
+	if redisClient != nil {
+		deviceSessionRepo = redisrepo.NewDeviceSessionRepository(deviceSessionRepoMysql, redisClient)
+	}
+
+	authSvc := auth.NewService(userRepo, apiTokenRepo, tenantRepo, activityLogRepo, cfg.JWTSecret, cfg.JWTExpiry, cfg.OIDCIssuer, cfg.OIDCClientID, cfg.OIDCClientSecret, cfg.OIDCRedirectURL)
 	iamSvc := iam.NewService(tenantRepo, userRepo, refRepo, activityLogRepo, enc)
-	taskSvc := task.NewService(taskRepo, deviceRepo, deviceModelRepo, paramMappingRepo, refRepo, activityLogRepo, tenantRepo)
-	provisioningSvc := provisioning.NewService(profileRepo, profileParamRepo, ztRuleRepo, deviceRepo, taskSvc, activityLogRepo)
-	deviceSvc := device.NewService(deviceRepo, vendorOUIRepo, deviceModelRepo, refRepo, deviceParamRepo, deviceEventRepo, opticalMetricRepo, enc, activityLogRepo)
-	firmwareSvc := firmware.NewService(firmwareFileRepo, firmwareJobRepo, deviceRepo, taskSvc, refRepo, activityLogRepo, objStorage)
+	// webhookSvc dikonstruksi lebih dulu -- session & task memakainya lewat
+	// domain.WebhookEnqueuer (interface sempit, tanpa import cycle), worker
+	// dispatch-nya dijalankan runSweepers.
+	webhookSvc := webhook.NewService(webhookSubRepo, webhookDeliveryRepo, refRepo, activityLogRepo, enc, logger)
+	
+	wsHub := ws.NewHub()
+	go wsHub.Run()
+
+	taskSvc := task.NewService(taskRepo, deviceRepo, deviceModelRepo, paramMappingRepo, refRepo, activityLogRepo, tenantRepo, webhookSvc, wsHub)
+	// firmwareSvc dikonstruksi SEBELUM provisioningSvc -- provisioningSvc
+	// (ZTP aksi FirmwareFileID, migrations/0009) bergantung pada firmwareSvc
+	// lewat domain.FirmwareScheduler (interface sempit, menghindari import
+	// cycle usecase/provisioning <-> usecase/firmware).
+	firmwareSvc := firmware.NewService(firmwareFileRepo, firmwareJobRepo, firmwareRolloutRepo, deviceRepo, taskSvc, refRepo, activityLogRepo, objStorage)
+	provisioningSvc := provisioning.NewService(profileRepo, profileParamRepo, ztRuleRepo, deviceRepo, deviceParamRepo, refRepo, taskSvc, firmwareSvc, activityLogRepo)
+	deviceSvc := device.NewService(deviceRepo, vendorOUIRepo, deviceModelRepo, refRepo, deviceParamRepo, deviceEventRepo, opticalMetricRepo, configSnapshotRepo, enc, activityLogRepo, taskSvc, fileRepo, objStorage)
 	diagnosticsSvc := diagnostics.NewService(diagnosticRepo, deviceRepo, taskSvc, activityLogRepo)
-	sessionSvc := session.NewService(deviceSessionRepo, deviceEventRepo, deviceParamRepo, deviceRepo, tenantRepo, refRepo, deviceSvc, taskSvc, provisioningSvc, firmwareSvc, diagnosticsSvc, enc)
+	sessionSvc := session.NewService(deviceSessionRepo, deviceEventRepo, deviceParamRepo, deviceRepo, tenantRepo, refRepo, deviceSvc, taskSvc, provisioningSvc, firmwareSvc, diagnosticsSvc, enc, logger, webhookSvc, wsHub)
+	fileSvc := file.NewService(fileRepo, objStorage, activityLogRepo)
 
 	// ---- Observability: metrics Prometheus (TECH.md §10, ROADMAP.md Fase 2) ----
 	// Registry terpisah (bukan prometheus.DefaultRegisterer) supaya /metrics
@@ -106,6 +151,11 @@ func main() {
 	// nanti kalau dibutuhkan.
 	metricsRegistry := prometheus.NewRegistry()
 	metricsRegistry.MustRegister(metrics.NewCollector(deviceSvc, taskSvc, sessionSvc, refRepo))
+	// InformResponseLatency — histogram real-time (BUKAN gauge query-on-scrape
+	// spt Collector di atas), lihat komentar lengkap di
+	// internal/metrics/inform_latency.go. Diregistrasi terpisah krn bukan
+	// bagian dari prometheus.Collector kustom yang sama.
+	metricsRegistry.MustRegister(metrics.InformResponseLatency)
 	metricsHandler := promhttp.HandlerFor(metricsRegistry, promhttp.HandlerOpts{})
 
 	// ---- REST API internal (BSS/OSS, portal NOC) ----
@@ -125,10 +175,12 @@ func main() {
 	restEcho.Use(middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(30)))
 	router := &deliveryhttp.Router{
 		Auth: authSvc, IAM: iamSvc, Devices: deviceSvc, Tasks: taskSvc, Provisioning: provisioningSvc,
-		Firmware: firmwareSvc, Diagnostics: diagnosticsSvc,
+		Firmware: firmwareSvc, Diagnostics: diagnosticsSvc, Webhooks: webhookSvc, Sessions: sessionSvc,
 		Vendors: vendorRepo, VendorOUIs: vendorOUIRepo, DeviceModels: deviceModelRepo, ParamMappings: paramMappingRepo,
 		Refs: refRepo, Activity: activityLogRepo,
 		MetricsHandler: metricsHandler,
+		Files: fileSvc,
+		WSHub: wsHub,
 	}
 	router.Register(restEcho)
 
@@ -140,7 +192,7 @@ func main() {
 	// shared secret Inform CWMP sungguhan (bukan cuma anti CPE nakal/loop
 	// seperti sebelumnya), jadi juga jadi mitigasi brute-force kredensial.
 	cwmpEcho.Use(middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(5)))
-	deliverycwmp.NewHandler(sessionSvc).Register(cwmpEcho, "/cwmp")
+	deliverycwmp.NewHandler(sessionSvc, logger).Register(cwmpEcho, "/cwmp")
 
 	// echo.Start() menangani graceful shutdown otomatis saat menerima
 	// SIGINT/SIGTERM (lihat vendor echo/v5 server.go — signal.NotifyContext
@@ -163,7 +215,7 @@ func main() {
 	}()
 
 	stop := make(chan struct{})
-	go runSweepers(deviceSvc, taskSvc, stop)
+	go runSweepers(deviceSvc, taskSvc, firmwareSvc, webhookSvc, stop)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
@@ -173,15 +225,43 @@ func main() {
 	wg.Wait()
 }
 
-// runSweepers menjalankan tugas periodik ringan (FR-22, timeout task) — aman
-// dijalankan dari instance manapun karena app server stateless (TECH.md §9).
-func runSweepers(deviceSvc *device.Service, taskSvc *task.Service, stop <-chan struct{}) {
+// parseLogLevel menerjemahkan ACS_LOG_LEVEL (string, case-insensitive) ke
+// slog.Level. Nilai tidak dikenal fallback ke Info (default aman), bukan
+// error fatal — kesalahan ketik di env var utk verbosity log tidak boleh
+// mencegah proses start sama sekali.
+func parseLogLevel(s string) slog.Level {
+	switch strings.ToUpper(strings.TrimSpace(s)) {
+	case "DEBUG":
+		return slog.LevelDebug
+	case "WARN", "WARNING":
+		return slog.LevelWarn
+	case "ERROR":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
+}
+
+// runSweepers menjalankan tugas periodik ringan (FR-22, timeout task, wave
+// rollout firmware, dispatch webhook) — aman dijalankan dari instance manapun
+// karena app server stateless (TECH.md §9). Dispatch webhook pakai ticker
+// terpisah yang lebih cepat (15 dtk) supaya event fault/value-change sampai
+// ke sistem pihak ketiga dengan latensi rendah.
+func runSweepers(deviceSvc *device.Service, taskSvc *task.Service, firmwareSvc *firmware.Service, webhookSvc *webhook.Service, stop <-chan struct{}) {
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
+	webhookTicker := time.NewTicker(15 * time.Second)
+	defer webhookTicker.Stop()
 	for {
 		select {
 		case <-stop:
 			return
+		case <-webhookTicker.C:
+			if n, err := webhookSvc.DispatchDue(context.Background()); err != nil {
+				log.Printf("sweeper: dispatch webhook gagal: %v", err)
+			} else if n > 0 {
+				log.Printf("sweeper: %d webhook delivery diproses", n)
+			}
 		case <-ticker.C:
 			ctx := context.Background()
 			if n, err := deviceSvc.MarkStaleOffline(ctx, 15*time.Minute); err != nil {
@@ -193,6 +273,13 @@ func runSweepers(deviceSvc *device.Service, taskSvc *task.Service, stop <-chan s
 				log.Printf("sweeper: timeout stale sent gagal: %v", err)
 			} else if n > 0 {
 				log.Printf("sweeper: %d task ditandai timeout", n)
+			}
+			// Cek wave rollout firmware yang sudah tuntas & lanjutkan ke wave
+			// berikutnya (atau pause/complete) -- lihat firmware.Service.AdvanceRollout.
+			if n, err := firmwareSvc.SweepRolloutBatches(ctx); err != nil {
+				log.Printf("sweeper: sweep firmware rollout batch gagal: %v", err)
+			} else if n > 0 {
+				log.Printf("sweeper: %d firmware rollout batch diproses", n)
 			}
 		}
 	}

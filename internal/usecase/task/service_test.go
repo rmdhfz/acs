@@ -2,7 +2,9 @@ package task
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -19,9 +21,28 @@ type fakeTaskRepo struct {
 	// pendingCountForTenant — nilai yang dikembalikan CountPendingForTenant,
 	// dikonfigurasi test yang menguji enforceTenantTaskQuota (default 0).
 	pendingCountForTenant int
+	// created — task yang "disimpan" lewat Create, dipakai test proactive
+	// chunking (TestCreateTaskProactiveChunking) & split-on-fault
+	// (TestSplitGetParameterValuesOnFault) untuk memverifikasi jumlah &
+	// konten task hasil pecahan.
+	created []domain.Task
+	// markFailedCalls — mencatat pemanggilan MarkFailed (dipakai
+	// FailPermanently), terpisah dari statusHistory/lastErrorMessage yang
+	// mencatat jalur failOrRetry (SetErrorMessage+UpdateStatus terpisah).
+	markFailedCalls []markFailedCall
 }
 
-func (f *fakeTaskRepo) Create(context.Context, *domain.Task) error { return nil }
+type markFailedCall struct {
+	TaskID   uint64
+	StatusID uint64
+	ErrMsg   string
+}
+
+func (f *fakeTaskRepo) Create(_ context.Context, t *domain.Task) error {
+	t.ID = uint64(len(f.created) + 1)
+	f.created = append(f.created, *t)
+	return nil
+}
 func (f *fakeTaskRepo) GetByID(context.Context, uint64) (*domain.Task, error) {
 	return nil, domain.ErrNotFound
 }
@@ -61,7 +82,10 @@ func (f *fakeTaskRepo) MarkSent(context.Context, uint64, time.Time) error { retu
 func (f *fakeTaskRepo) MarkCompleted(context.Context, uint64, domain.JSONRawMessage, time.Time) error {
 	return nil
 }
-func (f *fakeTaskRepo) MarkFailed(context.Context, uint64, uint64, string) error { return nil }
+func (f *fakeTaskRepo) MarkFailed(_ context.Context, taskID, statusID uint64, errMsg string) error {
+	f.markFailedCalls = append(f.markFailedCalls, markFailedCall{TaskID: taskID, StatusID: statusID, ErrMsg: errMsg})
+	return nil
+}
 func (f *fakeTaskRepo) SetErrorMessage(_ context.Context, _ uint64, msg string) error {
 	f.lastErrorMessage = msg
 	return nil
@@ -200,7 +224,7 @@ func TestCreateTaskTenantQuota(t *testing.T) {
 		devices := &fakeDeviceRepo{dev: &domain.Device{ID: 1, TenantID: u64(100)}}
 		tenants := &fakeTenantRepo{tenant: &domain.Tenant{ID: 100, MaxPendingTasks: nil}}
 		tasks := &fakeTaskRepo{pendingCountForTenant: 999999}
-		svc := NewService(tasks, devices, nil, nil, refs, &fakeActivityRepo{}, tenants)
+		svc := NewService(tasks, devices, nil, nil, nil, refs, &fakeActivityRepo{}, tenants, nil)
 
 		got, err := svc.CreateTask(context.Background(), actor, in)
 		if err != nil {
@@ -215,7 +239,7 @@ func TestCreateTaskTenantQuota(t *testing.T) {
 		devices := &fakeDeviceRepo{dev: &domain.Device{ID: 1, TenantID: u64(100)}}
 		tenants := &fakeTenantRepo{tenant: &domain.Tenant{ID: 100, MaxPendingTasks: u32(5)}}
 		tasks := &fakeTaskRepo{pendingCountForTenant: 4}
-		svc := NewService(tasks, devices, nil, nil, refs, &fakeActivityRepo{}, tenants)
+		svc := NewService(tasks, devices, nil, nil, nil, refs, &fakeActivityRepo{}, tenants, nil)
 
 		got, err := svc.CreateTask(context.Background(), actor, in)
 		if err != nil {
@@ -230,7 +254,7 @@ func TestCreateTaskTenantQuota(t *testing.T) {
 		devices := &fakeDeviceRepo{dev: &domain.Device{ID: 1, TenantID: u64(100)}}
 		tenants := &fakeTenantRepo{tenant: &domain.Tenant{ID: 100, MaxPendingTasks: u32(5)}}
 		tasks := &fakeTaskRepo{pendingCountForTenant: 5}
-		svc := NewService(tasks, devices, nil, nil, refs, &fakeActivityRepo{}, tenants)
+		svc := NewService(tasks, devices, nil, nil, nil, refs, &fakeActivityRepo{}, tenants, nil)
 
 		got, err := svc.CreateTask(context.Background(), actor, in)
 		if err == nil {
@@ -251,7 +275,7 @@ func TestCreateTaskTenantQuota(t *testing.T) {
 		// short-circuit sebelum resolve tenant).
 		tenants := &fakeTenantRepo{err: errors.New("GetByID seharusnya tidak dipanggil untuk device orphan")}
 		tasks := &fakeTaskRepo{pendingCountForTenant: 999999}
-		svc := NewService(tasks, devices, nil, nil, refs, &fakeActivityRepo{}, tenants)
+		svc := NewService(tasks, devices, nil, nil, nil, refs, &fakeActivityRepo{}, tenants, nil)
 
 		got, err := svc.CreateTask(context.Background(), actor, in)
 		if err != nil {
@@ -267,7 +291,7 @@ func TestCreateTaskTenantQuota(t *testing.T) {
 		wantErr := errors.New("tenant tidak ketemu")
 		tenants := &fakeTenantRepo{err: wantErr}
 		tasks := &fakeTaskRepo{}
-		svc := NewService(tasks, devices, nil, nil, refs, &fakeActivityRepo{}, tenants)
+		svc := NewService(tasks, devices, nil, nil, nil, refs, &fakeActivityRepo{}, tenants, nil)
 
 		got, err := svc.CreateTask(context.Background(), actor, in)
 		if err == nil {
@@ -310,7 +334,7 @@ func TestFailOrRetry(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &fakeTaskRepo{}
-			svc := NewService(repo, nil, nil, nil, refs, nil, nil)
+			svc := NewService(repo, nil, nil, nil, nil, refs, nil, nil, nil)
 			tsk := &domain.Task{ID: 1, RetryCount: tc.retryCount, MaxRetries: tc.maxRetries}
 
 			var err error
@@ -334,4 +358,198 @@ func TestFailOrRetry(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestFailPermanently menguji FailPermanently (dipakai handleFault utk fault
+// code 9005 Invalid Parameter Name) — HARUS langsung FAILED lewat MarkFailed,
+// TIDAK LEWAT failOrRetry sama sekali (statusHistory via UpdateStatus generik
+// harus tetap kosong), walau retry_count masih jauh di bawah max_retries.
+func TestFailPermanently(t *testing.T) {
+	const failedStatusID = 42
+	refs := &fakeRefRepo{ids: map[string]uint64{domain.TaskStatusFailed: failedStatusID}}
+	repo := &fakeTaskRepo{}
+	svc := NewService(repo, nil, nil, nil, nil, refs, nil, nil, nil)
+	tsk := &domain.Task{ID: 7, RetryCount: 0, MaxRetries: 5}
+
+	if err := svc.FailPermanently(context.Background(), tsk, "parameter tidak didukung"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if repo.retryCount != 1 {
+		t.Errorf("retry_count harus bertambah 1 (mencatat 1 percobaan terjadi), got %d", repo.retryCount)
+	}
+	if len(repo.markFailedCalls) != 1 {
+		t.Fatalf("MarkFailed harus dipanggil tepat 1x, got %d", len(repo.markFailedCalls))
+	}
+	call := repo.markFailedCalls[0]
+	if call.TaskID != tsk.ID || call.StatusID != failedStatusID {
+		t.Errorf("MarkFailed dipanggil dgn task_id/status_id salah: %+v", call)
+	}
+	if call.ErrMsg == "" {
+		t.Errorf("error_message tidak tersimpan")
+	}
+	if len(repo.statusHistory) != 0 {
+		t.Errorf("failOrRetry generik (UpdateStatus) seharusnya TIDAK dipanggil sama sekali, statusHistory=%v", repo.statusHistory)
+	}
+}
+
+// TestSplitGetParameterValuesOnFault menguji penanganan REAKTIF fault 9003
+// Invalid Arguments pada task GET_PARAMETER_VALUES (CLAUDE.md: test task
+// queue wajib mencakup skenario retry/gagal, bukan cuma happy path).
+func TestSplitGetParameterValuesOnFault(t *testing.T) {
+	const (
+		taskTypeID      = 20
+		pendingStatusID = 21
+		failedStatusID  = 22
+	)
+	refs := &fakeRefRepo{ids: map[string]uint64{
+		domain.TaskTypeGetParameterValues: taskTypeID,
+		domain.TaskStatusPending:          pendingStatusID,
+		domain.TaskStatusFailed:           failedStatusID,
+	}}
+
+	t.Run("names > 1 -> dipecah jadi 2 task baru, task asli FAILED (bukan retry)", func(t *testing.T) {
+		devices := &fakeDeviceRepo{dev: &domain.Device{ID: 1, TenantID: u64(100)}}
+		repo := &fakeTaskRepo{}
+		svc := NewService(repo, devices, nil, nil, nil, refs, &fakeActivityRepo{}, nil, nil)
+
+		orig := &domain.Task{
+			ID: 99, DeviceID: 1, Priority: 3, MaxRetries: 3,
+			Parameters: domain.JSONRawMessage(`{"names":["A","B","C","D"]}`),
+		}
+		handled, err := svc.SplitGetParameterValuesOnFault(context.Background(), orig, "[9003] Invalid Arguments")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !handled {
+			t.Fatal("want handled=true")
+		}
+		if len(repo.created) != 2 {
+			t.Fatalf("want 2 task baru dibuat, got %d: %+v", len(repo.created), repo.created)
+		}
+
+		var total int
+		for i, ct := range repo.created {
+			if ct.TaskTypeID != taskTypeID {
+				t.Errorf("chunk %d: task baru harus GET_PARAMETER_VALUES, got task_type_id=%d", i, ct.TaskTypeID)
+			}
+			if ct.DeviceID != orig.DeviceID {
+				t.Errorf("chunk %d: device_id harus sama dgn task asli, got %d", i, ct.DeviceID)
+			}
+			var p struct {
+				Names []string `json:"names"`
+			}
+			if err := json.Unmarshal(ct.Parameters, &p); err != nil {
+				t.Fatalf("chunk %d: parameters tidak valid: %v", i, err)
+			}
+			total += len(p.Names)
+		}
+		if total != 4 {
+			t.Errorf("total nama across 2 task baru = %d, want 4 (tidak boleh hilang/duplikat)", total)
+		}
+		if len(repo.markFailedCalls) != 1 || repo.markFailedCalls[0].TaskID != orig.ID {
+			t.Fatalf("task asli harus di-MarkFailed tepat 1x, got %+v", repo.markFailedCalls)
+		}
+	})
+
+	t.Run("names <= 1 -> tidak bisa dipecah lagi, handled=false, task asli TIDAK disentuh", func(t *testing.T) {
+		devices := &fakeDeviceRepo{dev: &domain.Device{ID: 1, TenantID: u64(100)}}
+		repo := &fakeTaskRepo{}
+		svc := NewService(repo, devices, nil, nil, nil, refs, &fakeActivityRepo{}, nil, nil)
+
+		orig := &domain.Task{ID: 99, DeviceID: 1, Parameters: domain.JSONRawMessage(`{"names":["A"]}`)}
+		handled, err := svc.SplitGetParameterValuesOnFault(context.Background(), orig, "[9003] Invalid Arguments")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if handled {
+			t.Fatal("want handled=false (tidak bisa dipecah lagi, pemanggil harus fallback ke Fail/failOrRetry biasa)")
+		}
+		if len(repo.created) != 0 {
+			t.Errorf("tidak boleh ada task baru dibuat, got %d", len(repo.created))
+		}
+		if len(repo.markFailedCalls) != 0 {
+			t.Errorf("task asli tidak boleh disentuh sama sekali, got MarkFailed calls: %+v", repo.markFailedCalls)
+		}
+	})
+}
+
+// TestCreateTaskProactiveChunking menguji proactive chunking GET_PARAMETER_VALUES
+// (CreateTask, threshold MaxGetParameterValuesNamesPerTask) — dicek SAAT
+// task dibuat, terpisah dari penanganan reaktif 9003 di atas.
+func TestCreateTaskProactiveChunking(t *testing.T) {
+	const (
+		taskTypeID      = 30
+		pendingStatusID = 31
+	)
+	refs := &fakeRefRepo{ids: map[string]uint64{
+		domain.TaskTypeGetParameterValues: taskTypeID,
+		domain.TaskStatusPending:          pendingStatusID,
+	}}
+	devices := &fakeDeviceRepo{dev: &domain.Device{ID: 1, TenantID: u64(100)}}
+	actor := superadminActor()
+
+	names := make([]string, 0, 120)
+	for i := 0; i < 120; i++ {
+		names = append(names, fmt.Sprintf("Device.Param.%d", i))
+	}
+
+	t.Run("melebihi threshold -> dipecah jadi beberapa task berurutan, masing2 <= threshold", func(t *testing.T) {
+		repo := &fakeTaskRepo{}
+		svc := NewService(repo, devices, nil, nil, nil, refs, &fakeActivityRepo{}, nil, nil)
+
+		got, err := svc.CreateTask(context.Background(), actor, domain.CreateTaskInput{
+			DeviceID: 1, TaskType: domain.TaskTypeGetParameterValues,
+			Parameters: map[string]interface{}{"names": names},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got == nil {
+			t.Fatal("task representatif (chunk pertama) tidak dikembalikan")
+		}
+
+		const wantChunks = 3 // 50 + 50 + 20 = 120
+		if len(repo.created) != wantChunks {
+			t.Fatalf("want %d task hasil chunking, got %d", wantChunks, len(repo.created))
+		}
+		var total int
+		for i, ct := range repo.created {
+			var p struct {
+				Names []string `json:"names"`
+			}
+			if err := json.Unmarshal(ct.Parameters, &p); err != nil {
+				t.Fatalf("chunk %d: parameters tidak valid: %v", i, err)
+			}
+			if len(p.Names) > MaxGetParameterValuesNamesPerTask {
+				t.Errorf("chunk %d melebihi threshold: %d nama", i, len(p.Names))
+			}
+			if len(p.Names) == 0 {
+				t.Errorf("chunk %d kosong", i)
+			}
+			total += len(p.Names)
+		}
+		if total != len(names) {
+			t.Errorf("total nama across semua chunk = %d, want %d (tidak boleh hilang/duplikat)", total, len(names))
+		}
+		if got.ID != repo.created[0].ID {
+			t.Errorf("task representatif yang dikembalikan harus chunk PERTAMA (created_at paling awal)")
+		}
+	})
+
+	t.Run("tepat di ambang batas (bukan melebihi) -> TIDAK dipecah, tetap 1 task", func(t *testing.T) {
+		repo := &fakeTaskRepo{}
+		svc := NewService(repo, devices, nil, nil, nil, refs, &fakeActivityRepo{}, nil, nil)
+
+		exactNames := names[:MaxGetParameterValuesNamesPerTask]
+		_, err := svc.CreateTask(context.Background(), actor, domain.CreateTaskInput{
+			DeviceID: 1, TaskType: domain.TaskTypeGetParameterValues,
+			Parameters: map[string]interface{}{"names": exactNames},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(repo.created) != 1 {
+			t.Fatalf("want tepat 1 task (tidak dipecah krn tidak MELEBIHI threshold), got %d", len(repo.created))
+		}
+	})
 }

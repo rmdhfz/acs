@@ -134,10 +134,14 @@ type upsertMappingRequest struct {
 	VendorID           uint64  `json:"vendor_id"`
 	DataModelVersionID uint64  `json:"data_model_version_id"`
 	DeviceModelID      *uint64 `json:"device_model_id"`
-	LogicalKey         string  `json:"logical_key"`
-	TR069Path          string  `json:"tr069_path"`
-	ParameterTypeID    *uint64 `json:"parameter_type_id"`
-	Description        *string `json:"description"`
+	// SoftwareVersionPattern (migrations/0010) — pola SQL LIKE opsional thd
+	// devices.software_version, dievaluasi gaya sama seperti
+	// zero_touch_rules.serial_pattern. NULL = mapping generik lintas versi.
+	SoftwareVersionPattern *string `json:"software_version_pattern"`
+	LogicalKey             string  `json:"logical_key"`
+	TR069Path              string  `json:"tr069_path"`
+	ParameterTypeID        *uint64 `json:"parameter_type_id"`
+	Description            *string `json:"description"`
 }
 
 // upsertParameterMapping — menambah vendor/model baru adalah operasi data
@@ -154,7 +158,8 @@ func (r *Router) upsertParameterMapping(c *echo.Context) error {
 	}
 	m := &domain.VendorParameterMapping{
 		VendorID: req.VendorID, DataModelVersionID: req.DataModelVersionID, DeviceModelID: req.DeviceModelID,
-		LogicalKey: req.LogicalKey, TR069Path: req.TR069Path, ParameterTypeID: req.ParameterTypeID, Description: req.Description,
+		SoftwareVersionPattern: req.SoftwareVersionPattern,
+		LogicalKey:             req.LogicalKey, TR069Path: req.TR069Path, ParameterTypeID: req.ParameterTypeID, Description: req.Description,
 		Audit: domain.Audit{CreatedBy: actor.UserIDPtr()},
 	}
 	if err := r.ParamMappings.Upsert(c.Request().Context(), m); err != nil {

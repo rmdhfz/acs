@@ -111,10 +111,22 @@ type TaskRepository interface {
 }
 
 // TaskEnqueuer dipakai usecase/provisioning untuk mengantre task
-// SetParameterValues tanpa bergantung langsung pada package usecase/task
-// (menghindari import cycle — lihat usecase/task/service.go).
+// SetParameterValues/Reboot tanpa bergantung langsung pada package
+// usecase/task (menghindari import cycle — lihat usecase/task/service.go).
 type TaskEnqueuer interface {
 	EnqueueSetParameterValues(ctx context.Context, actor Actor, deviceID uint64, params map[string]string, priority uint8) (*Task, error)
+	EnqueueGetParameterNames(ctx context.Context, actor Actor, deviceID uint64, path string, nextLevel bool, priority uint8) (*Task, error)
+	// EnqueueReboot — dipakai aksi PostApplyReboot pada ZeroTouchRule
+	// (migrations/0009, usecase/provisioning.EvaluateZeroTouch).
+	EnqueueReboot(ctx context.Context, actor Actor, deviceID uint64, priority uint8) (*Task, error)
+	// HasPendingForDevice — dipakai EvaluateZeroTouch sbg pagar longgar
+	// terhadap rule ber-trigger BOOTSTRAP_OR_BOOT/EVERY_INFORM yang aksinya
+	// bisa berulang tanpa henti (mis. PostApplyReboot dipasangkan EVERY_INFORM
+	// -> reboot -> event BOOT -> Inform baru -> cocok lagi -> reboot lagi).
+	// TIDAK menjamin mencegah loop sepenuhnya (device bisa saja benar-benar
+	// kosong dari task lain), hanya memperlambat -- lihat komentar lengkap di
+	// EvaluateZeroTouch.
+	HasPendingForDevice(ctx context.Context, deviceID uint64) (bool, error)
 }
 
 // CreateTaskInput adalah payload umum pembuatan task, didefinisikan di domain

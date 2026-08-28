@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -77,7 +78,9 @@ func (r *vendorRepository) SoftDelete(ctx context.Context, id, deletedBy uint64)
 
 type vendorOUIRepository struct{ db *sqlx.DB }
 
-func NewVendorOUIRepository(db *sqlx.DB) domain.VendorOUIRepository { return &vendorOUIRepository{db: db} }
+func NewVendorOUIRepository(db *sqlx.DB) domain.VendorOUIRepository {
+	return &vendorOUIRepository{db: db}
+}
 
 func (r *vendorOUIRepository) Create(ctx context.Context, o *domain.VendorOUI) error {
 	now := time.Now()
@@ -122,7 +125,9 @@ func (r *vendorOUIRepository) Delete(ctx context.Context, id, deletedBy uint64) 
 
 type deviceModelRepository struct{ db *sqlx.DB }
 
-func NewDeviceModelRepository(db *sqlx.DB) domain.DeviceModelRepository { return &deviceModelRepository{db: db} }
+func NewDeviceModelRepository(db *sqlx.DB) domain.DeviceModelRepository {
+	return &deviceModelRepository{db: db}
+}
 
 func (r *deviceModelRepository) Create(ctx context.Context, m *domain.DeviceModel) error {
 	now := time.Now()
@@ -195,8 +200,8 @@ func (r *vendorParameterMappingRepository) Create(ctx context.Context, m *domain
 	now := time.Now()
 	m.CreatedAt, m.UpdatedAt = now, now
 	const q = `INSERT INTO vendor_parameter_mappings
-		(vendor_id, data_model_version_id, device_model_id, logical_key, tr069_path, parameter_type_id, description, created_at, updated_at, created_by)
-		VALUES (:vendor_id, :data_model_version_id, :device_model_id, :logical_key, :tr069_path, :parameter_type_id, :description, :created_at, :updated_at, :created_by)`
+		(vendor_id, data_model_version_id, device_model_id, software_version_pattern, logical_key, tr069_path, parameter_type_id, description, created_at, updated_at, created_by)
+		VALUES (:vendor_id, :data_model_version_id, :device_model_id, :software_version_pattern, :logical_key, :tr069_path, :parameter_type_id, :description, :created_at, :updated_at, :created_by)`
 	res, err := r.db.NamedExecContext(ctx, q, m)
 	if err != nil {
 		return translateErr(err)
@@ -209,39 +214,85 @@ func (r *vendorParameterMappingRepository) Create(ctx context.Context, m *domain
 func (r *vendorParameterMappingRepository) Upsert(ctx context.Context, m *domain.VendorParameterMapping) error {
 	now := time.Now()
 	m.CreatedAt, m.UpdatedAt = now, now
+	// ON DUPLICATE KEY berdasar uq_vpm_scope_key yang sekarang MENCAKUP
+	// software_version_pattern (migrations/0010) -- dua baris dgn pattern
+	// berbeda pada scope vendor/dmv/model/logical_key yang sama BUKAN
+	// duplikat, dan sengaja tidak saling menimpa.
 	const q = `INSERT INTO vendor_parameter_mappings
-		(vendor_id, data_model_version_id, device_model_id, logical_key, tr069_path, parameter_type_id, description, created_at, updated_at, created_by)
-		VALUES (:vendor_id, :data_model_version_id, :device_model_id, :logical_key, :tr069_path, :parameter_type_id, :description, :created_at, :updated_at, :created_by)
+		(vendor_id, data_model_version_id, device_model_id, software_version_pattern, logical_key, tr069_path, parameter_type_id, description, created_at, updated_at, created_by)
+		VALUES (:vendor_id, :data_model_version_id, :device_model_id, :software_version_pattern, :logical_key, :tr069_path, :parameter_type_id, :description, :created_at, :updated_at, :created_by)
 		ON DUPLICATE KEY UPDATE tr069_path = VALUES(tr069_path), parameter_type_id = VALUES(parameter_type_id),
 			description = VALUES(description), updated_at = VALUES(updated_at), is_deleted = 0, deleted_at = NULL, deleted_by = NULL`
 	_, err := r.db.NamedExecContext(ctx, q, m)
 	return translateErr(err)
 }
 
-// Resolve mencari mapping paling spesifik: device_model_id dulu, fallback vendor+dmv saja (TECH.md §5).
-func (r *vendorParameterMappingRepository) Resolve(ctx context.Context, vendorID, dataModelVersionID uint64, deviceModelID *uint64, logicalKey string) (*domain.VendorParameterMapping, error) {
-	if deviceModelID != nil {
+// Resolve mencari mapping paling spesifik utk (vendor, data model version,
+// device model, logical key), dgn urutan spesifisitas (paling spesifik
+// menang, lihat komentar di domain.VendorParameterMappingRepository):
+//  1. device_model_id spesifik + software_version_pattern COCOK (LIKE) dgn
+//     softwareVersion -- kalau >1 baris cocok, pattern TERPANJANG menang
+//     (heuristik "string lebih panjang = lebih spesifik").
+//  2. device_model_id spesifik, TANPA software_version_pattern.
+//  3. device_model_id NULL (generik lintas model) + pattern COCOK.
+//  4. device_model_id NULL, TANPA software_version_pattern (paling generik --
+//     satu-satunya perilaku Resolve() sebelum migrations/0010).
+//
+// Query LIKE dibalik sengaja (`? LIKE software_version_pattern`, bukan
+// `software_version_pattern LIKE ?`) karena pola wildcard-nya ADA DI KOLOM
+// (disimpan admin), sedangkan versi software device adalah literal yang
+// dicocokkan terhadap pola tsb -- valid secara sintaks MariaDB (LIKE
+// menerima ekspresi kolom di kedua sisi).
+func (r *vendorParameterMappingRepository) Resolve(ctx context.Context, vendorID, dataModelVersionID uint64, deviceModelID *uint64, logicalKey string, softwareVersion *string) (*domain.VendorParameterMapping, error) {
+	tryPattern := softwareVersion != nil && *softwareVersion != ""
+
+	lookup := func(modelID *uint64, requirePattern bool) (*domain.VendorParameterMapping, error) {
 		var m domain.VendorParameterMapping
-		err := r.db.GetContext(ctx, &m,
-			`SELECT * FROM vendor_parameter_mappings
-			 WHERE vendor_id = ? AND data_model_version_id = ? AND device_model_id = ? AND logical_key = ? AND is_deleted = 0`,
-			vendorID, dataModelVersionID, *deviceModelID, logicalKey)
-		if err == nil {
-			return &m, nil
+		var err error
+		if requirePattern {
+			err = r.db.GetContext(ctx, &m,
+				`SELECT * FROM vendor_parameter_mappings
+				 WHERE vendor_id = ? AND data_model_version_id = ? AND device_model_id <=> ?
+				   AND logical_key = ? AND software_version_pattern IS NOT NULL
+				   AND ? LIKE software_version_pattern AND is_deleted = 0
+				 ORDER BY LENGTH(software_version_pattern) DESC LIMIT 1`,
+				vendorID, dataModelVersionID, modelID, logicalKey, *softwareVersion)
+		} else {
+			err = r.db.GetContext(ctx, &m,
+				`SELECT * FROM vendor_parameter_mappings
+				 WHERE vendor_id = ? AND data_model_version_id = ? AND device_model_id <=> ?
+				   AND logical_key = ? AND software_version_pattern IS NULL AND is_deleted = 0`,
+				vendorID, dataModelVersionID, modelID, logicalKey)
 		}
-		if translateErr(err) != domain.ErrNotFound {
+		if err != nil {
 			return nil, translateErr(err)
 		}
+		return &m, nil
 	}
-	var m domain.VendorParameterMapping
-	err := r.db.GetContext(ctx, &m,
-		`SELECT * FROM vendor_parameter_mappings
-		 WHERE vendor_id = ? AND data_model_version_id = ? AND device_model_id IS NULL AND logical_key = ? AND is_deleted = 0`,
-		vendorID, dataModelVersionID, logicalKey)
-	if err != nil {
-		return nil, translateErr(err)
+
+	if deviceModelID != nil {
+		if tryPattern {
+			if m, err := lookup(deviceModelID, true); err == nil {
+				return m, nil
+			} else if !errors.Is(err, domain.ErrNotFound) {
+				return nil, err
+			}
+		}
+		if m, err := lookup(deviceModelID, false); err == nil {
+			return m, nil
+		} else if !errors.Is(err, domain.ErrNotFound) {
+			return nil, err
+		}
 	}
-	return &m, nil
+
+	if tryPattern {
+		if m, err := lookup(nil, true); err == nil {
+			return m, nil
+		} else if !errors.Is(err, domain.ErrNotFound) {
+			return nil, err
+		}
+	}
+	return lookup(nil, false)
 }
 
 func (r *vendorParameterMappingRepository) ListByVendor(ctx context.Context, vendorID uint64) ([]domain.VendorParameterMapping, error) {

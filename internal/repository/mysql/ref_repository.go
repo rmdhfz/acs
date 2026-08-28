@@ -12,15 +12,17 @@ import (
 // refTableWhitelist mencegah nama tabel ref_* diteruskan mentah ke SQL —
 // satu-satunya bagian dari query yang dibangun dari input non-literal.
 var refTableWhitelist = map[string]bool{
-	domain.RefTableVendors:           true,
-	domain.RefTableDeviceTypes:       true,
-	domain.RefTableDataModelVersions: true,
-	domain.RefTableEventCodes:        true,
-	domain.RefTableTaskTypes:         true,
-	domain.RefTableTaskStatus:        true,
-	domain.RefTableDeviceStatus:      true,
-	domain.RefTableParameterTypes:    true,
-	domain.RefTableRoles:             true,
+	domain.RefTableVendors:               true,
+	domain.RefTableDeviceTypes:           true,
+	domain.RefTableDataModelVersions:     true,
+	domain.RefTableEventCodes:            true,
+	domain.RefTableTaskTypes:             true,
+	domain.RefTableTaskStatus:            true,
+	domain.RefTableDeviceStatus:          true,
+	domain.RefTableParameterTypes:        true,
+	domain.RefTableRoles:                 true,
+	domain.RefTableZtpTriggerEvent:       true,
+	domain.RefTableFirmwareRolloutStatus: true,
 }
 
 type refRepository struct {

@@ -2,7 +2,33 @@ package cwmpxml
 
 import "encoding/xml"
 
-// ValueType merepresentasikan <Value xsi:type="xsd:string">...</Value>.
+// Catatan penting soal XMLName di seluruh file ini: field XMLName xml.Name
+// SENGAJA TIDAK diberi tag `xml:"..."` literal (mis. BUKAN
+// `xml:"urn:dslforum-org:cwmp-1-2 Inform"` seperti sebelumnya). Ini bukan
+// kelalaian -- encoding/xml memprioritaskan TAG pada field XMLName di atas
+// NILAI runtime field tsb saat marshal (lihat godoc encoding/xml.Marshal:
+// "the tag on the XMLName field" adalah prioritas #1, "the value of the
+// XMLName field" baru #2) -- kalau tag namespace di-hardcode di sini, nilai
+// Space yang di-set runtime (lihat RPCName di envelope.go) akan DIABAIKAN
+// sepenuhnya saat marshal, dan Unmarshal akan MENOLAK envelope apa pun yang
+// namespace-nya BUKAN persis "urn:dslforum-org:cwmp-1-2" (dikonfirmasi lewat
+// percobaan langsung: Unmarshal envelope Inform dgn xmlns:cwmp="urn:...-1-0"
+// gagal total dengan "expected element <Inform> in name space ... but have
+// ...", BUKAN cuma "salah balas namespace" seperti dugaan awal -- CPE dgn
+// versi/pernyataan namespace CWMP selain cwmp-1-2 akan gagal total connect
+// ke ACS ini sebelum perbaikan ini).
+//
+// Dengan tag dihapus (field XMLName polos tanpa tag sama sekali):
+//   - Unmarshal tetap mencocokkan elemen berdasar LOCAL NAME saja (via tag
+//     pada field pembungkus di Body, lihat envelope.go -- tag-tag itu MEMANG
+//     sudah tanpa namespace sejak awal), sehingga menerima envelope CWMP dgn
+//     namespace/versi APAPUN, sekaligus tetap meng-capture namespace asli
+//     yang dipakai CPE ke field XMLName.Space (dibaca balik lewat
+//     Body.Namespace(), envelope.go).
+//   - Marshal (ACS -> CPE) memakai nilai runtime XMLName yang di-set eksplisit
+//     oleh pemanggil (lihat RPCName di envelope.go, dipanggil dari
+//     delivery/cwmp/builder.go & handler.go) -- fallback aman ke elemen tanpa
+//     namespace (bukan crash) bila pemanggil lupa men-set-nya sama sekali.
 type ValueType struct {
 	Type  string `xml:"http://www.w3.org/2001/XMLSchema-instance type,attr"`
 	Value string `xml:",chardata"`
@@ -55,7 +81,7 @@ type EventList struct {
 // ---- Inform ----
 
 type Inform struct {
-	XMLName       xml.Name           `xml:"urn:dslforum-org:cwmp-1-2 Inform"`
+	XMLName       xml.Name
 	DeviceId      DeviceIDStruct     `xml:"DeviceId"`
 	Event         EventList          `xml:"Event"`
 	MaxEnvelopes  int                `xml:"MaxEnvelopes"`
@@ -65,134 +91,134 @@ type Inform struct {
 }
 
 type InformResponse struct {
-	XMLName      xml.Name `xml:"urn:dslforum-org:cwmp-1-2 InformResponse"`
-	MaxEnvelopes int      `xml:"MaxEnvelopes"`
+	XMLName      xml.Name
+	MaxEnvelopes int `xml:"MaxEnvelopes"`
 }
 
 // ---- GetParameterValues ----
 
 type GetParameterValues struct {
-	XMLName        xml.Name   `xml:"urn:dslforum-org:cwmp-1-2 GetParameterValues"`
+	XMLName        xml.Name
 	ParameterNames StringList `xml:"ParameterNames"`
 }
 
 type GetParameterValuesResponse struct {
-	XMLName       xml.Name           `xml:"urn:dslforum-org:cwmp-1-2 GetParameterValuesResponse"`
+	XMLName       xml.Name
 	ParameterList ParameterValueList `xml:"ParameterList"`
 }
 
 // ---- SetParameterValues ----
 
 type SetParameterValues struct {
-	XMLName       xml.Name           `xml:"urn:dslforum-org:cwmp-1-2 SetParameterValues"`
+	XMLName       xml.Name
 	ParameterList ParameterValueList `xml:"ParameterList"`
 	ParameterKey  string             `xml:"ParameterKey"`
 }
 
 type SetParameterValuesResponse struct {
-	XMLName xml.Name `xml:"urn:dslforum-org:cwmp-1-2 SetParameterValuesResponse"`
-	Status  int      `xml:"Status"`
+	XMLName xml.Name
+	Status  int `xml:"Status"`
 }
 
 // ---- GetParameterNames ----
 
 type GetParameterNames struct {
-	XMLName       xml.Name `xml:"urn:dslforum-org:cwmp-1-2 GetParameterNames"`
-	ParameterPath string   `xml:"ParameterPath"`
-	NextLevel     bool     `xml:"NextLevel"`
+	XMLName       xml.Name
+	ParameterPath string `xml:"ParameterPath"`
+	NextLevel     bool   `xml:"NextLevel"`
 }
 
 type GetParameterNamesResponse struct {
-	XMLName       xml.Name          `xml:"urn:dslforum-org:cwmp-1-2 GetParameterNamesResponse"`
+	XMLName       xml.Name
 	ParameterList ParameterInfoList `xml:"ParameterList"`
 }
 
 // ---- AddObject / DeleteObject ----
 
 type AddObject struct {
-	XMLName      xml.Name `xml:"urn:dslforum-org:cwmp-1-2 AddObject"`
-	ObjectName   string   `xml:"ObjectName"`
-	ParameterKey string   `xml:"ParameterKey"`
+	XMLName      xml.Name
+	ObjectName   string `xml:"ObjectName"`
+	ParameterKey string `xml:"ParameterKey"`
 }
 
 type AddObjectResponse struct {
-	XMLName        xml.Name `xml:"urn:dslforum-org:cwmp-1-2 AddObjectResponse"`
-	InstanceNumber int      `xml:"InstanceNumber"`
-	Status         int      `xml:"Status"`
+	XMLName        xml.Name
+	InstanceNumber int `xml:"InstanceNumber"`
+	Status         int `xml:"Status"`
 }
 
 type DeleteObject struct {
-	XMLName      xml.Name `xml:"urn:dslforum-org:cwmp-1-2 DeleteObject"`
-	ObjectName   string   `xml:"ObjectName"`
-	ParameterKey string   `xml:"ParameterKey"`
+	XMLName      xml.Name
+	ObjectName   string `xml:"ObjectName"`
+	ParameterKey string `xml:"ParameterKey"`
 }
 
 type DeleteObjectResponse struct {
-	XMLName xml.Name `xml:"urn:dslforum-org:cwmp-1-2 DeleteObjectResponse"`
-	Status  int      `xml:"Status"`
+	XMLName xml.Name
+	Status  int `xml:"Status"`
 }
 
 // ---- Reboot / FactoryReset ----
 
 type Reboot struct {
-	XMLName    xml.Name `xml:"urn:dslforum-org:cwmp-1-2 Reboot"`
-	CommandKey string   `xml:"CommandKey"`
+	XMLName    xml.Name
+	CommandKey string `xml:"CommandKey"`
 }
 
 type RebootResponse struct {
-	XMLName xml.Name `xml:"urn:dslforum-org:cwmp-1-2 RebootResponse"`
+	XMLName xml.Name
 }
 
 type FactoryReset struct {
-	XMLName xml.Name `xml:"urn:dslforum-org:cwmp-1-2 FactoryReset"`
+	XMLName xml.Name
 }
 
 type FactoryResetResponse struct {
-	XMLName xml.Name `xml:"urn:dslforum-org:cwmp-1-2 FactoryResetResponse"`
+	XMLName xml.Name
 }
 
 // ---- Download / Upload / TransferComplete ----
 
 type Download struct {
-	XMLName        xml.Name `xml:"urn:dslforum-org:cwmp-1-2 Download"`
-	CommandKey     string   `xml:"CommandKey"`
-	FileType       string   `xml:"FileType"`
-	URL            string   `xml:"URL"`
-	Username       string   `xml:"Username"`
-	Password       string   `xml:"Password"`
-	FileSize       int64    `xml:"FileSize"`
-	TargetFileName string   `xml:"TargetFileName"`
-	DelaySeconds   int      `xml:"DelaySeconds"`
-	SuccessURL     string   `xml:"SuccessURL"`
-	FailureURL     string   `xml:"FailureURL"`
+	XMLName        xml.Name
+	CommandKey     string `xml:"CommandKey"`
+	FileType       string `xml:"FileType"`
+	URL            string `xml:"URL"`
+	Username       string `xml:"Username"`
+	Password       string `xml:"Password"`
+	FileSize       int64  `xml:"FileSize"`
+	TargetFileName string `xml:"TargetFileName"`
+	DelaySeconds   int    `xml:"DelaySeconds"`
+	SuccessURL     string `xml:"SuccessURL"`
+	FailureURL     string `xml:"FailureURL"`
 }
 
 type DownloadResponse struct {
-	XMLName      xml.Name `xml:"urn:dslforum-org:cwmp-1-2 DownloadResponse"`
-	Status       int      `xml:"Status"`
-	StartTime    string   `xml:"StartTime"`
-	CompleteTime string   `xml:"CompleteTime"`
+	XMLName      xml.Name
+	Status       int    `xml:"Status"`
+	StartTime    string `xml:"StartTime"`
+	CompleteTime string `xml:"CompleteTime"`
 }
 
 type Upload struct {
-	XMLName      xml.Name `xml:"urn:dslforum-org:cwmp-1-2 Upload"`
-	CommandKey   string   `xml:"CommandKey"`
-	FileType     string   `xml:"FileType"`
-	URL          string   `xml:"URL"`
-	Username     string   `xml:"Username"`
-	Password     string   `xml:"Password"`
-	DelaySeconds int      `xml:"DelaySeconds"`
+	XMLName      xml.Name
+	CommandKey   string `xml:"CommandKey"`
+	FileType     string `xml:"FileType"`
+	URL          string `xml:"URL"`
+	Username     string `xml:"Username"`
+	Password     string `xml:"Password"`
+	DelaySeconds int    `xml:"DelaySeconds"`
 }
 
 type UploadResponse struct {
-	XMLName      xml.Name `xml:"urn:dslforum-org:cwmp-1-2 UploadResponse"`
-	Status       int      `xml:"Status"`
-	StartTime    string   `xml:"StartTime"`
-	CompleteTime string   `xml:"CompleteTime"`
+	XMLName      xml.Name
+	Status       int    `xml:"Status"`
+	StartTime    string `xml:"StartTime"`
+	CompleteTime string `xml:"CompleteTime"`
 }
 
 type TransferComplete struct {
-	XMLName      xml.Name   `xml:"urn:dslforum-org:cwmp-1-2 TransferComplete"`
+	XMLName      xml.Name
 	CommandKey   string     `xml:"CommandKey"`
 	FaultStruct  *CWMPFault `xml:"FaultStruct"`
 	StartTime    string     `xml:"StartTime"`
@@ -200,19 +226,19 @@ type TransferComplete struct {
 }
 
 type TransferCompleteResponse struct {
-	XMLName xml.Name `xml:"urn:dslforum-org:cwmp-1-2 TransferCompleteResponse"`
+	XMLName xml.Name
 }
 
 // ---- ScheduleInform ----
 
 type ScheduleInform struct {
-	XMLName      xml.Name `xml:"urn:dslforum-org:cwmp-1-2 ScheduleInform"`
-	DelaySeconds int      `xml:"DelaySeconds"`
-	CommandKey   string   `xml:"CommandKey"`
+	XMLName      xml.Name
+	DelaySeconds int    `xml:"DelaySeconds"`
+	CommandKey   string `xml:"CommandKey"`
 }
 
 type ScheduleInformResponse struct {
-	XMLName xml.Name `xml:"urn:dslforum-org:cwmp-1-2 ScheduleInformResponse"`
+	XMLName xml.Name
 }
 
 // ---- SetParameterAttributes / GetParameterAttributes ----
@@ -226,21 +252,21 @@ type SetParameterAttributesStruct struct {
 }
 
 type SetParameterAttributesList struct {
-	ArrayType string                          `xml:"http://schemas.xmlsoap.org/soap/encoding/ arrayType,attr,omitempty"`
+	ArrayType string                         `xml:"http://schemas.xmlsoap.org/soap/encoding/ arrayType,attr,omitempty"`
 	Items     []SetParameterAttributesStruct `xml:"SetParameterAttributesStruct"`
 }
 
 type SetParameterAttributes struct {
-	XMLName       xml.Name                    `xml:"urn:dslforum-org:cwmp-1-2 SetParameterAttributes"`
+	XMLName       xml.Name
 	ParameterList SetParameterAttributesList `xml:"ParameterList"`
 }
 
 type SetParameterAttributesResponse struct {
-	XMLName xml.Name `xml:"urn:dslforum-org:cwmp-1-2 SetParameterAttributesResponse"`
+	XMLName xml.Name
 }
 
 type GetParameterAttributes struct {
-	XMLName        xml.Name   `xml:"urn:dslforum-org:cwmp-1-2 GetParameterAttributes"`
+	XMLName        xml.Name
 	ParameterNames StringList `xml:"ParameterNames"`
 }
 
@@ -256,6 +282,6 @@ type ParameterAttributeList struct {
 }
 
 type GetParameterAttributesResponse struct {
-	XMLName       xml.Name               `xml:"urn:dslforum-org:cwmp-1-2 GetParameterAttributesResponse"`
+	XMLName       xml.Name
 	ParameterList ParameterAttributeList `xml:"ParameterList"`
 }

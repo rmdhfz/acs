@@ -28,6 +28,9 @@ func (r *Router) createTask(c *echo.Context) error {
 	if req.DeviceID == 0 || req.TaskType == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "device_id dan task_type wajib diisi")
 	}
+	if _, err := r.Refs.GetByCode(c.Request().Context(), domain.RefTableTaskTypes, req.TaskType); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "task_type tidak valid")
+	}
 	t, err := r.Tasks.CreateTask(c.Request().Context(), actor, domain.CreateTaskInput{
 		DeviceID: req.DeviceID, TaskType: req.TaskType, Priority: req.Priority,
 		Parameters: req.Parameters, MaxRetries: req.MaxRetries, ScheduledAt: req.ScheduledAt, ExpiresAt: req.ExpiresAt,

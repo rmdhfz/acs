@@ -17,6 +17,11 @@ import (
 	"acs/internal/usecase/iam"
 	"acs/internal/usecase/provisioning"
 	"acs/internal/usecase/task"
+	"acs/internal/usecase/webhook"
+	"acs/internal/usecase/file"
+	"acs/internal/usecase/preset"
+	"acs/internal/usecase/tag"
+	"acs/internal/delivery/ws"
 )
 
 type Router struct {
@@ -27,6 +32,8 @@ type Router struct {
 	Provisioning  *provisioning.Service
 	Firmware      *firmware.Service
 	Diagnostics   *diagnostics.Service
+	Webhooks      *webhook.Service
+	Sessions      *session.Service
 	Vendors       domain.VendorRepository
 	VendorOUIs    domain.VendorOUIRepository
 	DeviceModels  domain.DeviceModelRepository
@@ -42,6 +49,10 @@ type Router struct {
 	// sengaja tidak import paket prometheus langsung, cukup meneruskan
 	// http.Handler generik (lihat metrics_handler.go, TECH.md §10).
 	MetricsHandler http.Handler
+	Files          *file.Service
+	Tags           *tag.Service
+	Presets        *preset.Service
+	WSHub          *ws.Hub
 }
 
 func (r *Router) Register(e *echo.Echo) {
@@ -55,6 +66,10 @@ func (r *Router) Register(e *echo.Echo) {
 	// serangan secara independen sbg lapisan pertahanan kedua, bukan
 	// pengganti fix TOCTOU-nya (temuan acs-security-reviewer).
 	api.POST("/auth/login", r.login, middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(2)))
+	
+	api.GET("/auth/oidc/login", r.oidcLogin)
+	api.GET("/auth/oidc/callback", r.oidcCallback)
+
 	// GET /metrics: TIDAK diautentikasi (konvensi Prometheus exporter),
 	// endpoint read-only agregat lintas-tenant untuk operator platform — lihat
 	// komentar lengkap di metrics_handler.go & router.go field MetricsHandler
@@ -66,6 +81,8 @@ func (r *Router) Register(e *echo.Echo) {
 	admin := []string{domain.RoleAdmin, domain.RoleSuperadmin}
 	adminOrNOC := []string{domain.RoleAdmin, domain.RoleNOC, domain.RoleSuperadmin}
 	superadminOnly := []string{domain.RoleSuperadmin}
+
+	authed.GET("/ws", r.serveWs)
 
 	authed.POST("/auth/tokens", r.issueAPIToken, RequireRoles(admin...))
 	// GET/DELETE gated sama seperti penerbitannya (admin...) -- token API
@@ -80,6 +97,8 @@ func (r *Router) Register(e *echo.Echo) {
 	authed.PATCH("/auth/password", r.changeOwnPassword)
 
 	authed.GET("/refs/:table", r.listRefs)
+
+	authed.GET("/cwmp/sessions/count", r.countOpenSessions, RequireRoles(adminOrNOC...))
 
 	authed.POST("/tenants", r.createTenant, RequireRoles(superadminOnly...))
 	authed.GET("/tenants", r.listTenants, RequireRoles(superadminOnly...))
@@ -113,6 +132,26 @@ func (r *Router) Register(e *echo.Echo) {
 	authed.GET("/devices/:id/events", r.listDeviceEvents)
 	authed.GET("/devices/:id/optical-metrics", r.listOpticalMetrics)
 	authed.GET("/devices/:id/activity", r.listDeviceActivity)
+	authed.GET("/devices/:id/config-snapshots", r.listConfigSnapshots)
+	authed.POST("/devices/:id/config-snapshots", r.createConfigSnapshot, RequireRoles(adminOrNOC...))
+	// POST /devices/:id/connection-request: memaksa CPE Inform segera (TR-069\
+	// §3.2.2 Connection Request). adminOrNOC — operator NOC sering butuh ini\
+	// untuk troubleshoot tanpa harus menunggu periodic inform (15-60 menit).\
+	// HTTP 202 Accepted (bukan 200) karena aksi ini asinkron: ACS mengirim\
+	// request ke device, tapi Inform dari device bisa datang beberapa detik\
+	// kemudian di sesi terpisah (bukan respons sinkron dalam request ini).\
+	// 400 dikembalikan bila device tidak memiliki connection_request_url.\
+	authed.POST("/devices/:id/connection-request", r.triggerConnectionRequest, RequireRoles(adminOrNOC...))
+	authed.POST("/devices/:id/reboot", r.rebootDevice, RequireRoles(adminOrNOC...))
+	authed.POST("/devices/:id/factory-reset", r.factoryResetDevice, RequireRoles(admin...))
+	authed.POST("/devices/:id/push-file", r.pushFileToDevice, RequireRoles(admin...))
+	
+	// Advanced TR-069 RPCs (FR-5)
+	authed.POST("/devices/:id/tasks/add-object", r.addObjectDevice, RequireRoles(admin...))
+	authed.POST("/devices/:id/tasks/delete-object", r.deleteObjectDevice, RequireRoles(admin...))
+	authed.POST("/devices/:id/tasks/get-parameter-names", r.getParameterNamesDevice, RequireRoles(adminOrNOC...))
+	authed.POST("/devices/:id/tasks/get-parameter-values", r.getParameterValuesDevice, RequireRoles(adminOrNOC...))
+	authed.POST("/devices/:id/tasks/set-parameter-values", r.setParameterValuesDevice, RequireRoles(admin...))
 
 	authed.GET("/tasks", r.listTasks)
 	authed.GET("/tasks/stats", r.taskStats)
@@ -151,6 +190,42 @@ func (r *Router) Register(e *echo.Echo) {
 	authed.POST("/devices/:id/firmware-upgrade", r.scheduleFirmwareUpgrade, RequireRoles(admin...))
 	authed.GET("/devices/:id/firmware-jobs", r.listFirmwareJobs)
 
+	// Canary/staged rollout firmware ke populasi device (migrations/0011) --
+	// gating sama seperti scheduleFirmwareUpgrade (ADMIN/SUPERADMIN, ini versi
+	// skala-populasi dari operasi yang sama). GET dibuka ke semua role
+	// terautentikasi (pola sama dgn listFirmware/listFirmwareJobs) supaya
+	// NOC/VIEWER bisa memantau progres tanpa bisa memicu/membatalkannya.
+	authed.POST("/firmware/rollout-batches", r.createRolloutBatch, RequireRoles(admin...))
+	authed.GET("/firmware/rollout-batches", r.listRolloutBatches)
+	authed.GET("/firmware/rollout-batches/:id", r.getRolloutBatch)
+	authed.POST("/firmware/rollout-batches/:id/advance", r.advanceRolloutBatch, RequireRoles(admin...))
+	authed.POST("/firmware/rollout-batches/:id/cancel", r.cancelRolloutBatch, RequireRoles(admin...))
+
 	authed.POST("/devices/:id/diagnostics", r.triggerDiagnostic, RequireRoles(adminOrNOC...))
 	authed.GET("/devices/:id/diagnostics", r.listDiagnostics)
+
+	// Webhook keluar (typed event → BSS/OSS/NMS, migrations/0013). Mutasi
+	// (buat/ubah/hapus/test) gated ADMIN/SUPERADMIN; GET dibuka ke semua role
+	// terautentikasi (NOC/VIEWER boleh memantau langganan & log delivery).
+	// Semua tenant-scoped di usecase.
+	authed.POST("/webhooks", r.createWebhook, RequireRoles(admin...))
+	authed.GET("/webhooks/deliveries/failed-count", r.countFailedDeliveries)
+	authed.GET("/webhooks", r.listWebhooks)
+	authed.GET("/webhooks/:id", r.getWebhook)
+	authed.PATCH("/webhooks/:id", r.updateWebhook, RequireRoles(admin...))
+	authed.POST("/webhooks/:id/test", r.testWebhook, RequireRoles(admin...))
+	authed.GET("/webhooks/:id/deliveries", r.listWebhookDeliveries)
+
+	authed.POST("/files", r.uploadFile, RequireRoles(admin...))
+	authed.GET("/files", r.listFiles)
+	authed.DELETE("/files/:id", r.deleteFile, RequireRoles(admin...))
+
+	authed.POST("/tags", r.createTag, RequireRoles(admin...))
+	authed.GET("/tags", r.listTags)
+	authed.DELETE("/tags/:id", r.deleteTag, RequireRoles(admin...))
+
+	authed.POST("/presets", r.createPreset, RequireRoles(admin...))
+	authed.GET("/presets", r.listPresets)
+	authed.PATCH("/presets/:id", r.updatePreset, RequireRoles(admin...))
+	authed.DELETE("/presets/:id", r.deletePreset, RequireRoles(admin...))
 }

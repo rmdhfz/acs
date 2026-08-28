@@ -143,15 +143,28 @@ func (r *Router) applyProfile(c *echo.Context) error {
 
 // ---- Zero-Touch Rules ----
 
+// ztRuleRequest — DTO request Zero-Touch Rule. ProvisioningProfileID sekarang
+// OPSIONAL (migrations/0009): rule boleh hanya memicu PostApplyReboot dan/atau
+// FirmwareFileID tanpa menerapkan profile parameter apa pun -- lihat
+// domain.ZeroTouchRule. TriggerEventID WAJIB diisi klien (raw FK id ke
+// ref_ztp_trigger_event, mengikuti pola VendorID/DeviceModelID di struct ini
+// yang juga raw id, bukan resolusi dari kode string -- klien mengambil id
+// via endpoint generik GET /refs/ref_ztp_trigger_event).
 type ztRuleRequest struct {
-	TenantID              *uint64 `json:"tenant_id"`
-	VendorID              *uint64 `json:"vendor_id"`
-	DeviceModelID         *uint64 `json:"device_model_id"`
-	OUI                   *string `json:"oui"`
-	SerialPattern         *string `json:"serial_pattern"`
-	ProvisioningProfileID uint64  `json:"provisioning_profile_id"`
-	Priority              uint32  `json:"priority"`
-	IsActive              bool    `json:"is_active"`
+	TenantID                   *uint64 `json:"tenant_id"`
+	VendorID                   *uint64 `json:"vendor_id"`
+	DeviceModelID              *uint64 `json:"device_model_id"`
+	OUI                        *string `json:"oui"`
+	SerialPattern              *string `json:"serial_pattern"`
+	SoftwareVersionPattern     *string `json:"software_version_pattern"`
+	MatchParameterName         *string `json:"match_parameter_name"`
+	MatchParameterValuePattern *string `json:"match_parameter_value_pattern"`
+	ProvisioningProfileID      *uint64 `json:"provisioning_profile_id"`
+	PostApplyReboot            bool    `json:"post_apply_reboot"`
+	FirmwareFileID             *uint64 `json:"firmware_file_id"`
+	TriggerEventID             uint64  `json:"trigger_event_id"`
+	Priority                   uint32  `json:"priority"`
+	IsActive                   bool    `json:"is_active"`
 }
 
 func (r *Router) listZTRules(c *echo.Context) error {
@@ -169,12 +182,18 @@ func (r *Router) createZTRule(c *echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "payload tidak valid")
 	}
-	if req.ProvisioningProfileID == 0 {
-		return echo.NewHTTPError(http.StatusBadRequest, "provisioning_profile_id wajib diisi")
+	// ProvisioningProfileID sekarang OPSIONAL (migrations/0009) -- rule boleh
+	// hanya memicu reboot/firmware, jadi TIDAK divalidasi wajib diisi di sini
+	// lagi. TriggerEventID TETAP wajib (kolom NOT NULL, FK ref_ztp_trigger_event).
+	if req.TriggerEventID == 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, "trigger_event_id wajib diisi")
 	}
 	rule := &domain.ZeroTouchRule{
 		TenantID: req.TenantID, VendorID: req.VendorID, DeviceModelID: req.DeviceModelID,
-		OUI: req.OUI, SerialPattern: req.SerialPattern, ProvisioningProfileID: req.ProvisioningProfileID,
+		OUI: req.OUI, SerialPattern: req.SerialPattern, SoftwareVersionPattern: req.SoftwareVersionPattern,
+		MatchParameterName: req.MatchParameterName, MatchParameterValuePattern: req.MatchParameterValuePattern,
+		ProvisioningProfileID: req.ProvisioningProfileID, PostApplyReboot: req.PostApplyReboot,
+		FirmwareFileID: req.FirmwareFileID, TriggerEventID: req.TriggerEventID,
 		Priority: req.Priority, IsActive: true,
 	}
 	if err := r.Provisioning.CreateZeroTouchRule(c.Request().Context(), actor, rule); err != nil {
@@ -193,9 +212,15 @@ func (r *Router) updateZTRule(c *echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "payload tidak valid")
 	}
+	if req.TriggerEventID == 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, "trigger_event_id wajib diisi")
+	}
 	rule := &domain.ZeroTouchRule{
 		ID: id, VendorID: req.VendorID, DeviceModelID: req.DeviceModelID,
-		OUI: req.OUI, SerialPattern: req.SerialPattern, ProvisioningProfileID: req.ProvisioningProfileID,
+		OUI: req.OUI, SerialPattern: req.SerialPattern, SoftwareVersionPattern: req.SoftwareVersionPattern,
+		MatchParameterName: req.MatchParameterName, MatchParameterValuePattern: req.MatchParameterValuePattern,
+		ProvisioningProfileID: req.ProvisioningProfileID, PostApplyReboot: req.PostApplyReboot,
+		FirmwareFileID: req.FirmwareFileID, TriggerEventID: req.TriggerEventID,
 		Priority: req.Priority, IsActive: req.IsActive,
 	}
 	if err := r.Provisioning.UpdateZeroTouchRule(c.Request().Context(), actor, rule); err != nil {

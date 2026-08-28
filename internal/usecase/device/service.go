@@ -3,7 +3,14 @@ package device
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"net"
+	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/google/uuid"
@@ -21,8 +28,12 @@ type Service struct {
 	deviceParams   domain.DeviceParameterRepository
 	deviceEvents   domain.DeviceEventRepository
 	opticalMetrics domain.DeviceOpticalMetricRepository
+	configSnaps    domain.DeviceConfigSnapshotRepository
 	enc            *cryptoutil.Encryptor
 	activity       domain.ActivityLogRepository
+	tasks          domain.TaskCreator
+	fileRepo       domain.FileRepository
+	storage        domain.ObjectStorage
 }
 
 func NewService(
@@ -33,13 +44,18 @@ func NewService(
 	deviceParams domain.DeviceParameterRepository,
 	deviceEvents domain.DeviceEventRepository,
 	opticalMetrics domain.DeviceOpticalMetricRepository,
+	configSnaps domain.DeviceConfigSnapshotRepository,
 	enc *cryptoutil.Encryptor,
 	activity domain.ActivityLogRepository,
+	tasks domain.TaskCreator,
+	fileRepo domain.FileRepository,
+	storage domain.ObjectStorage,
 ) *Service {
 	return &Service{
 		devices: devices, vendorOUIs: vendorOUIs, deviceModels: deviceModels, refs: refs,
 		deviceParams: deviceParams, deviceEvents: deviceEvents, opticalMetrics: opticalMetrics,
-		enc: enc, activity: activity,
+		configSnaps: configSnaps, enc: enc, activity: activity, tasks: tasks,
+		fileRepo: fileRepo, storage: storage,
 	}
 }
 
@@ -52,6 +68,41 @@ func (s *Service) Get(ctx context.Context, actor domain.Actor, id uint64) (*doma
 		return nil, err
 	}
 	return d, nil
+}
+
+func (s *Service) CreateConfigSnapshot(ctx context.Context, deviceID uint64) error {
+	params, err := s.deviceParams.ListByDevice(ctx, deviceID, "")
+	if err != nil {
+		return err
+	}
+
+	snapMap := make(map[string]any)
+	for _, p := range params {
+		if p.ParameterValue != nil {
+			snapMap[p.ParameterName] = *p.ParameterValue
+		}
+	}
+	
+	// Convert map to JSON
+	b, err := json.Marshal(snapMap)
+	if err != nil {
+		return err
+	}
+
+	snap := &domain.DeviceConfigSnapshot{
+		DeviceID:     deviceID,
+		SnapshotData: domain.JSONRawMessage(b),
+		CreatedAt:    time.Now(),
+	}
+	
+	return s.configSnaps.Create(ctx, snap)
+}
+
+func (s *Service) ListConfigSnapshots(ctx context.Context, actor domain.Actor, deviceID uint64, p domain.Pagination) ([]domain.DeviceConfigSnapshot, int, error) {
+	if _, err := s.Get(ctx, actor, deviceID); err != nil {
+		return nil, 0, err
+	}
+	return s.configSnaps.ListByDevice(ctx, deviceID, p)
 }
 
 func (s *Service) List(ctx context.Context, actor domain.Actor, f domain.DeviceFilter, p domain.Pagination) ([]domain.Device, int, error) {
@@ -114,6 +165,8 @@ type UpdateDeviceInput struct {
 	// dienkripsi sebelum disimpan — tidak pernah ditulis apa adanya ke DB/log
 	// (CLAUDE.md: kredensial tidak boleh di-log/disimpan plaintext).
 	ConnectionRequestPassword *string
+	Latitude                  *float64
+	Longitude                 *float64
 }
 
 func (s *Service) Update(ctx context.Context, actor domain.Actor, id uint64, in UpdateDeviceInput) (*domain.Device, error) {
@@ -123,6 +176,12 @@ func (s *Service) Update(ctx context.Context, actor domain.Actor, id uint64, in 
 	}
 	if in.Notes != nil {
 		d.Notes = in.Notes
+	}
+	if in.Latitude != nil {
+		d.Latitude = in.Latitude
+	}
+	if in.Longitude != nil {
+		d.Longitude = in.Longitude
 	}
 	if in.ConnectionRequestURL != nil {
 		d.ConnectionRequestURL = in.ConnectionRequestURL
@@ -293,4 +352,318 @@ func (s *Service) ListActivity(ctx context.Context, actor domain.Actor, deviceID
 		return nil, 0, err
 	}
 	return s.activity.ListByEntity(ctx, "device", deviceID, p)
+}
+
+// TriggerConnectionRequest mengirim Connection Request HTTP ke CPE (RFC\
+// TR-069 §3.2.2): ACS meng-GET url connection_request_url device dgn Basic\
+// Auth — CPE membalas dgn Inform dalam waktu singkat. Dipakai operator NOC\
+// untuk memaksa device offline agar segera melaporkan diri tanpa menunggu\
+// periodic inform interval (biasanya 15-60 menit).\
+//\
+// Berbeda dari task (task mengantre di DB, dieksekusi SAAT sesi CWMP aktif):\
+// Connection Request justru diperlukan SEBELUM sesi ada, untuk membuka sesi.\
+//\
+// Error domain.ErrInvalidInput dikembalikan bila device tidak punya\
+// connection_request_url terkonfigurasi (device lama / device di balik NAT\
+// yang tidak mengekspos URL-nya ke ACS).
+func (s *Service) TriggerConnectionRequest(ctx context.Context, actor domain.Actor, deviceID uint64) error {
+	d, err := s.Get(ctx, actor, deviceID)
+	if err != nil {
+		return err
+	}
+	if d.ConnectionRequestURL == nil || *d.ConnectionRequestURL == "" {
+		return fmt.Errorf("%w: device tidak memiliki connection_request_url terkonfigurasi", domain.ErrInvalidInput)
+	}
+
+	var username, password string
+	if d.ConnectionRequestUsername != nil {
+		username = *d.ConnectionRequestUsername
+	}
+	if len(d.ConnectionRequestPasswordEnc) > 0 {
+		plain, err := s.enc.Decrypt(d.ConnectionRequestPasswordEnc)
+		if err != nil {
+			return fmt.Errorf("triggerConnectionRequest: gagal dekripsi password: %w", err)
+		}
+		password = plain
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, *d.ConnectionRequestURL, nil)
+	if err != nil {
+		return fmt.Errorf("%w: URL connection request tidak valid: %v", domain.ErrInvalidInput, err)
+	}
+	if username != "" {
+		req.SetBasicAuth(username, password)
+	}
+
+	// Timeout singkat: respons connection request seharusnya sangat cepat
+	// (CPE hanya perlu menerima request dan memulai Inform, tidak return body).
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	
+	// Jika gagal via TCP (mis. timeout karena NAT), fallback ke STUN UDP (TR-111).
+	if err != nil || resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if resp != nil {
+			resp.Body.Close()
+		}
+		
+		// Fallback ke UDP Connection Request (STUN/NAT Traversal)
+		udpParam, paramErr := s.deviceParams.Get(ctx, deviceID, "InternetGatewayDevice.ManagementServer.UDPConnectionRequestAddress")
+		if paramErr == nil && udpParam != nil && udpParam.ParameterValue != nil && *udpParam.ParameterValue != "" {
+			udpErr := s.sendUDPConnectionRequest(ctx, *udpParam.ParameterValue, username, password)
+			if udpErr == nil {
+				_ = s.activity.Record(ctx, &domain.ActivityLog{
+					UserID: actor.UserIDPtr(), TenantID: actor.TenantID,
+					Action: "TRIGGER_CONNECTION_REQUEST_UDP", EntityType: "device", EntityID: &deviceID,
+				})
+				return nil
+			}
+			s.log().Warn("cwmp: UDP Connection Request (STUN fallback) gagal", "device_id", deviceID, "error", udpErr)
+		}
+
+		if err != nil {
+			return fmt.Errorf("triggerConnectionRequest: gagal menghubungi device: %w", err)
+		}
+		return fmt.Errorf("%w: device menolak connection request (HTTP %d)", domain.ErrInvalidInput, resp.StatusCode)
+	}
+	defer resp.Body.Close()
+
+	_ = s.activity.Record(ctx, &domain.ActivityLog{
+		UserID: actor.UserIDPtr(), TenantID: actor.TenantID,
+		Action: "TRIGGER_CONNECTION_REQUEST", EntityType: "device", EntityID: &deviceID,
+	})
+	return nil
+}
+
+// sendUDPConnectionRequest mengirim TR-111 UDP Connection Request
+func (s *Service) sendUDPConnectionRequest(ctx context.Context, udpURL, username, password string) error {
+	u, err := url.Parse(udpURL)
+	if err != nil {
+		return err
+	}
+	host := u.Host
+	if host == "" {
+		host = udpURL // Sometimes stored as raw IP:Port
+	}
+	
+	addr, err := net.ResolveUDPAddr("udp", host)
+	if err != nil {
+		return err
+	}
+	conn, err := net.DialUDP("udp", nil, addr)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	ts := time.Now().Unix()
+	id := uuid.New().String()
+	
+	// Signature: SHA1(id + ts + password)
+	h := sha1.New()
+	h.Write([]byte(fmt.Sprintf("%s%d%s", id, ts, password)))
+	sig := hex.EncodeToString(h.Sum(nil))
+
+	// Format HTTP GET request di atas UDP
+	reqLine := fmt.Sprintf("GET ?ts=%d&id=%s&un=%s&sig=%s HTTP/1.1\r\nHost: %s\r\n\r\n", ts, id, username, sig, host)
+	_, err = conn.Write([]byte(reqLine))
+	return err
+}
+
+func (s *Service) Reboot(ctx context.Context, actor domain.Actor, deviceID uint64) error {
+	d, err := s.Get(ctx, actor, deviceID)
+	if err != nil {
+		return err
+	}
+	_, err = s.tasks.CreateTask(ctx, actor, domain.CreateTaskInput{
+		DeviceID: d.ID,
+		TaskType: domain.TaskTypeReboot,
+		Priority: 10,
+	})
+	if err == nil {
+		_ = s.activity.Record(ctx, &domain.ActivityLog{
+			UserID: actor.UserIDPtr(), TenantID: actor.TenantID,
+			Action: "REBOOT_DEVICE", EntityType: "device", EntityID: &deviceID,
+		})
+	}
+	return err
+}
+
+func (s *Service) FactoryReset(ctx context.Context, actor domain.Actor, deviceID uint64) error {
+	d, err := s.Get(ctx, actor, deviceID)
+	if err != nil {
+		return err
+	}
+	_, err = s.tasks.CreateTask(ctx, actor, domain.CreateTaskInput{
+		DeviceID: d.ID,
+		TaskType: domain.TaskTypeFactoryReset,
+		Priority: 10,
+	})
+	if err == nil {
+		_ = s.activity.Record(ctx, &domain.ActivityLog{
+			UserID: actor.UserIDPtr(), TenantID: actor.TenantID,
+			Action: "FACTORY_RESET_DEVICE", EntityType: "device", EntityID: &deviceID,
+		})
+	}
+	return err
+}
+
+func (s *Service) PushFile(ctx context.Context, actor domain.Actor, deviceID uint64, fileID uint64) error {
+	d, err := s.Get(ctx, actor, deviceID)
+	if err != nil {
+		return err
+	}
+	f, err := s.fileRepo.GetByID(ctx, fileID)
+	if err != nil {
+		return err
+	}
+	if f.TenantID != nil && d.TenantID != nil && *f.TenantID != *d.TenantID {
+		return domain.ErrForbidden
+	}
+
+	downloadURL, err := s.storage.PresignedGetURL(ctx, f.StorageKey, 1*time.Hour)
+	if err != nil {
+		return fmt.Errorf("pushFile: gagal membuat presigned URL: %w", err)
+	}
+
+	tr069FileType := "3 Vendor Configuration File"
+	if f.FileType == domain.FileTypeFirmware {
+		tr069FileType = "1 Firmware Upgrade Image"
+	} else if f.FileType == domain.FileTypeWebContent {
+		tr069FileType = "2 Web Content"
+	}
+
+	_, err = s.tasks.CreateTask(ctx, actor, domain.CreateTaskInput{
+		DeviceID: d.ID,
+		TaskType: domain.TaskTypeDownload,
+		Priority: 5,
+		Parameters: map[string]interface{}{
+			"file_type":        tr069FileType,
+			"url":              downloadURL,
+			"target_file_name": f.FileName,
+			"file_size":        f.FileSizeBytes,
+		},
+	})
+	if err == nil {
+		_ = s.activity.Record(ctx, &domain.ActivityLog{
+			UserID: actor.UserIDPtr(), TenantID: actor.TenantID,
+			Action: "PUSH_FILE", EntityType: "device", EntityID: &deviceID,
+		})
+	}
+	return err
+}
+
+func (s *Service) AddObject(ctx context.Context, actor domain.Actor, deviceID uint64, objectName string) error {
+	d, err := s.Get(ctx, actor, deviceID)
+	if err != nil {
+		return err
+	}
+	_, err = s.tasks.CreateTask(ctx, actor, domain.CreateTaskInput{
+		DeviceID: d.ID,
+		TaskType: domain.TaskTypeAddObject,
+		Priority: 5,
+		Parameters: map[string]interface{}{
+			"object_name": objectName,
+		},
+	})
+	if err == nil {
+		_ = s.activity.Record(ctx, &domain.ActivityLog{
+			UserID: actor.UserIDPtr(), TenantID: actor.TenantID,
+			Action: "ADD_OBJECT", EntityType: "device", EntityID: &deviceID,
+			Details: map[string]interface{}{"object_name": objectName},
+		})
+	}
+	return err
+}
+
+func (s *Service) DeleteObject(ctx context.Context, actor domain.Actor, deviceID uint64, objectName string) error {
+	d, err := s.Get(ctx, actor, deviceID)
+	if err != nil {
+		return err
+	}
+	_, err = s.tasks.CreateTask(ctx, actor, domain.CreateTaskInput{
+		DeviceID: d.ID,
+		TaskType: domain.TaskTypeDeleteObject,
+		Priority: 5,
+		Parameters: map[string]interface{}{
+			"object_name": objectName,
+		},
+	})
+	if err == nil {
+		_ = s.activity.Record(ctx, &domain.ActivityLog{
+			UserID: actor.UserIDPtr(), TenantID: actor.TenantID,
+			Action: "DELETE_OBJECT", EntityType: "device", EntityID: &deviceID,
+			Details: map[string]interface{}{"object_name": objectName},
+		})
+	}
+	return err
+}
+
+func (s *Service) GetParameterNames(ctx context.Context, actor domain.Actor, deviceID uint64, path string, nextLevel bool) error {
+	d, err := s.Get(ctx, actor, deviceID)
+	if err != nil {
+		return err
+	}
+	_, err = s.tasks.CreateTask(ctx, actor, domain.CreateTaskInput{
+		DeviceID: d.ID,
+		TaskType: domain.TaskTypeGetParameterNames,
+		Priority: 5,
+		Parameters: map[string]interface{}{
+			"path":       path,
+			"next_level": nextLevel,
+		},
+	})
+	if err == nil {
+		_ = s.activity.Record(ctx, &domain.ActivityLog{
+			UserID: actor.UserIDPtr(), TenantID: actor.TenantID,
+			Action: "GET_PARAMETER_NAMES", EntityType: "device", EntityID: &deviceID,
+			Details: map[string]interface{}{"path": path, "next_level": nextLevel},
+		})
+	}
+	return err
+}
+
+func (s *Service) GetParameterValues(ctx context.Context, actor domain.Actor, deviceID uint64, parameterNames []string) error {
+	d, err := s.Get(ctx, actor, deviceID)
+	if err != nil {
+		return err
+	}
+	_, err = s.tasks.CreateTask(ctx, actor, domain.CreateTaskInput{
+		DeviceID: d.ID,
+		TaskType: domain.TaskTypeGetParameterValues,
+		Priority: 5,
+		Parameters: map[string]interface{}{
+			"names": parameterNames,
+		},
+	})
+	if err == nil {
+		_ = s.activity.Record(ctx, &domain.ActivityLog{
+			UserID: actor.UserIDPtr(), TenantID: actor.TenantID,
+			Action: "GET_PARAMETER_VALUES", EntityType: "device", EntityID: &deviceID,
+			Details: map[string]interface{}{"count": len(parameterNames)},
+		})
+	}
+	return err
+}
+
+func (s *Service) SetParameterValues(ctx context.Context, actor domain.Actor, deviceID uint64, values map[string]string) error {
+	d, err := s.Get(ctx, actor, deviceID)
+	if err != nil {
+		return err
+	}
+	_, err = s.tasks.CreateTask(ctx, actor, domain.CreateTaskInput{
+		DeviceID: d.ID,
+		TaskType: domain.TaskTypeSetParameterValues,
+		Priority: 5,
+		Parameters: map[string]interface{}{
+			"values": values,
+		},
+	})
+	if err == nil {
+		_ = s.activity.Record(ctx, &domain.ActivityLog{
+			UserID: actor.UserIDPtr(), TenantID: actor.TenantID,
+			Action: "SET_PARAMETER_VALUES", EntityType: "device", EntityID: &deviceID,
+			Details: map[string]interface{}{"count": len(values)},
+		})
+	}
+	return err
 }

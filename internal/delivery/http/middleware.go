@@ -98,6 +98,13 @@ func handleErr(c *echo.Context, err error) error {
 	case errors.Is(err, domain.ErrQuotaExceeded):
 		return echo.NewHTTPError(http.StatusTooManyRequests, err.Error())
 	default:
-		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+		// Error sistem (DB timeout, query error, dsb.) — JANGAN di-expose
+		// ke client (bisa bocor detail internal: query SQL, stack trace,
+		// nama tabel, dsb.). Di-log server-side dengan detail penuh, client
+		// hanya dapat pesan generik. Berbeda dari domain error di atas yang
+		// memang dirancang untuk dikembalikan ke client (domain.ErrNotFound
+		// dsb. tidak mengandung detail implementasi).
+		log.Printf("handleErr: unhandled error: %v", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "internal server error")
 	}
 }

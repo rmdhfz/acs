@@ -1528,6 +1528,359 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  /devices/{id}/reboot:
+    post:
+      operationId: rebootDevice
+      tags: [Devices]
+      summary: Reboot perangkat
+      description: |
+        ADMIN/NOC/SUPERADMIN. Mengirim command reboot (event 'M Reboot') ke perangkat.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/deviceIdPath'
+      responses:
+        '200':
+          description: Task reboot telah dimasukkan ke dalam antrean.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role tidak cukup atau device milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Device tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /devices/{id}/factory-reset:
+    post:
+      operationId: factoryResetDevice
+      tags: [Devices]
+      summary: Factory Reset perangkat
+      description: |
+        ADMIN/SUPERADMIN. Mengirim command factory reset ke perangkat. Ini akan menghapus konfigurasi ACS pada ONT.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/deviceIdPath'
+      responses:
+        '200':
+          description: Task factory reset telah dimasukkan ke dalam antrean.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role tidak cukup (NOC tidak dizinkan) atau device milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Device tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /devices/{id}/push-file:
+    post:
+      operationId: pushFileToDevice
+      tags: [Devices]
+      summary: Push file (konfigurasi/log) ke perangkat
+      description: |
+        ADMIN/NOC/SUPERADMIN. Mengirim file (misal konfigurasi TR-069) ke perangkat menggunakan command Download.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/deviceIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [file_id]
+              properties:
+                file_id:
+                  type: integer
+                  format: int64
+      responses:
+        '200':
+          description: Task push file telah dimasukkan ke dalam antrean.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role tidak cukup atau device/file milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Device atau File tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /devices/{id}/tasks/add-object:
+    post:
+      operationId: addObjectDevice
+      tags: [Devices]
+      summary: Eksekusi RPC AddObject (FR-5)
+      description: |
+        ADMIN/SUPERADMIN. Menambahkan instance object baru (misalnya tabel WAN) di CPE via protokol CWMP.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/deviceIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [object_name]
+              properties:
+                object_name:
+                  type: string
+                  example: "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection."
+      responses:
+        '202':
+          description: Task AddObject telah dimasukkan ke dalam antrean.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        '400':
+          description: Payload tidak valid.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Akses ditolak.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /devices/{id}/tasks/delete-object:
+    post:
+      operationId: deleteObjectDevice
+      tags: [Devices]
+      summary: Eksekusi RPC DeleteObject (FR-5)
+      description: |
+        ADMIN/SUPERADMIN. Menghapus instance object yang ada di CPE via protokol CWMP.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/deviceIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [object_name]
+              properties:
+                object_name:
+                  type: string
+                  example: "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1."
+      responses:
+        '202':
+          description: Task DeleteObject telah dimasukkan ke dalam antrean.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        '400':
+          description: Payload tidak valid.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Akses ditolak.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /devices/{id}/tasks/get-parameter-names:
+    post:
+      operationId: getParameterNamesDevice
+      tags: [Devices]
+      summary: Eksekusi RPC GetParameterNames (FR-5)
+      description: |
+        ADMIN/NOC/SUPERADMIN. Menelusuri (explore) parameter tree pada CPE (digunakan untuk Parameter Browser dinamis).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/deviceIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path, next_level]
+              properties:
+                path:
+                  type: string
+                  example: "InternetGatewayDevice.WANDevice."
+                next_level:
+                  type: boolean
+                  example: true
+      responses:
+        '202':
+          description: Task GetParameterNames telah dimasukkan ke dalam antrean.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        '400':
+          description: Payload tidak valid.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Akses ditolak.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /devices/{id}/tasks/get-parameter-values:
+    post:
+      operationId: getParameterValuesDevice
+      tags: [Devices]
+      summary: Eksekusi RPC GetParameterValues secara dinamis (FR-5)
+      description: |
+        ADMIN/NOC/SUPERADMIN. Membaca satu atau lebih nilai parameter raw secara spesifik.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/deviceIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [names]
+              properties:
+                names:
+                  type: array
+                  items:
+                    type: string
+                  example: ["InternetGatewayDevice.DeviceInfo.HardwareVersion"]
+      responses:
+        '202':
+          description: Task GetParameterValues telah dimasukkan ke dalam antrean.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        '400':
+          description: Payload tidak valid.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Akses ditolak.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /devices/{id}/tasks/set-parameter-values:
+    post:
+      operationId: setParameterValuesDevice
+      tags: [Devices]
+      summary: Eksekusi RPC SetParameterValues secara dinamis (FR-5)
+      description: |
+        ADMIN/SUPERADMIN. Menulis (set) satu atau lebih parameter raw secara langsung tanpa melalui Provisioning Profile.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/deviceIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [values]
+              properties:
+                values:
+                  type: object
+                  additionalProperties:
+                    type: string
+                  example:
+                    "InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID": "WIFI_BARU"
+      responses:
+        '202':
+          description: Task SetParameterValues telah dimasukkan ke dalam antrean.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        '400':
+          description: Payload tidak valid.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Akses ditolak.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
   /devices/{id}/apply-profile/{profileId}:
     post:
       operationId: applyProfile
@@ -2130,6 +2483,143 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  /firmware/rollout-batches:
+    post:
+      operationId: createRolloutBatch
+      tags: [Firmware]
+      summary: Buat firmware rollout batch (canary/staged rollout)
+      description: |
+        ADMIN/SUPERADMIN. Membuat rencana rollout firmware bertahap ke populasi
+        device (filter `vendor_id`/`device_model_id`, bentuk sama dgn
+        `GET /devices`). Wave pertama otomatis dimulai saat batch dibuat.
+        Wave berikutnya menyusul otomatis (sweeper `acsd` atau
+        `POST .../advance`) HANYA bila wave sebelumnya tuntas & failure rate di
+        bawah `max_failure_rate_percent`; jika melebihi ambang batch di-PAUSE.
+        `tenant_id` null (rollout global lintas-tenant) hanya boleh dibuat SUPERADMIN.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateRolloutBatchRequest' }
+      responses:
+        '201':
+          description: Batch dibuat (wave 1 mungkin sudah dijadwalkan).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FirmwareRolloutBatch' }
+        '400':
+          description: "Payload tidak valid, `firmware_file_id` kosong, atau `wave_percentage` di luar 1-100."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role di bawah ADMIN, atau mencoba membuat batch global sbg non-SUPERADMIN.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    get:
+      operationId: listRolloutBatches
+      tags: [Firmware]
+      summary: Daftar firmware rollout batch
+      description: |
+        Semua role terautentikasi. Tenant-scoped: non-SUPERADMIN hanya melihat
+        batch tenant sendiri (param `tenant_id` diabaikan). GET dibuka ke
+        NOC/VIEWER untuk memantau progres tanpa bisa memicu/membatalkan.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: tenant_id
+          in: query
+          required: false
+          schema: { type: integer, format: int64 }
+          description: Hanya efektif untuk SUPERADMIN.
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: Daftar rollout batch.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FirmwareRolloutBatchListResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Non-SUPERADMIN dengan akun tanpa tenant_id.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /firmware/rollout-batches/{id}:
+    get:
+      operationId: getRolloutBatch
+      tags: [Firmware]
+      summary: Detail satu firmware rollout batch
+      description: Semua role terautentikasi, tenant-scoped.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/rolloutBatchIdPath'
+      responses:
+        '200':
+          description: Detail batch.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FirmwareRolloutBatch' }
+        '400': { description: "`id` tidak valid.", content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '401': { description: "Tidak terautentikasi.", content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '403': { description: "Batch milik tenant lain.", content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '404': { description: "Batch tidak ditemukan.", content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+
+  /firmware/rollout-batches/{id}/advance:
+    post:
+      operationId: advanceRolloutBatch
+      tags: [Firmware]
+      summary: Paksa evaluasi wave rollout sekarang
+      description: |
+        ADMIN/SUPERADMIN, tenant-scoped. Idempotent — hanya mengubah state bila
+        wave berjalan sudah tuntas (semua job berstatus akhir). Dipakai operator
+        yang tidak ingin menunggu sweeper periodik. Jika wave sebelumnya di
+        atas ambang gagal, batch tetap PAUSED (advance tidak memaksa lanjut).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/rolloutBatchIdPath'
+      responses:
+        '200':
+          description: State batch setelah evaluasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FirmwareRolloutBatch' }
+        '400': { description: "`id` tidak valid.", content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '401': { description: "Tidak terautentikasi.", content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '403': { description: "Role di bawah ADMIN, atau batch milik tenant lain.", content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '404': { description: "Batch tidak ditemukan.", content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+
+  /firmware/rollout-batches/{id}/cancel:
+    post:
+      operationId: cancelRolloutBatch
+      tags: [Firmware]
+      summary: Batalkan firmware rollout batch
+      description: |
+        ADMIN/SUPERADMIN, tenant-scoped. Status → CANCELLED (batch tetap
+        terlihat di histori, BUKAN soft-delete). Job yang sudah dibuat pada
+        wave berjalan TIDAK ditarik balik — yang dicegah adalah wave berikutnya.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/rolloutBatchIdPath'
+      responses:
+        '204': { description: "Batch dibatalkan." }
+        '400': { description: "`id` tidak valid.", content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '401': { description: "Tidak terautentikasi.", content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '403': { description: "Role di bawah ADMIN, atau batch milik tenant lain.", content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        '404': { description: "Batch tidak ditemukan.", content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+
   # ============================== DIAGNOSTICS ==============================
   /devices/{id}/diagnostics:
     post:
@@ -2319,6 +2809,12 @@ components:
       in: path
       required: true
       description: ID numerik internal vendor.
+      schema: { type: integer, format: int64 }
+    rolloutBatchIdPath:
+      name: id
+      in: path
+      required: true
+      description: ID numerik internal firmware rollout batch.
       schema: { type: integer, format: int64 }
 
   schemas:
@@ -2946,12 +3442,18 @@ components:
         device_model_id: { type: integer, format: int64, nullable: true }
         oui: { type: string, nullable: true }
         serial_pattern: { type: string, nullable: true, description: "Pola SQL LIKE (`%`/`_`), dicocokkan case-insensitive." }
-        provisioning_profile_id: { type: integer, format: int64 }
+        software_version_pattern: { type: string, nullable: true, description: "Pola SQL LIKE thd devices.software_version (migrations/0009)." }
+        match_parameter_name: { type: string, nullable: true, description: "Precondition opsional — device harus punya device_parameters dgn nama ini yang nilainya cocok match_parameter_value_pattern. Wajib berpasangan." }
+        match_parameter_value_pattern: { type: string, nullable: true, description: "Pola SQL LIKE thd nilai parameter match_parameter_name. Wajib berpasangan." }
+        provisioning_profile_id: { type: integer, format: int64, nullable: true, description: "NULLABLE sejak migrations/0009 — rule boleh hanya memicu reboot dan/atau firmware push." }
+        post_apply_reboot: { type: boolean, description: "Jika true, enqueue task REBOOT setelah aksi lain diterapkan." }
+        firmware_file_id: { type: integer, format: int64, nullable: true, description: "Jika diisi, enqueue task Download firmware ini ke device yang cocok." }
+        trigger_event_id: { type: integer, format: int64, description: "FK ref_ztp_trigger_event — kapan rule dievaluasi (BOOTSTRAP_ONLY / BOOTSTRAP_OR_BOOT / EVERY_INFORM)." }
         priority: { type: integer, description: "Angka lebih kecil dievaluasi lebih dulu." }
         is_active: { type: boolean }
       allOf:
         - $ref: '#/components/schemas/Audit'
-      required: [id, provisioning_profile_id, priority, is_active]
+      required: [id, trigger_event_id, priority, is_active]
 
     ZeroTouchRuleRequest:
       type: object
@@ -2961,10 +3463,16 @@ components:
         device_model_id: { type: integer, format: int64, nullable: true }
         oui: { type: string, nullable: true }
         serial_pattern: { type: string, nullable: true }
-        provisioning_profile_id: { type: integer, format: int64 }
+        software_version_pattern: { type: string, nullable: true }
+        match_parameter_name: { type: string, nullable: true }
+        match_parameter_value_pattern: { type: string, nullable: true }
+        provisioning_profile_id: { type: integer, format: int64, nullable: true }
+        post_apply_reboot: { type: boolean, default: false }
+        firmware_file_id: { type: integer, format: int64, nullable: true }
+        trigger_event_id: { type: integer, format: int64, description: "WAJIB. Ambil id dari GET /refs/ref_ztp_trigger_event." }
         priority: { type: integer, default: 0 }
         is_active: { type: boolean, default: true }
-      required: [provisioning_profile_id]
+      required: [trigger_event_id]
 
     # ---------- Catalog ----------
     Vendor:
@@ -3048,6 +3556,7 @@ components:
         vendor_id: { type: integer, format: int64 }
         data_model_version_id: { type: integer, format: int64 }
         device_model_id: { type: integer, format: int64, nullable: true, description: "NULL = berlaku untuk seluruh model vendor ini pada data model version tsb; diisi untuk override spesifik satu model." }
+        software_version_pattern: { type: string, nullable: true, description: "Pola SQL LIKE thd devices.software_version (migrations/0010). NULL = generik lintas versi. Mapping dgn pattern yang cocok lebih diprioritaskan saat Resolve()." }
         logical_key: { type: string, example: wifi.5g.ssid }
         tr069_path: { type: string, example: "InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.SSID" }
         parameter_type_id: { type: integer, format: int64, nullable: true }
@@ -3062,6 +3571,7 @@ components:
         vendor_id: { type: integer, format: int64 }
         data_model_version_id: { type: integer, format: int64 }
         device_model_id: { type: integer, format: int64, nullable: true }
+        software_version_pattern: { type: string, nullable: true }
         logical_key: { type: string }
         tr069_path: { type: string }
         parameter_type_id: { type: integer, format: int64, nullable: true }
@@ -3151,6 +3661,49 @@ components:
           items: { $ref: '#/components/schemas/FirmwareUpgradeJob' }
         total: { type: integer }
       required: [data, total]
+
+    FirmwareRolloutBatch:
+      type: object
+      description: "Rencana canary/staged rollout firmware ke populasi device bertahap per wave (migrations/0011). Status via `ref_firmware_rollout_status` (PENDING / IN_PROGRESS / PAUSED_FAILURE_THRESHOLD / COMPLETED / CANCELLED — ambil label via `GET /refs/ref_firmware_rollout_status`)."
+      properties:
+        id: { type: integer, format: int64 }
+        batch_uuid: { type: string, format: uuid }
+        tenant_id: { type: integer, format: int64, nullable: true, description: "NULL = rollout lintas-tenant/global." }
+        firmware_file_id: { type: integer, format: int64 }
+        vendor_id: { type: integer, format: int64, nullable: true, description: "Kriteria seleksi populasi target." }
+        device_model_id: { type: integer, format: int64, nullable: true, description: "Kriteria seleksi populasi target." }
+        wave_percentage: { type: integer, description: "Persentase populasi asli per wave (1-100)." }
+        max_failure_rate_percent: { type: integer, description: "Ambang failure rate per wave (%) sebelum batch di-PAUSE otomatis." }
+        current_wave: { type: integer, description: "Wave terakhir yang sudah/sedang dijalankan." }
+        status_id: { type: integer, format: int64 }
+        notes: { type: string, nullable: true }
+        started_at: { type: string, format: date-time, nullable: true }
+        completed_at: { type: string, format: date-time, nullable: true }
+      allOf:
+        - $ref: '#/components/schemas/Audit'
+      required: [id, batch_uuid, firmware_file_id, wave_percentage, max_failure_rate_percent, current_wave, status_id]
+
+    FirmwareRolloutBatchListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          nullable: true
+          items: { $ref: '#/components/schemas/FirmwareRolloutBatch' }
+        total: { type: integer }
+      required: [data, total]
+
+    CreateRolloutBatchRequest:
+      type: object
+      properties:
+        tenant_id: { type: integer, format: int64, nullable: true, description: "NULL (global) hanya boleh dibuat SUPERADMIN." }
+        firmware_file_id: { type: integer, format: int64 }
+        vendor_id: { type: integer, format: int64, nullable: true }
+        device_model_id: { type: integer, format: int64, nullable: true }
+        wave_percentage: { type: integer, minimum: 1, maximum: 100, default: 10 }
+        max_failure_rate_percent: { type: integer, minimum: 0, maximum: 100, default: 10 }
+        notes: { type: string, nullable: true }
+      required: [firmware_file_id]
 
     # ---------- Diagnostics ----------
     DeviceDiagnostic:

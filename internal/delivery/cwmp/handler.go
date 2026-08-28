@@ -9,11 +9,14 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/labstack/echo/v5"
 
 	"acs/internal/domain"
+	"acs/internal/metrics"
 	"acs/internal/usecase/session"
 	"acs/pkg/cwmpxml"
 )
@@ -22,10 +25,17 @@ const sessionCookieName = "acs_session"
 
 type Handler struct {
 	sessions *session.Service
+	log      *slog.Logger
 }
 
-func NewHandler(sessions *session.Service) *Handler {
-	return &Handler{sessions: sessions}
+// NewHandler — logger nil diperbolehkan (fallback slog.Default()), supaya
+// pemanggil yang belum siap sedia logger khusus (mis. test) tidak wajib
+// menyediakannya.
+func NewHandler(sessions *session.Service, logger *slog.Logger) *Handler {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &Handler{sessions: sessions, log: logger}
 }
 
 func (h *Handler) Register(e *echo.Echo, path string) {
@@ -46,7 +56,13 @@ func (h *Handler) handle(c *echo.Context) error {
 	token := readSessionToken(c)
 
 	// POST kosong dari CPE: baik penanda "siap terima RPC" maupun penutup
-	// sesi — keduanya ditangani NextRequest (lihat TECH.md §3).
+	// sesi — keduanya ditangani NextRequest (lihat TECH.md §3). Request ini
+	// sendiri tidak membawa body XML sama sekali sehingga tidak ada
+	// namespace CWMP yang bisa dibaca darinya -- TAPI ini justru jalur
+	// MAYORITAS pengiriman RPC proaktif pertama dalam sesi (langsung sesudah
+	// InformResponse), bukan kasus langka. NextRequest (usecase/session)
+	// yang menyediakan namespace yang benar, dibaca dari device_sessions
+	// (diisi sekali saat Inform -- migrations/0012), bukan dari request ini.
 	if env.IsEmpty() {
 		return h.next(c, token)
 	}
@@ -59,15 +75,31 @@ func (h *Handler) handle(c *echo.Context) error {
 		// RPC response tanpa sesi yang dikenal — tidak ada yang bisa dikorelasikan.
 		return c.NoContent(http.StatusBadRequest)
 	}
-	if err := h.sessions.HandleRPCResponse(c.Request().Context(), buildRPCResponse(token, env)); err != nil {
-		c.Logger().Error("cwmp handler error", "error", err)
+
+	rpcResp := buildRPCResponse(token, env)
+	h.logRPCResponse(token, rpcResp)
+	if err := h.sessions.HandleRPCResponse(c.Request().Context(), rpcResp); err != nil {
+		h.log.Error("cwmp: HandleRPCResponse gagal", "session_token", token, "error", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 	return h.next(c, token)
 }
 
 func (h *Handler) handleInform(c *echo.Context, token string, env *cwmpxml.Envelope) error {
+	// Latensi Inform -> InformResponse (metrik observability, TECH.md §10) —
+	// diukur dari titik ini (Inform baru saja selesai di-parse) sampai
+	// InformResponse berhasil ditulis di akhir fungsi ini. Lihat komentar di
+	// internal/metrics/inform_latency.go soal kenapa ini histogram real-time,
+	// BUKAN gauge query-on-scrape spt metrik lain di internal/metrics.
+	start := time.Now()
+
 	inf := env.Body.Inform
+	// ns: namespace CWMP yang BENAR-BENAR dideklarasikan CPE ini pada Inform
+	// (hasil capture Unmarshal, lihat cwmpxml.Body.Namespace()) — dipakai utk
+	// InformResponse balasan supaya konsisten dgn yang dipakai CPE ybs,
+	// bukan cwmp-1-2 hardcoded (lihat TECH.md §3, catatan investigasi
+	// arsitektur soal Huawei & vendor lain yang sensitif terhadap ini).
+	ns := env.Body.Namespace()
 
 	events := make([]session.InformEvent, 0, len(inf.Event.Items))
 	for _, e := range inf.Event.Items {
@@ -83,6 +115,10 @@ func (h *Handler) handleInform(c *echo.Context, token string, env *cwmpxml.Envel
 	// adalah titik pembentukan sesi, lihat TECH.md §3 & usecase/session).
 	username, password, _ := c.Request().BasicAuth()
 
+	h.log.Debug("cwmp: Inform diterima",
+		"session_token", token, "oui", inf.DeviceId.OUI, "serial_number", inf.DeviceId.SerialNumber,
+		"cwmp_namespace", ns, "event_count", len(events))
+
 	result, err := h.sessions.HandleInform(c.Request().Context(), session.InformInput{
 		SessionToken:    token,
 		RemoteIP:        c.RealIP(),
@@ -95,21 +131,30 @@ func (h *Handler) handleInform(c *echo.Context, token string, env *cwmpxml.Envel
 		InformPassword:  password,
 		Events:          events,
 		Parameters:      params,
+		Namespace:       ns,
 	})
 	if err != nil {
 		if errors.Is(err, domain.ErrUnauthorized) {
+			h.log.Warn("cwmp: Inform ditolak (unauthorized)", "oui", inf.DeviceId.OUI, "serial_number", inf.DeviceId.SerialNumber)
 			c.Response().Header().Set("WWW-Authenticate", `Basic realm="ACS"`)
 			return c.NoContent(http.StatusUnauthorized)
 		}
-		c.Logger().Error("cwmp handler error", "error", err)
+		h.log.Error("cwmp: HandleInform gagal", "oui", inf.DeviceId.OUI, "serial_number", inf.DeviceId.SerialNumber, "error", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 	setSessionCookie(c, result.SessionToken)
 
-	respEnv := cwmpxml.NewEnvelope(headerIDFrom(env), cwmpxml.Body{
-		InformResponse: &cwmpxml.InformResponse{MaxEnvelopes: 1},
+	h.log.Info("cwmp: sesi dibuka/dilanjutkan dari Inform",
+		"device_id", result.DeviceID, "session_token", result.SessionToken)
+
+	respEnv := cwmpxml.NewEnvelope(headerIDFrom(env), ns, cwmpxml.Body{
+		InformResponse: &cwmpxml.InformResponse{XMLName: cwmpxml.RPCName(ns, "InformResponse"), MaxEnvelopes: 1},
 	})
-	return writeEnvelope(c, respEnv)
+	if err := writeEnvelope(c, respEnv); err != nil {
+		return err
+	}
+	metrics.ObserveInformResponseLatency(time.Since(start))
+	return nil
 }
 
 func (h *Handler) next(c *echo.Context, token string) error {
@@ -118,19 +163,53 @@ func (h *Handler) next(c *echo.Context, token string) error {
 	}
 	rpc, closeSession, err := h.sessions.NextRequest(c.Request().Context(), token)
 	if err != nil {
-		c.Logger().Error("cwmp handler error", "error", err)
+		h.log.Error("cwmp: NextRequest gagal", "session_token", token, "error", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
-	if closeSession || rpc == nil {
+	if closeSession {
+		// Log "sesi ditutup" dicatat di usecase/session.Service.NextRequest
+		// (titik otoritatif state transition-nya), bukan di sini — hindari
+		// duplikat baris log utk satu event yang sama.
+		return c.NoContent(http.StatusNoContent)
+	}
+	if rpc == nil {
 		return c.NoContent(http.StatusNoContent)
 	}
 
-	body, err := BuildRequestBody(rpc.TaskType, rpc.TaskUUID, rpc.Parameters)
+	// ns dari device_sessions.cwmp_namespace (lewat OutboundRPC.Namespace,
+	// diisi NextRequest -- migrations/0012), BUKAN dari request HTTP saat
+	// ini (request "siap terima RPC" tidak membawa body XML sama sekali).
+	// Fallback ke cwmpxml.NSCWMP hanya utk sesi lama dari sebelum
+	// migrations/0012 yang belum pernah tercatat namespace-nya.
+	ns := rpc.Namespace
+	if ns == "" {
+		ns = cwmpxml.NSCWMP
+	}
+
+	body, err := BuildRequestBody(rpc.TaskType, rpc.TaskUUID, rpc.Parameters, ns)
 	if err != nil {
-		c.Logger().Error("cwmp handler error", "error", err)
+		h.log.Error("cwmp: BuildRequestBody gagal", "session_token", token, "task_type", rpc.TaskType, "error", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
-	return writeEnvelope(c, cwmpxml.NewEnvelope(rpc.TaskUUID, body))
+	h.log.Debug("cwmp: mengirim RPC ke CPE", "session_token", token, "task_uuid", rpc.TaskUUID, "task_type", rpc.TaskType, "cwmp_namespace", ns)
+	return writeEnvelope(c, cwmpxml.NewEnvelope(rpc.TaskUUID, ns, body))
+}
+
+// logRPCResponse mencatat respons RPC dari CPE (Debug utk hasil normal, Error
+// utk cwmp:Fault — CLAUDE.md soal level log supaya production bisa
+// menyesuaikan verbosity). Dipanggil SEBELUM diteruskan ke usecase/session
+// supaya tetap tercatat walau HandleRPCResponse gagal.
+func (h *Handler) logRPCResponse(token string, resp session.RPCResponse) {
+	switch {
+	case resp.Fault != nil:
+		h.log.Error("cwmp: menerima cwmp:Fault dari CPE",
+			"session_token", token, "fault_code", resp.Fault.Code, "fault_string", resp.Fault.Message)
+	case resp.TransferComplete != nil:
+		h.log.Debug("cwmp: menerima TransferComplete dari CPE",
+			"session_token", token, "command_key", resp.TransferComplete.CommandKey, "success", resp.TransferComplete.Success)
+	default:
+		h.log.Debug("cwmp: menerima respons RPC dari CPE", "session_token", token)
+	}
 }
 
 // buildRPCResponse menerjemahkan Body respons CPE menjadi session.RPCResponse
@@ -202,7 +281,21 @@ func readSessionToken(c *echo.Context) string {
 }
 
 func setSessionCookie(c *echo.Context, token string) {
-	c.SetCookie(&http.Cookie{Name: sessionCookieName, Value: token, Path: "/", HttpOnly: true})
+	// Secure=true: hanya dikirim via HTTPS (TECH.md §8: endpoint CWMP wajib TLS)
+	// HttpOnly=true: tidak bisa dibaca JavaScript (XSS protection)
+	// SameSite=Strict: mencegah CSRF — request cross-site tidak membawa cookie
+	// MaxAge=3600: 1 jam, sejalan dengan umur sesi CWMP tipikal (device
+	// periodic inform interval biasanya 15-60 menit; sesi yang lebih panjang
+	// dari ini sangat tidak umum). Cookie kedaluwarsa = CPE harus Inform ulang.
+	c.SetCookie(&http.Cookie{
+		Name:     sessionCookieName,
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   3600,
+	})
 }
 
 func headerIDFrom(env *cwmpxml.Envelope) string {

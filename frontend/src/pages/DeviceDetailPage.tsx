@@ -1,10 +1,12 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Line, LineChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { Activity, ArrowLeft, Cpu, Gauge, HardDrive, History, ListChecks, ScrollText, Sparkles, SlidersHorizontal } from 'lucide-react'
+import { Activity, ArrowLeft, Cpu, Gauge, HardDrive, History, ListChecks, Radio, ScrollText, Sparkles, SlidersHorizontal, RefreshCcw, AlertTriangle, FileUp } from 'lucide-react'
 import { StatusBadge } from '../components/StatusBadge'
 import { EmptyState } from '../components/EmptyState'
 import { PageSpinner } from '../components/Spinner'
+import { ParameterTree } from '../components/ParameterTree'
+import { ConfigHistory } from '../components/ConfigHistory'
 import { Modal } from '../components/Modal'
 import { useAuth } from '../lib/auth'
 import { useTheme } from '../lib/theme'
@@ -24,12 +26,18 @@ import {
   useProvisioningProfiles,
   useRefs,
   useScheduleFirmwareUpgrade,
+  useTriggerConnectionRequest,
   useTriggerDiagnostic,
+  useUpdateDevice,
   useVendors,
+  useRebootDevice,
+  useFactoryResetDevice,
+  usePushFileToDevice,
+  useFiles,
 } from '../lib/hooks'
 import { formatJSONField, formatDateTime, formatRelativeTime } from '../lib/format'
 
-type Tab = 'overview' | 'parameters' | 'optical' | 'events' | 'tasks' | 'diagnostics' | 'firmware' | 'timeline'
+type Tab = 'overview' | 'parameters' | 'optical' | 'events' | 'tasks' | 'diagnostics' | 'firmware' | 'timeline' | 'config'
 
 const TABS: { key: Tab; label: string; icon: typeof Cpu }[] = [
   { key: 'overview', label: 'Overview', icon: Cpu },
@@ -38,8 +46,9 @@ const TABS: { key: Tab; label: string; icon: typeof Cpu }[] = [
   { key: 'events', label: 'Histori Event', icon: History },
   { key: 'tasks', label: 'Task', icon: ListChecks },
   { key: 'diagnostics', label: 'Diagnostics', icon: Activity },
-  { key: 'firmware', label: 'Firmware', icon: HardDrive },
+  { key: 'firmware', label: 'Firmware & Files', icon: HardDrive },
   { key: 'timeline', label: 'Timeline Audit', icon: ScrollText },
+  { key: 'config', label: 'Config History', icon: FileUp },
 ]
 
 const ACTIVITY_LABELS: Record<string, string> = {
@@ -64,11 +73,26 @@ export function DeviceDetailPage() {
   const { data: device, isLoading } = useDevice(deviceId)
   const { data: statusRefs } = useRefs('ref_device_status')
   const { data: vendorsResp } = useVendors()
+  
+  const triggerConnReq = useTriggerConnectionRequest()
+  const rebootMutation = useRebootDevice()
+  const factoryResetMutation = useFactoryResetDevice()
+  const [connReqError, setConnReqError] = useState<string | null>(null)
 
   if (isLoading || !device) return <PageSpinner />
 
   const status = findRefById(statusRefs, device.device_status_id)
   const vendor = vendorsResp?.data?.find((v) => v.id === device.vendor_id)
+
+  const handleConnReq = async () => {
+    setConnReqError(null)
+    try {
+      await triggerConnReq.mutateAsync(deviceId)
+      alert('Connection Request berhasil dikirim. Menunggu respons Inform dari device (bisa beberapa detik).')
+    } catch (err) {
+      setConnReqError(err instanceof ApiError ? err.message : 'Gagal mengirim Connection Request')
+    }
+  }
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">
@@ -79,15 +103,54 @@ export function DeviceDetailPage() {
         >
           <ArrowLeft className="h-4 w-4" /> Kembali ke daftar device
         </button>
-        {hasRole('ADMIN') && (
-          <button
-            onClick={() => setShowApplyProfile(true)}
-            className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-300 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50"
-          >
-            <Sparkles className="h-4 w-4" /> Terapkan Provisioning Profile
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {hasRole('ADMIN', 'NOC') && (
+            <button
+              onClick={handleConnReq}
+              disabled={triggerConnReq.isPending || !device.connection_request_url}
+              title={!device.connection_request_url ? 'Device tidak memiliki connection request URL' : ''}
+              className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-300 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50 disabled:opacity-50"
+            >
+              <Radio className="h-4 w-4" /> Connection Req
+            </button>
+          )}
+          {hasRole('ADMIN') && (
+            <button
+              onClick={() => setShowApplyProfile(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-300 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50"
+            >
+              <Sparkles className="h-4 w-4" /> Terapkan Provisioning Profile
+            </button>
+          )}
+          {hasRole('ADMIN', 'NOC') && (
+            <button
+              onClick={() => {
+                if (window.confirm('Reboot device ini?')) {
+                  rebootMutation.mutate(deviceId)
+                }
+              }}
+              disabled={rebootMutation.isPending}
+              className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-300 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50"
+            >
+              <RefreshCcw className="h-4 w-4" /> Reboot
+            </button>
+          )}
+          {hasRole('ADMIN') && (
+            <button
+              onClick={() => {
+                if (window.confirm('PERINGATAN: Factory Reset akan mengembalikan device ke pengaturan pabrik dan memutus koneksi. Lanjutkan?')) {
+                  factoryResetMutation.mutate(deviceId)
+                }
+              }}
+              disabled={factoryResetMutation.isPending}
+              className="flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 dark:bg-red-900/30 dark:border-red-800 dark:text-red-400 transition-colors hover:bg-red-100 dark:hover:bg-red-900/50"
+            >
+              <AlertTriangle className="h-4 w-4" /> Factory Reset
+            </button>
+          )}
+        </div>
       </div>
+      {connReqError && <p className="mb-4 text-sm text-red-600">{connReqError}</p>}
 
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div>
@@ -129,14 +192,17 @@ export function DeviceDetailPage() {
         ))}
       </div>
 
-      {tab === 'overview' && <OverviewTab device={device} />}
-      {tab === 'parameters' && <ParametersTab deviceId={deviceId} />}
-      {tab === 'optical' && <OpticalMetricsTab deviceId={deviceId} />}
-      {tab === 'events' && <EventsTab deviceId={deviceId} />}
-      {tab === 'tasks' && <TasksTab deviceId={deviceId} />}
-      {tab === 'diagnostics' && <DiagnosticsTab deviceId={deviceId} canTrigger={hasRole('ADMIN', 'NOC')} />}
-      {tab === 'firmware' && <FirmwareTab deviceId={deviceId} vendorId={device.vendor_id} canSchedule={hasRole('ADMIN')} />}
-      {tab === 'timeline' && <TimelineTab deviceId={deviceId} />}
+      <div className="mt-6">
+        {tab === 'overview' && <OverviewTab device={device} />}
+        {tab === 'parameters' && <ParametersTab deviceId={deviceId} />}
+        {tab === 'optical' && <OpticalMetricsTab deviceId={deviceId} />}
+        {tab === 'events' && <EventsTab deviceId={deviceId} />}
+        {tab === 'tasks' && <TasksTab deviceId={deviceId} />}
+        {tab === 'diagnostics' && <DiagnosticsTab deviceId={deviceId} canTrigger={hasRole('ADMIN', 'NOC')} />}
+        {tab === 'firmware' && <FirmwareTab deviceId={deviceId} vendorId={device.vendor_id} canSchedule={hasRole('ADMIN')} />}
+        {tab === 'timeline' && <TimelineTab deviceId={deviceId} />}
+        {tab === 'config' && <ConfigHistory deviceId={deviceId} />}
+      </div>
     </div>
   )
 }
@@ -154,7 +220,52 @@ function Card({ children }: { children: ReactNode }) {
   return <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">{children}</div>
 }
 
+function EditDeviceModal({ device, onClose }: { device: NonNullable<ReturnType<typeof useDevice>['data']>; onClose: () => void }) {
+  const updateMutation = useUpdateDevice()
+  const [notes, setNotes] = useState(device.notes ?? '')
+  const [latitude, setLatitude] = useState(device.latitude?.toString() ?? '')
+  const [longitude, setLongitude] = useState(device.longitude?.toString() ?? '')
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault()
+    await updateMutation.mutateAsync({
+      id: device.id,
+      notes: notes || undefined,
+      latitude: latitude ? parseFloat(latitude) : undefined,
+      longitude: longitude ? parseFloat(longitude) : undefined,
+    })
+    onClose()
+  }
+
+  return (
+    <Modal title="Edit Device" onClose={onClose}>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Catatan</label>
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} className={inputCls} />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Latitude</label>
+            <input type="number" step="any" value={latitude} onChange={e => setLatitude(e.target.value)} className={inputCls} />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Longitude</label>
+            <input type="number" step="any" value={longitude} onChange={e => setLongitude(e.target.value)} className={inputCls} />
+          </div>
+        </div>
+        <div className="pt-2">
+          <button type="submit" disabled={updateMutation.isPending} className={`${primaryBtnCls} w-full`}>
+            Simpan Perubahan
+          </button>
+        </div>
+      </form>
+    </Modal>
+  )
+}
+
 function OverviewTab({ device }: { device: NonNullable<ReturnType<typeof useDevice>['data']> }) {
+  const [showEdit, setShowEdit] = useState(false)
   const rows: [string, string][] = [
     ['Device UUID', device.device_uuid],
     ['OUI', device.oui ?? '-'],
@@ -164,28 +275,35 @@ function OverviewTab({ device }: { device: NonNullable<ReturnType<typeof useDevi
     ['Connection Request URL', device.connection_request_url ?? '-'],
     ['Terakhir Boot', formatDateTime(device.last_boot_event_at)],
     ['Pertama Terdaftar', formatDateTime(device.created_at)],
+    ['Latitude', device.latitude?.toString() ?? '-'],
+    ['Longitude', device.longitude?.toString() ?? '-'],
     ['Catatan', device.notes ?? '-'],
   ]
   return (
     <Card>
+      <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 px-5 py-3">
+        <h3 className="font-medium text-sm text-slate-900 dark:text-slate-100">Detail Perangkat</h3>
+        <button onClick={() => setShowEdit(true)} className="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400">
+          Edit
+        </button>
+      </div>
       <dl className="divide-y divide-slate-100 dark:divide-slate-800">
         {rows.map(([label, value]) => (
           <div key={label} className="grid grid-cols-3 gap-4 px-5 py-3 text-sm">
             <dt className="text-slate-500 dark:text-slate-400">{label}</dt>
-            <dd className="col-span-2 break-all font-mono text-xs text-slate-800">{value}</dd>
+            <dd className="col-span-2 break-all font-mono text-xs text-slate-800 dark:text-slate-200">{value}</dd>
           </div>
         ))}
       </dl>
+      {showEdit && <EditDeviceModal device={device} onClose={() => setShowEdit(false)} />}
     </Card>
   )
 }
 
 function ParametersTab({ deviceId }: { deviceId: number }) {
-  const { data, isLoading } = useDeviceParameters(deviceId)
-  const [filter, setFilter] = useState('')
+  const { data, isLoading, refetch } = useDeviceParameters(deviceId)
 
   if (isLoading) return <PageSpinner />
-  const params = (data ?? []).filter((p) => p.parameter_name.toLowerCase().includes(filter.toLowerCase()))
 
   if (!data || data.length === 0) {
     return (
@@ -193,40 +311,26 @@ function ParametersTab({ deviceId }: { deviceId: number }) {
         icon={SlidersHorizontal}
         title="Belum ada parameter tersinkron"
         description="Parameter TR-069 akan muncul setelah ACS menerima ParameterList dari Inform atau GetParameterValues."
-      />
+      >
+        <div className="mt-4">
+          <button
+            onClick={() => refetch()}
+            className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
+          >
+            Refresh Data
+          </button>
+        </div>
+      </EmptyState>
     )
   }
 
   return (
-    <Card>
-      <div className="border-b border-slate-100 p-3">
-        <input
-          type="text"
-          placeholder="Filter nama parameter..."
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-500"
-        />
-      </div>
-      <div className="max-h-[32rem] overflow-y-auto">
-        <table className="w-full text-left text-sm">
-          <thead className="sticky top-0 bg-slate-50">
-            <tr className="border-b border-slate-200 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              <th className="px-5 py-2.5">Parameter</th>
-              <th className="px-5 py-2.5">Nilai</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-            {params.map((p) => (
-              <tr key={p.id}>
-                <td className="px-5 py-2.5 font-mono text-xs text-slate-700 dark:text-slate-300">{p.parameter_name}</td>
-                <td className="px-5 py-2.5 font-mono text-xs text-slate-900 dark:text-slate-100">{p.parameter_value ?? '-'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Card>
+    <ParameterTree
+      deviceId={deviceId}
+      parameters={data}
+      isLoading={isLoading}
+      onRefresh={() => refetch()}
+    />
   )
 }
 
@@ -524,13 +628,19 @@ function DiagnosticsTab({ deviceId, canTrigger }: { deviceId: number; canTrigger
 function FirmwareTab({ deviceId, vendorId, canSchedule }: { deviceId: number; vendorId: number | null; canSchedule: boolean }) {
   const { data: jobsResp, isLoading } = useFirmwareJobs(deviceId)
   const { data: firmwareResp } = useFirmwareList(vendorId ?? undefined)
+  const { data: filesResp } = useFiles({ pageSize: 100 })
   const { data: statusRefs } = useRefs('ref_task_status')
+  
   const [firmwareId, setFirmwareId] = useState('')
+  const [fileId, setFileId] = useState('')
   const [error, setError] = useState<string | null>(null)
+  
   const scheduleMutation = useScheduleFirmwareUpgrade()
+  const pushFileMutation = usePushFileToDevice()
 
   const jobs = jobsResp?.data ?? []
   const firmwareOptions = firmwareResp?.data ?? []
+  const filesOptions = (filesResp?.data ?? []).filter(f => f.file_type !== 'FIRMWARE' && (!f.vendor_id || f.vendor_id === vendorId))
 
   async function handleSchedule() {
     setError(null)
@@ -542,13 +652,23 @@ function FirmwareTab({ deviceId, vendorId, canSchedule }: { deviceId: number; ve
     }
   }
 
+  async function handlePushFile() {
+    setError(null)
+    try {
+      await pushFileMutation.mutateAsync({ deviceId, fileId: Number(fileId) })
+      setFileId('')
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Gagal mengirim file')
+    }
+  }
+
   return (
     <div className="space-y-4">
       {canSchedule && (
-        <Card>
-          <div className="flex flex-wrap items-end gap-3 p-4">
-            <div className="min-w-[220px]">
-              <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Firmware</label>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <Card>
+            <div className="flex flex-col gap-3 p-4 h-full">
+              <label className="text-xs font-medium text-slate-600 dark:text-slate-400">Firmware Upgrade</label>
               <select value={firmwareId} onChange={(e) => setFirmwareId(e.target.value)} disabled={!vendorId} className={inputCls}>
                 <option value="">{vendorId ? 'Pilih firmware...' : 'Vendor device belum diketahui'}</option>
                 {firmwareOptions.map((f) => (
@@ -557,14 +677,35 @@ function FirmwareTab({ deviceId, vendorId, canSchedule }: { deviceId: number; ve
                   </option>
                 ))}
               </select>
+              <div className="mt-auto pt-2">
+                <button onClick={handleSchedule} disabled={!firmwareId || scheduleMutation.isPending} className={`${primaryBtnCls} w-full`}>
+                  <HardDrive className="h-4 w-4" /> Jadwalkan Upgrade
+                </button>
+              </div>
             </div>
-            <button onClick={handleSchedule} disabled={!firmwareId || scheduleMutation.isPending} className={primaryBtnCls}>
-              <HardDrive className="h-4 w-4" /> Jadwalkan Upgrade
-            </button>
-          </div>
-          {error && <p className="px-4 pb-3 text-sm text-red-600">{error}</p>}
-        </Card>
+          </Card>
+          
+          <Card>
+            <div className="flex flex-col gap-3 p-4 h-full">
+              <label className="text-xs font-medium text-slate-600 dark:text-slate-400">Push Configuration File</label>
+              <select value={fileId} onChange={(e) => setFileId(e.target.value)} className={inputCls}>
+                <option value="">Pilih file konfigurasi...</option>
+                {filesOptions.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.file_name} ({f.file_type})
+                  </option>
+                ))}
+              </select>
+              <div className="mt-auto pt-2">
+                <button onClick={handlePushFile} disabled={!fileId || pushFileMutation.isPending} className={`${primaryBtnCls} w-full`}>
+                  <FileUp className="h-4 w-4" /> Push ke Device
+                </button>
+              </div>
+            </div>
+          </Card>
+        </div>
       )}
+      {error && <p className="text-sm text-red-600">{error}</p>}
 
       {isLoading ? (
         <PageSpinner />

@@ -113,3 +113,34 @@ func (r *Router) revokeAPIToken(c *echo.Context) error {
 	}
 	return c.NoContent(http.StatusNoContent)
 }
+
+func (r *Router) oidcLogin(c *echo.Context) error {
+	state := "random-state" // TODO: use secure state generation
+	url, err := r.Auth.GetOIDCAuthURL(state)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	return c.Redirect(http.StatusFound, url)
+}
+
+func (r *Router) oidcCallback(c *echo.Context) error {
+	code := c.QueryParam("code")
+	if code == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "kode OIDC tidak ditemukan")
+	}
+
+	u, token, err := r.Auth.OIDCLogin(c.Request().Context(), code)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
+	}
+
+	// Sebagai POC, kembalikan JSON sama seperti normal login.
+	// Di frontend nanti bisa simpan token dan pindah ke /dashboard
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"access_token": token,
+		"token_type":   "Bearer",
+		"user": map[string]interface{}{
+			"id": u.ID, "uuid": u.UserUUID, "username": u.Username, "roles": u.Roles, "tenant_id": u.TenantID,
+		},
+	})
+}

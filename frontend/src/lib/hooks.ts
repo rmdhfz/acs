@@ -10,7 +10,11 @@ import type {
   DeviceOpticalMetric,
   DeviceParameter,
   DeviceStats,
+  GenericFile,
   FirmwareFile,
+  Tag,
+  Preset,
+  FirmwareRolloutBatch,
   FirmwareUpgradeJob,
   ListResponse,
   ProvisioningProfile,
@@ -74,7 +78,7 @@ export interface DeviceFilters {
   page_size?: number
 }
 
-const LIVE_REFRESH_MS = 5000
+const LIVE_REFRESH_MS = 60000 // Diperpanjang karena sudah menggunakan WebSockets
 
 export function useDevices(filters: DeviceFilters) {
   return useQuery({
@@ -90,6 +94,18 @@ export function useDevice(id: number) {
     queryKey: ['device', id],
     queryFn: () => api.get<Device>(`/devices/${id}`),
     refetchInterval: LIVE_REFRESH_MS,
+  })
+}
+
+export function useUpdateDevice() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...payload }: { id: number; notes?: string; connection_request_url?: string; connection_request_username?: string; connection_request_password?: string; latitude?: number; longitude?: number }) =>
+      api.patch<Device>(`/devices/${id}`, payload),
+    onSuccess: (updatedDevice) => {
+      queryClient.setQueryData(['device', updatedDevice.id], updatedDevice)
+      queryClient.invalidateQueries({ queryKey: ['devices'] })
+    },
   })
 }
 
@@ -139,6 +155,22 @@ export function useDeviceStats() {
   return useQuery({
     queryKey: ['devices', 'stats'],
     queryFn: () => api.get<DeviceStats>('/devices/stats'),
+    refetchInterval: LIVE_REFRESH_MS,
+  })
+}
+
+export function useCwmpSessionsCount() {
+  return useQuery({
+    queryKey: ['cwmp', 'sessions', 'count'],
+    queryFn: () => api.get<{ count: number }>('/cwmp/sessions/count'),
+    refetchInterval: LIVE_REFRESH_MS,
+  })
+}
+
+export function useWebhookFailedCount() {
+  return useQuery({
+    queryKey: ['webhooks', 'deliveries', 'failed-count'],
+    queryFn: () => api.get<{ count: number }>('/webhooks/deliveries/failed-count'),
     refetchInterval: LIVE_REFRESH_MS,
   })
 }
@@ -272,6 +304,8 @@ export interface UpsertMappingInput {
   vendor_id: number
   data_model_version_id: number
   device_model_id?: number
+  // Pola SQL LIKE opsional thd devices.software_version (migrations/0010).
+  software_version_pattern?: string
   logical_key: string
   tr069_path: string
   parameter_type_id?: number
@@ -368,7 +402,16 @@ export interface ZTRuleFormInput {
   device_model_id?: number
   oui?: string
   serial_pattern?: string
-  provisioning_profile_id: number
+  software_version_pattern?: string
+  // Wajib berpasangan (backend menegakkan CHECK constraint).
+  match_parameter_name?: string
+  match_parameter_value_pattern?: string
+  // Opsional sejak migrations/0009.
+  provisioning_profile_id?: number
+  post_apply_reboot?: boolean
+  firmware_file_id?: number
+  // Wajib — FK ref_ztp_trigger_event (id via useRefs('ref_ztp_trigger_event')).
+  trigger_event_id: number
   priority: number
   is_active?: boolean
 }
@@ -449,6 +492,79 @@ export function useScheduleFirmwareUpgrade() {
     mutationFn: ({ deviceId, firmwareId }: { deviceId: number; firmwareId: number }) =>
       api.post<FirmwareUpgradeJob>(`/devices/${deviceId}/firmware-upgrade`, { firmware_id: firmwareId }),
     onSuccess: (_data, { deviceId }) => qc.invalidateQueries({ queryKey: ['device', deviceId, 'firmware-jobs'] }),
+  })
+}
+
+// ---- Firmware Rollout Batch (canary/staged rollout, migrations/0011) ----
+
+export function useFirmwareRolloutBatches(tenantId?: number) {
+  return useQuery({
+    queryKey: ['firmware-rollout-batches', tenantId],
+    queryFn: () =>
+      api.get<ListResponse<FirmwareRolloutBatch>>(
+        `/firmware/rollout-batches${buildQuery({ tenant_id: tenantId, page_size: 200 })}`,
+      ),
+    refetchInterval: LIVE_REFRESH_MS,
+  })
+}
+
+// ---- Config Snapshots ----
+
+export interface DeviceConfigSnapshot {
+  id: number
+  device_id: number
+  snapshot_data: Record<string, string>
+  created_at: string
+}
+
+export function useConfigSnapshots(deviceId: number, page: number = 1, pageSize: number = 50) {
+  return useQuery({
+    queryKey: ['device', deviceId, 'config-snapshots', page, pageSize],
+    queryFn: () => api.get<ListResponse<DeviceConfigSnapshot>>(`/devices/${deviceId}/config-snapshots?page=${page}&page_size=${pageSize}`),
+  })
+}
+
+export function useCreateConfigSnapshot() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (deviceId: number) => api.post<void>(`/devices/${deviceId}/config-snapshots`),
+    onSuccess: (_data, deviceId) => qc.invalidateQueries({ queryKey: ['device', deviceId, 'config-snapshots'] }),
+  })
+}
+
+export interface CreateRolloutBatchInput {
+  tenant_id?: number
+  firmware_file_id: number
+  vendor_id?: number
+  device_model_id?: number
+  wave_percentage: number
+  max_failure_rate_percent: number
+  notes?: string
+  scheduled_at?: string
+}
+
+export function useCreateRolloutBatch() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: CreateRolloutBatchInput) =>
+      api.post<FirmwareRolloutBatch>('/firmware/rollout-batches', input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['firmware-rollout-batches'] }),
+  })
+}
+
+export function useAdvanceRolloutBatch() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api.post<FirmwareRolloutBatch>(`/firmware/rollout-batches/${id}/advance`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['firmware-rollout-batches'] }),
+  })
+}
+
+export function useCancelRolloutBatch() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api.post<void>(`/firmware/rollout-batches/${id}/cancel`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['firmware-rollout-batches'] }),
   })
 }
 
@@ -617,5 +733,270 @@ export function useDeleteUser() {
   return useMutation({
     mutationFn: (userId: number) => api.del<void>(`/users/${userId}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  })
+}
+
+// ---- Connection Request (trigger manual CPE Inform) ----
+
+export function useTriggerConnectionRequest() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (deviceId: number) => api.post<{ message: string }>(`/devices/${deviceId}/connection-request`, {}),
+    onSuccess: (_data, deviceId) => qc.invalidateQueries({ queryKey: ['device', deviceId] }),
+  })
+}
+
+export function useRebootDevice() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (deviceId: number) => api.post<{ message: string }>(`/devices/${deviceId}/reboot`, {}),
+    onSuccess: (_data, deviceId) => qc.invalidateQueries({ queryKey: ['device', deviceId] }),
+  })
+}
+
+export function useFactoryResetDevice() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (deviceId: number) => api.post<{ message: string }>(`/devices/${deviceId}/factory-reset`, {}),
+    onSuccess: (_data, deviceId) => qc.invalidateQueries({ queryKey: ['device', deviceId] }),
+  })
+}
+
+export function usePushFileToDevice() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ deviceId, fileId }: { deviceId: number; fileId: number }) =>
+      api.post<{ message: string }>(`/devices/${deviceId}/push-file`, { file_id: fileId }),
+    onSuccess: (_data, { deviceId }) => qc.invalidateQueries({ queryKey: ['device', deviceId] }),
+  })
+}
+
+// ---- Webhooks (migrations/0013) ----
+
+export interface WebhookSubscription {
+  id: number
+  subscription_uuid: string
+  tenant_id: number | null
+  event_type_id: number
+  name: string
+  target_url: string
+  is_active: boolean
+  description: string | null
+  created_at: string
+  updated_at: string
+  // secret: hanya ada satu kali di response create
+  secret?: string
+}
+
+export interface WebhookDelivery {
+  id: number
+  delivery_uuid: string
+  subscription_id: number
+  event_type_id: number
+  payload: unknown
+  status: string
+  attempt_count: number
+  max_attempts: number
+  response_status: number | null
+  error_message: string | null
+  next_attempt_at: string | null
+  delivered_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export function useWebhooks(tenantId?: number) {
+  return useQuery({
+    queryKey: ['webhooks', tenantId],
+    queryFn: () =>
+      api.get<ListResponse<WebhookSubscription>>(
+        `/webhooks${buildQuery({ tenant_id: tenantId, page_size: 100 })}`,
+      ),
+    refetchInterval: 30_000,
+  })
+}
+
+export interface CreateWebhookInput {
+  tenant_id?: number
+  event_type: string
+  name: string
+  target_url: string
+  description?: string
+}
+
+export function useCreateWebhook() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: CreateWebhookInput) => api.post<WebhookSubscription>('/webhooks', input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['webhooks'] }),
+  })
+}
+
+export interface UpdateWebhookInput {
+  name: string
+  target_url: string
+  is_active: boolean
+  description?: string
+}
+
+export function useUpdateWebhook() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, input }: { id: number; input: UpdateWebhookInput }) =>
+      api.patch<void>(`/webhooks/${id}`, { ...input }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['webhooks'] }),
+  })
+}
+
+export function useDeleteWebhook() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api.del<void>(`/webhooks/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['webhooks'] }),
+  })
+}
+
+export function useWebhookDeliveries(subscriptionId: number | undefined) {
+  return useQuery({
+    queryKey: ['webhook-deliveries', subscriptionId],
+    queryFn: () =>
+      api.get<ListResponse<WebhookDelivery>>(`/webhooks/${subscriptionId}/deliveries?page_size=50`),
+    enabled: subscriptionId !== undefined,
+    refetchInterval: 15_000,
+  })
+}
+
+export function useTestWebhook() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api.post<WebhookDelivery>(`/webhooks/${id}/test`, {}),
+    onSuccess: (_data, id) => qc.invalidateQueries({ queryKey: ['webhook-deliveries', id] }),
+  })
+}
+
+
+export function useFiles(params: { page?: number; pageSize?: number } = {}) {
+  return useQuery({
+    queryKey: ['files', params],
+    queryFn: () => api.get<ListResponse<GenericFile>>('/files' + buildQuery(params)),
+  })
+}
+
+export function useUploadFile() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (formData: FormData) => api.postForm<GenericFile>('/files', formData),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['files'] }),
+  })
+}
+
+export function useDeleteFile() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api.del<void>('/files/' + id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['files'] }),
+  })
+}
+
+// ---- Tags ----
+export function useTags(params: { page?: number; pageSize?: number } = {}) {
+  return useQuery({
+    queryKey: ['tags', params],
+    queryFn: () => api.get<ListResponse<Tag>>('/tags' + buildQuery(params)),
+  })
+}
+
+export function useCreateTag() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: Partial<Tag>) => api.post<Tag>('/tags', data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tags'] }),
+  })
+}
+
+export function useDeleteTag() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api.del<void>('/tags/' + id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tags'] }),
+  })
+}
+
+// ---- Presets ----
+export function usePresets(params: { page?: number; pageSize?: number } = {}) {
+  return useQuery({
+    queryKey: ['presets', params],
+    queryFn: () => api.get<ListResponse<Preset>>('/presets' + buildQuery(params)),
+  })
+}
+
+export function useCreatePreset() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: Partial<Preset>) => api.post<Preset>('/presets', data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['presets'] }),
+  })
+}
+
+export function useUpdatePreset() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Partial<Preset> }) => api.patch<Preset>('/presets/' + id, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['presets'] }),
+  })
+}
+
+export function useDeletePreset() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api.del<void>('/presets/' + id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['presets'] }),
+  })
+}
+
+// ---- Advanced TR-069 RPCs (FR-5) ----
+
+export function useAddObject() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ deviceId, objectName }: { deviceId: number; objectName: string }) =>
+      api.post<void>(`/devices/${deviceId}/tasks/add-object`, { object_name: objectName }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+  })
+}
+
+export function useDeleteObject() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ deviceId, objectName }: { deviceId: number; objectName: string }) =>
+      api.post<void>(`/devices/${deviceId}/tasks/delete-object`, { object_name: objectName }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+  })
+}
+
+export function useGetParameterNames() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ deviceId, path, nextLevel }: { deviceId: number; path: string; nextLevel: boolean }) =>
+      api.post<void>(`/devices/${deviceId}/tasks/get-parameter-names`, { path, next_level: nextLevel }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+  })
+}
+
+export function useGetParameterValues() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ deviceId, names }: { deviceId: number; names: string[] }) =>
+      api.post<void>(`/devices/${deviceId}/tasks/get-parameter-values`, { names }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+  })
+}
+
+export function useSetParameterValues() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ deviceId, values }: { deviceId: number; values: Record<string, string> }) =>
+      api.post<void>(`/devices/${deviceId}/tasks/set-parameter-values`, { values }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
   })
 }

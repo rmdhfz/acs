@@ -62,6 +62,19 @@ services:
       timeout: 5s
       retries: 20
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "16379:6379"
+    volumes:
+      - acs-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
   acsd:
     build: .
     restart: unless-stopped
@@ -76,6 +89,7 @@ services:
       ACS_MINIO_SECRET_KEY: ${ACS_MINIO_SECRET_KEY}
       ACS_MINIO_BUCKET: ${ACS_MINIO_BUCKET:-acs-firmware}
       ACS_MINIO_USE_SSL: "false"
+      ACS_REDIS_ADDR: "redis:6379"
     ports:
       - "18080:8080"
       - "17547:7547"
@@ -83,6 +97,8 @@ services:
       migrate:
         condition: service_completed_successfully
       minio:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
   # Observability (ROADMAP.md Fase 2, TECH.md §10) — scrape GET /api/v1/metrics
@@ -105,3 +121,4 @@ volumes:
   acs-mariadb-data:
   acs-prometheus-data:
   acs-minio-data:
+  acs-redis-data:
