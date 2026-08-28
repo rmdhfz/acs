@@ -46,7 +46,7 @@ export function ConfigHistory({ deviceId }: { deviceId: number }) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-medium text-slate-900 dark:text-white">Configuration History</h3>
-        {hasRole(['ADMIN', 'NOC']) && (
+        {hasRole('ADMIN', 'NOC') && (
           <button
             onClick={handleCreate}
             disabled={createSnap.isPending}
