@@ -149,8 +149,17 @@ menempelkan tag tenant B.
 - **Push ke `origin/dev`** (permintaan user 2026-08-31: "push semuanya ke branch
   dev, fokus di dev sebelum masuk main"). `main` TIDAK disentuh (tetap di
   `9339f3c`, ahead 4 dari `origin/main`). `dev` = `origin/main` + 4 commit
-  main yang belum ter-push + commit `wip(dev)` (batch 2026-08-29 + fix
-  2026-08-31).
+  main yang belum ter-push + `wip(dev)` (batch 2026-08-29 + fix backend
+  2026-08-31) + `feat(dev)` (UI tag).
+
+### TEMUAN: tidak ada CI workflow di repo
+
+`ROADMAP.md` Fase 0 mengklaim `.github/workflows/ci.yml` dibuat & "jalan hijau
+di GitHub 2026-08-22" (dengan link run). **Realita: `.github/` tidak ada di
+disk maupun di tree ref manapun** (`git ls-tree main`, `HEAD` — kosong). Entah
+tak pernah di-commit atau terhapus. Tidak diblokir apa pun sekarang, tapi
+artinya tidak ada gerbang otomatis di `origin/dev`/`origin/main`. Belum
+dibuat ulang sesi ini (keputusan konten CI = ranah user).
 
 ---
 
