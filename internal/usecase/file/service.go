@@ -3,7 +3,6 @@ package file
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -50,7 +49,7 @@ func (s *Service) UploadFile(ctx context.Context, actor domain.Actor, in UploadF
 	if in.FileSize <= 0 || in.FileSize > domain.MaxFirmwareFileSizeBytes {
 		return nil, fmt.Errorf("%w: ukuran file tidak valid", domain.ErrInvalidInput)
 	}
-	
+
 	if in.TenantID != nil && !actor.IsSuperadmin() && (*actor.TenantID != *in.TenantID) {
 		return nil, domain.ErrForbidden
 	}
@@ -154,7 +153,7 @@ func (s *Service) Delete(ctx context.Context, actor domain.Actor, id uint64) err
 	if f.TenantID != nil && !actor.IsSuperadmin() && (*actor.TenantID != *f.TenantID) {
 		return domain.ErrForbidden
 	}
-	
+
 	if err := s.files.Delete(ctx, id); err != nil {
 		return err
 	}

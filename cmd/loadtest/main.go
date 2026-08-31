@@ -91,12 +91,22 @@ func runSession(client *http.Client, url, user, pass string, idx int) result {
 	if resp.StatusCode != http.StatusOK {
 		return result{latency: latency, status: resp.StatusCode, err: fmt.Errorf("Inform status %d (bukan 200)", resp.StatusCode)}
 	}
+	// Cookie sesi dari InformResponse — HARUS dibawa di POST kosong penutup,
+	// kalau tidak ACS tidak bisa meresolve sesi & baris device_sessions
+	// tertinggal status OPEN selamanya (persis kondisi 348 sesi basi yang
+	// ditemukan 2026-08-31). client di sini sengaja tanpa cookie jar bersama
+	// supaya sesi antar-goroutine tidak saling tercampur — jadi cookie
+	// diteruskan manual.
+	sessionCookies := resp.Cookies()
 
 	// Tutup sesi dgn POST kosong (TECH.md §3 — sesi CWMP tetap terbuka sampai
 	// tidak ada task lanjutan; device simulasi ini tidak punya task pending).
 	closeReq, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(nil))
 	if err == nil {
 		closeReq.SetBasicAuth(user, pass)
+		for _, ck := range sessionCookies {
+			closeReq.AddCookie(ck)
+		}
 		if closeResp, err := client.Do(closeReq); err == nil {
 			closeResp.Body.Close()
 		}

@@ -67,8 +67,8 @@ func (r *Router) getWebhook(c *echo.Context) error {
 }
 
 type updateWebhookRequest struct {
-	Name        string  `json:"name"`
-	TargetURL   string  `json:"target_url"`
+	Name      string `json:"name"`
+	TargetURL string `json:"target_url"`
 	// is_active: true/false wajib diisi eksplisit. Bila tidak diisi (null),
 	// status aktif subscription tidak berubah — konsisten dgn pola PATCH partial
 	// update di endpoint lain. *bool supaya false bisa dibedakan dari "tidak ada".
@@ -140,4 +140,3 @@ func (r *Router) countFailedDeliveries(c *echo.Context) error {
 	}
 	return c.JSON(http.StatusOK, map[string]int{"count": count})
 }
-

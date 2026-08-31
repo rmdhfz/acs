@@ -141,14 +141,14 @@ func (r *Router) listFirmwareJobs(c *echo.Context) error {
 // ---- Firmware Rollout Batch (canary/staged rollout, migrations/0011) ----
 
 type createRolloutBatchRequest struct {
-	TenantID              *uint64 `json:"tenant_id"`
-	FirmwareFileID        uint64  `json:"firmware_file_id"`
-	VendorID              *uint64 `json:"vendor_id"`
-	DeviceModelID         *uint64 `json:"device_model_id"`
-	WavePercentage        uint8   `json:"wave_percentage"`
-	MaxFailureRatePercent uint8       `json:"max_failure_rate_percent"`
-	Notes                 *string     `json:"notes"`
-	ScheduledAt           *time.Time  `json:"scheduled_at"`
+	TenantID              *uint64    `json:"tenant_id"`
+	FirmwareFileID        uint64     `json:"firmware_file_id"`
+	VendorID              *uint64    `json:"vendor_id"`
+	DeviceModelID         *uint64    `json:"device_model_id"`
+	WavePercentage        uint8      `json:"wave_percentage"`
+	MaxFailureRatePercent uint8      `json:"max_failure_rate_percent"`
+	Notes                 *string    `json:"notes"`
+	ScheduledAt           *time.Time `json:"scheduled_at"`
 }
 
 // createRolloutBatch — validasi lengkap (RBAC tenant scope, wave_percentage

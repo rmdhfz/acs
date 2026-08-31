@@ -332,6 +332,18 @@ func (s *Service) EnqueueSetParameterValues(ctx context.Context, actor domain.Ac
 	})
 }
 
+// EnqueueGetParameterNames mengantre task GetParameterNames — dipakai
+// auto-discovery parameter tree saat device baru dgn vendor tak dikenal
+// BOOTSTRAP (usecase/session). path "" + nextLevel true = ambil level teratas.
+func (s *Service) EnqueueGetParameterNames(ctx context.Context, actor domain.Actor, deviceID uint64, path string, nextLevel bool, priority uint8) (*domain.Task, error) {
+	return s.CreateTask(ctx, actor, domain.CreateTaskInput{
+		DeviceID:   deviceID,
+		TaskType:   domain.TaskTypeGetParameterNames,
+		Priority:   priority,
+		Parameters: map[string]interface{}{"path": path, "next_level": nextLevel},
+	})
+}
+
 // EnqueueReboot mengimplementasikan domain.TaskEnqueuer — dipakai aksi
 // PostApplyReboot pada ZeroTouchRule (migrations/0009, usecase/provisioning).
 // REBOOT tidak butuh resolusi logical key/parameter apa pun (beda dari
@@ -505,9 +517,9 @@ func (s *Service) Complete(ctx context.Context, taskID uint64, response domain.J
 	err := s.tasks.MarkCompleted(ctx, taskID, response, time.Now())
 	if err == nil {
 		s.publishTaskStatusEvent(ctx, taskID, domain.TaskStatusCompleted)
-		
+
 		// Hook Auto-Discovery
-		if t, err := s.tasks.GetByID(ctx, taskID); err == nil && t.TaskType == domain.TaskTypeGetParameterNames {
+		if t, err := s.tasks.GetByID(ctx, taskID); err == nil && t.TaskTypeCode == domain.TaskTypeGetParameterNames {
 			go s.handleAutoDiscoveryResponse(context.Background(), t, response)
 		}
 	}
@@ -662,7 +674,7 @@ func (s *Service) failOrRetry(ctx context.Context, t *domain.Task, finalStatusCo
 	if err := s.tasks.UpdateStatus(ctx, t.ID, status.ID, nil); err != nil {
 		return err
 	}
-	
+
 	s.publishTaskStatusEvent(ctx, t.ID, statusCode)
 
 	if statusCode == domain.TaskStatusFailed {
@@ -691,11 +703,11 @@ func (s *Service) handleAutoDiscoveryResponse(ctx context.Context, t *domain.Tas
 		// Simpan nama parameter dengan nilai kosong sebagai placeholder
 		val := ""
 		params = append(params, domain.DeviceParameter{
-			DeviceID:      t.DeviceID,
-			ParameterName: item.Name,
+			DeviceID:       t.DeviceID,
+			ParameterName:  item.Name,
 			ParameterValue: &val, // Harus pointer ke string sesuai skema
 		})
-		
+
 		// Kumpulkan leaf nodes (yang bukan parent object) untuk GetParameterValues
 		// Biasanya leaf nodes tidak berakhiran dengan "."
 		if !strings.HasSuffix(item.Name, ".") {

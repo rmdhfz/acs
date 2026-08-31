@@ -296,3 +296,59 @@ func TestAuthenticateInform(t *testing.T) {
 		}
 	})
 }
+
+// fakeSessionRepo implementasi in-memory minimal domain.DeviceSessionRepository
+// — cukup untuk menguji TimeoutStaleSessions (reap sesi CWMP basi).
+type fakeSessionRepo struct {
+	sessions   []*domain.DeviceSession
+	cutoffSeen *time.Time // olderThan yang diterima TimeoutStaleOpen call terakhir
+}
+
+func (r *fakeSessionRepo) Create(context.Context, *domain.DeviceSession) error { return nil }
+func (r *fakeSessionRepo) GetByToken(context.Context, string) (*domain.DeviceSession, error) {
+	return nil, domain.ErrNotFound
+}
+func (r *fakeSessionRepo) UpdateStatus(context.Context, uint64, string, *time.Time) error { return nil }
+func (r *fakeSessionRepo) SetCWMPID(context.Context, uint64, string) error                { return nil }
+func (r *fakeSessionRepo) SetCWMPNamespace(context.Context, uint64, string) error         { return nil }
+func (r *fakeSessionRepo) CountOpen(context.Context) (int, error)                         { return 0, nil }
+
+func (r *fakeSessionRepo) TimeoutStaleOpen(_ context.Context, olderThan time.Time) (int64, error) {
+	r.cutoffSeen = &olderThan
+	var n int64
+	for _, s := range r.sessions {
+		if s.Status == domain.SessionStatusOpen && s.StartedAt.Before(olderThan) {
+			s.Status = domain.SessionStatusTimeout
+			n++
+		}
+	}
+	return n, nil
+}
+
+func TestTimeoutStaleSessions(t *testing.T) {
+	now := time.Now()
+	repo := &fakeSessionRepo{sessions: []*domain.DeviceSession{
+		{ID: 1, Status: domain.SessionStatusOpen, StartedAt: now.Add(-30 * time.Minute)},   // basi -> reap
+		{ID: 2, Status: domain.SessionStatusOpen, StartedAt: now.Add(-2 * time.Minute)},    // masih hidup
+		{ID: 3, Status: domain.SessionStatusClosed, StartedAt: now.Add(-40 * time.Minute)}, // sudah selesai
+	}}
+	svc := &Service{sessions: repo}
+
+	n, err := svc.TimeoutStaleSessions(context.Background(), 15*time.Minute)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("want 1 sesi di-reap, got %d", n)
+	}
+	if repo.sessions[0].Status != domain.SessionStatusTimeout {
+		t.Fatalf("sesi basi harusnya TIMEOUT, got %s", repo.sessions[0].Status)
+	}
+	if repo.sessions[1].Status != domain.SessionStatusOpen {
+		t.Fatalf("sesi <15 menit tidak boleh disentuh, got %s", repo.sessions[1].Status)
+	}
+	// threshold harus diterjemahkan jadi cutoff ~15 menit lalu (bukan "sekarang").
+	if repo.cutoffSeen == nil || now.Sub(*repo.cutoffSeen) < 14*time.Minute || now.Sub(*repo.cutoffSeen) > 16*time.Minute {
+		t.Fatalf("cutoff yang diteruskan ke repo di luar rentang wajar: %v", repo.cutoffSeen)
+	}
+}

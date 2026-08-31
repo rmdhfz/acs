@@ -33,6 +33,10 @@ type Task struct {
 	SentAt       *time.Time     `db:"sent_at" json:"sent_at"`
 	CompletedAt  *time.Time     `db:"completed_at" json:"completed_at"`
 	Audit
+	// TaskTypeCode — kode ref_task_types (mis. GET_PARAMETER_NAMES), hasil
+	// JOIN di GetByID/List. Kosong pada query yang tidak ikut men-JOIN
+	// ref_task_types (mis. SELECT * polos untuk sweeper internal).
+	TaskTypeCode string `db:"task_type_code" json:"task_type_code,omitempty"`
 }
 
 type TaskFilter struct {

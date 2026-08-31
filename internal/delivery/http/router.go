@@ -9,19 +9,21 @@ import (
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
 
+	"acs/internal/delivery/ws"
 	"acs/internal/domain"
 	"acs/internal/usecase/auth"
 	"acs/internal/usecase/device"
 	"acs/internal/usecase/diagnostics"
+	"acs/internal/usecase/file"
 	"acs/internal/usecase/firmware"
 	"acs/internal/usecase/iam"
+	"acs/internal/usecase/preset"
 	"acs/internal/usecase/provisioning"
+	"acs/internal/usecase/selfservice"
+	"acs/internal/usecase/session"
+	"acs/internal/usecase/tag"
 	"acs/internal/usecase/task"
 	"acs/internal/usecase/webhook"
-	"acs/internal/usecase/file"
-	"acs/internal/usecase/preset"
-	"acs/internal/usecase/tag"
-	"acs/internal/delivery/ws"
 )
 
 type Router struct {
@@ -52,6 +54,7 @@ type Router struct {
 	Files          *file.Service
 	Tags           *tag.Service
 	Presets        *preset.Service
+	SelfService    *selfservice.Service
 	WSHub          *ws.Hub
 }
 
@@ -66,7 +69,7 @@ func (r *Router) Register(e *echo.Echo) {
 	// serangan secara independen sbg lapisan pertahanan kedua, bukan
 	// pengganti fix TOCTOU-nya (temuan acs-security-reviewer).
 	api.POST("/auth/login", r.login, middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(2)))
-	
+
 	api.GET("/auth/oidc/login", r.oidcLogin)
 	api.GET("/auth/oidc/callback", r.oidcCallback)
 
@@ -145,7 +148,7 @@ func (r *Router) Register(e *echo.Echo) {
 	authed.POST("/devices/:id/reboot", r.rebootDevice, RequireRoles(adminOrNOC...))
 	authed.POST("/devices/:id/factory-reset", r.factoryResetDevice, RequireRoles(admin...))
 	authed.POST("/devices/:id/push-file", r.pushFileToDevice, RequireRoles(admin...))
-	
+
 	// Advanced TR-069 RPCs (FR-5)
 	authed.POST("/devices/:id/tasks/add-object", r.addObjectDevice, RequireRoles(admin...))
 	authed.POST("/devices/:id/tasks/delete-object", r.deleteObjectDevice, RequireRoles(admin...))
@@ -223,9 +226,17 @@ func (r *Router) Register(e *echo.Echo) {
 	authed.POST("/tags", r.createTag, RequireRoles(admin...))
 	authed.GET("/tags", r.listTags)
 	authed.DELETE("/tags/:id", r.deleteTag, RequireRoles(admin...))
+	// Device <-> tag (segmentasi gaya GenieACS). GET terbuka utk semua role
+	// terautentikasi (spt GET /devices); assign/remove adminOrNOC (aksi
+	// operasional NOC, bukan mutasi katalog). Filter GET /devices?tag_id=N.
+	authed.GET("/devices/:id/tags", r.listDeviceTags)
+	authed.POST("/devices/:id/tags", r.assignDeviceTag, RequireRoles(adminOrNOC...))
+	authed.DELETE("/devices/:id/tags/:tagId", r.removeDeviceTag, RequireRoles(adminOrNOC...))
 
 	authed.POST("/presets", r.createPreset, RequireRoles(admin...))
 	authed.GET("/presets", r.listPresets)
 	authed.PATCH("/presets/:id", r.updatePreset, RequireRoles(admin...))
 	authed.DELETE("/presets/:id", r.deletePreset, RequireRoles(admin...))
+
+	r.mountSelfServiceRoutes(api)
 }

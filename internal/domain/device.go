@@ -48,7 +48,8 @@ type DeviceFilter struct {
 	VendorID       *uint64
 	DeviceModelID  *uint64
 	DeviceStatusID *uint64
-	Search         string // cocok ke serial_number/mac_address
+	Search         string  // cocok ke serial_number/mac_address
+	TagID          *uint64 // hanya device yang punya tag ini (device_tags, migrations/0019)
 }
 
 // DeviceStatusCount/DeviceVendorCount — hasil agregasi utk dashboard analitik
@@ -101,10 +102,10 @@ type DeviceParameterRepository interface {
 
 // DeviceConfigSnapshot menyimpan status parameter full pada waktu tertentu
 type DeviceConfigSnapshot struct {
-	ID           uint64          `db:"id" json:"id"`
-	DeviceID     uint64          `db:"device_id" json:"device_id"`
-	SnapshotData JSONRawMessage  `db:"snapshot_data" json:"snapshot_data"`
-	CreatedAt    time.Time       `db:"created_at" json:"created_at"`
+	ID           uint64         `db:"id" json:"id"`
+	DeviceID     uint64         `db:"device_id" json:"device_id"`
+	SnapshotData JSONRawMessage `db:"snapshot_data" json:"snapshot_data"`
+	CreatedAt    time.Time      `db:"created_at" json:"created_at"`
 }
 
 type DeviceConfigSnapshotRepository interface {
@@ -137,6 +138,12 @@ const (
 	SessionStatusOpen   = "OPEN"
 	SessionStatusClosed = "CLOSED"
 	SessionStatusError  = "ERROR"
+	// SessionStatusTimeout — sesi yang ditinggalkan CPE tanpa POST-kosong
+	// penutup (mis. koneksi putus di tengah sesi), di-reap oleh sweeper
+	// periodik di cmd/acsd setelah melewati ambang usia. Dibedakan dari
+	// ERROR (fault protokol yang eksplisit) supaya observability bisa
+	// memisahkan "CPE menghilang" dari "sesi gagal".
+	SessionStatusTimeout = "TIMEOUT"
 )
 
 type DeviceSessionRepository interface {
@@ -153,6 +160,15 @@ type DeviceSessionRepository interface {
 	// sehingga sengaja tidak tenant-scoped (beda dgn CountByStatus milik
 	// DeviceRepository/TaskRepository yang menerima tenantID nullable).
 	CountOpen(ctx context.Context) (int, error)
+	// TimeoutStaleOpen menandai semua sesi berstatus OPEN yang started_at-nya
+	// lebih lama dari olderThan menjadi TIMEOUT (ended_at = NOW()). Dipakai
+	// sweeper periodik cmd/acsd untuk membersihkan sesi yang tidak pernah
+	// ditutup CPE (POST-kosong penutup tak pernah datang) — tanpa ini
+	// device_sessions.status='OPEN' menumpuk selamanya dan metrik
+	// acs_cwmp_sessions_open jadi tidak berguna. Mengembalikan jumlah baris
+	// yang diubah. Aman dijalankan dari instance manapun (idempoten, app
+	// server stateless — TECH.md §9).
+	TimeoutStaleOpen(ctx context.Context, olderThan time.Time) (int64, error)
 }
 
 // DeviceEvent — histori event Inform, audit minimal (created_at saja) sesuai

@@ -35,8 +35,8 @@ type Config struct {
 	// dipakai bersama delivery/cwmp & usecase/session (observability TECH.md
 	// §10) — supaya production bisa menaikkan verbosity (DEBUG, per-RPC) saat
 	// investigasi tanpa redeploy kode.
-	LogLevel   string
-	RedisAddr  string
+	LogLevel  string
+	RedisAddr string
 
 	OIDCIssuer       string
 	OIDCClientID     string

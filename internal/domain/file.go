@@ -2,18 +2,17 @@ package domain
 
 import (
 	"context"
-	"time"
 )
 
 type FileType string
 
 const (
-	FileTypeFirmware       FileType = "1 Firmware Upgrade Image"
-	FileTypeWebContent     FileType = "2 Web Content"
-	FileTypeVendorConfig   FileType = "3 Vendor Configuration File"
-	FileTypeTone           FileType = "4 Tone File"
-	FileTypeRinger         FileType = "5 Ringer Melody File"
-	FileTypeVendorLog      FileType = "Vendor Log File" // TR-069 Upload
+	FileTypeFirmware     FileType = "1 Firmware Upgrade Image"
+	FileTypeWebContent   FileType = "2 Web Content"
+	FileTypeVendorConfig FileType = "3 Vendor Configuration File"
+	FileTypeTone         FileType = "4 Tone File"
+	FileTypeRinger       FileType = "5 Ringer Melody File"
+	FileTypeVendorLog    FileType = "Vendor Log File" // TR-069 Upload
 )
 
 // File merepresentasikan berkas generik (Konfigurasi, Log, Firmware dll)

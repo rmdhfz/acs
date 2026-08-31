@@ -224,7 +224,7 @@ func TestCreateTaskTenantQuota(t *testing.T) {
 		devices := &fakeDeviceRepo{dev: &domain.Device{ID: 1, TenantID: u64(100)}}
 		tenants := &fakeTenantRepo{tenant: &domain.Tenant{ID: 100, MaxPendingTasks: nil}}
 		tasks := &fakeTaskRepo{pendingCountForTenant: 999999}
-		svc := NewService(tasks, devices, nil, nil, nil, refs, &fakeActivityRepo{}, tenants, nil)
+		svc := NewService(tasks, devices, nil, nil, nil, refs, &fakeActivityRepo{}, tenants, nil, nil)
 
 		got, err := svc.CreateTask(context.Background(), actor, in)
 		if err != nil {
@@ -239,7 +239,7 @@ func TestCreateTaskTenantQuota(t *testing.T) {
 		devices := &fakeDeviceRepo{dev: &domain.Device{ID: 1, TenantID: u64(100)}}
 		tenants := &fakeTenantRepo{tenant: &domain.Tenant{ID: 100, MaxPendingTasks: u32(5)}}
 		tasks := &fakeTaskRepo{pendingCountForTenant: 4}
-		svc := NewService(tasks, devices, nil, nil, nil, refs, &fakeActivityRepo{}, tenants, nil)
+		svc := NewService(tasks, devices, nil, nil, nil, refs, &fakeActivityRepo{}, tenants, nil, nil)
 
 		got, err := svc.CreateTask(context.Background(), actor, in)
 		if err != nil {
@@ -254,7 +254,7 @@ func TestCreateTaskTenantQuota(t *testing.T) {
 		devices := &fakeDeviceRepo{dev: &domain.Device{ID: 1, TenantID: u64(100)}}
 		tenants := &fakeTenantRepo{tenant: &domain.Tenant{ID: 100, MaxPendingTasks: u32(5)}}
 		tasks := &fakeTaskRepo{pendingCountForTenant: 5}
-		svc := NewService(tasks, devices, nil, nil, nil, refs, &fakeActivityRepo{}, tenants, nil)
+		svc := NewService(tasks, devices, nil, nil, nil, refs, &fakeActivityRepo{}, tenants, nil, nil)
 
 		got, err := svc.CreateTask(context.Background(), actor, in)
 		if err == nil {
@@ -275,7 +275,7 @@ func TestCreateTaskTenantQuota(t *testing.T) {
 		// short-circuit sebelum resolve tenant).
 		tenants := &fakeTenantRepo{err: errors.New("GetByID seharusnya tidak dipanggil untuk device orphan")}
 		tasks := &fakeTaskRepo{pendingCountForTenant: 999999}
-		svc := NewService(tasks, devices, nil, nil, nil, refs, &fakeActivityRepo{}, tenants, nil)
+		svc := NewService(tasks, devices, nil, nil, nil, refs, &fakeActivityRepo{}, tenants, nil, nil)
 
 		got, err := svc.CreateTask(context.Background(), actor, in)
 		if err != nil {
@@ -291,7 +291,7 @@ func TestCreateTaskTenantQuota(t *testing.T) {
 		wantErr := errors.New("tenant tidak ketemu")
 		tenants := &fakeTenantRepo{err: wantErr}
 		tasks := &fakeTaskRepo{}
-		svc := NewService(tasks, devices, nil, nil, nil, refs, &fakeActivityRepo{}, tenants, nil)
+		svc := NewService(tasks, devices, nil, nil, nil, refs, &fakeActivityRepo{}, tenants, nil, nil)
 
 		got, err := svc.CreateTask(context.Background(), actor, in)
 		if err == nil {
@@ -334,7 +334,7 @@ func TestFailOrRetry(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &fakeTaskRepo{}
-			svc := NewService(repo, nil, nil, nil, nil, refs, nil, nil, nil)
+			svc := NewService(repo, nil, nil, nil, nil, refs, nil, nil, nil, nil)
 			tsk := &domain.Task{ID: 1, RetryCount: tc.retryCount, MaxRetries: tc.maxRetries}
 
 			var err error
@@ -368,7 +368,7 @@ func TestFailPermanently(t *testing.T) {
 	const failedStatusID = 42
 	refs := &fakeRefRepo{ids: map[string]uint64{domain.TaskStatusFailed: failedStatusID}}
 	repo := &fakeTaskRepo{}
-	svc := NewService(repo, nil, nil, nil, nil, refs, nil, nil, nil)
+	svc := NewService(repo, nil, nil, nil, nil, refs, nil, nil, nil, nil)
 	tsk := &domain.Task{ID: 7, RetryCount: 0, MaxRetries: 5}
 
 	if err := svc.FailPermanently(context.Background(), tsk, "parameter tidak didukung"); err != nil {
@@ -410,7 +410,7 @@ func TestSplitGetParameterValuesOnFault(t *testing.T) {
 	t.Run("names > 1 -> dipecah jadi 2 task baru, task asli FAILED (bukan retry)", func(t *testing.T) {
 		devices := &fakeDeviceRepo{dev: &domain.Device{ID: 1, TenantID: u64(100)}}
 		repo := &fakeTaskRepo{}
-		svc := NewService(repo, devices, nil, nil, nil, refs, &fakeActivityRepo{}, nil, nil)
+		svc := NewService(repo, devices, nil, nil, nil, refs, &fakeActivityRepo{}, nil, nil, nil)
 
 		orig := &domain.Task{
 			ID: 99, DeviceID: 1, Priority: 3, MaxRetries: 3,
@@ -454,7 +454,7 @@ func TestSplitGetParameterValuesOnFault(t *testing.T) {
 	t.Run("names <= 1 -> tidak bisa dipecah lagi, handled=false, task asli TIDAK disentuh", func(t *testing.T) {
 		devices := &fakeDeviceRepo{dev: &domain.Device{ID: 1, TenantID: u64(100)}}
 		repo := &fakeTaskRepo{}
-		svc := NewService(repo, devices, nil, nil, nil, refs, &fakeActivityRepo{}, nil, nil)
+		svc := NewService(repo, devices, nil, nil, nil, refs, &fakeActivityRepo{}, nil, nil, nil)
 
 		orig := &domain.Task{ID: 99, DeviceID: 1, Parameters: domain.JSONRawMessage(`{"names":["A"]}`)}
 		handled, err := svc.SplitGetParameterValuesOnFault(context.Background(), orig, "[9003] Invalid Arguments")
@@ -495,7 +495,7 @@ func TestCreateTaskProactiveChunking(t *testing.T) {
 
 	t.Run("melebihi threshold -> dipecah jadi beberapa task berurutan, masing2 <= threshold", func(t *testing.T) {
 		repo := &fakeTaskRepo{}
-		svc := NewService(repo, devices, nil, nil, nil, refs, &fakeActivityRepo{}, nil, nil)
+		svc := NewService(repo, devices, nil, nil, nil, refs, &fakeActivityRepo{}, nil, nil, nil)
 
 		got, err := svc.CreateTask(context.Background(), actor, domain.CreateTaskInput{
 			DeviceID: 1, TaskType: domain.TaskTypeGetParameterValues,
@@ -538,7 +538,7 @@ func TestCreateTaskProactiveChunking(t *testing.T) {
 
 	t.Run("tepat di ambang batas (bukan melebihi) -> TIDAK dipecah, tetap 1 task", func(t *testing.T) {
 		repo := &fakeTaskRepo{}
-		svc := NewService(repo, devices, nil, nil, nil, refs, &fakeActivityRepo{}, nil, nil)
+		svc := NewService(repo, devices, nil, nil, nil, refs, &fakeActivityRepo{}, nil, nil, nil)
 
 		exactNames := names[:MaxGetParameterValuesNamesPerTask]
 		_, err := svc.CreateTask(context.Background(), actor, domain.CreateTaskInput{

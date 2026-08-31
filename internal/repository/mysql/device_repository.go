@@ -88,6 +88,12 @@ func (r *deviceRepository) List(ctx context.Context, f domain.DeviceFilter, p do
 		like := "%" + f.Search + "%"
 		args = append(args, like, like)
 	}
+	if f.TagID != nil {
+		// EXISTS lebih aman dari JOIN di sini: tidak menduplikasi baris device
+		// bila (hipotetis) ada >1 relasi, dan tidak mengubah bentuk SELECT *.
+		where = append(where, "EXISTS (SELECT 1 FROM device_tags dt WHERE dt.device_id = devices.id AND dt.tag_id = ?)")
+		args = append(args, *f.TagID)
+	}
 	whereSQL := strings.Join(where, " AND ")
 
 	var total int
@@ -365,6 +371,19 @@ func (r *deviceSessionRepository) CountOpen(ctx context.Context) (int, error) {
 		return 0, translateErr(err)
 	}
 	return count, nil
+}
+
+// TimeoutStaleOpen — lihat komentar domain.DeviceSessionRepository.
+func (r *deviceSessionRepository) TimeoutStaleOpen(ctx context.Context, olderThan time.Time) (int64, error) {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE device_sessions SET status = ?, ended_at = NOW()
+		 WHERE status = ? AND started_at < ?`,
+		domain.SessionStatusTimeout, domain.SessionStatusOpen, olderThan)
+	if err != nil {
+		return 0, translateErr(err)
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
 }
 
 // ---- DeviceEvent ----

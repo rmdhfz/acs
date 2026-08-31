@@ -463,7 +463,7 @@ CREATE TABLE device_sessions (
     session_token   VARCHAR(64)     NOT NULL,
     cwmp_id         VARCHAR(64)     NULL COMMENT 'ID CWMP dari header SOAP, untuk korelasi request/response',
     cwmp_namespace  VARCHAR(64)     NULL COMMENT 'Namespace CWMP yang dideklarasikan CPE pada Inform sesi ini, mis. urn:dslforum-org:cwmp-1-2',
-    status          VARCHAR(16)     NOT NULL DEFAULT 'OPEN' COMMENT 'OPEN, CLOSED, ERROR',
+    status          VARCHAR(16)     NOT NULL DEFAULT 'OPEN' COMMENT 'OPEN, CLOSED, ERROR, TIMEOUT (TIMEOUT = sesi basi di-reap sweeper cmd/acsd)',
     remote_ip       VARCHAR(45)     NULL,
     started_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     ended_at        DATETIME        NULL,
@@ -1001,3 +1001,115 @@ CREATE TABLE webhook_deliveries (
     CONSTRAINT chk_webhook_deliveries_status CHECK (status IN ('PENDING', 'DELIVERED', 'FAILED'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   COMMENT='Log setiap percobaan pengiriman webhook (audit minimal) — migrations/0013';
+
+-- =====================================================================
+-- 12. SNAPSHOT KONFIG, GEOLOKASI, FILE GENERIK, TAG/PRESET, SELF-SERVICE
+--     (migrations/0014–0020)
+-- =====================================================================
+
+-- migrations/0014: snapshot konfigurasi device (JSON penuh parameter) untuk
+-- diff/rollback manual. LOG-ish: audit minimal (created_at saja).
+CREATE TABLE device_config_snapshots (
+    id              BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    device_id       BIGINT UNSIGNED NOT NULL,
+    snapshot_data   JSON            NOT NULL,
+    created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_device_config_snapshots_device (device_id),
+    CONSTRAINT fk_device_config_snapshots_device FOREIGN KEY (device_id) REFERENCES devices (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Snapshot konfigurasi device untuk diff/rollback (migrations/0014)';
+
+-- migrations/0015: geolokasi device untuk peta NOC (DeviceMap.tsx).
+ALTER TABLE devices
+    ADD COLUMN latitude  DECIMAL(10, 8) NULL AFTER notes,
+    ADD COLUMN longitude DECIMAL(11, 8) NULL AFTER latitude;
+
+-- migrations/0017: indeks performa tambahan (hot-path list/sweeper).
+ALTER TABLE webhook_deliveries
+    ADD KEY idx_webhook_deliveries_sub_status (subscription_id, status, created_at);
+ALTER TABLE device_sessions
+    ADD KEY idx_device_sessions_status_started (status, started_at);
+
+-- migrations/0018: katalog file generik (bukan cuma firmware) — web content,
+-- vendor config file, dll. Audit 7-kolom + UUID publik.
+CREATE TABLE files (
+    id                  BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    file_uuid           CHAR(36)        NOT NULL,
+    tenant_id           BIGINT UNSIGNED NULL COMMENT 'NULL = global lintas tenant',
+    file_type           VARCHAR(100)    NOT NULL COMMENT '1 Firmware Upgrade Image, 2 Web Content, 3 Vendor Configuration File, dll',
+    vendor_id           BIGINT UNSIGNED NULL,
+    device_model_id     BIGINT UNSIGNED NULL,
+    version             VARCHAR(100)    NULL,
+    file_name           VARCHAR(255)    NOT NULL,
+    storage_key         VARCHAR(512)    NOT NULL COMMENT 'Object key MinIO/S3',
+    file_size_bytes     BIGINT UNSIGNED NOT NULL,
+    created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_by          BIGINT UNSIGNED NULL,
+    updated_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    updated_by          BIGINT UNSIGNED NULL,
+    deleted_at          DATETIME        NULL,
+    deleted_by          BIGINT UNSIGNED NULL,
+    is_deleted          TINYINT(1)      NOT NULL DEFAULT 0,
+    UNIQUE KEY uq_files_uuid (file_uuid),
+    KEY idx_files_tenant_type (tenant_id, file_type),
+    KEY idx_files_vendor_model (vendor_id, device_model_id),
+    CONSTRAINT fk_files_tenant FOREIGN KEY (tenant_id)       REFERENCES tenants (id)       ON DELETE RESTRICT,
+    CONSTRAINT fk_files_vendor FOREIGN KEY (vendor_id)       REFERENCES ref_vendors (id)   ON DELETE RESTRICT,
+    CONSTRAINT fk_files_model  FOREIGN KEY (device_model_id) REFERENCES device_models (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_files_cb     FOREIGN KEY (created_by)      REFERENCES users (id)         ON DELETE SET NULL,
+    CONSTRAINT fk_files_ub     FOREIGN KEY (updated_by)      REFERENCES users (id)         ON DELETE SET NULL,
+    CONSTRAINT fk_files_db     FOREIGN KEY (deleted_by)      REFERENCES users (id)         ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Katalog file generik untuk Download RPC CWMP (migrations/0018)';
+
+-- migrations/0019: tag device + preset (aturan match+config gaya GenieACS).
+CREATE TABLE tags (
+    id          BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    tenant_id   BIGINT UNSIGNED NULL,
+    name        VARCHAR(255)    NOT NULL,
+    color       VARCHAR(7)      NULL,
+    created_at  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_tags_name_tenant (name, tenant_id),
+    CONSTRAINT fk_tags_tenant FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Tag device untuk segmentasi & precondition preset (migrations/0019)';
+
+CREATE TABLE device_tags (
+    device_id   BIGINT UNSIGNED NOT NULL,
+    tag_id      BIGINT UNSIGNED NOT NULL,
+    created_at  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (device_id, tag_id),
+    CONSTRAINT fk_device_tags_device FOREIGN KEY (device_id) REFERENCES devices (id) ON DELETE CASCADE,
+    CONSTRAINT fk_device_tags_tag    FOREIGN KEY (tag_id)    REFERENCES tags (id)    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Relasi many-to-many device <-> tag (migrations/0019)';
+
+CREATE TABLE presets (
+    id              BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    tenant_id       BIGINT UNSIGNED NULL,
+    name            VARCHAR(255)    NOT NULL,
+    weight          INT             NOT NULL DEFAULT 0,
+    precondition    JSON            NOT NULL COMMENT 'Aturan pencocokan (mis. berdasar model / tag)',
+    configurations  JSON            NOT NULL COMMENT 'Aturan set parameter yang diterapkan bila precondition cocok',
+    is_active       TINYINT(1)      NOT NULL DEFAULT 1,
+    created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_presets_tenant FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Preset match+config gaya GenieACS (migrations/0019)';
+
+-- migrations/0020: role ENDUSER + mapping akun -> device untuk portal self-service.
+INSERT INTO ref_roles (code, name) VALUES ('ENDUSER', 'Pelanggan akhir (portal self-service)');
+
+CREATE TABLE user_devices (
+    user_id     BIGINT UNSIGNED NOT NULL,
+    device_id   BIGINT UNSIGNED NOT NULL,
+    created_at  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_by  BIGINT UNSIGNED NULL,
+    PRIMARY KEY (user_id, device_id),
+    KEY idx_user_devices_device (device_id),
+    CONSTRAINT fk_user_devices_user   FOREIGN KEY (user_id)   REFERENCES users (id)   ON DELETE CASCADE,
+    CONSTRAINT fk_user_devices_device FOREIGN KEY (device_id) REFERENCES devices (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Mapping akun ENDUSER -> device di portal self-service (migrations/0020)';

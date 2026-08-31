@@ -35,7 +35,9 @@ func (r *taskRepository) Create(ctx context.Context, t *domain.Task) error {
 
 func (r *taskRepository) GetByID(ctx context.Context, id uint64) (*domain.Task, error) {
 	var t domain.Task
-	if err := r.db.GetContext(ctx, &t, `SELECT * FROM tasks WHERE id = ? AND is_deleted = 0`, id); err != nil {
+	if err := r.db.GetContext(ctx, &t, `SELECT t.*, tt.code AS task_type_code
+		FROM tasks t JOIN ref_task_types tt ON tt.id = t.task_type_id
+		WHERE t.id = ? AND t.is_deleted = 0`, id); err != nil {
 		return nil, translateErr(err)
 	}
 	return &t, nil

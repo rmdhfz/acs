@@ -23,6 +23,7 @@ import (
 	"acs/internal/config"
 	deliverycwmp "acs/internal/delivery/cwmp"
 	deliveryhttp "acs/internal/delivery/http"
+	deliveryusp "acs/internal/delivery/usp"
 	"acs/internal/delivery/ws"
 	"acs/internal/domain"
 	"acs/internal/metrics"
@@ -34,9 +35,13 @@ import (
 	"acs/internal/usecase/file"
 	"acs/internal/usecase/firmware"
 	"acs/internal/usecase/iam"
+	"acs/internal/usecase/preset"
 	"acs/internal/usecase/provisioning"
+	"acs/internal/usecase/selfservice"
 	"acs/internal/usecase/session"
+	"acs/internal/usecase/tag"
 	"acs/internal/usecase/task"
+	"acs/internal/usecase/usp_session"
 	"acs/internal/usecase/webhook"
 	"acs/pkg/cryptoutil"
 	"acs/pkg/objectstorage"
@@ -110,6 +115,9 @@ func main() {
 	webhookSubRepo := mysql.NewWebhookSubscriptionRepository(db)
 	webhookDeliveryRepo := mysql.NewWebhookDeliveryRepository(db)
 	fileRepo := mysql.NewFileRepository(db)
+	tagRepo := mysql.NewTagRepository(db)
+	presetRepo := mysql.NewPresetRepository(db)
+	userDeviceRepo := mysql.NewUserDeviceRepository(db)
 
 	redisClient, err := redisutil.NewClient(cfg.RedisAddr, logger)
 	if err != nil {
@@ -126,11 +134,11 @@ func main() {
 	// domain.WebhookEnqueuer (interface sempit, tanpa import cycle), worker
 	// dispatch-nya dijalankan runSweepers.
 	webhookSvc := webhook.NewService(webhookSubRepo, webhookDeliveryRepo, refRepo, activityLogRepo, enc, logger)
-	
+
 	wsHub := ws.NewHub()
 	go wsHub.Run()
 
-	taskSvc := task.NewService(taskRepo, deviceRepo, deviceModelRepo, paramMappingRepo, refRepo, activityLogRepo, tenantRepo, webhookSvc, wsHub)
+	taskSvc := task.NewService(taskRepo, deviceRepo, deviceParamRepo, deviceModelRepo, paramMappingRepo, refRepo, activityLogRepo, tenantRepo, webhookSvc, wsHub)
 	// firmwareSvc dikonstruksi SEBELUM provisioningSvc -- provisioningSvc
 	// (ZTP aksi FirmwareFileID, migrations/0009) bergantung pada firmwareSvc
 	// lewat domain.FirmwareScheduler (interface sempit, menghindari import
@@ -139,8 +147,11 @@ func main() {
 	provisioningSvc := provisioning.NewService(profileRepo, profileParamRepo, ztRuleRepo, deviceRepo, deviceParamRepo, refRepo, taskSvc, firmwareSvc, activityLogRepo)
 	deviceSvc := device.NewService(deviceRepo, vendorOUIRepo, deviceModelRepo, refRepo, deviceParamRepo, deviceEventRepo, opticalMetricRepo, configSnapshotRepo, enc, activityLogRepo, taskSvc, fileRepo, objStorage)
 	diagnosticsSvc := diagnostics.NewService(diagnosticRepo, deviceRepo, taskSvc, activityLogRepo)
-	sessionSvc := session.NewService(deviceSessionRepo, deviceEventRepo, deviceParamRepo, deviceRepo, tenantRepo, refRepo, deviceSvc, taskSvc, provisioningSvc, firmwareSvc, diagnosticsSvc, enc, logger, webhookSvc, wsHub)
+	sessionSvc := session.NewService(deviceSessionRepo, deviceEventRepo, deviceParamRepo, deviceRepo, tenantRepo, refRepo, deviceSvc, taskSvc, provisioningSvc, firmwareSvc, diagnosticsSvc, enc, activityLogRepo, logger, webhookSvc, wsHub)
 	fileSvc := file.NewService(fileRepo, objStorage, activityLogRepo)
+	tagSvc := tag.NewService(tagRepo, activityLogRepo)
+	presetSvc := preset.NewService(presetRepo, activityLogRepo)
+	selfServiceSvc := selfservice.NewService(userDeviceRepo, deviceRepo, refRepo, taskSvc, activityLogRepo)
 
 	// ---- Observability: metrics Prometheus (TECH.md §10, ROADMAP.md Fase 2) ----
 	// Registry terpisah (bukan prometheus.DefaultRegisterer) supaya /metrics
@@ -179,8 +190,10 @@ func main() {
 		Vendors: vendorRepo, VendorOUIs: vendorOUIRepo, DeviceModels: deviceModelRepo, ParamMappings: paramMappingRepo,
 		Refs: refRepo, Activity: activityLogRepo,
 		MetricsHandler: metricsHandler,
-		Files: fileSvc,
-		WSHub: wsHub,
+		Files:          fileSvc,
+		Tags:           tagSvc, Presets: presetSvc,
+		SelfService: selfServiceSvc,
+		WSHub:       wsHub,
 	}
 	router.Register(restEcho)
 
@@ -193,6 +206,10 @@ func main() {
 	// seperti sebelumnya), jadi juga jadi mitigasi brute-force kredensial.
 	cwmpEcho.Use(middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(5)))
 	deliverycwmp.NewHandler(sessionSvc, logger).Register(cwmpEcho, "/cwmp")
+
+	// TR-369 / USP WebSocket Handler (MTP)
+	uspSessionSvc := usp_session.NewService(logger)
+	deliveryusp.NewHandler(logger, uspSessionSvc).Mount(cwmpEcho)
 
 	// echo.Start() menangani graceful shutdown otomatis saat menerima
 	// SIGINT/SIGTERM (lihat vendor echo/v5 server.go — signal.NotifyContext
@@ -215,7 +232,7 @@ func main() {
 	}()
 
 	stop := make(chan struct{})
-	go runSweepers(deviceSvc, taskSvc, firmwareSvc, webhookSvc, stop)
+	go runSweepers(deviceSvc, taskSvc, firmwareSvc, webhookSvc, sessionSvc, stop)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
@@ -247,7 +264,7 @@ func parseLogLevel(s string) slog.Level {
 // karena app server stateless (TECH.md §9). Dispatch webhook pakai ticker
 // terpisah yang lebih cepat (15 dtk) supaya event fault/value-change sampai
 // ke sistem pihak ketiga dengan latensi rendah.
-func runSweepers(deviceSvc *device.Service, taskSvc *task.Service, firmwareSvc *firmware.Service, webhookSvc *webhook.Service, stop <-chan struct{}) {
+func runSweepers(deviceSvc *device.Service, taskSvc *task.Service, firmwareSvc *firmware.Service, webhookSvc *webhook.Service, sessionSvc *session.Service, stop <-chan struct{}) {
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
 	webhookTicker := time.NewTicker(15 * time.Second)
@@ -273,6 +290,15 @@ func runSweepers(deviceSvc *device.Service, taskSvc *task.Service, firmwareSvc *
 				log.Printf("sweeper: timeout stale sent gagal: %v", err)
 			} else if n > 0 {
 				log.Printf("sweeper: %d task ditandai timeout", n)
+			}
+			// Reap sesi CWMP yang ditinggalkan CPE tanpa POST-kosong penutup.
+			// Ambang 15 menit: jauh di atas durasi sesi CWMP normal (detik s/d
+			// beberapa menit) sehingga tidak pernah menutup sesi yang hidup,
+			// tapi cukup cepat agar metrik acs_cwmp_sessions_open akurat.
+			if n, err := sessionSvc.TimeoutStaleSessions(ctx, 15*time.Minute); err != nil {
+				log.Printf("sweeper: reap sesi CWMP basi gagal: %v", err)
+			} else if n > 0 {
+				log.Printf("sweeper: %d sesi CWMP basi di-reap", n)
 			}
 			// Cek wave rollout firmware yang sudah tuntas & lanjutkan ke wave
 			// berikutnya (atau pause/complete) -- lihat firmware.Service.AdvanceRollout.

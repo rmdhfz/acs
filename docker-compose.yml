@@ -101,10 +101,7 @@ services:
       redis:
         condition: service_healthy
 
-  # Observability (ROADMAP.md Fase 2, TECH.md §10) — scrape GET /api/v1/metrics
-  # milik acsd tiap 15s (deploy/prometheus.yml) + alert rules dasar
-  # (deploy/prometheus_alerts.yml, tab "Alerts" di UI). TIDAK ada Alertmanager
-  # di stack ini — batasan yang disengaja, di luar cakupan Fase 2 sesi ini.
+  # Observabilitas Lanjutan: Prometheus + Alertmanager + Grafana
   prometheus:
     image: prom/prometheus:latest
     restart: unless-stopped
@@ -117,8 +114,29 @@ services:
     depends_on:
       - acsd
 
+  alertmanager:
+    image: prom/alertmanager:latest
+    restart: unless-stopped
+    volumes:
+      - ./deploy/alertmanager/config.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - "19093:9093"
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - acs-grafana-data:/var/lib/grafana
+    ports:
+      - "13000:3000"
+    depends_on:
+      - prometheus
+
 volumes:
   acs-mariadb-data:
   acs-prometheus-data:
+  acs-grafana-data:
   acs-minio-data:
   acs-redis-data:
+

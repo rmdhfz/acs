@@ -54,8 +54,28 @@ func (s *Service) Delete(ctx context.Context, actor domain.Actor, id uint64) err
 	return nil
 }
 
+// requireTagInTenantScope memastikan tag ada & (kalau bukan tag global
+// tenant_id=NULL) milik tenant si actor. Kepemilikan device dicek terpisah di
+// handler lewat device.Service.Get (yang sudah enforce RequireTenantScope) —
+// di sini kita jaga sisi tag-nya supaya operator tenant A tidak bisa
+// menempelkan/melepas tag milik tenant B ke device-nya (temuan: cek ini
+// sebelumnya "diabaikan sementara").
+func (s *Service) requireTagInTenantScope(ctx context.Context, actor domain.Actor, tagID uint64) error {
+	tag, err := s.tags.GetByID(ctx, tagID)
+	if err != nil {
+		return err
+	}
+	if tag.TenantID != nil && !actor.IsSuperadmin() &&
+		(actor.TenantID == nil || *actor.TenantID != *tag.TenantID) {
+		return domain.ErrForbidden
+	}
+	return nil
+}
+
 func (s *Service) AssignToDevice(ctx context.Context, actor domain.Actor, deviceID, tagID uint64) error {
-	// Pengecekan otorisasi tenant diabaikan sementara untuk kecepatan (sebaiknya device & tag milik tenant yg sama)
+	if err := s.requireTagInTenantScope(ctx, actor, tagID); err != nil {
+		return err
+	}
 	if err := s.tags.AssignToDevice(ctx, deviceID, tagID); err != nil {
 		return err
 	}
@@ -66,6 +86,9 @@ func (s *Service) AssignToDevice(ctx context.Context, actor domain.Actor, device
 }
 
 func (s *Service) RemoveFromDevice(ctx context.Context, actor domain.Actor, deviceID, tagID uint64) error {
+	if err := s.requireTagInTenantScope(ctx, actor, tagID); err != nil {
+		return err
+	}
 	if err := s.tags.RemoveFromDevice(ctx, deviceID, tagID); err != nil {
 		return err
 	}

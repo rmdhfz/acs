@@ -19,7 +19,7 @@ type Client struct {
 	Hub      *Hub
 	Conn     *websocket.Conn
 	Send     chan []byte
-	TenantID *int64
+	TenantID *uint64
 	Role     string
 }
 
@@ -91,7 +91,7 @@ func (h *Hub) BroadcastEvent(eventType string, payload interface{}) {
 }
 
 // BroadcastToTenant mengirim event hanya ke client yang terhubung dengan TenantID yang sesuai (atau superadmin)
-func (h *Hub) BroadcastToTenant(tenantID int64, eventType string, payload interface{}) {
+func (h *Hub) BroadcastToTenant(tenantID uint64, eventType string, payload interface{}) {
 	event := Event{
 		Type:    eventType,
 		Payload: payload,

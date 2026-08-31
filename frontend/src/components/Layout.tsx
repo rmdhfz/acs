@@ -26,12 +26,13 @@ import { NotificationBell } from './NotificationBell'
 import { NotificationProvider } from '../lib/notifications'
 
 const NAV_ITEMS: { to: string; label: string; icon: typeof LayoutGrid; requireRole?: string }[] = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/devices', label: 'Devices', icon: LayoutGrid },
-  { to: '/tasks', label: 'Tasks', icon: ListChecks },
-  { to: '/provisioning', label: 'Provisioning', icon: FileSliders },
-  { to: '/firmware', label: 'Firmware', icon: HardDrive },
-  { to: '/files', label: 'Files', icon: HardDrive },
+  { to: '/self-service', label: 'My WiFi', icon: Radio, requireRole: 'ENDUSER' },
+  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, requireRole: 'VIEWER' },
+  { to: '/devices', label: 'Devices', icon: LayoutGrid, requireRole: 'VIEWER' },
+  { to: '/tasks', label: 'Tasks', icon: ListChecks, requireRole: 'VIEWER' },
+  { to: '/provisioning', label: 'Provisioning', icon: FileSliders, requireRole: 'VIEWER' },
+  { to: '/firmware', label: 'Firmware', icon: HardDrive, requireRole: 'VIEWER' },
+  { to: '/files', label: 'Files', icon: HardDrive, requireRole: 'VIEWER' },
   { to: '/webhooks', label: 'Webhooks', icon: Bell, requireRole: 'ADMIN' },
   { to: '/catalog', label: 'Catalog Vendor', icon: Cable, requireRole: 'SUPERADMIN' },
   { to: '/administration', label: 'Administration', icon: Building2, requireRole: 'ADMIN' },

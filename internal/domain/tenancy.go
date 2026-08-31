@@ -153,15 +153,19 @@ type APITokenRepository interface {
 }
 
 type ActivityLog struct {
-	ID          uint64    `db:"id" json:"id"`
-	UserID      *uint64   `db:"user_id" json:"user_id"`
-	TenantID    *uint64   `db:"tenant_id" json:"tenant_id"`
-	Action      string    `db:"action" json:"action"`
-	EntityType  string    `db:"entity_type" json:"entity_type"`
-	EntityID    *uint64   `db:"entity_id" json:"entity_id"`
-	Description *string   `db:"description" json:"description"`
-	IPAddress   *string   `db:"ip_address" json:"ip_address"`
-	CreatedAt   time.Time `db:"created_at" json:"created_at"`
+	ID          uint64  `db:"id" json:"id"`
+	UserID      *uint64 `db:"user_id" json:"user_id"`
+	TenantID    *uint64 `db:"tenant_id" json:"tenant_id"`
+	Action      string  `db:"action" json:"action"`
+	EntityType  string  `db:"entity_type" json:"entity_type"`
+	EntityID    *uint64 `db:"entity_id" json:"entity_id"`
+	Description *string `db:"description" json:"description"`
+	IPAddress   *string `db:"ip_address" json:"ip_address"`
+	// Details — konteks terstruktur opsional (mis. {"object_name": "..."}).
+	// Tidak dipetakan ke kolom sendiri; repository melipatnya jadi JSON di
+	// kolom description bila description belum diisi eksplisit.
+	Details   map[string]any `db:"-" json:"details,omitempty"`
+	CreatedAt time.Time      `db:"created_at" json:"created_at"`
 	// Username — hasil LEFT JOIN users di ListByEntity (bukan kolom asli
 	// activity_logs), nil bila UserID nil (aksi sistem, mis. evaluasi ZTP
 	// otomatis) atau user-nya sudah dihapus.

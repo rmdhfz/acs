@@ -17,6 +17,7 @@ func (r *Router) listDevices(c *echo.Context) error {
 		DeviceModelID:  queryUint64(c, "device_model_id"),
 		DeviceStatusID: queryUint64(c, "device_status_id"),
 		TenantID:       queryUint64(c, "tenant_id"),
+		TagID:          queryUint64(c, "tag_id"),
 	}
 	devices, total, err := r.Devices.List(c.Request().Context(), actor, f, paginationFromQuery(c))
 	if err != nil {
@@ -122,12 +123,12 @@ func (r *Router) createConfigSnapshot(c *echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "id tidak valid")
 	}
-	
+
 	// ensure they can view device first
 	if _, err := r.Devices.Get(c.Request().Context(), actor, id); err != nil {
 		return handleErr(c, err)
 	}
-	
+
 	if err := r.Devices.CreateConfigSnapshot(c.Request().Context(), id); err != nil {
 		return handleErr(c, err)
 	}

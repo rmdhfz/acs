@@ -25,7 +25,7 @@ func NewClient(addr string, logger *slog.Logger) (*Client, error) {
 	}
 
 	rdb := redis.NewClient(opts)
-	
+
 	// Test connection
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

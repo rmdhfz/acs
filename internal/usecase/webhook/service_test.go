@@ -24,7 +24,9 @@ type fakeSubRepo struct {
 	rows   map[uint64]*domain.WebhookSubscription
 }
 
-func newFakeSubRepo() *fakeSubRepo { return &fakeSubRepo{rows: map[uint64]*domain.WebhookSubscription{}} }
+func newFakeSubRepo() *fakeSubRepo {
+	return &fakeSubRepo{rows: map[uint64]*domain.WebhookSubscription{}}
+}
 
 func (r *fakeSubRepo) Create(_ context.Context, s *domain.WebhookSubscription) error {
 	r.mu.Lock()
@@ -180,6 +182,18 @@ func (r *fakeDeliveryRepo) MarkResult(_ context.Context, id uint64, status strin
 	return nil
 }
 
+func (r *fakeDeliveryRepo) CountFailed(_ context.Context, tenantID *uint64) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	n := 0
+	for _, d := range r.rows {
+		if d.Status == domain.WebhookDeliveryStatusFailed {
+			n++
+		}
+	}
+	return n, nil
+}
+
 type fakeRefRepo struct{ byCode map[string]domain.RefLookup }
 
 func (r *fakeRefRepo) GetByCode(_ context.Context, _, code string) (domain.RefLookup, error) {
@@ -307,7 +321,7 @@ func TestEnqueue_FanOutMatchingOnly(t *testing.T) {
 	_ = mk(CreateSubscriptionInput{TenantID: ptr(uint64(2)), EventCode: domain.WebhookEventDeviceFault, Name: "other-tenant", TargetURL: "https://c.test/h"})
 	_ = mk(CreateSubscriptionInput{TenantID: t1, EventCode: domain.WebhookEventTaskFailed, Name: "other-event", TargetURL: "https://d.test/h"})
 	inactive := mk(CreateSubscriptionInput{TenantID: t1, EventCode: domain.WebhookEventDeviceFault, Name: "inactive", TargetURL: "https://e.test/h"})
-	_ = svc.UpdateSubscription(ctx, sa, inactive.ID, UpdateSubscriptionInput{Name: "inactive", TargetURL: "https://e.test/h", IsActive: false})
+	_ = svc.UpdateSubscription(ctx, sa, inactive.ID, UpdateSubscriptionInput{Name: "inactive", TargetURL: "https://e.test/h", IsActive: ptr(false)})
 
 	if err := svc.Enqueue(ctx, domain.WebhookEventDeviceFault, t1, map[string]any{"x": 1}); err != nil {
 		t.Fatalf("enqueue: %v", err)
@@ -337,8 +351,7 @@ func TestDispatch_SuccessSignsPayload(t *testing.T) {
 	var gotSig, gotDeliveryID string
 	var gotBody []byte
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotالسig := r.Header.Get("X-ACS-Signature")
-		gotSig = gotالsig
+		gotSig = r.Header.Get("X-ACS-Signature")
 		gotDeliveryID = r.Header.Get("X-ACS-Delivery-Id")
 		gotBody, _ = io.ReadAll(r.Body)
 		w.WriteHeader(http.StatusOK)

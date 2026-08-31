@@ -14,10 +14,10 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
-	"golang.org/x/oauth2"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/oauth2"
 
 	"acs/internal/domain"
 )
@@ -447,8 +447,8 @@ func (s *Service) OIDCLogin(ctx context.Context, code string) (*domain.User, str
 	}
 
 	var claims struct {
-		Email string `json:"email"`
-		Name  string `json:"name"`
+		Email  string   `json:"email"`
+		Name   string   `json:"name"`
 		Groups []string `json:"groups"` // Bisa didapat dari Azure AD / Okta claims
 	}
 	if err := idToken.Claims(&claims); err != nil {

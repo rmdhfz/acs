@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -40,6 +41,10 @@ type Service struct {
 	firmwareSvc     *firmware.Service
 	diagnosticsSvc  *diagnostics.Service
 	enc             *cryptoutil.Encryptor
+	// activity — jejak audit anomali yang terdeteksi di jalur Inform
+	// (DNS hijack, reboot loop, redaman optik kritis). Boleh nil (test yang
+	// membangun Service via literal) — SELALU diakses lewat guard nil.
+	activity domain.ActivityLogRepository
 	// logger — structured logging (log/slog) sepanjang jalur sesi CWMP
 	// (TECH.md §10). Boleh nil (mis. test yang membangun Service via literal
 	// struct langsung, lihat service_test.go) -- SELALU diakses lewat method
@@ -66,6 +71,7 @@ func NewService(
 	firmwareSvc *firmware.Service,
 	diagnosticsSvc *diagnostics.Service,
 	enc *cryptoutil.Encryptor,
+	activity domain.ActivityLogRepository,
 	logger *slog.Logger,
 	webhookEnq domain.WebhookEnqueuer,
 	publisher domain.EventPublisher,
@@ -73,7 +79,7 @@ func NewService(
 	return &Service{
 		sessions: sessions, events: events, deviceParams: deviceParams, devices: devices, tenants: tenants, refs: refs,
 		deviceSvc: deviceSvc, taskSvc: taskSvc, provisioningSvc: provisioningSvc,
-		firmwareSvc: firmwareSvc, diagnosticsSvc: diagnosticsSvc, enc: enc, logger: logger, webhookEnq: webhookEnq, publisher: publisher,
+		firmwareSvc: firmwareSvc, diagnosticsSvc: diagnosticsSvc, enc: enc, activity: activity, logger: logger, webhookEnq: webhookEnq, publisher: publisher,
 	}
 }
 
@@ -103,6 +109,26 @@ func (s *Service) log() *slog.Logger {
 // metrik ini utk operator platform, bukan dashboard tenant.
 func (s *Service) CountOpenSessions(ctx context.Context) (int, error) {
 	return s.sessions.CountOpen(ctx)
+}
+
+// TimeoutStaleSessions men-reap sesi CWMP berstatus OPEN yang usianya (dari
+// started_at) sudah melewati threshold — yaitu sesi yang CPE-nya tidak pernah
+// mengirim POST-kosong penutup (koneksi putus, CPE reboot mendadak, dsb).
+// Tanpa ini baris device_sessions.status='OPEN' menumpuk permanen dan metrik
+// acs_cwmp_sessions_open (dashboard "sesi aktif") jadi tidak berarti.
+// Dipanggil periodik dari runSweepers di cmd/acsd — aman dari instance
+// manapun (app server stateless, TECH.md §9). Mengembalikan jumlah sesi yang
+// di-reap. Threshold harus jauh di atas durasi sesi CWMP normal (detik s/d
+// beberapa menit) supaya tidak pernah menutup sesi yang masih hidup.
+func (s *Service) TimeoutStaleSessions(ctx context.Context, threshold time.Duration) (int, error) {
+	n, err := s.sessions.TimeoutStaleOpen(ctx, time.Now().Add(-threshold))
+	if err != nil {
+		return 0, err
+	}
+	if n > 0 {
+		s.log().Info("reap sesi CWMP basi", "count", n, "threshold", threshold.String())
+	}
+	return int(n), nil
 }
 
 // ---- Inform ----
@@ -207,8 +233,9 @@ func (s *Service) HandleInform(ctx context.Context, in InformInput) (*InformResu
 			hasBootstrap = true
 		case domain.EventCodeBoot:
 			hasBoot = true
+			prevBootAt := dev.LastBootEventAt
 			_ = s.deviceSvc.TouchLastBootEvent(ctx, dev, occurredAt)
-			s.detectAnomalyBoot(ctx, dev)
+			s.detectAnomalyBoot(ctx, dev, prevBootAt, occurredAt)
 		case domain.EventCodeValueChange:
 			hasValueChange = true
 		}
@@ -217,6 +244,7 @@ func (s *Service) HandleInform(ctx context.Context, in InformInput) (*InformResu
 	if len(in.Parameters) > 0 {
 		// Anomaly Detection (ROADMAP.md Fase 5): Cek perubahan DNS sebelum di-upsert
 		s.detectAnomalyDNS(ctx, dev, in.Parameters)
+		s.detectAnomalyOptical(ctx, dev, in.Parameters)
 
 		params := make([]domain.DeviceParameter, 0, len(in.Parameters))
 		for _, p := range in.Parameters {
@@ -637,14 +665,14 @@ func (s *Service) detectAnomalyDNS(ctx context.Context, dev *domain.Device, para
 			break
 		}
 	}
-	
+
 	if dnsNewVal != "" {
 		// Dapatkan nilai lama
 		oldParam, err := s.deviceParams.Get(ctx, dev.ID, dnsParamName)
 		if err == nil && oldParam.ParameterValue != nil && *oldParam.ParameterValue != dnsNewVal {
 			// Anomaly: DNS berubah
 			desc := fmt.Sprintf("DNS berubah mencurigakan dari %s menjadi %s pada parameter %s", *oldParam.ParameterValue, dnsNewVal, dnsParamName)
-			_ = s.activity.Record(ctx, &domain.ActivityLog{
+			s.recordActivity(ctx, &domain.ActivityLog{
 				TenantID:    dev.TenantID,
 				Action:      "ANOMALY_DETECTED",
 				EntityType:  "device",
@@ -652,40 +680,115 @@ func (s *Service) detectAnomalyDNS(ctx context.Context, dev *domain.Device, para
 				Description: &desc,
 			})
 			s.log().Warn("cwmp: anomaly DNS change terdeteksi", "device_id", dev.ID, "old_dns", *oldParam.ParameterValue, "new_dns", dnsNewVal)
+			s.notifyWebhook(ctx, domain.WebhookEventDeviceFault, dev.TenantID, map[string]any{
+				"device_id":    dev.ID,
+				"anomaly_type": "DNS_HIJACKING",
+				"old_dns":      *oldParam.ParameterValue,
+				"new_dns":      dnsNewVal,
+				"message":      desc,
+			})
 		}
 	}
 }
 
-func (s *Service) detectAnomalyBoot(ctx context.Context, dev *domain.Device) {
-	// Ambil riwayat log activity untuk mendeteksi boot loop (mis. > 3 kali dalam 1 jam terakhir)
-	logs, _, err := s.activity.ListByEntity(ctx, "device", dev.ID, domain.Pagination{Page: 1, PageSize: 10})
-	if err != nil {
+// detectAnomalyBoot menandai reboot loop: dua event BOOT berturut-turut dengan
+// jarak < 15 menit. prevBootAt = nilai LastBootEventAt SEBELUM di-update oleh
+// TouchLastBootEvent (kalau dibaca sesudahnya selalu ~0 dan setiap boot keliru
+// dianggap anomali).
+func (s *Service) detectAnomalyBoot(ctx context.Context, dev *domain.Device, prevBootAt *time.Time, thisBootAt time.Time) {
+	if prevBootAt == nil {
 		return
 	}
+	gap := thisBootAt.Sub(*prevBootAt)
+	if gap <= 0 || gap >= 15*time.Minute {
+		return
+	}
+	desc := fmt.Sprintf("Reboot berulang terdeteksi (jarak dari boot sebelumnya: %s)", gap.Round(time.Second))
+	s.recordActivity(ctx, &domain.ActivityLog{
+		TenantID:    dev.TenantID,
+		Action:      "ANOMALY_DETECTED",
+		EntityType:  "device",
+		EntityID:    &dev.ID,
+		Description: &desc,
+	})
+	s.log().Warn("cwmp: anomaly frequent reboot terdeteksi", "device_id", dev.ID, "gap", gap)
+	s.notifyWebhook(ctx, domain.WebhookEventDeviceFault, dev.TenantID, map[string]any{
+		"device_id":    dev.ID,
+		"anomaly_type": "FREQUENT_REBOOT",
+		"gap":          gap.String(),
+		"message":      desc,
+	})
+}
 
-	bootCount := 1 // Boot saat ini
-	cutoff := time.Now().Add(-1 * time.Hour)
-	
-	for _, l := range logs {
-		// Karena tidak ada boot khusus di activity_log, kita cek dari last_boot_time di device,
-		// Atau bisa hitung rentang waktu last_boot_time device dengan event BOOT sebelumnya
-		// Untuk menyederhanakan, kita lihat dev.LastBootTime vs time.Now()
-		// Jika perbedaan terlalu dekat, asumsikan reboot loop.
-		_ = l
+// recordActivity nil-safe wrapper (Service dpt dibangun tanpa activity di test).
+func (s *Service) recordActivity(ctx context.Context, l *domain.ActivityLog) {
+	if s.activity == nil {
+		return
+	}
+	_ = s.activity.Record(ctx, l)
+}
+
+func (s *Service) detectAnomalyOptical(ctx context.Context, dev *domain.Device, params []InformParameter) {
+	var rxPower, txPower, voltage, bias, temp *float64
+	var paramName string
+
+	for _, p := range params {
+		if strings.Contains(p.Name, "Optical") {
+			var val float64
+			if _, err := fmt.Sscanf(p.Value, "%f", &val); err == nil {
+				if strings.Contains(p.Name, "RxPower") {
+					rxPower = &val
+					paramName = p.Name
+				} else if strings.Contains(p.Name, "TxPower") {
+					txPower = &val
+				} else if strings.Contains(p.Name, "Voltage") {
+					voltage = &val
+				} else if strings.Contains(p.Name, "BiasCurrent") {
+					bias = &val
+				} else if strings.Contains(p.Name, "Temperature") {
+					temp = &val
+				}
+			}
+		}
 	}
 
-	if dev.LastBootTime != nil {
-		durationSinceLastBoot := time.Since(*dev.LastBootTime)
-		if durationSinceLastBoot < 15*time.Minute {
-			desc := fmt.Sprintf("Reboot berulang terdeteksi (Jarak dengan boot sebelumnya: %v)", durationSinceLastBoot)
-			_ = s.activity.Record(ctx, &domain.ActivityLog{
+	if rxPower != nil || txPower != nil || voltage != nil || bias != nil || temp != nil {
+		metric := &domain.DeviceOpticalMetric{
+			DeviceID:           dev.ID,
+			RxPowerDBM:         rxPower,
+			TxPowerDBM:         txPower,
+			Voltage:            voltage,
+			BiasCurrentMA:      bias,
+			TemperatureCelsius: temp,
+			RecordedAt:         time.Now(),
+		}
+		_ = s.deviceSvc.SaveOpticalMetric(ctx, metric)
+	}
+
+	if rxPower != nil {
+		rx := *rxPower
+		isAnomaly := false
+		// Jika formatnya ribuan (e.g., -2800 = -28.0 dBm)
+		if rx < -2700 || (rx < -27.0 && rx > -100.0) {
+			isAnomaly = true
+		}
+
+		if isAnomaly {
+			desc := fmt.Sprintf("Redaman optik kritis (RxPower: %v) terdeteksi pada parameter %s", rx, paramName)
+			s.recordActivity(ctx, &domain.ActivityLog{
 				TenantID:    dev.TenantID,
 				Action:      "ANOMALY_DETECTED",
 				EntityType:  "device",
 				EntityID:    &dev.ID,
 				Description: &desc,
 			})
-			s.log().Warn("cwmp: anomaly frequent reboot terdeteksi", "device_id", dev.ID, "duration", durationSinceLastBoot)
+			s.log().Warn("cwmp: anomaly redaman optik terdeteksi", "device_id", dev.ID, "rx_power", rx)
+			s.notifyWebhook(ctx, domain.WebhookEventDeviceFault, dev.TenantID, map[string]any{
+				"device_id":    dev.ID,
+				"anomaly_type": "OPTICAL_POWER",
+				"rx_power":     rx,
+				"message":      desc,
+			})
 		}
 	}
 }

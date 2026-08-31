@@ -1,5 +1,232 @@
 # PROGRESS.md — Log Sesi Kerja Otonom
 
+---
+
+## SESI 2026-08-31 (`/goal`: lanjutkan pembuatan ACS sampai lebih bagus dari GenieACS)
+
+### Kondisi saat sesi dimulai
+
+Working tree = batch besar sesi 2026-08-29 masih **belum di-commit** (48 file
+berubah, +732/−313) plus file untracked (USP, selfservice, stun_client,
+migrasi 0020, RUNBOOK/LOGIN_INSTRUCTION, deploy/grafana|alertmanager).
+Tidak ada Go toolchain di host — verifikasi lewat Docker (`golang:1.26` mount).
+
+**Verifikasi baseline seluruh tree (termasuk untracked) — SEMUA HIJAU:**
+- `go build ./...` ✅ · `go vet ./...` ✅ · `go test ./...` ✅ · `gofmt -l` bersih
+- `frontend/ npm run build` ✅ (hanya warning chunk-size)
+- **Live smoke `docker compose up` ✅** (item "BELUM" sesi lalu — sekarang
+  ditutup): MariaDB 10.11 + migrate 0001→0020 bersih ("migrate up: selesai"),
+  MinIO + Redis healthy, `acsd` boot bersih (REST :8080, CWMP :7547, redis
+  connected). Login superadmin (`seed-admin`), smoke `GET /devices/stats`,
+  `/tasks/stats`, `/tenants`, `/refs/*`, `/api/v1/metrics` — semua 200 & data
+  wajar.
+
+### TEMUAN + FIX: sesi CWMP "OPEN" menumpuk selamanya (robustness gap vs GenieACS)
+
+Saat smoke, `GET /api/v1/cwmp/sessions/count` mengembalikan **348** — padahal
+tidak ada sesi in-flight. Sebabnya: 348 baris `device_sessions.status='OPEN'`
+sisa loadtest 2026-08-26 yang **tidak pernah ditutup** (CPE/loadtest berhenti
+tanpa mengirim POST-kosong penutup). Tidak ada mekanisme apa pun yang
+membersihkannya → metrik `acs_cwmp_sessions_open` (dashboard "Sesi Aktif")
+naik permanen dan jadi tak berguna. GenieACS punya session timeout; ACS ini
+belum.
+
+**Fix — session reaper periodik (backend-only, tanpa migrasi):**
+- `domain.SessionStatusTimeout = "TIMEOUT"` (status baru, dibedakan dari
+  `ERROR` = fault protokol eksplisit). Kolom `device_sessions.status` sudah
+  `VARCHAR(16)` bebas (bukan ENUM/ref_* — konsisten dgn OPEN/CLOSED/ERROR yang
+  sudah ada di kolom yang sama), jadi **tidak perlu migrasi** — hanya komentar
+  kolom di `schema.sql` diperbarui.
+- `domain.DeviceSessionRepository.TimeoutStaleOpen(ctx, olderThan)` +
+  implementasi MySQL (`UPDATE ... SET status='TIMEOUT', ended_at=NOW() WHERE
+  status='OPEN' AND started_at < ?`) + passthrough di redisrepo (dgn komentar
+  jujur soal entri cache Redis sesi yg di-reap: tidak diinvalidasi per-key,
+  aman krn TTL 1 jam + guard `Status==OPEN` di resolveSession/NextRequest).
+- `session.Service.TimeoutStaleSessions(ctx, threshold)` — orkestrasi tipis
+  (hitung cutoff, log bila >0).
+- `cmd/acsd` `runSweepers`: panggil tiap tick 1 menit, **ambang 15 menit**
+  (jauh di atas durasi sesi CWMP normal detik–menit, tapi cukup cepat supaya
+  metrik akurat). Mengikuti pola `taskSvc.TimeoutStaleSent` yang sudah ada.
+- Test unit `TestTimeoutStaleSessions` (`session/service_test.go`): reap yang
+  basi, jangan sentuh sesi <15 menit / yang sudah CLOSED, dan cutoff yang
+  diteruskan ke repo ~15 menit lalu (bukan "sekarang").
+
+**Validasi:**
+- `go build`/`vet`/`test ./...` ✅, `gofmt` bersih.
+- SQL reaper dijalankan langsung ke MariaDB live: 348 baris OPEN → TIMEOUT,
+  `GET /cwmp/sessions/count` → `{"count":0}`, metrik `acs_cwmp_sessions_open 0`.
+- End-to-end jalur Go **✅**: insert 1 baris sintetis `OPEN` (started_at
+  −40 mnt), rebuild image `acsd` + restart, tick sweeper pertama (02:28:29,
+  ~1 mnt setelah boot) mengubah baris jadi `TIMEOUT` — log `{"msg":"reap sesi
+  CWMP basi","count":1,"threshold":"15m0s"}` lalu `sweeper: 1 sesi CWMP basi
+  di-reap`. Boot bersih, tanpa panic.
+
+### TEMUAN + FIX (2): cache Redis sesi CWMP tidak pernah diinvalidasi → namespace/status basi
+
+Saat validasi live ketahuan: `internal/repository/redisrepo/device_session_repository.go`
+meng-cache objek sesi saat `Create` (TTL 1 jam) **tapi tidak pernah
+memperbarui/menghapusnya** saat `UpdateStatus`/`SetCWMPID`/`SetCWMPNamespace`.
+Akibatnya (saat Redis aktif — default di compose):
+- **`SetCWMPNamespace` (migrations/0012) efektif tak berguna**: `NextRequest`
+  membaca salinan cache pra-set → `sess.CWMPNamespace == nil` → RPC proaktif
+  dikirim dgn namespace default, justru bug yang migrations/0012 perbaiki.
+- Sesi yang sudah `CLOSED`/`TIMEOUT` di DB tetap tampak `OPEN` dari cache s/d
+  1 jam → `resolveSession` bisa "menyambung" ke sesi yang secara logis mati
+  bila CPE mengirim ulang cookie lama.
+
+**Fix** (`redisrepo`, tanpa dependensi baru):
+- Indeks balik `acs:cwmp:session:byid:<id> → token` ditulis bersama entri
+  token, supaya mutator yang cuma punya `id` bisa menemukan & `DEL` entri
+  cache-nya. Semua mutator (`UpdateStatus`/`SetCWMPID`/`SetCWMPNamespace`)
+  kini invalidasi setelah tulis MySQL.
+- `GetByToken` mengisi ulang cache pada fallback MySQL (baca berikutnya dalam
+  sesi yang sama kembali kena hot path).
+- TTL cache 1 jam → **15 menit** (= ambang reaper): membatasi jendela basi
+  untuk jalur bulk `TimeoutStaleOpen` yang tidak lewat invalidasi per-key.
+- **Validasi live** (real Redis di compose): loadtest 3 sesi CWMP →
+  `cwmp_namespace` = `urn:dslforum-org:cwmp-1-2` tersimpan di DB, sesi
+  `CLOSED`, dan **0 key `acs:cwmp:session:*` tersisa di Redis** (semua
+  terinvalidasi).
+
+### TEMUAN + FIX (3): `cmd/loadtest` tidak pernah menutup sesi (POST penutup tanpa cookie)
+
+`runSession` membuat `closeReq` (POST kosong penutup) **tanpa membawa cookie
+sesi** dari InformResponse (`http.Client` tanpa cookie jar). ACS tak bisa
+meresolve sesi → tiap sesi loadtest tertinggal `status=OPEN` selamanya. **Ini
+akar 348 baris OPEN basi** dari run loadtest 2026-08-26 (klaim ROADMAP "sesi
+ditutup bersih via loadtest" tidak pernah benar untuk jalur ini — verifikasi
+close dulu pakai curl manual yang memang bawa cookie). Fix: teruskan
+`resp.Cookies()` ke `closeReq` secara manual (bukan cookie jar bersama, supaya
+sesi antar-goroutine tidak tercampur). **Validasi**: loadtest 3 sesi → semua
+`CLOSED` (sebelum fix: `OPEN`).
+
+### FITUR: device ↔ tag (segmentasi gaya GenieACS) — dilengkapi + celah authz ditutup
+
+Fitur tag setengah jadi: tabel `tags`/`device_tags` (migrations/0019) + endpoint
+`POST/GET/DELETE /tags` ada, **tapi tidak ada cara menempelkan tag ke device**
+(`tag.Service.AssignToDevice/RemoveFromDevice/ListByDevice` ada tapi **tak
+pernah di-route** — dead code) dan **tidak bisa memfilter device by tag**. Tag
+praktis tidak berguna di produk. Selain itu `AssignToDevice` punya komentar
+`// Pengecekan otorisasi tenant diabaikan sementara` — operator tenant A bisa
+menempelkan tag tenant B.
+
+**Yang dikerjakan (backend-only, tanpa migrasi):**
+- 3 route baru: `GET /devices/:id/tags`, `POST /devices/:id/tags` (body
+  `{tag_id}`), `DELETE /devices/:id/tags/:tagId` — assign/remove `adminOrNOC`,
+  GET semua role terautentikasi (pola sama `GET /devices`).
+- **Celah authz ditutup**: handler cek kepemilikan device lewat
+  `Devices.Get(actor, id)` (sudah enforce `RequireTenantScope`); `tag.Service`
+  cek sisi tag lewat `requireTagInTenantScope` (tag global `tenant_id=NULL`
+  boleh; tag tenant lain → `ErrForbidden`). Komentar "diabaikan sementara"
+  dihapus.
+- Filter `GET /devices?tag_id=N` — `EXISTS (SELECT 1 FROM device_tags …)` di
+  `deviceRepository.List` (tetap tenant-scoped: filter tag ∧ tenant).
+- Test unit `internal/usecase/tag/service_test.go` (baru — package ini tadinya
+  tanpa test): assign/remove tag tenant sendiri OK, tag global OK, tag tenant
+  lain → `ErrForbidden` & repo tidak disentuh, superadmin bebas.
+- **Validasi live**: create tag → assign ke device 360 (204) →
+  `GET /devices/360/tags` tampil → `GET /devices?tag_id=1` → device 360
+  (total 1) → `?tag_id=999` → total 0 → remove (204) → `?tag_id=1` → total 0.
+
+### BELUM (lanjutan `/goal`)
+- Batch besar belum di-commit (menunggu review user). Kandidat urutan commit
+  di §PROGRESS sesi 2026-08-29 masih berlaku; fix sesi 2026-08-31 relatif
+  kecil & berdiri sendiri (session reaper + cache Redis + loadtest cookie +
+  device↔tag).
+- **`openapi.yaml` makin tertinggal**: sudah tidak punya `/tags`, `/presets`,
+  `/files`, `/self-service` (batch 2026-08-29), sekarang + 3 route device↔tag
+  & param `?tag_id=`. Regen bareng keputusan commit batch besar.
+- Item robustness lain vs GenieACS masih terbuka: USP/TR-369 masih mock,
+  parameter-tree browser UI, device search expression language (baru `tag_id`
+  + filter dasar), UI frontend utk tag (assign dari DevicesPage / kolom tag).
+
+---
+
+## SESI 2026-08-29 (`/goal`: lengkapi API tandingi GenieACS + UI/UX + audit + API log + integrasi FTTH)
+
+### TEMUAN KRITIS: `main` (HEAD `9339f3c`) TIDAK BISA BUILD & migrasi TIDAK BISA JALAN
+
+Bertentangan dengan klaim "divalidasi live" di seluruh `ROADMAP.md`. Kondisi
+nyata working tree + HEAD saat sesi ini mulai:
+
+1. **`go build ./...` GAGAL** — commit `6b114c9` ("complete phase 5 and 6")
+   men-*commit* kode yang tidak pernah dikompilasi:
+   - `go.sum` tidak punya entry `github.com/coreos/go-oidc/v3` (OIDC di-`require`
+     tanpa `go mod tidy`).
+   - `internal/usecase/session/service.go`: `detectAnomalyBoot`/`detectAnomalyDNS`
+     pakai `s.activity` (field tidak ada), `dev.LastBootTime` (nama salah,
+     harusnya `LastBootEventAt`), `strings` tidak diimpor, var `bootCount`/
+     `cutoff` tidak dipakai, `s.taskSvc.EnqueueGetParameterNames` tidak ada.
+     Logika `detectAnomalyBoot` juga **salah** (baca `LastBootEventAt` SETELAH
+     `TouchLastBootEvent` menimpanya → setiap BOOT dianggap "reboot loop").
+   - `internal/delivery/http/`: `file_handler.go`/`tag_preset_handler.go`/
+     `ws_handler.go`/`selfservice_handler.go` pakai `parsePagination`,
+     `c.PathParam`, `ResolveActor`, `echo.Context` (non-pointer) — semua nama/
+     tipe yang tidak ada di codebase ini (echo v5 pakai `*echo.Context`,
+     helper-nya `paginationFromQuery`/`parseUint64Param`/`ActorFrom`).
+   - `router.go`: `session` tidak diimpor padahal field `Sessions *session.Service`.
+   - `EventPublisher.BroadcastToTenant(int64)` vs pemanggil kirim `uint64`.
+   - `domain.Task` tak punya field type-code, `t.TaskType` dipakai di task svc.
+   - `domain.ActivityLog.Details` dipakai di device svc, field tidak ada.
+   - `webhook.Service.CountFailedDeliveries` pakai `actor.Role` (harusnya `Roles`).
+   - `main.go`: `task.NewService`/`session.NewService` argumen kurang;
+     `tag.Service`/`preset.Service` **tidak pernah dikonstruksi/di-wire** ke
+     Router (handler-nya nil-panic saat runtime).
+   - Test `auth`/`webhook`/`task` **tidak kompilasi** (signature drift + 1 file
+     korup: `gotالسig` — nama variabel tercampur aksara Arab di
+     `webhook/service_test.go`).
+2. **`migrate up` GAGAL** — 4 pasang migrasi bertabrakan nomor
+   (`0013`,`0014`,`0015`,`0016` masing-masing dua file) → golang-migrate
+   menolak "duplicate migration version".
+3. **`schema.sql` basi** — 6 objek dari migrasi 0014–0020 tidak ada di `schema.sql`.
+4. **`migrations/0006_*.down.sql` rusak** (pre-existing, TODO-2 lama) —
+   `DROP KEY idx_tasks_status` ditolak errno 1553 (dibutuhkan FK).
+5. **`migrations/0020_user_devices_mapping` (untracked) rusak** —
+   `INSERT INTO ref_roles (id, name, description)` padahal `ref_roles` tak punya
+   kolom `description` & `code` NOT NULL.
+
+### YANG DIPERBAIKI SESI INI — tree sekarang HIJAU (divalidasi via Docker)
+
+- **Renumber migrasi**: `0014_performance_indexes`→`0017`,
+  `0015_generic_files`→`0018`, `0016_tags_and_presets`→`0019`,
+  `0013_user_devices_mapping` (untracked)→`0020`. Rantai kini linear 0001–0020.
+- **`schema.sql` disinkronkan** — `device_config_snapshots`, kolom
+  `devices.latitude/longitude`, `files`, `tags`/`device_tags`/`presets`,
+  `user_devices`, role `ENDUSER`, index performa 0017. Diverifikasi:
+  `migrate up` (chain) dan `schema.sql` menghasilkan set tabel + kolom
+  **identik** (diff information_schema, MariaDB 10.11 nyata).
+- **`migrate` divalidasi via `cmd/migrate` (golang-migrate) nyata**: up 0→20
+  bersih, down 20→0 bersih (setelah fix 0006 down: `DROP FK` → `DROP KEY` →
+  `ADD FK`), re-up 0→20 bersih.
+- **Semua error kompilasi di atas diperbaiki** — `go build ./...`, `go vet ./...`,
+  `go test ./...` semua LULUS (image `golang:1.26`); `gofmt` bersih; frontend
+  `npm run build` LULUS.
+- **`detectAnomalyBoot` logika diperbaiki** — bandingkan boot-time SEBELUM vs
+  SESUDAH, ambang <15 menit, guard nil `activity`.
+- **Modul self-service pelanggan diselesaikan** (sebelumnya stub kosong):
+  `internal/domain/selfservice.go` (`UserDeviceRepository`, `SelfServiceWiFiChange`),
+  `internal/repository/mysql/user_device_repository.go`,
+  `internal/usecase/selfservice/service.go` (ownership-check, bukan RBAC tenant;
+  `ListMyDevices`/`GetMyDevice`/`ChangeMyWiFi`/`RebootMyDevice`), handler
+  `/api/v1/self-service/*` di-wire penuh ke `main.go`.
+- **`tag.Service`/`preset.Service` di-wire** ke Router (sebelumnya nil).
+- **`domain.Task.TaskTypeCode`** ditambah (JOIN di `GetByID`), enrich response API.
+- **`ActivityLog.Details`** (map konteks) dilipat jadi JSON di kolom `description`
+  oleh repo bila description kosong.
+
+### BELUM (lanjutan `/goal` sesi ini):
+- API request log persisten (tabel + middleware + endpoint + UI).
+- Analisa gap API vs GenieACS + isian.
+- Frontend: halaman self-service, halaman tag/preset, wiring fitur baru.
+- USP/TR-369 masih level mock (`internal/delivery/usp`, `pkg/usp`) — kompilasi OK,
+  di-mount di `:7547/usp`, tapi `HandleMessage` belum route apa-apa. Perlu
+  keputusan arsitektur (lihat TODO-5 lama).
+- Live smoke `docker compose up` (boot acsd) belum dijalankan sesi ini.
+- Belum di-commit (menunggu review; kandidat: branch `fix/build-and-migration-repair`).
+
+---
+
+
 Dibuat atas permintaan `/goal` (sesi kerja otonom semalam). Isinya: apa yang
 ditemukan saat sesi dimulai, keputusan interpretasi, apa yang dikerjakan &
 diverifikasi, dan **daftar TODO/temuan yang jujur** untuk ditinjau saat bangun.

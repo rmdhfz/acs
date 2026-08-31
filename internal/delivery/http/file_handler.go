@@ -80,8 +80,8 @@ func (r *Router) uploadFile(c *echo.Context) error {
 
 func (r *Router) listFiles(c *echo.Context) error {
 	actor := ActorFrom(c)
-	p := parsePagination(c)
-	
+	p := paginationFromQuery(c)
+
 	files, total, err := r.Files.List(c.Request().Context(), actor, p)
 	if err != nil {
 		return handleErr(c, err)
@@ -98,7 +98,7 @@ func (r *Router) listFiles(c *echo.Context) error {
 
 func (r *Router) deleteFile(c *echo.Context) error {
 	actor := ActorFrom(c)
-	id, err := strconv.ParseUint(c.PathParam("id"), 10, 64)
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid ID")
 	}

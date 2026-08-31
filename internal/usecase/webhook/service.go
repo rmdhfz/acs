@@ -163,8 +163,8 @@ func (s *Service) ListSubscriptions(ctx context.Context, actor domain.Actor, que
 }
 
 type UpdateSubscriptionInput struct {
-	Name        string
-	TargetURL   string
+	Name      string
+	TargetURL string
 	// IsActive pointer: nil = tidak diubah, false = nonaktifkan, true = aktifkan.
 	// Menggunakan *bool supaya klien bisa secara eksplisit menonaktifkan
 	// webhook (kalau bool biasa, false tidak bisa dibedakan dari "tidak diisi").
@@ -248,13 +248,13 @@ func (s *Service) TestSubscription(ctx context.Context, actor domain.Actor, id u
 	return s.createDelivery(ctx, sub, payload)
 }
 
-func (s *Service) CountFailedDeliveries(ctx context.Context, actor *domain.Actor) (int, error) {
-	if actor.Role != domain.RoleSuperadmin && actor.TenantID == nil {
+func (s *Service) CountFailedDeliveries(ctx context.Context, actor domain.Actor) (int, error) {
+	if !actor.HasRole(domain.RoleSuperadmin) && actor.TenantID == nil {
 		return 0, domain.ErrUnauthorized
 	}
 	// Superadmin get all tenants failures if tenantID is nil, else scoped to tenant
 	var filterTenant *uint64
-	if actor.Role != domain.RoleSuperadmin {
+	if !actor.HasRole(domain.RoleSuperadmin) {
 		filterTenant = actor.TenantID
 	}
 	return s.deliveries.CountFailed(ctx, filterTenant)

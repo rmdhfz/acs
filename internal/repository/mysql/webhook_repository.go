@@ -202,4 +202,3 @@ func (r *webhookDeliveryRepository) CountFailed(ctx context.Context, tenantID *u
 	}
 	return count, nil
 }
-

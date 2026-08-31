@@ -6,21 +6,22 @@ import (
 	"github.com/labstack/echo/v5"
 
 	"acs/internal/delivery/ws"
-	"acs/internal/domain"
 )
 
-func (r *Router) serveWs(c echo.Context) error {
+// serveWs meng-upgrade koneksi ke WebSocket untuk push event realtime ke
+// dashboard (device online/offline, task status). Sudah lewat AuthMiddleware
+// (lihat router.go) sehingga actor pasti ada.
+func (r *Router) serveWs(c *echo.Context) error {
 	conn, err := ws.Upgrader.Upgrade(c.Response(), c.Request(), nil)
 	if err != nil {
 		log.Printf("WS Upgrade Error: %v", err)
 		return err
 	}
 
-	actor, ok := c.Get("actor").(*domain.Actor)
-	if !ok {
-		// Harusnya tidak mungkin karena lewat AuthMiddleware
-		conn.Close()
-		return nil
+	actor := ActorFrom(c)
+	role := ""
+	if len(actor.Roles) > 0 {
+		role = actor.Roles[0]
 	}
 
 	client := &ws.Client{
@@ -28,13 +29,10 @@ func (r *Router) serveWs(c echo.Context) error {
 		Conn:     conn,
 		Send:     make(chan []byte, 256),
 		TenantID: actor.TenantID,
-		Role:     actor.Roles[0], // Simplified, assumes at least one role
+		Role:     role,
 	}
-
 	client.Hub.Register <- client
 
-	// Allow collection of memory referenced by the caller by doing all work in
-	// new goroutines.
 	go client.WritePump()
 	go client.ReadPump()
 

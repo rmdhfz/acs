@@ -3,12 +3,10 @@ package device
 
 import (
 	"context"
-	"crypto/sha1"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"time"
@@ -59,6 +57,11 @@ func NewService(
 	}
 }
 
+// log mengembalikan logger terstruktur bersama (slog.SetDefault dipanggil di
+// cmd/acsd/main.go) — device.Service tidak menerima *slog.Logger di
+// konstruktor, jadi memakai default global.
+func (s *Service) log() *slog.Logger { return slog.Default() }
+
 func (s *Service) Get(ctx context.Context, actor domain.Actor, id uint64) (*domain.Device, error) {
 	d, err := s.devices.GetByID(ctx, id)
 	if err != nil {
@@ -82,7 +85,7 @@ func (s *Service) CreateConfigSnapshot(ctx context.Context, deviceID uint64) err
 			snapMap[p.ParameterName] = *p.ParameterValue
 		}
 	}
-	
+
 	// Convert map to JSON
 	b, err := json.Marshal(snapMap)
 	if err != nil {
@@ -94,7 +97,7 @@ func (s *Service) CreateConfigSnapshot(ctx context.Context, deviceID uint64) err
 		SnapshotData: domain.JSONRawMessage(b),
 		CreatedAt:    time.Now(),
 	}
-	
+
 	return s.configSnaps.Create(ctx, snap)
 }
 
@@ -359,10 +362,10 @@ func (s *Service) ListActivity(ctx context.Context, actor domain.Actor, deviceID
 // Auth — CPE membalas dgn Inform dalam waktu singkat. Dipakai operator NOC\
 // untuk memaksa device offline agar segera melaporkan diri tanpa menunggu\
 // periodic inform interval (biasanya 15-60 menit).\
-//\
+// \
 // Berbeda dari task (task mengantre di DB, dieksekusi SAAT sesi CWMP aktif):\
 // Connection Request justru diperlukan SEBELUM sesi ada, untuk membuka sesi.\
-//\
+// \
 // Error domain.ErrInvalidInput dikembalikan bila device tidak punya\
 // connection_request_url terkonfigurasi (device lama / device di balik NAT\
 // yang tidak mengekspos URL-nya ke ACS).
@@ -399,13 +402,13 @@ func (s *Service) TriggerConnectionRequest(ctx context.Context, actor domain.Act
 	// (CPE hanya perlu menerima request dan memulai Inform, tidak return body).
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
-	
+
 	// Jika gagal via TCP (mis. timeout karena NAT), fallback ke STUN UDP (TR-111).
 	if err != nil || resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		if resp != nil {
 			resp.Body.Close()
 		}
-		
+
 		// Fallback ke UDP Connection Request (STUN/NAT Traversal)
 		udpParam, paramErr := s.deviceParams.Get(ctx, deviceID, "InternetGatewayDevice.ManagementServer.UDPConnectionRequestAddress")
 		if paramErr == nil && udpParam != nil && udpParam.ParameterValue != nil && *udpParam.ParameterValue != "" {
@@ -434,39 +437,18 @@ func (s *Service) TriggerConnectionRequest(ctx context.Context, actor domain.Act
 	return nil
 }
 
-// sendUDPConnectionRequest mengirim TR-111 UDP Connection Request
+// sendUDPConnectionRequest mengirim TR-111 UDP Connection Request (STUN Binding Request)
 func (s *Service) sendUDPConnectionRequest(ctx context.Context, udpURL, username, password string) error {
 	u, err := url.Parse(udpURL)
-	if err != nil {
-		return err
+	var host string
+	if err != nil || u.Host == "" {
+		host = udpURL // Terkadang disimpan langsung sebagai IP:Port
+	} else {
+		host = u.Host
 	}
-	host := u.Host
-	if host == "" {
-		host = udpURL // Sometimes stored as raw IP:Port
-	}
-	
-	addr, err := net.ResolveUDPAddr("udp", host)
-	if err != nil {
-		return err
-	}
-	conn, err := net.DialUDP("udp", nil, addr)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
 
-	ts := time.Now().Unix()
-	id := uuid.New().String()
-	
-	// Signature: SHA1(id + ts + password)
-	h := sha1.New()
-	h.Write([]byte(fmt.Sprintf("%s%d%s", id, ts, password)))
-	sig := hex.EncodeToString(h.Sum(nil))
-
-	// Format HTTP GET request di atas UDP
-	reqLine := fmt.Sprintf("GET ?ts=%d&id=%s&un=%s&sig=%s HTTP/1.1\r\nHost: %s\r\n\r\n", ts, id, username, sig, host)
-	_, err = conn.Write([]byte(reqLine))
-	return err
+	// Gunakan WakeUpViaUDP dari stun_client.go untuk mem-format STUN Request yang valid (RFC 3489)
+	return WakeUpViaUDP(host, username, password)
 }
 
 func (s *Service) Reboot(ctx context.Context, actor domain.Actor, deviceID uint64) error {
@@ -666,4 +648,8 @@ func (s *Service) SetParameterValues(ctx context.Context, actor domain.Actor, de
 		})
 	}
 	return err
+}
+
+func (s *Service) SaveOpticalMetric(ctx context.Context, metric *domain.DeviceOpticalMetric) error {
+	return s.opticalMetrics.Create(ctx, metric)
 }

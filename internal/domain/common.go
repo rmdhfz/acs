@@ -187,6 +187,7 @@ const (
 	RoleAdmin      = "ADMIN"
 	RoleNOC        = "NOC"
 	RoleViewer     = "VIEWER"
+	RoleEndUser    = "ENDUSER"
 )
 
 // MinUserPasswordLen — panjang minimum password akun user aplikasi (login),

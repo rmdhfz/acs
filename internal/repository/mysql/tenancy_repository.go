@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -410,6 +411,15 @@ func NewActivityLogRepository(db *sqlx.DB) domain.ActivityLogRepository {
 }
 
 func (r *activityLogRepository) Record(ctx context.Context, log *domain.ActivityLog) error {
+	// Lipat Details terstruktur jadi JSON di kolom description bila description
+	// belum diisi eksplisit — activity_logs sengaja tidak punya kolom metadata
+	// terpisah (audit ringan, CLAUDE.md §2).
+	if log.Description == nil && len(log.Details) > 0 {
+		if b, err := json.Marshal(log.Details); err == nil {
+			s := string(b)
+			log.Description = &s
+		}
+	}
 	const q = `INSERT INTO activity_logs (user_id, tenant_id, action, entity_type, entity_id, description, ip_address)
 		VALUES (:user_id, :tenant_id, :action, :entity_type, :entity_id, :description, :ip_address)`
 	_, err := r.db.NamedExecContext(ctx, q, log)

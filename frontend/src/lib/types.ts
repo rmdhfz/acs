@@ -340,7 +340,6 @@ export interface GenericFile {
   created_at: string
 }
 
-
 export interface Tag {
   id: number
   tenant_id: number | null
@@ -358,6 +357,36 @@ export interface Preset {
   precondition: string
   configurations: string
   is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface WebhookSubscription {
+  id: number
+  tenant_id: number | null
+  event_type_id: number
+  event_type: string
+  target_url: string
+  secret_key: string | null
+  description: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface WebhookDelivery {
+  id: number
+  subscription_id: number
+  tenant_id: number | null
+  event_type_id: number
+  event_type: string
+  payload: any
+  status: string
+  request_headers: string | null
+  response_code: number | null
+  response_body: string | null
+  retry_count: number
+  next_retry_at: string | null
   created_at: string
   updated_at: string
 }
