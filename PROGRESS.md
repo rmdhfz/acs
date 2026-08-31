@@ -127,6 +127,13 @@ menempelkan tag tenant B.
 - **Validasi live**: create tag → assign ke device 360 (204) →
   `GET /devices/360/tags` tampil → `GET /devices?tag_id=1` → device 360
   (total 1) → `?tag_id=999` → total 0 → remove (204) → `?tag_id=1` → total 0.
+- **Frontend (build+lint hijau, belum diuji browser — konsisten sesi FE lain)**:
+  `hooks.ts` `useDeviceTags`/`useAssignDeviceTag`/`useRemoveDeviceTag` +
+  `tag_id` di `DeviceFilters`; `DevicesPage` dropdown filter "Semua tag"
+  (muncul hanya bila ada tag); `DeviceDetailPage` `DeviceTagsBar` di bawah
+  kartu ringkasan — chip tag berwarna, tombol × (ADMIN/NOC), dropdown
+  "+ Tambah tag…". `npm run build` (tsc+vite) & `oxlint` bersih (0 warning
+  dari file yang disentuh).
 
 ### BELUM (lanjutan `/goal`)
 - Batch besar belum di-commit (menunggu review user). Kandidat urutan commit
@@ -138,7 +145,12 @@ menempelkan tag tenant B.
   & param `?tag_id=`. Regen bareng keputusan commit batch besar.
 - Item robustness lain vs GenieACS masih terbuka: USP/TR-369 masih mock,
   parameter-tree browser UI, device search expression language (baru `tag_id`
-  + filter dasar), UI frontend utk tag (assign dari DevicesPage / kolom tag).
+  + filter dasar).
+- **Push ke `origin/dev`** (permintaan user 2026-08-31: "push semuanya ke branch
+  dev, fokus di dev sebelum masuk main"). `main` TIDAK disentuh (tetap di
+  `9339f3c`, ahead 4 dari `origin/main`). `dev` = `origin/main` + 4 commit
+  main yang belum ter-push + commit `wip(dev)` (batch 2026-08-29 + fix
+  2026-08-31).
 
 ---
 

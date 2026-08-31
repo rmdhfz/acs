@@ -34,6 +34,10 @@ import {
   useFactoryResetDevice,
   usePushFileToDevice,
   useFiles,
+  useTags,
+  useDeviceTags,
+  useAssignDeviceTag,
+  useRemoveDeviceTag,
 } from '../lib/hooks'
 import { formatJSONField, formatDateTime, formatRelativeTime } from '../lib/format'
 
@@ -171,6 +175,8 @@ export function DeviceDetailPage() {
         </dl>
       </div>
 
+      <DeviceTagsBar deviceId={deviceId} canManage={hasRole('ADMIN', 'NOC')} />
+
       {showApplyProfile && (
         <ApplyProfileModal deviceId={deviceId} vendorId={device.vendor_id} onClose={() => setShowApplyProfile(false)} />
       )}
@@ -261,6 +267,77 @@ function EditDeviceModal({ device, onClose }: { device: NonNullable<ReturnType<t
         </div>
       </form>
     </Modal>
+  )
+}
+
+function DeviceTagsBar({ deviceId, canManage }: { deviceId: number; canManage: boolean }) {
+  const { data: assignedResp } = useDeviceTags(deviceId)
+  const { data: allTagsResp } = useTags({ pageSize: 100 })
+  const assign = useAssignDeviceTag(deviceId)
+  const remove = useRemoveDeviceTag(deviceId)
+  const [err, setErr] = useState<string | null>(null)
+
+  const assigned = assignedResp?.data ?? []
+  const assignedIds = new Set(assigned.map((t) => t.id))
+  const available = (allTagsResp?.data ?? []).filter((t) => !assignedIds.has(t.id))
+
+  async function run(fn: () => Promise<unknown>) {
+    setErr(null)
+    try {
+      await fn()
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Operasi tag gagal')
+    }
+  }
+
+  if (assigned.length === 0 && !canManage) return null
+
+  return (
+    <div className="mb-6 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <span className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Tag</span>
+      {assigned.length === 0 && <span className="text-sm text-slate-400 dark:text-slate-500">—</span>}
+      {assigned.map((t) => (
+        <span
+          key={t.id}
+          className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium"
+          style={{
+            borderColor: t.color ?? '#cbd5e1',
+            color: t.color ?? undefined,
+          }}
+        >
+          {t.color && <span className="h-2 w-2 rounded-full" style={{ backgroundColor: t.color }} />}
+          {t.name}
+          {canManage && (
+            <button
+              type="button"
+              onClick={() => run(() => remove.mutateAsync(t.id))}
+              className="ml-0.5 text-slate-400 hover:text-red-600 dark:hover:text-red-400"
+              aria-label={`Lepas tag ${t.name}`}
+            >
+              ×
+            </button>
+          )}
+        </span>
+      ))}
+      {canManage && available.length > 0 && (
+        <select
+          value=""
+          onChange={(e) => {
+            const id = Number(e.target.value)
+            if (id) run(() => assign.mutateAsync(id))
+          }}
+          className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-600 outline-none focus:border-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+        >
+          <option value="">+ Tambah tag…</option>
+          {available.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+      )}
+      {err && <span className="text-xs text-red-600 dark:text-red-400">{err}</span>}
+    </div>
   )
 }
 

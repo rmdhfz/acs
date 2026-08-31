@@ -36,6 +36,7 @@ import {
   useProvisioningProfiles,
   useRefs,
   useScheduleFirmwareUpgrade,
+  useTags,
   useVendors,
 } from '../lib/hooks'
 import { formatRelativeTime } from '../lib/format'
@@ -54,6 +55,7 @@ export function DevicesPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [vendorFilter, setVendorFilter] = useState<string>('')
+  const [tagFilter, setTagFilter] = useState<string>('')
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [bulkAction, setBulkAction] = useState<'profile' | 'firmware' | 'reboot' | null>(null)
@@ -62,6 +64,8 @@ export function DevicesPage() {
   const { data: statusRefs } = useRefs('ref_device_status')
   const { data: vendorsResp } = useVendors()
   const vendors = vendorsResp?.data ?? []
+  const { data: tagsResp } = useTags({ pageSize: 100 })
+  const tags = tagsResp?.data ?? []
 
   const onlineStatusId = findRefIdByCode(statusRefs, 'ONLINE')
   const offlineStatusId = findRefIdByCode(statusRefs, 'OFFLINE')
@@ -74,10 +78,11 @@ export function DevicesPage() {
       search: search.trim() || undefined,
       device_status_id: statusFilter ? Number(statusFilter) : undefined,
       vendor_id: vendorFilter ? Number(vendorFilter) : undefined,
+      tag_id: tagFilter ? Number(tagFilter) : undefined,
       page,
       page_size: PAGE_SIZE,
     }),
-    [search, statusFilter, vendorFilter, page],
+    [search, statusFilter, vendorFilter, tagFilter, page],
   )
 
   const { data: devicesResp, isLoading, isFetching, dataUpdatedAt } = useDevices(filters)
@@ -95,7 +100,7 @@ export function DevicesPage() {
   // device "terpilih" secara tidak kasat mata dari filter/halaman sebelumnya.
   useEffect(() => {
     setSelected(new Set())
-  }, [search, statusFilter, vendorFilter, page])
+  }, [search, statusFilter, vendorFilter, tagFilter, page])
 
   function vendorName(vendorId: number | null) {
     if (vendorId == null) return '-'
@@ -194,6 +199,23 @@ export function DevicesPage() {
             </option>
           ))}
         </select>
+        {tags.length > 0 && (
+          <select
+            value={tagFilter}
+            onChange={(e) => {
+              setTagFilter(e.target.value)
+              resetToFirstPage()
+            }}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-500"
+          >
+            <option value="">Semua tag</option>
+            {tags.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       {canBulkAct && selected.size > 0 && (

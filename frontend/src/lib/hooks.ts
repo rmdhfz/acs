@@ -74,6 +74,7 @@ export interface DeviceFilters {
   search?: string
   device_status_id?: number
   vendor_id?: number
+  tag_id?: number
   page?: number
   page_size?: number
 }
@@ -919,6 +920,37 @@ export function useDeleteTag() {
   return useMutation({
     mutationFn: (id: number) => api.del<void>('/tags/' + id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tags'] }),
+  })
+}
+
+// ---- Device <-> Tag ----
+export function useDeviceTags(deviceId: number) {
+  return useQuery({
+    queryKey: ['device-tags', deviceId],
+    queryFn: () => api.get<{ data: Tag[] }>(`/devices/${deviceId}/tags`),
+    enabled: deviceId > 0,
+  })
+}
+
+export function useAssignDeviceTag(deviceId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (tagId: number) => api.post<void>(`/devices/${deviceId}/tags`, { tag_id: tagId }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['device-tags', deviceId] })
+      qc.invalidateQueries({ queryKey: ['devices'] })
+    },
+  })
+}
+
+export function useRemoveDeviceTag(deviceId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (tagId: number) => api.del<void>(`/devices/${deviceId}/tags/${tagId}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['device-tags', deviceId] })
+      qc.invalidateQueries({ queryKey: ['devices'] })
+    },
   })
 }
 
