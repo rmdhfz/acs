@@ -216,6 +216,7 @@ func (r *Router) Register(e *echo.Echo) {
 	authed.GET("/webhooks", r.listWebhooks)
 	authed.GET("/webhooks/:id", r.getWebhook)
 	authed.PATCH("/webhooks/:id", r.updateWebhook, RequireRoles(admin...))
+	authed.DELETE("/webhooks/:id", r.deleteWebhook, RequireRoles(admin...))
 	authed.POST("/webhooks/:id/test", r.testWebhook, RequireRoles(admin...))
 	authed.GET("/webhooks/:id/deliveries", r.listWebhookDeliveries)
 

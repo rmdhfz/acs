@@ -70,8 +70,70 @@ murni, **tidak menyentuh kode Go**):
 
 - Verifikasi backend (`go build/vet/test`) + live smoke belum dijalankan sesi
   ini (butuh Docker). Perubahan sesi ini dokumentasi murni, risiko regresi nol.
-- Item robustness vs GenieACS masih terbuka: USP/TR-369 masih mock,
-  parameter-tree browser UI, device search expression language.
+
+---
+
+## SESI 2026-09-02 (2) (`/goal`: apakah sistem kita sudah lebih baik/lengkap dari GenieACS?)
+
+### Audit jujur — verdict: BELUM secara keseluruhan
+
+Audit kode langsung (bukan baca ROADMAP). 12 dimensi: **6 unggul** (UI/UX,
+multi-tenancy, dok API, skema, keamanan, rollout firmware), **3 setara**
+(cakupan RPC CWMP, observability, NAT), **3 tertinggal** (ekspresivitas
+provisioning, USP, **bukti lapangan**). Penahan utama klaim "lebih baik":
+sistem **belum pernah menerima Inform dari CPE fisik** (hanya simulasi 1
+BOOTSTRAP), belum ada CI, load test terbatas rate limiter.
+
+### Koreksi status dokumen (kode ≠ klaim)
+
+- **STUN/TR-111 SUDAH ADA** (`device/stun_client.go` + fallback di
+  `device/service.go`) — ROADMAP menandainya "belum dikerjakan". Untested ke
+  CGNAT nyata. → ROADMAP dikoreksi jadi `[~]`.
+- **Parameter-tree browser SUDAH ADA** (`ParameterTree.tsx` — expand/edit/
+  AddObject/DeleteObject/filter) — PROGRESS lama mencatatnya gap terbuka.
+- Sebaliknya, **preset engine = STUB**: tabel `presets` + `/presets` +
+  `PresetsPage` ada, tapi `preset.Service` cuma CRUD — tak ada evaluator di
+  `session/service.go`. Fitur tampak jadi padahal kosong.
+- **USP `HandleMessage` = no-op** (`usp_session/service.go` — `// TODO`),
+  state in-memory. Efektif belum ada.
+- `TagsPage.tsx` ada tapi tak ter-route; nav "My WiFi" (`/self-service`)
+  menunjuk route yang tak ada (portal ENDUSER tak ada halaman).
+
+### DIKERJAKAN sesi ini (gap terjangkau)
+
+- **`.github/workflows/ci.yml` DIPERKUAT** — **KOREKSI: file ini TIDAK hilang.**
+  Ada di `main` + `dev` + `origin/dev` sejak baseline `6adf25a`
+  (`git ls-tree -r main --name-only` mengonfirmasi). Klaim "CI workflow hilang"
+  di PROGRESS sesi 2026-08-31 + commit `d6ae42c` **SALAH** — entah `git ls-tree`
+  saat itu keliru dijalankan atau salah baca. Yang dikerjakan sesi ini:
+  memperkuat file yang sudah ada — tambah cek `gofmt`, `go test -race`, job
+  `openapi` (`@redocly/cli lint`), trigger branch `dev` (tadinya cuma `main`),
+  `concurrency` cancel-in-progress, cache npm via `package-lock.json`. Belum
+  diverifikasi jalan di GitHub Actions — struktur standar.
+- **`TagsPage` di-route** (`/tags`) + item nav "Tags" (ADMIN). Halaman sudah
+  lengkap sejak dulu, cuma tak pernah disambungkan.
+- **`ParameterTree` root TR-098/TR-181** — `handleGlobalRefresh` tadinya
+  hardcode `InternetGatewayDevice.` → device TR-181 (Nokia dll) tak bisa
+  "Refresh Root". Sekarang `rootPrefix` diturunkan dari parameter device yang
+  sudah ter-sync (fallback TR-098). Sesuai CLAUDE.md "resolve data model milik
+  device, jangan diasumsikan".
+- **`DELETE /webhooks/:id` di-route** — handler `deleteWebhook` +
+  `WebhookSubscriptionRepository.SoftDelete` + hook FE `useDeleteWebhook` +
+  tombol "Hapus" di `WebhooksPage` SEMUA sudah ada, tapi route-nya tidak
+  pernah didaftarkan → tombol Hapus webhook di UI selama ini gagal. +entri
+  `openapi.yaml` + Postman diregen (100→101 op).
+- Verifikasi: FE `npm run build` + `oxlint src` **hijau** (hanya warning
+  pre-existing). Backend (`router.go`, `openapi.yaml`) **belum diverifikasi
+  compile** — tanpa Go toolchain di host; perubahannya kecil & mekanis
+  (1 baris route memakai handler yang sudah ada).
+
+### BELUM — butuh keputusan/akses user (lihat ROADMAP §"Gap jujur pasca-audit")
+
+- Uji lapangan CPE fisik (butuh hardware).
+- Engine preset: butuh keputusan desain (bahasa precondition, bentuk
+  configurations, kapan dievaluasi) — jangan implementasi sepihak.
+- Load test multi-IP sungguhan (butuh infra).
+- Portal self-service ENDUSER (frontend) — backend siap.
 
 ---
 
@@ -233,6 +295,13 @@ disk maupun di tree ref manapun** (`git ls-tree main`, `HEAD` — kosong). Entah
 tak pernah di-commit atau terhapus. Tidak diblokir apa pun sekarang, tapi
 artinya tidak ada gerbang otomatis di `origin/dev`/`origin/main`. Belum
 dibuat ulang sesi ini (keputusan konten CI = ranah user).
+
+> **[KOREKSI 2026-09-02]** Temuan di atas **SALAH**. `.github/workflows/ci.yml`
+> ADA dan tracked di `main`, `dev`, dan `origin/dev` sejak commit baseline
+> `6adf25a` — diverifikasi ulang dengan `git ls-tree -r main --name-only`
+> dan `git show HEAD:.github/workflows/ci.yml`. Kemungkinan `git ls-tree` saat
+> sesi 2026-08-31 dijalankan dari worktree/ref yang salah. Sesi 2026-09-02
+> memperkuat file yang sudah ada (gofmt, `-race`, job openapi, trigger `dev`).
 
 ---
 

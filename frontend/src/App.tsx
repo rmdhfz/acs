@@ -13,6 +13,7 @@ import { AdministrationPage } from './pages/AdministrationPage'
 import { TenantOnboardingWizard } from './pages/TenantOnboardingWizard'
 import { WebhooksPage } from './pages/WebhooksPage'
 import FilesPage from './pages/FilesPage'
+import TagsPage from './pages/TagsPage'
 
 function App() {
   return (
@@ -33,6 +34,7 @@ function App() {
         <Route path="/provisioning" element={<ProvisioningPage />} />
         <Route path="/firmware" element={<FirmwarePage />} />
         <Route path="/files" element={<FilesPage />} />
+        <Route path="/tags" element={<TagsPage />} />
         <Route path="/webhooks" element={<WebhooksPage />} />
         <Route path="/catalog" element={<CatalogPage />} />
         <Route path="/administration" element={<AdministrationPage />} />

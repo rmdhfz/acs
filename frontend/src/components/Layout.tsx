@@ -16,6 +16,7 @@ import {
   Radio,
   Search,
   Sun,
+  Tag,
   X,
 } from 'lucide-react'
 import { useAuth } from '../lib/auth'
@@ -33,6 +34,7 @@ const NAV_ITEMS: { to: string; label: string; icon: typeof LayoutGrid; requireRo
   { to: '/provisioning', label: 'Provisioning', icon: FileSliders, requireRole: 'VIEWER' },
   { to: '/firmware', label: 'Firmware', icon: HardDrive, requireRole: 'VIEWER' },
   { to: '/files', label: 'Files', icon: HardDrive, requireRole: 'VIEWER' },
+  { to: '/tags', label: 'Tags', icon: Tag, requireRole: 'ADMIN' },
   { to: '/webhooks', label: 'Webhooks', icon: Bell, requireRole: 'ADMIN' },
   { to: '/catalog', label: 'Catalog Vendor', icon: Cable, requireRole: 'SUPERADMIN' },
   { to: '/administration', label: 'Administration', icon: Building2, requireRole: 'ADMIN' },

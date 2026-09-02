@@ -208,6 +208,19 @@ function TreeNodeView({ node, depth = 0, onRefreshNode, onEditNode, onAddObject,
 export function ParameterTree({ deviceId, parameters, onRefresh, isLoading }: ParameterTreeProps) {
   const tree = useMemo(() => buildTree(parameters), [parameters])
   const [filter, setFilter] = useState('')
+
+  // Root data model berbeda antar generasi/vendor: InternetGatewayDevice.* (TR-098)
+  // vs Device.* (TR-181). Jangan hardcode — turunkan dari parameter yang sudah
+  // ter-sync dari Inform/GetParameterValues device ini (CLAUDE.md: selalu resolve
+  // data model milik device, jangan diasumsikan tetap). Fallback ke TR-098 karena
+  // itu yang paling umum pada vendor target (ZTE/Huawei/FiberHome).
+  const rootPrefix = useMemo(() => {
+    for (const p of parameters) {
+      if (p.parameter_name.startsWith('Device.')) return 'Device.'
+      if (p.parameter_name.startsWith('InternetGatewayDevice.')) return 'InternetGatewayDevice.'
+    }
+    return 'InternetGatewayDevice.'
+  }, [parameters])
   const { hasRole } = useAuth()
   const canEdit = hasRole('ADMIN', 'SUPERADMIN')
   
@@ -254,9 +267,9 @@ export function ParameterTree({ deviceId, parameters, onRefresh, isLoading }: Pa
   }
 
   const handleGlobalRefresh = () => {
-    getParamNamesMut.mutate({ deviceId, path: 'InternetGatewayDevice.', nextLevel: false }, {
+    getParamNamesMut.mutate({ deviceId, path: rootPrefix, nextLevel: false }, {
       onSuccess: () => {
-        alert('Task GetParameterNames (Root) ditambahkan ke antrean.')
+        alert(`Task GetParameterNames (${rootPrefix}) ditambahkan ke antrean.`)
         onRefresh()
       }
     })

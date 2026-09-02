@@ -3130,6 +3130,37 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
+    delete:
+      operationId: deleteWebhook
+      tags: [Webhooks]
+      summary: Hapus (soft-delete) langganan webhook
+      description: ADMIN/SUPERADMIN, tenant-scoped. Delivery lama tetap tersimpan untuk audit.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/webhookIdPath'
+      responses:
+        '204':
+          description: Terhapus.
+        '400':
+          description: "`id` tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role di bawah ADMIN, atau langganan milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Langganan tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   /webhooks/{id}/test:
     post:
