@@ -178,10 +178,13 @@ User memilih **Opsi C + 5a/5b** (via AskUserQuestion). Diimplementasikan:
 nyata. CI `.github/workflows/ci.yml` akan cek saat push. Kemungkinan besar
 butuh 1 follow-up commit untuk gofmt/nit.
 
-**TEMUAN:** `PresetsPage.tsx` TIDAK ADA (PRESET_ENGINE_DESIGN.md keliru
-menyebutnya) — presets = backend + endpoint + hook (`usePresets` dkk) tanpa
-halaman/route. UI preset (toggle `enforce` + estimasi "N device terpengaruh"
-per 5b) masih perlu dibuat.
+**TEMUAN + DITINDAKLANJUTI:** `PresetsPage.tsx` TIDAK ADA (PRESET_ENGINE_DESIGN.md
+keliru menyebutnya). **Dibuat sesi ini:** `PresetsPage.tsx` (list, create/edit
+modal dgn textarea JSON precondition/configurations + validasi klien, toggle
+`enforce` dgn penjelasan drift-heal, delete) + route `/presets` + nav "Presets"
+(ADMIN) + banner peringatan FR-18. FE `tsc`+`build`+`oxlint` hijau. **Belum:**
+estimasi "N device terpengaruh" saat aktifkan enforce (butuh endpoint count
+backend — v1.1).
 
 ### (arsip) Proposal desain engine preset
 
