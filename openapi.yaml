@@ -98,6 +98,18 @@ tags:
     description: Trigger diagnostic test TR-069 standar (ping, traceroute, WiFi scan, dst.) dan hasilnya (FR-24).
   - name: Refs
     description: Tabel referensi/enum (`ref_*`) untuk menerjemahkan `*_id` ke label yang bisa dibaca.
+  - name: Sessions
+    description: Observability sesi CWMP (jumlah sesi OPEN di seluruh load balancer).
+  - name: Webhooks
+    description: Langganan webhook keluar (typed event → BSS/OSS/NMS) dan log delivery-nya (migrations/0013).
+  - name: Files
+    description: Berkas generik (config, log, firmware image) di object storage untuk di-push/di-pull CPE (migrations/0018).
+  - name: Tags
+    description: Tag/segmentasi device gaya GenieACS — label bebas per tenant + penempelan ke device (migrations/0019).
+  - name: Presets
+    description: Preset provisioning gaya GenieACS (precondition + configurations, migrations/0019).
+  - name: SelfService
+    description: Portal pelanggan (role `ENDUSER`) — hanya device yang dipetakan ke akun lewat `user_devices` (migrations/0020).
   - name: Metrics
     description: Endpoint observability format Prometheus (bukan JSON), tanpa autentikasi.
 
@@ -867,6 +879,13 @@ paths:
           schema: { type: integer, format: int64 }
         - name: device_status_id
           in: query
+          schema: { type: integer, format: int64 }
+        - name: tag_id
+          in: query
+          description: |
+            Filter device yang memiliki tag ini (`EXISTS` ke `device_tags`).
+            Tetap tenant-scoped — filter tag DAN tenant di-AND. Kelola tag lewat
+            `POST /devices/:id/tags`.
           schema: { type: integer, format: int64 }
         - $ref: '#/components/parameters/tenantIdQuery'
         - $ref: '#/components/parameters/page'
@@ -2739,6 +2758,1014 @@ paths:
                   # TYPE acs_cwmp_sessions_open gauge
                   acs_cwmp_sessions_open 304
 
+  # ============================== AUTH — OIDC (opsional) ==============================
+  /auth/oidc/login:
+    get:
+      operationId: oidcLogin
+      tags: [Auth]
+      summary: Mulai alur login OIDC (redirect ke Identity Provider)
+      description: |
+        Hanya aktif bila OIDC dikonfigurasi (`ACS_OIDC_*`). Endpoint browser
+        redirect — BUKAN JSON. Mengembalikan `302` ke authorization endpoint IdP
+        dengan `state`/`nonce`. Tanpa autentikasi (titik masuk login).
+      security: []
+      responses:
+        '302':
+          description: Redirect ke Identity Provider.
+        '404':
+          description: OIDC tidak dikonfigurasi di instance ini.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+  /auth/oidc/callback:
+    get:
+      operationId: oidcCallback
+      tags: [Auth]
+      summary: Callback OIDC — tukar authorization code jadi sesi
+      description: |
+        Dipanggil oleh browser setelah IdP meng-authorize user. Memverifikasi
+        `state` + ID token, lalu menautkan/menerbitkan user lokal. BUKAN JSON
+        (redirect atau body kecil, tergantung konfigurasi). Tanpa autentikasi
+        Bearer (identitas dibawa oleh `code`).
+      security: []
+      parameters:
+        - { name: code, in: query, required: true, schema: { type: string } }
+        - { name: state, in: query, required: true, schema: { type: string } }
+      responses:
+        '302':
+          description: Redirect ke aplikasi frontend dengan sesi ter-set.
+        '400':
+          description: "`state` tidak cocok, `code` invalid, atau ID token gagal diverifikasi."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # ============================== REALTIME ==============================
+  /ws:
+    get:
+      operationId: serveWs
+      tags: [Sessions]
+      summary: Upgrade WebSocket untuk push event realtime ke frontend
+      description: |
+        Meng-upgrade koneksi HTTP ke WebSocket (`Connection: Upgrade`). Setelah
+        upgrade, server mem-push event JSON (task selesai/gagal, device
+        online/offline, dsb.) yang ter-scope ke tenant actor. Autentikasi Bearer
+        WAJIB pada request handshake. Tidak ada body response HTTP biasa.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '101':
+          description: Switching Protocols — WebSocket terhubung.
+        '400':
+          description: Bukan permintaan upgrade WebSocket yang valid.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # ============================== SESSIONS ==============================
+  /cwmp/sessions/count:
+    get:
+      operationId: countOpenSessions
+      tags: [Sessions]
+      summary: Jumlah sesi CWMP berstatus OPEN saat ini (lintas tenant)
+      description: |
+        ADMIN/NOC/SUPERADMIN. Angka **lintas seluruh tenant** (melacak beban
+        load balancer CWMP secara global, bukan per-tenant) — sengaja tidak
+        di-scope. Sesi yang CPE-nya berhenti tanpa POST-kosong penutup di-reap
+        otomatis ke status `TIMEOUT` oleh sweeper (ambang 15 menit), jadi angka
+        ini tidak menumpuk permanen.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Jumlah sesi OPEN.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CountResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role di bawah NOC.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # ============================== DEVICES — sub-resource tambahan ==============================
+  /devices/{id}/connection-request:
+    post:
+      operationId: triggerConnectionRequest
+      tags: [Devices]
+      summary: Paksa CPE Inform segera (TR-069 Connection Request)
+      description: |
+        ADMIN/NOC/SUPERADMIN. ACS mengirim HTTP GET ber-Digest-auth ke
+        `connection_request_url` device. **Asinkron** — Inform dari device
+        datang beberapa detik kemudian di sesi CWMP terpisah, bukan sebagai
+        respons sinkron di sini. `400` bila device tidak punya
+        `connection_request_url`.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/deviceIdPath'
+      responses:
+        '202':
+          description: Connection request terkirim ke device.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageResponse' }
+        '400':
+          description: "`id` tidak valid, atau device tidak punya `connection_request_url`."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role di bawah NOC, atau device milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Device tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /devices/{id}/config-snapshots:
+    get:
+      operationId: listConfigSnapshots
+      tags: [Devices]
+      summary: Histori snapshot konfigurasi (parameter-tree) device
+      description: Semua role terautentikasi, tenant-scoped sama seperti `GET /devices/:id`.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/deviceIdPath'
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: Daftar snapshot (terbaru dulu).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceConfigSnapshotListResponse' }
+        '400':
+          description: "`id` tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Device milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Device tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    post:
+      operationId: createConfigSnapshot
+      tags: [Devices]
+      summary: Ambil snapshot konfigurasi device sekarang
+      description: |
+        ADMIN/NOC/SUPERADMIN. Menyimpan seluruh `device_parameters` terkini
+        sebagai satu snapshot JSON (untuk diff/rollback manual). Tidak
+        mengantre RPC ke CPE — memakai nilai parameter yang sudah tersinkron.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/deviceIdPath'
+      responses:
+        '200':
+          description: Snapshot dibuat.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageResponse' }
+        '400':
+          description: "`id` tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role di bawah NOC, atau device milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Device tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # ============================== WEBHOOKS ==============================
+  /webhooks:
+    post:
+      operationId: createWebhook
+      tags: [Webhooks]
+      summary: Buat langganan webhook keluar
+      description: |
+        ADMIN/SUPERADMIN. `tenant_id` NULL (langganan global) hanya boleh
+        SUPERADMIN; ADMIN wajib tenant sendiri. Response memuat `secret`
+        plaintext **sekali** — dipakai untuk verifikasi signature HMAC payload,
+        tidak bisa diambil ulang.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateWebhookRequest' }
+      responses:
+        '201':
+          description: Langganan dibuat.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookSubscription' }
+        '400':
+          description: "`event_type`/`name`/`target_url` kosong, atau `event_type` tidak dikenal."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role di bawah ADMIN, atau `tenant_id` di luar scope actor.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    get:
+      operationId: listWebhooks
+      tags: [Webhooks]
+      summary: Daftar langganan webhook
+      description: Semua role terautentikasi. Non-superadmin difilter ke tenant sendiri (+ langganan global).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/tenantIdQuery'
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: Daftar langganan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookSubscriptionListResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Actor non-superadmin tanpa `tenant_id`."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /webhooks/deliveries/failed-count:
+    get:
+      operationId: countFailedDeliveries
+      tags: [Webhooks]
+      summary: Jumlah delivery webhook berstatus FAILED (untuk badge/alert)
+      description: Semua role terautentikasi, tenant-scoped. Dipakai frontend untuk indikator kesehatan integrasi.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Jumlah delivery gagal.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CountResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /webhooks/{id}:
+    get:
+      operationId: getWebhook
+      tags: [Webhooks]
+      summary: Detail satu langganan webhook
+      description: Semua role terautentikasi, tenant-scoped. `secret` TIDAK dikembalikan.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/webhookIdPath'
+      responses:
+        '200':
+          description: Detail langganan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookSubscription' }
+        '400':
+          description: "`id` tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Langganan milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Langganan tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    patch:
+      operationId: updateWebhook
+      tags: [Webhooks]
+      summary: Ubah langganan webhook
+      description: |
+        ADMIN/SUPERADMIN, tenant-scoped. `name` & `target_url` wajib diisi
+        (bukan partial). `is_active` opsional (`null` = tidak diubah).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/webhookIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateWebhookRequest' }
+      responses:
+        '204':
+          description: Tersimpan.
+        '400':
+          description: "`id` tidak valid, atau `name`/`target_url` kosong."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role di bawah ADMIN, atau langganan milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Langganan tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /webhooks/{id}/test:
+    post:
+      operationId: testWebhook
+      tags: [Webhooks]
+      summary: Kirim payload uji ke URL target langganan
+      description: |
+        ADMIN/SUPERADMIN, tenant-scoped. Mengantre satu delivery uji (payload
+        contoh) dan mengembalikan baris delivery-nya untuk dipantau.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/webhookIdPath'
+      responses:
+        '202':
+          description: Delivery uji diantre.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookDelivery' }
+        '400':
+          description: "`id` tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role di bawah ADMIN, atau langganan milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Langganan tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /webhooks/{id}/deliveries:
+    get:
+      operationId: listWebhookDeliveries
+      tags: [Webhooks]
+      summary: Log percobaan pengiriman untuk satu langganan
+      description: Semua role terautentikasi, tenant-scoped ke langganan.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/webhookIdPath'
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: Daftar delivery (terbaru dulu).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookDeliveryListResponse' }
+        '400':
+          description: "`id` tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Langganan milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Langganan tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # ============================== FILES ==============================
+  /files:
+    post:
+      operationId: uploadFile
+      tags: [Files]
+      summary: Upload berkas generik ke object storage
+      description: |
+        ADMIN/SUPERADMIN. `multipart/form-data`. Di-scope ke tenant actor.
+        Maksimum 256 MiB. `file_type` mengikuti kode TR-069 (`1 Firmware
+        Upgrade Image`, `3 Vendor Configuration File`, dst.).
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/UploadFileRequest' }
+      responses:
+        '201':
+          description: Berkas tersimpan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GenericFile' }
+        '400':
+          description: Bagian `file` hilang/invalid, atau file terlalu besar.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role di bawah ADMIN.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    get:
+      operationId: listFiles
+      tags: [Files]
+      summary: Daftar berkas generik
+      description: Semua role terautentikasi, tenant-scoped.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: Daftar berkas (envelope `data` + `meta`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GenericFileListResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /files/{id}:
+    delete:
+      operationId: deleteFile
+      tags: [Files]
+      summary: Hapus berkas generik
+      description: ADMIN/SUPERADMIN, tenant-scoped. Menghapus objek di storage + baris metadata.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/fileIdPath'
+      responses:
+        '204':
+          description: Terhapus.
+        '400':
+          description: "`id` tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role di bawah ADMIN, atau berkas milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Berkas tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # ============================== TAGS ==============================
+  /tags:
+    post:
+      operationId: createTag
+      tags: [Tags]
+      summary: Buat tag device
+      description: ADMIN/SUPERADMIN. Tag otomatis di-scope ke tenant actor (`tenant_id` diisi dari actor, bukan body).
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateTagRequest' }
+      responses:
+        '201':
+          description: Tag dibuat.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tag' }
+        '400':
+          description: Nama tag kosong.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role di bawah ADMIN.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    get:
+      operationId: listTags
+      tags: [Tags]
+      summary: Daftar tag
+      description: Semua role terautentikasi. Non-superadmin melihat tag tenant sendiri (+ tag global `tenant_id=NULL`).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: Daftar tag (envelope `data` + `meta`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TagListResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /tags/{id}:
+    delete:
+      operationId: deleteTag
+      tags: [Tags]
+      summary: Hapus tag
+      description: ADMIN/SUPERADMIN. Tag tenant lain → `403`. Penghapusan juga melepas semua penempelan `device_tags`-nya.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/tagIdPath'
+      responses:
+        '204':
+          description: Terhapus.
+        '400':
+          description: "`id` tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role di bawah ADMIN, atau tag milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Tag tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /devices/{id}/tags:
+    get:
+      operationId: listDeviceTags
+      tags: [Tags]
+      summary: Tag yang menempel pada satu device
+      description: Semua role terautentikasi. Kepemilikan device divalidasi (tenant-scoped) sebelum menyentuh tag.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/deviceIdPath'
+      responses:
+        '200':
+          description: Daftar tag device (envelope `data` saja, tanpa pagination).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Tag' }
+                required: [data]
+        '400':
+          description: "`id` tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Device milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Device tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    post:
+      operationId: assignDeviceTag
+      tags: [Tags]
+      summary: Tempelkan tag ke device
+      description: |
+        ADMIN/NOC/SUPERADMIN. Kepemilikan device DAN tag sama-sama divalidasi
+        tenant-scoped (tag global boleh; tag tenant lain → `403`).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/deviceIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AssignDeviceTagRequest' }
+      responses:
+        '204':
+          description: Tag ditempelkan (idempoten).
+        '400':
+          description: "`id` tidak valid, atau `tag_id` kosong."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role di bawah NOC, device milik tenant lain, atau tag milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Device atau tag tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /devices/{id}/tags/{tagId}:
+    delete:
+      operationId: removeDeviceTag
+      tags: [Tags]
+      summary: Lepas tag dari device
+      description: ADMIN/NOC/SUPERADMIN. Tenant-scoped di sisi device dan tag.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/deviceIdPath'
+        - $ref: '#/components/parameters/deviceTagIdPath'
+      responses:
+        '204':
+          description: Tag dilepas (no-op bila tidak menempel).
+        '400':
+          description: "`id`/`tagId` tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role di bawah NOC, atau device/tag milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Device atau tag tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # ============================== PRESETS ==============================
+  /presets:
+    post:
+      operationId: createPreset
+      tags: [Presets]
+      summary: Buat preset provisioning
+      description: |
+        ADMIN/SUPERADMIN. Di-scope ke tenant actor. `precondition` dan
+        `configurations` adalah string (ekspresi/JSON gaya GenieACS) —
+        dievaluasi oleh engine preset, bukan divalidasi skema di sini.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePresetRequest' }
+      responses:
+        '201':
+          description: Preset dibuat (selalu `is_active=true`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Preset' }
+        '400':
+          description: Nama preset kosong.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role di bawah ADMIN.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    get:
+      operationId: listPresets
+      tags: [Presets]
+      summary: Daftar preset
+      description: Semua role terautentikasi, tenant-scoped (+ preset global).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: Daftar preset (envelope `data` + `meta`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PresetListResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /presets/{id}:
+    patch:
+      operationId: updatePreset
+      tags: [Presets]
+      summary: Ubah preset
+      description: ADMIN/SUPERADMIN, tenant-scoped. FULL replace field skalar (kirim seluruh state).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/presetIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdatePresetRequest' }
+      responses:
+        '200':
+          description: Preset setelah diubah.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Preset' }
+        '400':
+          description: "`id` tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role di bawah ADMIN, atau preset milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Preset tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    delete:
+      operationId: deletePreset
+      tags: [Presets]
+      summary: Hapus preset
+      description: ADMIN/SUPERADMIN, tenant-scoped.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/presetIdPath'
+      responses:
+        '204':
+          description: Terhapus.
+        '400':
+          description: "`id` tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role di bawah ADMIN, atau preset milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Preset tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # ============================== SELF-SERVICE (portal pelanggan) ==============================
+  /self-service/devices:
+    get:
+      operationId: listMyDevices
+      tags: [SelfService]
+      summary: Device milik akun pelanggan ini
+      description: |
+        Role `ENDUSER` saja. Bukan RBAC tenant — di-scope ke baris `user_devices`
+        (device yang dipetakan eksplisit ke akun). DTO sempit
+        (`SelfServiceDevice`), bukan `Device` penuh.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Daftar device pelanggan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SelfServiceDeviceListResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role bukan `ENDUSER`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /self-service/devices/{id}:
+    get:
+      operationId: getMyDevice
+      tags: [SelfService]
+      summary: Detail satu device pelanggan
+      description: Role `ENDUSER`. `403` bila device tidak dipetakan ke akun ini.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/deviceIdPath'
+      responses:
+        '200':
+          description: Detail device.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SelfServiceDevice' }
+        '400':
+          description: "`id` tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Device bukan milik akun ini (atau role bukan `ENDUSER`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /self-service/devices/{id}/wifi:
+    patch:
+      operationId: changeMyWiFi
+      tags: [SelfService]
+      summary: Ubah SSID/passphrase WiFi device sendiri
+      description: |
+        Role `ENDUSER`. Mengantre satu task `SET_PARAMETER_VALUES`. Minimal
+        salah satu dari `ssid`/`passphrase` wajib diisi; passphrase (bila diisi)
+        8–63 karakter (batas WPA-PSK). `band` kosong = terapkan ke 2.4G & 5G.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/deviceIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangeMyWiFiRequest' }
+      responses:
+        '202':
+          description: Task perubahan WiFi diantre.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        '400':
+          description: "`id` tidak valid, payload kosong, atau passphrase di luar 8–63 karakter."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Device bukan milik akun ini.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Kuota task queue tenant sudah tercapai.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /self-service/devices/{id}/reboot:
+    post:
+      operationId: rebootMyDevice
+      tags: [SelfService]
+      summary: Reboot device sendiri
+      description: Role `ENDUSER`. Mengantre task `REBOOT`.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/deviceIdPath'
+      responses:
+        '202':
+          description: Task reboot diantre.
+        '400':
+          description: "`id` tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Device bukan milik akun ini.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Kuota task queue tenant sudah tercapai.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -2815,6 +3842,36 @@ components:
       in: path
       required: true
       description: ID numerik internal firmware rollout batch.
+      schema: { type: integer, format: int64 }
+    webhookIdPath:
+      name: id
+      in: path
+      required: true
+      description: ID numerik internal webhook subscription.
+      schema: { type: integer, format: int64 }
+    fileIdPath:
+      name: id
+      in: path
+      required: true
+      description: ID numerik internal file generik.
+      schema: { type: integer, format: int64 }
+    tagIdPath:
+      name: id
+      in: path
+      required: true
+      description: ID numerik internal tag.
+      schema: { type: integer, format: int64 }
+    presetIdPath:
+      name: id
+      in: path
+      required: true
+      description: ID numerik internal preset.
+      schema: { type: integer, format: int64 }
+    deviceTagIdPath:
+      name: tagId
+      in: path
+      required: true
+      description: ID numerik internal tag yang dilepas dari device.
       schema: { type: integer, format: int64 }
 
   schemas:
@@ -3035,7 +4092,7 @@ components:
         last_login_at: { type: string, format: date-time, nullable: true }
         roles:
           type: array
-          items: { type: string, enum: [SUPERADMIN, ADMIN, NOC, VIEWER] }
+          items: { type: string, enum: [SUPERADMIN, ADMIN, NOC, VIEWER, ENDUSER] }
       allOf:
         - $ref: '#/components/schemas/Audit'
       required: [id, user_uuid, username, email, full_name, is_active, roles]
@@ -3064,8 +4121,8 @@ components:
         full_name: { type: string }
         role_codes:
           type: array
-          items: { type: string, enum: [SUPERADMIN, ADMIN, NOC, VIEWER] }
-          description: "Non-superadmin TIDAK BOLEH menyertakan `SUPERADMIN` (dicek case-insensitive)."
+          items: { type: string, enum: [SUPERADMIN, ADMIN, NOC, VIEWER, ENDUSER] }
+          description: "Non-superadmin TIDAK BOLEH menyertakan `SUPERADMIN` (dicek case-insensitive). `ENDUSER` untuk akun portal self-service."
       required: [username, password]
 
     UpdateUserRequest:
@@ -3088,7 +4145,7 @@ components:
       properties:
         role_codes:
           type: array
-          items: { type: string, enum: [SUPERADMIN, ADMIN, NOC, VIEWER] }
+          items: { type: string, enum: [SUPERADMIN, ADMIN, NOC, VIEWER, ENDUSER] }
       required: [role_codes]
 
     # ---------- Devices ----------
@@ -3264,17 +4321,13 @@ components:
     Task:
       type: object
       description: |
-        Satu item antrean RPC CWMP. **Catatan penting:** `parameters` dan
-        `response` di struct Go bertipe `[]byte` (JSON mentah) sehingga
-        di-serialize sebagai STRING TER-BASE64-KAN oleh `encoding/json`
-        Go (bukan objek JSON apa adanya) — klien HARUS men-decode base64
-        lalu parse ulang sebagai JSON untuk mendapatkan isi aslinya. Ini
-        BEDA dari body request `POST /tasks` yang menerima `parameters`
-        sebagai objek JSON biasa (lihat `CreateTaskRequest`) — asimetri
-        request vs response ini nyata di API berjalan, dicatat sebagai
-        temuan (lihat laporan audit), bukan sekadar asumsi dari baca kode.
-        Untuk role `NOC`/`VIEWER`, key `url`/`username`/`password` di dalam
-        `parameters` (setelah didekode) akan bernilai `"[redacted]"`.
+        Satu item antrean RPC CWMP. `parameters` dan `response` bertipe
+        `domain.JSONRawMessage` — di-emit sebagai **objek JSON apa adanya**
+        (bukan string ter-base64-kan; asimetri base64 lama sudah diperbaiki,
+        lihat log perubahan `ROADMAP.md` 2026-08-23). `response` bernilai
+        `null` selama task belum selesai. Untuk role `NOC`/`VIEWER`, key
+        `url`/`username`/`password` di dalam `parameters` di-redact jadi
+        `"[redacted]"`.
       properties:
         id: { type: integer, format: int64 }
         task_uuid: { type: string, format: uuid }
@@ -3283,15 +4336,15 @@ components:
         task_status_id: { type: integer, format: int64 }
         priority: { type: integer, minimum: 1, maximum: 9, description: "1 = tertinggi, 9 = terendah." }
         parameters:
-          type: string
-          format: byte
+          type: object
+          additionalProperties: true
           nullable: true
-          description: "JSON mentah ter-base64-kan, lihat catatan di atas."
+          description: "Objek JSON parameter RPC (mis. daftar nama parameter, key-value SetParameterValues)."
         response:
-          type: string
-          format: byte
+          type: object
+          additionalProperties: true
           nullable: true
-          description: "JSON mentah ter-base64-kan (respons RPC dari CPE), lihat catatan di atas."
+          description: "Objek JSON respons RPC dari CPE. `null` selama task belum selesai."
         error_message: { type: string, nullable: true }
         retry_count: { type: integer }
         max_retries: { type: integer }
@@ -3708,7 +4761,7 @@ components:
     # ---------- Diagnostics ----------
     DeviceDiagnostic:
       type: object
-      description: "`result` bertipe `[]byte` di Go, sama seperti `Task.parameters`/`Task.response` — di-serialize sebagai string ter-base64-kan, bukan objek JSON apa adanya."
+      description: "`result` bertipe `domain.JSONRawMessage` — objek JSON apa adanya (bukan base64), `null` selama diagnostic belum selesai."
       properties:
         id: { type: integer, format: int64 }
         device_id: { type: integer, format: int64 }
@@ -3719,7 +4772,11 @@ components:
         status:
           type: string
           enum: [PENDING, RUNNING, COMPLETED, FAILED]
-        result: { type: string, format: byte, nullable: true }
+        result:
+          type: object
+          additionalProperties: true
+          nullable: true
+          description: "Objek JSON hasil diagnostic (mis. hasil ping/traceroute/WiFi scan). `null` sampai CPE mengirim event `8 DIAGNOSTICS COMPLETE`."
         executed_at: { type: string, format: date-time, nullable: true }
         created_at: { type: string, format: date-time }
       required: [id, device_id, diagnostic_type, status, created_at]
@@ -3746,3 +4803,300 @@ components:
           nullable: true
           description: "Map logical key/raw TR-069 path -> nilai yang di-set untuk menjalankan diagnostic (mis. `{\"InternetGatewayDevice.IPPingDiagnostics.Host\": \"8.8.8.8\"}`)."
       required: [diagnostic_type]
+
+    # ---------- Generik tambahan ----------
+    CountResponse:
+      type: object
+      description: "Envelope `{ \"count\": <int> }` yang dipakai beberapa endpoint agregat sederhana."
+      properties:
+        count: { type: integer }
+      required: [count]
+
+    MessageResponse:
+      type: object
+      description: "Envelope `{ \"message\": \"...\" }` untuk aksi asinkron yang tidak mengembalikan resource."
+      properties:
+        message: { type: string }
+      required: [message]
+
+    # ---------- Device config snapshots (migrations/0014) ----------
+    DeviceConfigSnapshot:
+      type: object
+      description: "Snapshot seluruh `device_parameters` device pada satu titik waktu — audit minimal (`created_at` saja)."
+      properties:
+        id: { type: integer, format: int64 }
+        device_id: { type: integer, format: int64 }
+        snapshot_data:
+          type: object
+          additionalProperties: true
+          description: "Objek JSON key-value parameter TR-069 saat snapshot diambil."
+        created_at: { type: string, format: date-time }
+      required: [id, device_id, created_at]
+
+    DeviceConfigSnapshotListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          nullable: true
+          items: { $ref: '#/components/schemas/DeviceConfigSnapshot' }
+        total: { type: integer }
+      required: [data, total]
+
+    # ---------- Webhooks (migrations/0013) ----------
+    WebhookSubscription:
+      type: object
+      description: |
+        Langganan satu jenis event pada satu URL. `secret` (HMAC) hanya muncul
+        di response `POST /webhooks`, sekali — kolom DB `secret_enc` terenkripsi
+        AES-GCM dan tidak pernah dikembalikan lagi.
+      properties:
+        id: { type: integer, format: int64 }
+        subscription_uuid: { type: string, format: uuid }
+        tenant_id: { type: integer, format: int64, nullable: true, description: "NULL = langganan global (SUPERADMIN)." }
+        event_type_id: { type: integer, format: int64 }
+        name: { type: string }
+        target_url: { type: string, format: uri }
+        is_active: { type: boolean }
+        description: { type: string, nullable: true }
+        secret: { type: string, description: "HANYA pada response create. Hex 64 karakter.", nullable: true }
+      allOf:
+        - $ref: '#/components/schemas/Audit'
+      required: [id, subscription_uuid, event_type_id, name, target_url, is_active]
+
+    WebhookSubscriptionListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          nullable: true
+          items: { $ref: '#/components/schemas/WebhookSubscription' }
+        total: { type: integer }
+      required: [data, total]
+
+    CreateWebhookRequest:
+      type: object
+      properties:
+        tenant_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: "NULL (global) hanya SUPERADMIN. Non-superadmin: harus tenant sendiri."
+        event_type:
+          type: string
+          enum: [DEVICE_FAULT, PARAMETER_VALUE_CHANGE, TASK_FAILED]
+          description: "Kode `ref_webhook_event_types` yang sudah di-wire di usecase."
+        name: { type: string }
+        target_url: { type: string, format: uri }
+        description: { type: string, nullable: true }
+      required: [event_type, name, target_url]
+
+    UpdateWebhookRequest:
+      type: object
+      description: "`name` & `target_url` WAJIB (bukan partial). `is_active`/`description` opsional (`null` = tidak diubah)."
+      properties:
+        name: { type: string }
+        target_url: { type: string, format: uri }
+        is_active: { type: boolean, nullable: true }
+        description: { type: string, nullable: true }
+      required: [name, target_url]
+
+    WebhookDelivery:
+      type: object
+      description: "Satu percobaan pengiriman satu event ke satu langganan — tabel log volume tinggi, audit minimal."
+      properties:
+        id: { type: integer, format: int64 }
+        delivery_uuid: { type: string, format: uuid }
+        subscription_id: { type: integer, format: int64 }
+        event_type_id: { type: integer, format: int64 }
+        payload:
+          type: object
+          additionalProperties: true
+          description: "Objek JSON payload event yang dikirim."
+        status: { type: string, enum: [PENDING, DELIVERED, FAILED] }
+        attempt_count: { type: integer }
+        max_attempts: { type: integer }
+        response_status: { type: integer, nullable: true, description: "HTTP status dari URL target pada percobaan terakhir." }
+        error_message: { type: string, nullable: true }
+        next_attempt_at: { type: string, format: date-time, nullable: true }
+        delivered_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+      required: [id, delivery_uuid, subscription_id, event_type_id, status, attempt_count, max_attempts, created_at, updated_at]
+
+    WebhookDeliveryListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          nullable: true
+          items: { $ref: '#/components/schemas/WebhookDelivery' }
+        total: { type: integer }
+      required: [data, total]
+
+    # ---------- Files generik (migrations/0018) ----------
+    GenericFile:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        file_uuid: { type: string, format: uuid }
+        tenant_id: { type: integer, format: int64, nullable: true }
+        file_type:
+          type: string
+          description: "Kode TR-069 file type."
+          example: "3 Vendor Configuration File"
+        vendor_id: { type: integer, format: int64, nullable: true }
+        device_model_id: { type: integer, format: int64, nullable: true }
+        version: { type: string, nullable: true }
+        file_name: { type: string }
+        storage_key: { type: string, description: "Object key di storage — BUKAN URL." }
+        file_size_bytes: { type: integer, format: int64 }
+      allOf:
+        - $ref: '#/components/schemas/Audit'
+      required: [id, file_uuid, file_type, file_name, storage_key, file_size_bytes]
+
+    GenericFileListResponse:
+      type: object
+      description: "Envelope `data` + `meta` (bukan `total` datar) — konsisten dgn handler tag/preset/file."
+      properties:
+        data:
+          type: array
+          nullable: true
+          items: { $ref: '#/components/schemas/GenericFile' }
+        meta: { $ref: '#/components/schemas/PageMeta' }
+      required: [data, meta]
+
+    UploadFileRequest:
+      type: object
+      description: "`multipart/form-data` — semua field numerik dikirim sebagai teks."
+      properties:
+        file: { type: string, format: binary, description: "Isi berkas. Maksimum 256 MiB." }
+        file_type: { type: string, example: "3 Vendor Configuration File" }
+        file_name: { type: string, nullable: true, description: "Default: nama file asli dari multipart." }
+        version: { type: string, nullable: true }
+        vendor_id: { type: string, nullable: true }
+        device_model_id: { type: string, nullable: true }
+      required: [file]
+
+    PageMeta:
+      type: object
+      properties:
+        total: { type: integer }
+        page: { type: integer }
+        limit: { type: integer }
+      required: [total, page, limit]
+
+    # ---------- Tags (migrations/0019) ----------
+    Tag:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        tenant_id: { type: integer, format: int64, nullable: true, description: "NULL = tag global." }
+        name: { type: string }
+        color: { type: string, nullable: true, example: "#1a73e8" }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+      required: [id, name, created_at, updated_at]
+
+    TagListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          nullable: true
+          items: { $ref: '#/components/schemas/Tag' }
+        meta: { $ref: '#/components/schemas/PageMeta' }
+      required: [data, meta]
+
+    CreateTagRequest:
+      type: object
+      properties:
+        name: { type: string }
+        color: { type: string, nullable: true, example: "#1a73e8" }
+      required: [name]
+
+    AssignDeviceTagRequest:
+      type: object
+      properties:
+        tag_id: { type: integer, format: int64 }
+      required: [tag_id]
+
+    # ---------- Presets (migrations/0019) ----------
+    Preset:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        tenant_id: { type: integer, format: int64, nullable: true, description: "NULL = preset global." }
+        name: { type: string }
+        weight: { type: integer, description: "Urutan evaluasi — kecil dulu." }
+        precondition: { type: string, description: "Ekspresi gaya GenieACS (string, dievaluasi engine preset)." }
+        configurations: { type: string, description: "Definisi konfigurasi (string JSON/ekspresi)." }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+      required: [id, name, weight, is_active, created_at, updated_at]
+
+    PresetListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          nullable: true
+          items: { $ref: '#/components/schemas/Preset' }
+        meta: { $ref: '#/components/schemas/PageMeta' }
+      required: [data, meta]
+
+    CreatePresetRequest:
+      type: object
+      properties:
+        name: { type: string }
+        weight: { type: integer, default: 0 }
+        precondition: { type: string, nullable: true }
+        configurations: { type: string, nullable: true }
+      required: [name]
+
+    UpdatePresetRequest:
+      type: object
+      description: "FULL replace field skalar."
+      properties:
+        name: { type: string }
+        weight: { type: integer }
+        precondition: { type: string, nullable: true }
+        configurations: { type: string, nullable: true }
+        is_active: { type: boolean }
+      required: [name]
+
+    # ---------- Self-service (portal pelanggan, migrations/0020) ----------
+    SelfServiceDevice:
+      type: object
+      description: "DTO SEMPIT untuk portal pelanggan — sengaja TIDAK mengekspos kredensial, tenant, atau kolom audit."
+      properties:
+        id: { type: integer, format: int64 }
+        serial_number: { type: string }
+        model: { type: string, nullable: true }
+        software_version: { type: string, nullable: true }
+        status: { type: string, example: ONLINE }
+        online: { type: boolean }
+      required: [id, serial_number, status, online]
+
+    SelfServiceDeviceListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          nullable: true
+          items: { $ref: '#/components/schemas/SelfServiceDevice' }
+        total: { type: integer }
+      required: [data, total]
+
+    ChangeMyWiFiRequest:
+      type: object
+      description: "Minimal salah satu `ssid`/`passphrase` wajib diisi."
+      properties:
+        ssid: { type: string, nullable: true }
+        passphrase: { type: string, format: password, nullable: true, minLength: 8, maxLength: 63 }
+        band:
+          type: string
+          nullable: true
+          enum: ["2g", "5g", ""]
+          description: "Kosong = terapkan ke 2.4G dan 5G sekaligus."

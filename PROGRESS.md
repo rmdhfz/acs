@@ -2,6 +2,79 @@
 
 ---
 
+## SESI 2026-09-02 (`/goal`: lanjutkan proses pembuatan acs kita)
+
+### Kondisi saat sesi dimulai
+
+Working tree bersih, di branch `dev` (`d6ae42c`). Tidak ada Go toolchain di
+host (verifikasi backend butuh Docker — tidak dijalankan sesi ini). Node 24 +
+`npx @redocly/cli` + `npx openapi-to-postmanv2` tersedia.
+
+### DIKERJAKAN: sinkronisasi `openapi.yaml` + regen Postman (debt yang dicatat 3 sesi berturut-turut)
+
+`openapi.yaml` sudah tertinggal jauh dari `router.go` — 31 operation di 22
+path item tidak terdokumentasi sama sekali. Ditutup sesi ini (dokumentasi
+murni, **tidak menyentuh kode Go**):
+
+- **Path baru ditambahkan** (semua 1:1 dengan `internal/delivery/http/router.go`):
+  - `GET /auth/oidc/login`, `GET /auth/oidc/callback` (alur OIDC opsional)
+  - `GET /ws` (upgrade WebSocket push event)
+  - `GET /cwmp/sessions/count` (tag baru **Sessions**)
+  - `POST /devices/:id/connection-request`, `GET|POST /devices/:id/config-snapshots`
+  - **Webhooks** (migrations/0013): `POST|GET /webhooks`,
+    `GET /webhooks/deliveries/failed-count`, `GET|PATCH /webhooks/:id`,
+    `POST /webhooks/:id/test`, `GET /webhooks/:id/deliveries`
+  - **Files** (migrations/0018): `POST|GET /files`, `DELETE /files/:id`
+  - **Tags** (migrations/0019): `POST|GET /tags`, `DELETE /tags/:id`,
+    `GET|POST /devices/:id/tags`, `DELETE /devices/:id/tags/:tagId`
+  - **Presets** (migrations/0019): `POST|GET /presets`, `PATCH|DELETE /presets/:id`
+  - **SelfService** (migrations/0020): `GET /self-service/devices`,
+    `GET /self-service/devices/:id`, `PATCH /self-service/devices/:id/wifi`,
+    `POST /self-service/devices/:id/reboot`
+- **Param baru**: `GET /devices?tag_id=` (filter EXISTS ke `device_tags`).
+- **Schema baru**: `CountResponse`, `MessageResponse`, `DeviceConfigSnapshot`(+List),
+  `WebhookSubscription`(+List), `CreateWebhookRequest`, `UpdateWebhookRequest`,
+  `WebhookDelivery`(+List), `GenericFile`(+List), `UploadFileRequest`,
+  `PageMeta`, `Tag`(+List), `CreateTagRequest`, `AssignDeviceTagRequest`,
+  `Preset`(+List), `CreatePresetRequest`, `UpdatePresetRequest`,
+  `SelfServiceDevice`(+List), `ChangeMyWiFiRequest`. 6 parameter path baru.
+- **Drift lama ikut diperbaiki** (TODO-3 sesi 2026-08-27): `Task.parameters`/
+  `Task.response` + `DeviceDiagnostic.result` masih dideskripsikan `[]byte`
+  base64 di spec — padahal sejak 2026-08-23 sudah `domain.JSONRawMessage`
+  (emit JSON verbatim). Diperbaiki jadi `type: object`. Enum role `User`/
+  `CreateUserRequest`/`ReplaceUserRolesRequest` + `ENDUSER`.
+- **Validasi**: `npx @redocly/cli lint openapi.yaml` → **valid**, 6 warning
+  (3 pre-existing: info-license, server-url localhost, `/metrics` tanpa 4xx;
+  3 baru & memang wajar: `/auth/oidc/*` balas 302, `/ws` balas 101 — semua
+  bukan 2xx by design). 100 operation, semua 31 operationId baru terverifikasi
+  hadir. **BUKAN validasi runtime** — tidak ada stack live sesi ini.
+- **`ACS-API.postman_collection.json` diregen** dari `openapi.yaml` via
+  `openapi-to-postmanv2` (folderStrategy=Paths, requestNameSource=Fallback) —
+  auto-sinkron, `_postman_id` lama dipertahankan supaya diff minimal. 100
+  request (dari 64). Style sama dgn koleksi lama (auth bearer `{{bearerToken}}`
+  level-collection, var `baseUrl`). Diff besar (~25k baris) murni karena versi
+  generator berbeda dari yang membuat koleksi lama (urutan field), bukan
+  perubahan semantik.
+
+### TEMUAN (tidak diperbaiki — dicatat)
+
+- **`deleteWebhook` = dead code**: handler `internal/delivery/http/webhook_handler.go`
+  `deleteWebhook` ada tapi **tidak pernah di-route** di `router.go` (tidak ada
+  `DELETE /webhooks/:id`). Sengaja TIDAK didokumentasikan di `openapi.yaml`
+  (spec ikut route, bukan handler). Follow-up: hapus handler-nya atau tambahkan
+  route-nya — keputusan produk.
+- **CI workflow masih hilang** (temuan sesi 2026-08-31 belum ditindaklanjuti) —
+  `.github/` tidak ada. Konten CI = ranah user.
+
+### BELUM (lanjutan `/goal`)
+
+- Verifikasi backend (`go build/vet/test`) + live smoke belum dijalankan sesi
+  ini (butuh Docker). Perubahan sesi ini dokumentasi murni, risiko regresi nol.
+- Item robustness vs GenieACS masih terbuka: USP/TR-369 masih mock,
+  parameter-tree browser UI, device search expression language.
+
+---
+
 ## SESI 2026-08-31 (`/goal`: lanjutkan pembuatan ACS sampai lebih bagus dari GenieACS)
 
 ### Kondisi saat sesi dimulai
