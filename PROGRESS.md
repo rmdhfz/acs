@@ -173,10 +173,17 @@ User memilih **Opsi C + 5a/5b** (via AskUserQuestion). Diimplementasikan:
   perubahan semantik); jalankan `npx openapi-to-postmanv2 -s openapi.yaml ...`
   saat mau merge ke main.
 
-**BELUM DIVERIFIKASI backend** — tidak ada Go toolchain di host. Perlu
-`gofmt -w` + `go build ./...` + `go test ./...` + `migrate up 0→21` ke MariaDB
-nyata. CI `.github/workflows/ci.yml` akan cek saat push. Kemungkinan besar
-butuh 1 follow-up commit untuk gofmt/nit.
+**Verifikasi backend via CI (GitHub Actions):**
+- Commit `7c59a76`/`c80ee54` awalnya MERAH — hanya `gofmt` di `preset.go`
+  (kolom tipe struct field 10→8). Diperbaiki manual (tanpa Go toolchain di
+  host — hand-align mengikuti pola `domain/tenancy.go`).
+- **Commit `59f9014`: CI HIJAU penuh** — `gofmt` bersih, `go vet ./...`,
+  `go build ./...`, `go test -race ./...` (termasuk 7 test preset_eval baru +
+  test provisioning/session yang disentuh) semua lulus. Frontend + openapi lint
+  juga hijau.
+- **MASIH belum diverifikasi:** `migrate up 0→21` ke MariaDB nyata (CI tidak
+  punya service DB). Migrasi `0021` = ALTER + CREATE TABLE standar, konsisten
+  sintaks dgn 20 migrasi lain — tapi belum dijalankan ke instance nyata.
 
 **TEMUAN + DITINDAKLANJUTI:** `PresetsPage.tsx` TIDAK ADA (PRESET_ENGINE_DESIGN.md
 keliru menyebutnya). **Dibuat sesi ini:** `PresetsPage.tsx` (list, create/edit
