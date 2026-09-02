@@ -127,13 +127,32 @@ BOOTSTRAP), belum ada CI, load test terbatas rate limiter.
   compile** — tanpa Go toolchain di host; perubahannya kecil & mekanis
   (1 baris route memakai handler yang sudah ada).
 
+### DIKERJAKAN (lanjutan) — Portal self-service ENDUSER (frontend)
+
+Backend `/self-service/*` sudah lengkap sejak batch 2026-08-29 tapi TIDAK ada
+halaman/route/hook — nav "My WiFi" menunjuk ke ketiadaan. Dibuat sesi ini
+(tanpa perubahan backend):
+- `SelfServicePage.tsx` — kartu per device (serial/model/firmware/online),
+  form "Ubah WiFi" (SSID/passphrase/band, validasi klien 8–63 char WPA-PSK),
+  tombol "Restart" dgn konfirmasi. Theme-aware (`dark:` variants).
+- Hook `useMyDevices`/`useChangeMyWiFi`/`useRebootMyDevice` + tipe
+  `SelfServiceDevice` di `types.ts`.
+- Route `/self-service` + `HomeRedirect`: role ENDUSER murni diarahkan ke
+  `/self-service` (bukan `/dashboard` yg akan 403); role lain tetap ke
+  dashboard. `path="*"` sekarang ke `/` (biar ikut logika redirect).
+- Verifikasi: `tsc -b --force` bersih, `npm run build` exit 0, `oxlint src`
+  hanya warning pre-existing. **Belum diuji browser** (tidak ada tool browser,
+  konsisten seluruh kerja FE sesi lain).
+
+GenieACS tidak punya portal end-user sama sekali — ini diferensiator, bukan
+sekadar parity.
+
 ### BELUM — butuh keputusan/akses user (lihat ROADMAP §"Gap jujur pasca-audit")
 
 - Uji lapangan CPE fisik (butuh hardware).
 - Engine preset: butuh keputusan desain (bahasa precondition, bentuk
   configurations, kapan dievaluasi) — jangan implementasi sepihak.
 - Load test multi-IP sungguhan (butuh infra).
-- Portal self-service ENDUSER (frontend) — backend siap.
 
 ---
 

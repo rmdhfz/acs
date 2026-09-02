@@ -340,6 +340,17 @@ export interface GenericFile {
   created_at: string
 }
 
+// Portal self-service pelanggan (role ENDUSER) — DTO sempit dari
+// GET /self-service/devices, sengaja tanpa kredensial/tenant/audit.
+export interface SelfServiceDevice {
+  id: number
+  serial_number: string
+  model: string | null
+  software_version: string | null
+  status: string
+  online: boolean
+}
+
 export interface Tag {
   id: number
   tenant_id: number | null

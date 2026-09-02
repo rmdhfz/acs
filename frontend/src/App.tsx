@@ -14,6 +14,16 @@ import { TenantOnboardingWizard } from './pages/TenantOnboardingWizard'
 import { WebhooksPage } from './pages/WebhooksPage'
 import FilesPage from './pages/FilesPage'
 import TagsPage from './pages/TagsPage'
+import SelfServicePage from './pages/SelfServicePage'
+import { useAuth } from './lib/auth'
+
+// Role ENDUSER (portal pelanggan) tidak punya akses ke /dashboard dkk —
+// arahkan ke portal self-service. Role lain ke dashboard seperti biasa.
+function HomeRedirect() {
+  const { hasRole } = useAuth()
+  const onlyEndUser = hasRole('ENDUSER') && !hasRole('VIEWER', 'NOC', 'ADMIN', 'SUPERADMIN')
+  return <Navigate to={onlyEndUser ? '/self-service' : '/dashboard'} replace />
+}
 
 function App() {
   return (
@@ -35,14 +45,15 @@ function App() {
         <Route path="/firmware" element={<FirmwarePage />} />
         <Route path="/files" element={<FilesPage />} />
         <Route path="/tags" element={<TagsPage />} />
+        <Route path="/self-service" element={<SelfServicePage />} />
         <Route path="/webhooks" element={<WebhooksPage />} />
         <Route path="/catalog" element={<CatalogPage />} />
         <Route path="/administration" element={<AdministrationPage />} />
         <Route path="/administration/onboarding" element={<TenantOnboardingWizard />} />
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/" element={<HomeRedirect />} />
       </Route>
 
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
 }

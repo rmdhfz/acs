@@ -20,6 +20,7 @@ import type {
   ProvisioningProfile,
   ProvisioningProfileParameter,
   RefLookup,
+  SelfServiceDevice,
   Task,
   TaskStatusCount,
   Tenant,
@@ -1030,6 +1031,40 @@ export function useSetParameterValues() {
     mutationFn: ({ deviceId, values }: { deviceId: number; values: Record<string, string> }) =>
       api.post<void>(`/devices/${deviceId}/tasks/set-parameter-values`, { values }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+  })
+}
+
+// ---- Portal self-service pelanggan (role ENDUSER, migrations/0020) ----
+// Di-scope ke device yang dipetakan ke akun lewat user_devices — bukan RBAC
+// tenant. Endpoint: /self-service/* (lihat openapi.yaml tag SelfService).
+
+export function useMyDevices() {
+  return useQuery({
+    queryKey: ['self-service', 'devices'],
+    queryFn: () => api.get<ListResponse<SelfServiceDevice>>('/self-service/devices'),
+    refetchInterval: 30_000,
+  })
+}
+
+export interface ChangeMyWiFiInput {
+  deviceId: number
+  ssid?: string
+  passphrase?: string
+  band?: '' | '2g' | '5g'
+}
+
+export function useChangeMyWiFi() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ deviceId, ...body }: ChangeMyWiFiInput) =>
+      api.patch<Task>(`/self-service/devices/${deviceId}/wifi`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['self-service'] }),
+  })
+}
+
+export function useRebootMyDevice() {
+  return useMutation({
+    mutationFn: (deviceId: number) => api.post<void>(`/self-service/devices/${deviceId}/reboot`, {}),
   })
 }
 

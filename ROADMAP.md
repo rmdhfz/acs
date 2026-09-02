@@ -276,7 +276,7 @@ Fix: `TaskFilter` dapat `TenantID` (resolve via JOIN devices), `task.Service.Lis
 - [ ] **USP/TR-369 nyata** — `internal/delivery/usp` + `usecase/usp_session` hanya kerangka: `HandleMessage` no-op, state in-memory (bukan multi-instance). PRD menaruh ini di Fase 3 — belum waktunya, tapi jangan diklaim "ada".
 - [ ] **Load test sungguhan** — rig multi-IP / instance dgn rate limiter dinaikkan; ukur p95 Inform di ribuan sesi concurrent (NFR <300ms). `cmd/loadtest` ada tapi terbatas rate limiter 5 req/s.
 - [ ] **Ekspresivitas provisioning** — tanpa skrip/virtual-parameter/extension seperti GenieACS, kasus provisioning turunan (mis. hitung nilai dari parameter lain, panggil API eksternal saat provisioning) tak bisa diekspresikan. Ini trade-off desain sadar (auditability > power) — tapi perlu diputuskan apakah ada batas yang mau digeser.
-- [ ] **Portal self-service ENDUSER (frontend)** — backend `/self-service/*` lengkap & terdokumentasi, nav "My WiFi" ada, tapi TIDAK ada halaman/route/hook. Role ENDUSER praktis tak bisa login berguna.
+- [x] **Portal self-service ENDUSER (frontend)** — **selesai 2026-09-02**: `SelfServicePage.tsx` (list device, form ubah SSID/passphrase/band, tombol restart) + hook `useMyDevices`/`useChangeMyWiFi`/`useRebootMyDevice` + route `/self-service` + `HomeRedirect` (ENDUSER murni → `/self-service`). Build+lint hijau, belum diuji browser. GenieACS tidak punya portal end-user — diferensiator. **Belum:** handling role ENDUSER lain (mis. sembunyikan CommandPalette/notif yg query endpoint admin) belum diaudit tuntas.
 
 ---
 
