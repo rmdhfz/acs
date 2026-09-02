@@ -147,11 +147,24 @@ halaman/route/hook — nav "My WiFi" menunjuk ke ketiadaan. Dibuat sesi ini
 GenieACS tidak punya portal end-user sama sekali — ini diferensiator, bukan
 sekadar parity.
 
+### DIKERJAKAN (lanjutan) — Proposal desain engine preset
+
+`PRESET_ENGINE_DESIGN.md` dibuat — proposal keputusan (bukan implementasi).
+Isi: preset vs ZTP rule (beda: enforcement berkelanjutan vs provisioning awal);
+3 opsi (hapus / engine penuh / minimal+drift → **rekomendasi minimal**);
+precondition = objek terstruktur identik ZTP (reuse `matchPrecondition`, TANPA
+DSL/skrip JS — sejalan filosofi "data auditable"); configurations = array op
+bertipe (`set_parameter`/`apply_profile`/`refresh`); evaluasi tiap sesi setelah
+`EvaluateZeroTouch` DENGAN drift-check (enqueue hanya bila device menyimpang) +
+pagar anti-loop; **konflik FR-18** diangkat eksplisit sebagai keputusan produk;
+skema (`presets.enforce`/`channel` + tabel `preset_applications`); struktur kode
+Clean Arch + test wajib. §9: 4 keputusan menunggu user.
+
 ### BELUM — butuh keputusan/akses user (lihat ROADMAP §"Gap jujur pasca-audit")
 
 - Uji lapangan CPE fisik (butuh hardware).
-- Engine preset: butuh keputusan desain (bahasa precondition, bentuk
-  configurations, kapan dievaluasi) — jangan implementasi sepihak.
+- Engine preset: 4 keputusan produk di `PRESET_ENGINE_DESIGN.md` §9 — jangan
+  implementasi sebelum dijawab.
 - Load test multi-IP sungguhan (butuh infra).
 
 ---
