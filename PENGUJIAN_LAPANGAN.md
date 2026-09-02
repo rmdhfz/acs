@@ -28,7 +28,16 @@ Ini BUKAN daftar lengkap bug potensial — ini yang **sudah kita tahu sebelumnya
   - Kalau menemukan path yang benar untuk salah satu di atas dari device fisik yang diuji, catat di §6 untuk ditambahkan ke `vendor_parameter_mappings` (via `device_model_id` spesifik, bukan generik vendor, supaya tidak menimpa asumsi default utk model lain).
 - **Cdata paling minim tervalidasi dari 5 vendor ini** — baru ditambahkan sebagai data starting point, belum ada riwayat penggunaan sama sekali sebelum migrasi ini (4 vendor lain setidaknya sudah ada sejak baseline awal).
 - **Dark mode dan tampilan mobile belum pernah dicek visual di browser sungguhan** — kalau lihat ada yang aneh secara visual selagi buka Devices/Dashboard buat monitor pengujian, itu kemungkinan besar memang gap yang sudah tercatat di `ROADMAP.md` Fase 1, bukan akibat dari pengujian device.
-- **Belum ada dukungan STUN/CGNAT** — kalau CPE ada di belakang NAT berlapis (bukan LAN langsung ke server ACS), Connection Request (ACS -> CPE inisiasi) kemungkinan tidak akan berhasil menembus. Ini keputusan desain yang memang belum final (lihat `CLAUDE.md`), jangan dianggap bug untuk dikejar fix-nya hari itu juga.
+- **STUN/CGNAT: ada fallback TR-111 UDP, tapi BELUM teruji lapangan** — `internal/usecase/device/service.go` mencoba HTTP Connection Request dulu, lalu fallback ke STUN Binding Request UDP (TR-111, `stun_client.go`) bila alamat `UDPConnectionRequestAddress` ada di Inform. Ini belum pernah diuji ke CGNAT nyata. Kalau CPE di belakang NAT berlapis dan Connection Request gagal, itu **belum tentu bug** — catat saja (butuh CPE yang benar-benar mengirim `UDPConnectionRequestAddress` + firewall yang mengizinkan UDP balik).
+
+### Fitur yang ditambahkan SETELAH dokumen ini dibuat (2026-08-23) — supaya tidak kaget saat uji
+
+- **Migrasi sekarang 0001→0021** (bukan 0020). `docker compose up` menjalankan semua.
+- **Engine preset (migrations/0021)** dievaluasi **tiap Inform**. Preset dengan `enforce=1` yang cocok akan **otomatis mengantre `SetParameterValues`** ke device saat nilainya menyimpang (drift-heal). Di tenant pilot yang bersih **tidak ada preset**, jadi tidak akan terjadi — tapi kalau kamu iseng buat preset enforce lalu lihat task muncul sendiri, **itu memang perilakunya**, bukan bug. Kelola di menu **Presets** (role ADMIN).
+- **ZTP trigger per-Inform** — Zero-Touch Rule sekarang bisa di-set trigger `EVERY_INFORM` (bukan cuma `BOOTSTRAP_ONLY`). Rule begitu dievaluasi tiap Periodic Inform — kalau kamu buat ZT rule saat uji, perhatikan trigger-nya.
+- **Session reaper** — sesi CWMP `status='OPEN'` yang CPE-nya berhenti tanpa POST-kosong penutup otomatis jadi `status='TIMEOUT'` setelah 15 menit (sweeper `cmd/acsd`). Melihat `TIMEOUT` di `/cwmp/sessions` **normal**, bukan error protokol.
+- **Portal self-service (role ENDUSER)** — `/self-service/*`, tidak relevan untuk uji CWMP tapi ada di router.
+- **Device ↔ tag** — bisa tag device di Device Detail / filter `GET /devices?tag_id=`.
 
 ## 3. Setting ACS URL di CPE (Umum, Semua Vendor)
 

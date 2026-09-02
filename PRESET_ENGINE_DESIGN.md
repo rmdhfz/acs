@@ -1,9 +1,10 @@
 # PRESET_ENGINE_DESIGN.md — Proposal Desain Engine Preset
 
-**Status:** v1 DIIMPLEMENTASIKAN 2026-09-02 (branch `dev`) — **backend belum
-diverifikasi** (`go build`/`go test`/gofmt/migrasi ke MariaDB nyata belum
-dijalankan; tidak ada Go toolchain di host sesi ini — CI `.github/workflows/ci.yml`
-akan memverifikasi saat push).
+**Status:** v1 DIIMPLEMENTASIKAN 2026-09-02 (branch `dev`) — **CI hijau**
+(`59f9014`: `gofmt`/`go vet`/`go build`/`go test -race ./...` lulus, termasuk
+7 test `preset_eval` + FE + openapi lint). **Belum:** `migrate up 0→21` ke
+MariaDB nyata (CI tanpa service DB) + UI preset (halaman `PresetsPage.tsx`
+dibuat sesi ini, tapi estimasi "N device terpengaruh" belum).
 **Dibuat:** 2026-09-02 (sesi `/goal` "lebih baik dari GenieACS?")
 
 ### Cakupan v1 yang benar-benar diimplementasikan (2026-09-02)
