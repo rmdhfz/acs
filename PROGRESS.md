@@ -147,9 +147,45 @@ halaman/route/hook — nav "My WiFi" menunjuk ke ketiadaan. Dibuat sesi ini
 GenieACS tidak punya portal end-user sama sekali — ini diferensiator, bukan
 sekadar parity.
 
-### DIKERJAKAN (lanjutan) — Proposal desain engine preset
+### DIKERJAKAN (lanjutan) — Engine preset v1 (backend)
 
-`PRESET_ENGINE_DESIGN.md` dibuat — proposal keputusan (bukan implementasi).
+User memilih **Opsi C + 5a/5b** (via AskUserQuestion). Diimplementasikan:
+- Migrasi `0021_preset_engine`: `presets.enforce`(default 0)/`channel` + tabel
+  `preset_applications` (tracking per preset×device). `schema.sql` disinkron.
+- `domain`: `Preset`+`Enforce`/`Channel`, `PresetPrecondition`, `PresetConfigOp`,
+  `PresetApplication`+repo; `Preset.ParsedPrecondition()/ParsedConfigurations()`.
+  `TaskEnqueuer`+`ResolveParameterPath`.
+- `mysql`: `presetRepository.ListActiveEnforce` + `presetApplicationRepository`.
+- `provisioning.Service.EvaluatePresets` (`preset_eval.go`): dipanggil di
+  `session.HandleInform` SETELAH `EvaluateZeroTouch`. Precondition match
+  (reuse `matchSQLLike`), drift-check op `set_parameter` (resolve key→path,
+  bandingkan `device_parameters`), merge drift lintas preset → 1
+  `SetParameterValues`. Pagar: `HasPendingForDevice`, cooldown 15m per
+  (preset,device), give-up setelah 3× push tanpa konvergensi (hash drift sama)
+  → status FAILED + `PRESET_APPLY_FAILED` activity log (FR-15).
+- `preset.Service.Create/Update`: validasi JSON + tolak op non-`set_parameter`
+  (v1), salin `Enforce`/`Channel`.
+- 7 unit test `provisioning/preset_eval_test.go` (mutation-safe: tiap skenario
+  menegaskan enqueue count).
+- `openapi.yaml` (Preset/CreatePresetRequest/UpdatePresetRequest + skema `Preset`)
+  + `Preset` type FE (+enforce/channel). **Postman regen DITUNDA** — regen
+  openapi2postmanv2 hanya meng-churn ratusan `id` UUID acak per item (bukan
+  perubahan semantik); jalankan `npx openapi-to-postmanv2 -s openapi.yaml ...`
+  saat mau merge ke main.
+
+**BELUM DIVERIFIKASI backend** — tidak ada Go toolchain di host. Perlu
+`gofmt -w` + `go build ./...` + `go test ./...` + `migrate up 0→21` ke MariaDB
+nyata. CI `.github/workflows/ci.yml` akan cek saat push. Kemungkinan besar
+butuh 1 follow-up commit untuk gofmt/nit.
+
+**TEMUAN:** `PresetsPage.tsx` TIDAK ADA (PRESET_ENGINE_DESIGN.md keliru
+menyebutnya) — presets = backend + endpoint + hook (`usePresets` dkk) tanpa
+halaman/route. UI preset (toggle `enforce` + estimasi "N device terpengaruh"
+per 5b) masih perlu dibuat.
+
+### (arsip) Proposal desain engine preset
+
+`PRESET_ENGINE_DESIGN.md` dibuat — proposal keputusan (lalu diimplementasi di atas).
 Isi: preset vs ZTP rule (beda: enforcement berkelanjutan vs provisioning awal);
 3 opsi (hapus / engine penuh / minimal+drift → **rekomendasi minimal**);
 precondition = objek terstruktur identik ZTP (reuse `matchPrecondition`, TANPA

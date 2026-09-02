@@ -5055,17 +5055,30 @@ components:
     # ---------- Presets (migrations/0019) ----------
     Preset:
       type: object
+      description: |
+        Preset gaya GenieACS. Engine (migrations/0021) menegakkan preset
+        ber-`enforce=true` tiap sesi CWMP saat device menyimpang dari
+        `configurations` (drift-heal). `precondition` = objek JSON dengan
+        kosakata identik ZeroTouchRule; `configurations` = array op JSON.
+        FR-18 TIDAK berlaku untuk preset (keputusan produk — lihat
+        PRESET_ENGINE_DESIGN.md).
       properties:
         id: { type: integer, format: int64 }
         tenant_id: { type: integer, format: int64, nullable: true, description: "NULL = preset global." }
         name: { type: string }
-        weight: { type: integer, description: "Urutan evaluasi — kecil dulu." }
-        precondition: { type: string, description: "Ekspresi gaya GenieACS (string, dievaluasi engine preset)." }
-        configurations: { type: string, description: "Definisi konfigurasi (string JSON/ekspresi)." }
+        weight: { type: integer, description: "Urutan evaluasi — weight ASC; preset weight lebih besar menimpa saat key bentrok." }
+        precondition:
+          type: string
+          description: 'JSON precondition, mis. `{"vendor_id":3,"software_version_pattern":"V9%"}`. `{}` = cocok semua device tenant.'
+        configurations:
+          type: string
+          description: 'JSON array op, mis. `[{"op":"set_parameter","key":"wifi.ssid","value":"MyISP"}]`. v1: hanya `op:set_parameter` (`apply_profile`/`refresh` menyusul v1.1).'
         is_active: { type: boolean }
+        enforce: { type: boolean, description: "Bila true: engine menegakkan preset ini tiap sesi (drift-heal). Default false — preset tersimpan tapi diabaikan engine." }
+        channel: { type: string, nullable: true, description: "Grouping opsional (informasi UI, tidak mengubah evaluasi di v1)." }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
-      required: [id, name, weight, is_active, created_at, updated_at]
+      required: [id, name, weight, is_active, enforce, created_at, updated_at]
 
     PresetListResponse:
       type: object
@@ -5082,8 +5095,10 @@ components:
       properties:
         name: { type: string }
         weight: { type: integer, default: 0 }
-        precondition: { type: string, nullable: true }
-        configurations: { type: string, nullable: true }
+        precondition: { type: string, nullable: true, description: "JSON precondition (lihat skema Preset)." }
+        configurations: { type: string, nullable: true, description: "JSON array op (lihat skema Preset)." }
+        enforce: { type: boolean, default: false }
+        channel: { type: string, nullable: true }
       required: [name]
 
     UpdatePresetRequest:
@@ -5095,6 +5110,8 @@ components:
         precondition: { type: string, nullable: true }
         configurations: { type: string, nullable: true }
         is_active: { type: boolean }
+        enforce: { type: boolean }
+        channel: { type: string, nullable: true }
       required: [name]
 
     # ---------- Self-service (portal pelanggan, migrations/0020) ----------

@@ -1,7 +1,36 @@
 # PRESET_ENGINE_DESIGN.md — Proposal Desain Engine Preset
 
-**Status:** DRAFT untuk keputusan — belum diimplementasikan.
+**Status:** v1 DIIMPLEMENTASIKAN 2026-09-02 (branch `dev`) — **backend belum
+diverifikasi** (`go build`/`go test`/gofmt/migrasi ke MariaDB nyata belum
+dijalankan; tidak ada Go toolchain di host sesi ini — CI `.github/workflows/ci.yml`
+akan memverifikasi saat push).
 **Dibuat:** 2026-09-02 (sesi `/goal` "lebih baik dari GenieACS?")
+
+### Cakupan v1 yang benar-benar diimplementasikan (2026-09-02)
+
+- migrasi `0021_preset_engine` (`presets.enforce`/`channel` + tabel `preset_applications`) + `schema.sql`.
+- `domain.Preset` (+`Enforce`/`Channel`), `PresetPrecondition`, `PresetConfigOp`, `PresetApplication` + `PresetApplicationRepository`; helper `ParsedPrecondition()`/`ParsedConfigurations()`.
+- `domain.TaskEnqueuer` +`ResolveParameterPath` (task.Service sudah punya).
+- `mysql.presetRepository.ListActiveEnforce` + `mysql.presetApplicationRepository`.
+- `provisioning.Service.EvaluatePresets` (+`preset_eval.go`) — precondition match (reuse `matchSQLLike`), drift-check per op `set_parameter` (resolve key→path→bandingkan `device_parameters`), merge drift lintas preset → 1 `SetParameterValues`, pagar `HasPendingForDevice` + cooldown 15m + give-up setelah 3× push tanpa konvergensi (hash drift sama) → status `FAILED` + `PRESET_APPLY_FAILED` activity log.
+- Wiring: `session.Service.HandleInform` memanggil `EvaluatePresets` setelah `EvaluateZeroTouch`; `cmd/acsd/main.go`.
+- `preset.Service.Create/Update` validasi JSON precondition/configurations (tolak op non-`set_parameter` di v1) + salin `Enforce`/`Channel`.
+- Test: `provisioning/preset_eval_test.go` (7 skenario: nil-engine no-op, drift→1 task, konvergen→0 task, pending-task skip, precondition mismatch, cooldown, give-up).
+- `openapi.yaml` Preset/CreatePresetRequest/UpdatePresetRequest + `Preset` type FE.
+
+**DITUNDA dari desain (v1.1):** op `apply_profile` & `refresh`; placeholder nilai (`{serial4}`); precondition `tag_id` (butuh `TagRepository` di `provisioning.Service`); **`channel` cuma disimpan, belum dipakai**.
+
+**TEMUAN saat implementasi:** `PresetsPage.tsx` **TIDAK ADA** (desain keliru menyebut "halaman ada") — presets sejauh ini backend + endpoint + hook FE (`usePresets` dkk) tanpa halaman/route. UI preset (termasuk toggle `enforce` + estimasi "N device terpengaruh" per keputusan 5b) **masih perlu dibuat** — belum ada di v1 ini.
+
+## Keputusan pemilik produk (2026-09-02)
+
+| Pertanyaan §9 | Jawaban |
+|---|---|
+| §1 Arah | **Opsi C** — preset minimal = precondition gaya ZTP + drift-check tiap sesi, tanpa DSL/skrip |
+| §5 FR-18 | **5a + 5b** — preset boleh enforcement berkelanjutan; FR-18 hanya untuk provisioning profile. Toggle `enforce` per preset (default OFF). Saat diaktifkan, UI tampilkan estimasi "N device akan terpengaruh" |
+| §3 `op` v1 | `set_parameter` + `apply_profile`. `refresh` DITUNDA ke v1.1 (butuh method enqueuer baru) |
+| Placeholder nilai | DITUNDA ke v1.1 — v1 nilai literal saja |
+
 **Konteks:** audit 2026-09-02 menemukan tabel `presets` + endpoint `/presets` +
 halaman `PresetsPage` sudah ada (migrations/0019), **tapi tidak ada engine yang
 mengevaluasinya** — `preset.Service` hanya CRUD, tak pernah dipanggil dari jalur

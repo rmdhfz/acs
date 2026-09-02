@@ -117,6 +117,7 @@ func main() {
 	fileRepo := mysql.NewFileRepository(db)
 	tagRepo := mysql.NewTagRepository(db)
 	presetRepo := mysql.NewPresetRepository(db)
+	presetAppRepo := mysql.NewPresetApplicationRepository(db)
 	userDeviceRepo := mysql.NewUserDeviceRepository(db)
 
 	redisClient, err := redisutil.NewClient(cfg.RedisAddr, logger)
@@ -144,7 +145,7 @@ func main() {
 	// lewat domain.FirmwareScheduler (interface sempit, menghindari import
 	// cycle usecase/provisioning <-> usecase/firmware).
 	firmwareSvc := firmware.NewService(firmwareFileRepo, firmwareJobRepo, firmwareRolloutRepo, deviceRepo, taskSvc, refRepo, activityLogRepo, objStorage)
-	provisioningSvc := provisioning.NewService(profileRepo, profileParamRepo, ztRuleRepo, deviceRepo, deviceParamRepo, refRepo, taskSvc, firmwareSvc, activityLogRepo)
+	provisioningSvc := provisioning.NewService(profileRepo, profileParamRepo, ztRuleRepo, deviceRepo, deviceParamRepo, refRepo, taskSvc, firmwareSvc, activityLogRepo, presetRepo, presetAppRepo)
 	deviceSvc := device.NewService(deviceRepo, vendorOUIRepo, deviceModelRepo, refRepo, deviceParamRepo, deviceEventRepo, opticalMetricRepo, configSnapshotRepo, enc, activityLogRepo, taskSvc, fileRepo, objStorage)
 	diagnosticsSvc := diagnostics.NewService(diagnosticRepo, deviceRepo, taskSvc, activityLogRepo)
 	sessionSvc := session.NewService(deviceSessionRepo, deviceEventRepo, deviceParamRepo, deviceRepo, tenantRepo, refRepo, deviceSvc, taskSvc, provisioningSvc, firmwareSvc, diagnosticsSvc, enc, activityLogRepo, logger, webhookSvc, wsHub)

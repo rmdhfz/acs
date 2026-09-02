@@ -28,6 +28,10 @@ type Service struct {
 	enqueuer      domain.TaskEnqueuer
 	firmwareSvc   domain.FirmwareScheduler
 	activity      domain.ActivityLogRepository
+	// presets/presetApps — engine preset (migrations/0021, PRESET_ENGINE_DESIGN.md).
+	// Boleh nil: EvaluatePresets jadi no-op (test lama yang tidak menyentuh preset).
+	presets    domain.PresetRepository
+	presetApps domain.PresetApplicationRepository
 }
 
 func NewService(
@@ -40,11 +44,14 @@ func NewService(
 	enqueuer domain.TaskEnqueuer,
 	firmwareSvc domain.FirmwareScheduler,
 	activity domain.ActivityLogRepository,
+	presets domain.PresetRepository,
+	presetApps domain.PresetApplicationRepository,
 ) *Service {
 	return &Service{
 		profiles: profiles, profileParams: profileParams, rules: rules,
 		devices: devices, deviceParams: deviceParams, refs: refs,
 		enqueuer: enqueuer, firmwareSvc: firmwareSvc, activity: activity,
+		presets: presets, presetApps: presetApps,
 	}
 }
 

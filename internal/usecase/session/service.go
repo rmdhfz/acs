@@ -289,6 +289,15 @@ func (s *Service) HandleInform(ctx context.Context, in InformInput) (*InformResu
 		s.log().Warn("cwmp: evaluasi zero-touch provisioning gagal", "device_id", dev.ID, "error", err)
 	}
 
+	// Engine preset (migrations/0021, PRESET_ENGINE_DESIGN.md) — SETELAH ZTP &
+	// SETELAH device_parameters ter-update, supaya drift-check melihat nilai
+	// terbaru. Preset ber-enforce=1 dijaga sesuai konfigurasi tiap sesi; bila
+	// device menyimpang, satu SetParameterValues gabungan diantre. Gagal TIDAK
+	// menggagalkan Inform (FR-15, pola sama ZTP).
+	if err := s.provisioningSvc.EvaluatePresets(ctx, systemActor, dev); err != nil {
+		s.log().Warn("cwmp: evaluasi preset gagal", "device_id", dev.ID, "error", err)
+	}
+
 	// Dynamic Parameter Auto-Discovery (ROADMAP.md Fase 5)
 	// Jika ZTP tidak menemukan rule (atau rule tidak ada) dan vendor tidak dikenal (VendorID nil),
 	// antrekan task GetParameterNames di root (path "") untuk menemukan parameter tree.

@@ -142,10 +142,16 @@ type fakeEnqueuerPV struct {
 	setParamsCalls int
 	rebootCalls    int
 	hasPending     bool
+	lastSetParams  map[string]string
+	setParamsErr   error
 }
 
-func (f *fakeEnqueuerPV) EnqueueSetParameterValues(context.Context, domain.Actor, uint64, map[string]string, uint8) (*domain.Task, error) {
+func (f *fakeEnqueuerPV) EnqueueSetParameterValues(_ context.Context, _ domain.Actor, _ uint64, params map[string]string, _ uint8) (*domain.Task, error) {
 	f.setParamsCalls++
+	f.lastSetParams = params
+	if f.setParamsErr != nil {
+		return nil, f.setParamsErr
+	}
 	return &domain.Task{ID: 1}, nil
 }
 func (f *fakeEnqueuerPV) EnqueueGetParameterNames(context.Context, domain.Actor, uint64, string, bool, uint8) (*domain.Task, error) {
@@ -157,6 +163,9 @@ func (f *fakeEnqueuerPV) EnqueueReboot(context.Context, domain.Actor, uint64, ui
 }
 func (f *fakeEnqueuerPV) HasPendingForDevice(context.Context, uint64) (bool, error) {
 	return f.hasPending, nil
+}
+func (f *fakeEnqueuerPV) ResolveParameterPath(_ context.Context, _ uint64, key string) (string, error) {
+	return key, nil
 }
 
 type fakeFirmwareSchedulerPV struct{ calls int }
@@ -237,6 +246,8 @@ func newTestServiceWithActivity(rules []domain.ZeroTouchRule, dev *domain.Device
 		enqueuer,
 		fwSvc,
 		activity,
+		nil, // presets — engine preset diuji terpisah (preset_eval_test.go)
+		nil, // presetApps
 	)
 }
 

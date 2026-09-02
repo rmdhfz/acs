@@ -17,8 +17,8 @@ func NewPresetRepository(db *sqlx.DB) domain.PresetRepository {
 }
 
 func (r *presetRepository) Create(ctx context.Context, preset *domain.Preset) error {
-	query := `INSERT INTO presets (tenant_id, name, weight, precondition, configurations, is_active) 
-			  VALUES (:tenant_id, :name, :weight, :precondition, :configurations, :is_active)`
+	query := `INSERT INTO presets (tenant_id, name, weight, precondition, configurations, is_active, enforce, channel)
+			  VALUES (:tenant_id, :name, :weight, :precondition, :configurations, :is_active, :enforce, :channel)`
 	res, err := r.db.NamedExecContext(ctx, query, preset)
 	if err != nil {
 		return translateErr(err)
@@ -54,12 +54,14 @@ func (r *presetRepository) List(ctx context.Context, tenantID *uint64, p domain.
 }
 
 func (r *presetRepository) Update(ctx context.Context, preset *domain.Preset) error {
-	query := `UPDATE presets SET 
-				name = :name, 
-				weight = :weight, 
-				precondition = :precondition, 
-				configurations = :configurations, 
-				is_active = :is_active 
+	query := `UPDATE presets SET
+				name = :name,
+				weight = :weight,
+				precondition = :precondition,
+				configurations = :configurations,
+				is_active = :is_active,
+				enforce = :enforce,
+				channel = :channel
 			  WHERE id = :id`
 	_, err := r.db.NamedExecContext(ctx, query, preset)
 	return translateErr(err)
@@ -68,4 +70,18 @@ func (r *presetRepository) Update(ctx context.Context, preset *domain.Preset) er
 func (r *presetRepository) Delete(ctx context.Context, id uint64) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM presets WHERE id = ?`, id)
 	return translateErr(err)
+}
+
+// ListActiveEnforce — preset aktif & enforce untuk tenant device, terurut
+// weight ASC (preset weight lebih besar dievaluasi belakangan -> menimpa saat
+// key bentrok, PRESET_ENGINE_DESIGN.md §4). tenantID nil -> hanya preset global.
+func (r *presetRepository) ListActiveEnforce(ctx context.Context, tenantID *uint64) ([]domain.Preset, error) {
+	var presets []domain.Preset
+	query := `SELECT * FROM presets
+			  WHERE is_active = 1 AND enforce = 1 AND (tenant_id = ? OR tenant_id IS NULL)
+			  ORDER BY weight ASC, id ASC`
+	if err := r.db.SelectContext(ctx, &presets, query, tenantID); err != nil {
+		return nil, translateErr(err)
+	}
+	return presets, nil
 }

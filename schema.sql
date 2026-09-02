@@ -1093,11 +1093,29 @@ CREATE TABLE presets (
     precondition    JSON            NOT NULL COMMENT 'Aturan pencocokan (mis. berdasar model / tag)',
     configurations  JSON            NOT NULL COMMENT 'Aturan set parameter yang diterapkan bila precondition cocok',
     is_active       TINYINT(1)      NOT NULL DEFAULT 1,
+    -- migrations/0021: engine preset (PRESET_ENGINE_DESIGN.md)
+    enforce         TINYINT(1)      NOT NULL DEFAULT 0 COMMENT 'Bila 1: EvaluatePresets menegakkan config ini tiap sesi CWMP saat device drift. Bila 0: tersimpan tapi diabaikan engine (default aman).',
+    channel         VARCHAR(64)     NULL COMMENT 'Grouping opsional gaya GenieACS channel -- informasi UI saja di v1.',
     created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_presets_tenant FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  COMMENT='Preset match+config gaya GenieACS (migrations/0019)';
+  COMMENT='Preset match+config gaya GenieACS (migrations/0019, engine 0021)';
+
+CREATE TABLE preset_applications (
+    preset_id            BIGINT UNSIGNED NOT NULL,
+    device_id            BIGINT UNSIGNED NOT NULL,
+    last_applied_at      DATETIME        NULL,
+    last_drift_hash      CHAR(64)        NULL COMMENT 'sha256 hex dari drift-set terakhir yang di-push',
+    consecutive_failures INT             NOT NULL DEFAULT 0,
+    status               VARCHAR(16)     NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING | CONVERGED | FAILED',
+    updated_at           DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (preset_id, device_id),
+    KEY idx_preset_apps_device (device_id),
+    CONSTRAINT fk_preset_apps_preset FOREIGN KEY (preset_id) REFERENCES presets (id) ON DELETE CASCADE,
+    CONSTRAINT fk_preset_apps_device FOREIGN KEY (device_id) REFERENCES devices (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Tracking apply preset per (preset, device): idempotensi drift-check, cooldown, kegagalan (migrations/0021)';
 
 -- migrations/0020: role ENDUSER + mapping akun -> device untuk portal self-service.
 INSERT INTO ref_roles (code, name) VALUES ('ENDUSER', 'Pelanggan akhir (portal self-service)');

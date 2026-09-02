@@ -131,6 +131,12 @@ type TaskEnqueuer interface {
 	// kosong dari task lain), hanya memperlambat -- lihat komentar lengkap di
 	// EvaluateZeroTouch.
 	HasPendingForDevice(ctx context.Context, deviceID uint64) (bool, error)
+	// ResolveParameterPath menerjemahkan logical key -> raw TR-069 path sesuai
+	// vendor/model device (FR-11). Raw path yang sudah eksplisit diteruskan apa
+	// adanya. Dipakai usecase/provisioning.EvaluatePresets untuk drift-check
+	// (bandingkan nilai target preset dgn device_parameters yang di-key oleh
+	// raw path). task.Service sudah mengimplementasikannya.
+	ResolveParameterPath(ctx context.Context, deviceID uint64, key string) (string, error)
 }
 
 // CreateTaskInput adalah payload umum pembuatan task, didefinisikan di domain

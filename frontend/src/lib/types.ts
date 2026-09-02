@@ -368,6 +368,9 @@ export interface Preset {
   precondition: string
   configurations: string
   is_active: boolean
+  // migrations/0021 — engine preset. enforce=true: dijaga tiap sesi CWMP saat drift.
+  enforce: boolean
+  channel: string | null
   created_at: string
   updated_at: string
 }
