@@ -54,15 +54,15 @@ export function ConfigHistory({ deviceId }: { deviceId: number }) {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-medium text-slate-900 dark:text-white">Configuration History</h3>
+        <h3 className="text-lg font-medium text-slate-900 dark:text-white">Riwayat Konfigurasi</h3>
         {hasRole('ADMIN', 'NOC') && (
           <button
             onClick={handleCreate}
             disabled={createSnap.isPending}
-            className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            className="flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
           >
             <FileUp className="h-4 w-4" />
-            {createSnap.isPending ? 'Menyimpan...' : 'Buat Snapshot'}
+            {createSnap.isPending ? 'Menyimpan…' : 'Buat Snapshot'}
           </button>
         )}
       </div>

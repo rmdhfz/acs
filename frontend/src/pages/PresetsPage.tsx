@@ -5,6 +5,7 @@ import { PageSpinner } from '../components/Spinner'
 import { Modal } from '../components/Modal'
 import { useAuth } from '../lib/auth'
 import { ApiError } from '../lib/api'
+import { useToast } from '../lib/toast'
 import { usePresets, useCreatePreset, useUpdatePreset, useDeletePreset } from '../lib/hooks'
 import { formatDateTime } from '../lib/format'
 import type { Preset } from '../lib/types'
@@ -33,6 +34,7 @@ export default function PresetsPage() {
   const [creating, setCreating] = useState(false)
   const [toDelete, setToDelete] = useState<Preset | null>(null)
   const deleteMut = useDeletePreset()
+  const toast = useToast()
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-8">
@@ -127,7 +129,15 @@ export default function PresetsPage() {
             <div className="flex justify-end gap-3">
               <button onClick={() => setToDelete(null)} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">Batal</button>
               <button
-                onClick={() => deleteMut.mutate(toDelete.id, { onSuccess: () => setToDelete(null) })}
+                onClick={() =>
+                  deleteMut.mutate(toDelete.id, {
+                    onSuccess: () => {
+                      toast.success(`Preset "${toDelete.name}" dihapus.`)
+                      setToDelete(null)
+                    },
+                    onError: (e) => toast.error(e instanceof Error ? e.message : 'Gagal menghapus preset'),
+                  })
+                }
                 disabled={deleteMut.isPending}
                 className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
               >
@@ -153,6 +163,7 @@ function PresetModal({ preset, onClose }: { preset: Preset | null; onClose: () =
 
   const createMut = useCreatePreset()
   const updateMut = useUpdatePreset()
+  const toast = useToast()
   const pending = createMut.isPending || updateMut.isPending
 
   function validJSON(s: string): string | null {
@@ -184,6 +195,10 @@ function PresetModal({ preset, onClose }: { preset: Preset | null; onClose: () =
     try {
       if (isEdit) await updateMut.mutateAsync({ id: preset!.id, data: payload })
       else await createMut.mutateAsync(payload)
+      toast.success(
+        isEdit ? `Preset "${payload.name}" disimpan.` : `Preset "${payload.name}" dibuat.`,
+        enforce ? 'Enforcement aktif' : undefined,
+      )
       onClose()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Gagal menyimpan preset')

@@ -5,6 +5,7 @@ import { PageSpinner } from '../components/Spinner'
 import { Modal } from '../components/Modal'
 import { useAuth } from '../lib/auth'
 import { ApiError } from '../lib/api'
+import { useToast } from '../lib/toast'
 import { useTags, useCreateTag, useDeleteTag } from '../lib/hooks'
 import { formatDateTime } from '../lib/format'
 import type { Tag } from '../lib/types'
@@ -23,14 +24,16 @@ export default function TagsPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [tagToDelete, setTagToDelete] = useState<Tag | null>(null)
   const deleteMutation = useDeleteTag()
+  const toast = useToast()
 
   const handleDelete = async () => {
     if (!tagToDelete) return
     try {
       await deleteMutation.mutateAsync(tagToDelete.id)
+      toast.success(`Tag "${tagToDelete.name}" dihapus.`)
       setTagToDelete(null)
     } catch (err) {
-      console.error(err)
+      toast.error(err instanceof ApiError ? err.message : 'Gagal menghapus tag')
     }
   }
 
@@ -140,6 +143,7 @@ function CreateTagModal({ onClose }: { onClose: () => void }) {
   const [color, setColor] = useState('#3b82f6') // default blue
   const [error, setError] = useState<string | null>(null)
   const createMutation = useCreateTag()
+  const toast = useToast()
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -150,6 +154,7 @@ function CreateTagModal({ onClose }: { onClose: () => void }) {
     }
     try {
       await createMutation.mutateAsync({ name, color })
+      toast.success(`Tag "${name}" dibuat.`)
       onClose()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Gagal membuat tag')
