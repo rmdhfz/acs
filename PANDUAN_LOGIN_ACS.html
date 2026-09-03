@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Panduan Login ACS Console</title>
+<style>
+  :root {
+    --ink: #1a1f24;
+    --muted: #55606b;
+    --faint: #8a929b;
+    --accent: #1d4ed8;
+    --rule: #d7dbe0;
+    --rule-soft: #e9ecef;
+    --info-bg: #eef4ff;
+    --info-bd: #c7dbff;
+    --warn-bg: #fdf5e4;
+    --warn-bd: #f0dcae;
+    --danger-bg: #fdecea;
+    --danger-bd: #f3c9c4;
+    --code-bg: #f3f4f6;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { font-size: 10.5pt; }
+
+  body {
+    margin: 0;
+    color: var(--ink);
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.55;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .page { max-width: 17cm; margin: 0 auto; padding: 0 0 2cm; }
+
+  /* ---- Cover / title block ---- */
+  .cover {
+    border-bottom: 3px solid var(--accent);
+    padding-bottom: 14px;
+    margin-bottom: 26px;
+  }
+  .cover .kicker {
+    font-size: 8pt;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .cover h1 {
+    font-size: 22pt;
+    line-height: 1.15;
+    margin: 6px 0 4px;
+    font-weight: 700;
+  }
+  .cover .sub { color: var(--muted); font-size: 10.5pt; margin: 0; }
+  .cover .meta {
+    margin-top: 12px;
+    font-size: 8.5pt;
+    color: var(--faint);
+  }
+  .cover .meta strong { color: var(--muted); font-weight: 600; }
+
+  /* ---- Headings ---- */
+  h2 {
+    font-size: 13pt;
+    margin: 26px 0 8px;
+    padding-top: 4px;
+    font-weight: 700;
+    border-top: 1px solid var(--rule);
+    padding-top: 14px;
+  }
+  h2 .num {
+    display: inline-block;
+    min-width: 1.4em;
+    color: var(--accent);
+  }
+  h3 { font-size: 10.5pt; margin: 16px 0 6px; font-weight: 700; }
+
+  p { margin: 8px 0; }
+  a { color: var(--accent); text-decoration: none; }
+
+  ul, ol { margin: 8px 0; padding-left: 1.3em; }
+  li { margin: 4px 0; }
+
+  code {
+    font-family: "Consolas", "SF Mono", "Menlo", monospace;
+    font-size: 9pt;
+    background: var(--code-bg);
+    padding: 1px 4px;
+    border-radius: 3px;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--rule-soft);
+    border-radius: 5px;
+    padding: 10px 12px;
+    font-family: "Consolas", "SF Mono", "Menlo", monospace;
+    font-size: 8.7pt;
+    line-height: 1.5;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 8px 0;
+  }
+  pre .cmt { color: #6a7480; }
+
+  /* ---- Numbered step list ---- */
+  ol.steps {
+    list-style: none;
+    padding-left: 0;
+    counter-reset: step;
+    margin: 10px 0;
+  }
+  ol.steps > li {
+    position: relative;
+    padding-left: 30px;
+    margin: 9px 0;
+  }
+  ol.steps > li::before {
+    counter-increment: step;
+    content: counter(step);
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 20px;
+    height: 20px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 8.5pt;
+    font-weight: 700;
+    border-radius: 50%;
+    text-align: center;
+    line-height: 20px;
+  }
+
+  /* ---- Callouts ---- */
+  .callout {
+    border: 1px solid var(--rule);
+    border-left-width: 4px;
+    border-radius: 4px;
+    padding: 9px 12px;
+    margin: 12px 0;
+    font-size: 9.7pt;
+  }
+  .callout .label {
+    font-weight: 700;
+    font-size: 8pt;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 2px;
+  }
+  .callout p:first-of-type { margin-top: 0; }
+  .callout p:last-child { margin-bottom: 0; }
+  .callout.info { background: var(--info-bg); border-color: var(--info-bd); border-left-color: var(--accent); }
+  .callout.info .label { color: var(--accent); }
+  .callout.warn { background: var(--warn-bg); border-color: var(--warn-bd); border-left-color: #b8860b; }
+  .callout.warn .label { color: #96690a; }
+  .callout.danger { background: var(--danger-bg); border-color: var(--danger-bd); border-left-color: #c0392b; }
+  .callout.danger .label { color: #a93226; }
+
+  /* ---- Tables ---- */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 9.3pt;
+  }
+  th, td {
+    border: 1px solid var(--rule);
+    padding: 6px 9px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    background: #f5f6f8;
+    font-weight: 700;
+    font-size: 8.5pt;
+    letter-spacing: 0.03em;
+  }
+  td code { font-size: 8.4pt; }
+
+  .role-name { font-weight: 700; white-space: nowrap; }
+
+  /* ---- Print ---- */
+  @page {
+    size: A4;
+    margin: 18mm 16mm 16mm;
+  }
+  @media print {
+    h2, h3 { page-break-after: avoid; }
+    .callout, pre, table, ol.steps > li { page-break-inside: avoid; }
+    .cover { page-break-after: avoid; }
+  }
+
+  .avoid-break { page-break-inside: avoid; }
+
+  footer {
+    margin-top: 30px;
+    border-top: 1px solid var(--rule);
+    padding-top: 8px;
+    font-size: 8pt;
+    color: var(--faint);
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="cover">
+    <span class="kicker">ACS Multi-Vendor TR-069 &middot; Dokumen Operasional</span>
+    <h1>Panduan Login ACS Console</h1>
+    <p class="sub">Cara masuk ke dashboard ACS, membuat akun pertama, mengelola kata sandi, dan mengatasi kendala login.</p>
+    <p class="meta">
+      <strong>Untuk:</strong> Operator NOC, Admin Tenant, Superadmin Platform &nbsp;&middot;&nbsp;
+      <strong>Versi dokumen:</strong> 2026-09-03 &nbsp;&middot;&nbsp;
+      <strong>Berlaku untuk:</strong> ACS Console (frontend React) + REST API <code>/api/v1</code>
+    </p>
+  </div>
+
+  <!-- 1 -->
+  <h2><span class="num">1.</span>Sekilas: apa yang Anda butuhkan</h2>
+  <p>
+    ACS Console adalah antarmuka web untuk memantau dan mengelola perangkat CPE (ONT/ONU/router)
+    lewat protokol TR-069. Untuk bisa login Anda memerlukan tiga hal:
+  </p>
+  <table>
+    <tr>
+      <th style="width:32%">Komponen</th>
+      <th style="width:36%">Alamat (lingkungan dev)</th>
+      <th>Keterangan</th>
+    </tr>
+    <tr>
+      <td>Halaman Console (frontend)</td>
+      <td><code>http://localhost:5173/login</code></td>
+      <td>Yang Anda buka di browser. Di produksi: domain perusahaan, mis. <code>https://acs.perusahaan.com/login</code>.</td>
+    </tr>
+    <tr>
+      <td>REST API (backend <code>acsd</code>)</td>
+      <td><code>http://localhost:18080/api/v1</code></td>
+      <td>Console memanggil API ini saat login. Harus hidup &amp; reachable dari browser Anda.</td>
+    </tr>
+    <tr>
+      <td>Akun pengguna</td>
+      <td>&mdash;</td>
+      <td>Username + kata sandi yang valid dan berperan (role). Lihat bagian 3 bila belum punya.</td>
+    </tr>
+  </table>
+
+  <div class="callout info">
+    <span class="label">Catatan lingkungan</span>
+    <p>
+      Di <strong>development</strong>, backend dijalankan lewat Docker Compose (<code>docker compose up -d</code>) dan
+      frontend dijalankan terpisah dengan <code>npm run dev</code>. Alamat API yang dipakai frontend diatur di
+      file <code>frontend/.env</code> pada baris <code>VITE_API_BASE_URL</code>.
+    </p>
+    <p>
+      Di <strong>produksi</strong>, frontend adalah hasil <code>npm run build</code> yang di-serve satu domain dengan
+      API di belakang reverse proxy (lihat <code>RUNBOOK.md</code>). URL login mengikuti domain tersebut.
+    </p>
+  </div>
+
+  <!-- 2 -->
+  <h2><span class="num">2.</span>Langkah login</h2>
+  <ol class="steps">
+    <li>Pastikan backend berjalan. Di lingkungan dev: jalankan <code>docker compose ps</code> dan pastikan
+        service <code>acsd</code> berstatus <em>Up</em>. Pastikan juga frontend berjalan (<code>npm run dev</code> di folder <code>frontend/</code>).</li>
+    <li>Buka browser ke halaman login, mis. <code>http://localhost:5173/login</code>.</li>
+    <li>Isi kolom <strong>Username</strong> dan <strong>Password</strong>. Gunakan ikon mata di kolom password untuk
+        menampilkan/menyembunyikan yang Anda ketik.</li>
+    <li>Klik tombol <strong>Masuk</strong>. Tombol berubah menjadi &ldquo;Memeriksa&hellip;&rdquo; selama proses berlangsung.</li>
+    <li>Bila berhasil, Anda diarahkan otomatis:
+      <ul>
+        <li>Peran staf (Superadmin / Admin / NOC / Viewer) &rarr; halaman <strong>Dashboard</strong>.</li>
+        <li>Peran pelanggan (ENDUSER) &rarr; halaman <strong>Perangkat Saya</strong> (portal self-service).</li>
+      </ul>
+    </li>
+  </ol>
+
+  <p>
+    Sesi login berlaku <strong>8 jam</strong> (dapat dikonfigurasi lewat <code>ACS_JWT_EXPIRY</code>).
+    Setelah itu Anda akan diminta login ulang. Token disimpan di penyimpanan lokal browser &mdash; jangan login
+    di komputer publik/bersama, dan gunakan tombol <strong>Logout</strong> (ikon di pojok kiri bawah, di samping
+    nama Anda) saat selesai.
+  </p>
+
+  <h3>Login lewat SSO (bila tersedia)</h3>
+  <p>
+    Jika organisasi Anda sudah mengaktifkan Single Sign-On (OIDC), gunakan tombol <strong>Masuk dengan SSO</strong>
+    di bawah form. Tombol ini <em>selalu terlihat</em>, tetapi hanya berfungsi bila operator sudah mengisi
+    konfigurasi <code>ACS_OIDC_*</code> di backend. Bila belum dikonfigurasi, tombol akan menghasilkan halaman
+    &ldquo;tidak ditemukan&rdquo; &mdash; gunakan login username/password biasa.
+  </p>
+
+  <!-- 3 -->
+  <h2><span class="num">3.</span>Belum punya akun, atau lupa kata sandi Superadmin</h2>
+  <p>
+    ACS <strong>tidak punya pendaftaran mandiri</strong>. Akun dibuat oleh Admin/Superadmin dari menu
+    <em>Administration &rarr; Users</em>. Untuk instalasi baru (atau bila semua kata sandi Superadmin hilang),
+    buat akun Superadmin pertama lewat perintah <code>seed-admin</code> yang sudah disertakan.
+  </p>
+
+  <h3>A. Bila backend berjalan di Docker Compose</h3>
+  <pre><span class="cmt"># dijalankan dari folder root proyek, saat "docker compose up" aktif</span>
+docker compose exec acsd /app/seed-admin \
+  -username admin_baru \
+  -password "KataSandiKuat123" \
+  -email admin_baru@perusahaan.com</pre>
+
+  <h3>B. Bila menjalankan backend langsung dengan Go (tanpa Docker)</h3>
+  <pre><span class="cmt"># perlu variabel lingkungan DB yang sama dengan acsd (mis. dari file .env)</span>
+go run ./cmd/seed-admin \
+  -username admin_baru \
+  -password "KataSandiKuat123" \
+  -email admin_baru@perusahaan.com</pre>
+
+  <p>
+    Setelah perintah selesai (menampilkan <code>superadmin "admin_baru" dibuat (id=...)</code>),
+    langsung login di Console memakai username dan kata sandi tersebut.
+  </p>
+
+  <div class="callout warn">
+    <span class="label">Aturan kata sandi</span>
+    <p>
+      Minimal <strong>8 karakter</strong>. Perintah <code>seed-admin</code> hanya untuk akun Superadmin pertama;
+      akun berikutnya dibuat lewat UI <em>Administration &rarr; Users</em> oleh akun yang sudah punya peran Admin/Superadmin.
+    </p>
+  </div>
+
+  <!-- 4 -->
+  <h2><span class="num">4.</span>Peran (role) dan hak akses</h2>
+  <p>Setiap akun punya satu peran atau lebih. Peran menentukan menu apa yang muncul dan aksi apa yang diizinkan.</p>
+  <table>
+    <tr>
+      <th style="width:16%">Peran</th>
+      <th style="width:22%">Cakupan</th>
+      <th>Yang bisa dilakukan</th>
+    </tr>
+    <tr>
+      <td class="role-name">SUPERADMIN</td>
+      <td>Seluruh tenant (lintas perusahaan)</td>
+      <td>Semua. Kelola tenant, katalog vendor global, mapping parameter, semua user &amp; perangkat.</td>
+    </tr>
+    <tr>
+      <td class="role-name">ADMIN</td>
+      <td>Satu tenant</td>
+      <td>Kelola user &amp; peran di tenant sendiri, provisioning profile, zero-touch rule, preset, firmware, branding, webhook.</td>
+    </tr>
+    <tr>
+      <td class="role-name">NOC</td>
+      <td>Satu tenant</td>
+      <td>Operasional: lihat status perangkat, reboot, connection request, diagnostik (ping/traceroute), kelola tag perangkat, batalkan task.</td>
+    </tr>
+    <tr>
+      <td class="role-name">VIEWER</td>
+      <td>Satu tenant</td>
+      <td>Hanya baca: dashboard, daftar perangkat, task, log &mdash; tanpa tombol aksi.</td>
+    </tr>
+    <tr>
+      <td class="role-name">ENDUSER</td>
+      <td>Perangkat milik sendiri</td>
+      <td>Portal pelanggan: ubah SSID/kata sandi WiFi dan restart perangkat sendiri. Tidak bisa membuka dashboard.</td>
+    </tr>
+  </table>
+
+  <!-- 5 -->
+  <h2><span class="num">5.</span>Mengelola kata sandi</h2>
+
+  <h3>Admin/Superadmin mereset kata sandi user lain</h3>
+  <ol class="steps">
+    <li>Buka <em>Administration &rarr; Users</em>.</li>
+    <li>Pada baris user yang bersangkutan, klik <strong>Reset Password</strong>.</li>
+    <li>Masukkan kata sandi baru (minimal 8 karakter) dan simpan. Sampaikan kata sandi ini ke pengguna lewat jalur aman.</li>
+  </ol>
+  <p>Mereset kata sandi <strong>otomatis membuka kunci</strong> akun yang sedang terkunci (lihat bagian 6).</p>
+
+  <h3>Mengganti kata sandi sendiri</h3>
+  <p>
+    Endpoint tersedia di API (<code>PATCH /api/v1/auth/password</code>, memerlukan kata sandi lama),
+    namun tombol khusus di Console belum tersedia pada versi ini. Untuk saat ini, mintalah Admin tenant
+    Anda melakukan reset, atau gunakan API secara langsung:
+  </p>
+  <pre><span class="cmt"># ganti &lt;TOKEN&gt; dengan access_token dari respons login</span>
+curl -X PATCH http://localhost:18080/api/v1/auth/password \
+  -H "Authorization: Bearer &lt;TOKEN&gt;" \
+  -H "Content-Type: application/json" \
+  -d '{"current_password":"lama","new_password":"BaruMinimal8"}'</pre>
+
+  <!-- 6 -->
+  <h2><span class="num">6.</span>Akun terkunci karena gagal login</h2>
+  <p>
+    Sebagai proteksi brute-force, akun akan <strong>terkunci selama 15 menit</strong> setelah
+    <strong>5 kali</strong> kata sandi salah berturut-turut.
+  </p>
+  <div class="callout danger">
+    <span class="label">Pesan error sengaja disamarkan</span>
+    <p>
+      Saat akun terkunci, pesan yang muncul tetap <em>&ldquo;username atau password salah&rdquo;</em> &mdash;
+      persis sama dengan kata sandi keliru biasa. Ini disengaja agar penyerang tidak tahu akun mana yang valid.
+      Jadi bila Anda <em>yakin</em> kata sandi benar tetapi tetap ditolak, kemungkinan besar akun sedang terkunci.
+    </p>
+  </div>
+  <p><strong>Solusi:</strong></p>
+  <ul>
+    <li>Tunggu 15 menit, lalu coba lagi &mdash; kunci lepas otomatis; <em>atau</em></li>
+    <li>Minta Admin/Superadmin melakukan <em>Reset Password</em> (langsung membuka kunci).</li>
+  </ul>
+  <p>
+    Selain itu, endpoint login dibatasi <strong>2 permintaan per detik per alamat IP</strong>. Bila banyak orang
+    login dari satu IP publik (mis. di balik NAT kantor) dalam waktu bersamaan, sebagian bisa mendapat error
+    &ldquo;terlalu banyak permintaan&rdquo; (HTTP 429) &mdash; tunggu beberapa detik lalu ulangi.
+  </p>
+
+  <!-- 7 -->
+  <h2><span class="num">7.</span>Tenant dinonaktifkan</h2>
+  <p>
+    Bila Superadmin menonaktifkan tenant tempat akun Anda berada, login ditolak dengan pesan spesifik
+    <em>&ldquo;tenant tidak aktif, hubungi administrator&rdquo;</em>. Sesi yang sedang berjalan pun langsung
+    berhenti pada permintaan berikutnya (tidak menunggu token kedaluwarsa). Hubungi Superadmin platform untuk
+    mengaktifkan kembali tenant Anda.
+  </p>
+
+  <!-- 8 -->
+  <h2><span class="num">8.</span>Pemecahan masalah</h2>
+  <table>
+    <tr>
+      <th style="width:38%">Gejala</th>
+      <th>Kemungkinan sebab &amp; solusi</th>
+    </tr>
+    <tr>
+      <td>Halaman login tidak terbuka sama sekali</td>
+      <td>Frontend belum berjalan. Jalankan <code>npm run dev</code> di folder <code>frontend/</code>, buka port yang ditampilkannya (biasanya 5173).</td>
+    </tr>
+    <tr>
+      <td>Muncul &ldquo;Gagal login, coba lagi&rdquo; atau error jaringan di form</td>
+      <td>Console tidak bisa menghubungi API. Cek: (a) <code>docker compose ps</code> &mdash; service <code>acsd</code> harus <em>Up</em>; (b) nilai <code>VITE_API_BASE_URL</code> di <code>frontend/.env</code> menunjuk ke alamat yang benar (default <code>http://localhost:18080/api/v1</code>); (c) coba buka <code>http://localhost:18080/api/v1/metrics</code> di browser &mdash; harus memuat teks metrik.</td>
+    </tr>
+    <tr>
+      <td>Selalu &ldquo;username atau password salah&rdquo; padahal yakin benar</td>
+      <td>(a) Caps Lock aktif; (b) akun terkunci &mdash; tunggu 15 menit atau minta reset (bagian 6); (c) username salah ketik (perhatikan huruf besar/kecil). Bila tetap gagal, buat/reset akun lewat <code>seed-admin</code> atau Admin.</td>
+    </tr>
+    <tr>
+      <td>Setelah login langsung dilempar kembali ke halaman login</td>
+      <td>Token ditolak backend. Biasanya karena jam sistem server menyimpang jauh, atau <code>ACS_JWT_SECRET</code> di backend berubah setelah token diterbitkan. Login ulang; bila masih terjadi, hubungi tim infrastruktur.</td>
+    </tr>
+    <tr>
+      <td>Error CORS di konsol browser (F12)</td>
+      <td>Origin frontend belum diizinkan backend. Tambahkan URL frontend ke daftar <code>ACS_CORS_ALLOW_ORIGINS</code> pada environment <code>acsd</code>, lalu restart backend.</td>
+    </tr>
+    <tr>
+      <td>HTTP 429 saat login</td>
+      <td>Rate limit login (2 req/detik per IP) terpicu. Tunggu beberapa detik dan coba lagi.</td>
+    </tr>
+  </table>
+
+  <div class="callout info">
+    <span class="label">Butuh bantuan lebih lanjut</span>
+    <p>
+      Detail menjalankan &amp; men-deploy sistem ada di <code>RUNBOOK.md</code>. Referensi endpoint API
+      lengkap ada di <code>openapi.yaml</code> (dapat dibuka di Swagger UI / Redoc) dan koleksi
+      <code>ACS-API.postman_collection.json</code>.
+    </p>
+  </div>
+
+  <footer>
+    ACS Console &mdash; Panduan Login. Dokumen internal, dihasilkan 2026-09-03. Sesuaikan URL &amp; nama domain
+    dengan lingkungan Anda sebelum dibagikan ke pengguna akhir.
+  </footer>
+
+</div>
+</body>
+</html>
