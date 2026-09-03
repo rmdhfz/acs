@@ -6,6 +6,8 @@ import { PageSpinner } from '../components/Spinner'
 import { StatusBadge } from '../components/StatusBadge'
 import { useAuth } from '../lib/auth'
 import { ApiError } from '../lib/api'
+import { useToast } from '../lib/toast'
+import { useConfirm } from '../lib/confirm'
 import {
   useAdvanceRolloutBatch,
   useCancelRolloutBatch,
@@ -155,6 +157,24 @@ function RolloutTab({ canManage }: { canManage: boolean }) {
   const [showCreate, setShowCreate] = useState(false)
   const advanceMutation = useAdvanceRolloutBatch()
   const cancelMutation = useCancelRolloutBatch()
+  const toast = useToast()
+  const confirm = useConfirm()
+
+  const handleAdvance = (id: number) => {
+    advanceMutation.mutate(id, {
+      onSuccess: () => toast.success(`Rollout #${id} dilanjutkan ke wave berikutnya.`),
+      onError: (e) => toast.error(e instanceof Error ? e.message : 'Gagal advance rollout'),
+    })
+  }
+
+  const handleCancel = async (id: number) => {
+    if (await confirm({ title: 'Batalkan rollout', message: `Wave berikutnya untuk batch #${id} tidak akan dijalankan. Device yang sudah di-upgrade tetap.`, confirmLabel: 'Batalkan rollout', tone: 'danger' })) {
+      cancelMutation.mutate(id, {
+        onSuccess: () => toast.success(`Rollout #${id} dibatalkan.`),
+        onError: (e) => toast.error(e instanceof Error ? e.message : 'Gagal membatalkan rollout'),
+      })
+    }
+  }
 
   const batches = data?.data ?? []
   const statusCode = (id: number) => statusRefs?.find((s) => s.id === id)?.code ?? ''
@@ -218,16 +238,14 @@ function RolloutTab({ canManage }: { canManage: boolean }) {
                         {canAct && (
                           <div className="flex justify-end gap-2">
                             <button
-                              onClick={() => advanceMutation.mutate(b.id)}
+                              onClick={() => handleAdvance(b.id)}
                               disabled={advanceMutation.isPending}
                               className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
                             >
                               Advance
                             </button>
                             <button
-                              onClick={() => {
-                                if (confirm('Batalkan rollout ini? Wave berikutnya tidak akan dijalankan.')) cancelMutation.mutate(b.id)
-                              }}
+                              onClick={() => void handleCancel(b.id)}
                               disabled={cancelMutation.isPending}
                               className="rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50 dark:border-red-900"
                             >

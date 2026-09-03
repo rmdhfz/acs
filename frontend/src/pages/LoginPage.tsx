@@ -1,6 +1,6 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Radio, AlertCircle } from 'lucide-react'
+import { Radio, AlertCircle, Eye, EyeOff } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { ApiError } from '../lib/api'
 import { Spinner } from '../components/Spinner'
@@ -11,8 +11,14 @@ export function LoginPage() {
   const location = useLocation()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const usernameRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    usernameRef.current?.focus()
+  }, [])
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -20,7 +26,7 @@ export function LoginPage() {
     setIsSubmitting(true)
     try {
       await login(username, password)
-      const from = (location.state as { from?: string } | null)?.from ?? '/dashboard'
+      const from = (location.state as { from?: string } | null)?.from ?? '/'
       navigate(from, { replace: true })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Gagal login, coba lagi')
@@ -48,6 +54,7 @@ export function LoginPage() {
               </label>
               <input
                 id="username"
+                ref={usernameRef}
                 type="text"
                 autoComplete="username"
                 value={username}
@@ -60,15 +67,26 @@ export function LoginPage() {
               <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
                 Password
               </label>
-              <input
-                id="password"
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-              />
+              <div className="relative">
+                <input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 pr-10 text-sm text-slate-900 outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? 'Sembunyikan password' : 'Tampilkan password'}
+                  tabIndex={-1}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 transition-colors hover:text-slate-600 dark:hover:text-slate-300"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
 
             {error && (
@@ -83,8 +101,8 @@ export function LoginPage() {
               disabled={isSubmitting}
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2.5 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
             >
-              {isSubmitting && <Spinner className="h-4 w-4 text-white" />}
-              Masuk
+              {isSubmitting && <Spinner className="h-4 w-4 text-white dark:text-slate-900" />}
+              {isSubmitting ? 'Memeriksa…' : 'Masuk'}
             </button>
 
             <div className="relative my-4">
@@ -100,10 +118,17 @@ export function LoginPage() {
               href="/api/v1/auth/oidc/login"
               className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
             >
-              Login with SSO
+              Masuk dengan SSO
             </a>
+            <p className="text-center text-xs text-slate-400 dark:text-slate-500">
+              SSO hanya aktif bila operator sudah mengkonfigurasi Identity Provider.
+            </p>
           </div>
         </form>
+
+        <p className="mt-6 text-center text-xs text-slate-400 dark:text-slate-500">
+          Lupa password? Hubungi administrator tenant Anda untuk reset.
+        </p>
       </div>
     </div>
   )

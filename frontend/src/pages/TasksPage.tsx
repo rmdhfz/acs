@@ -5,6 +5,8 @@ import { EmptyState } from '../components/EmptyState'
 import { Modal } from '../components/Modal'
 import { useAuth } from '../lib/auth'
 import { ApiError } from '../lib/api'
+import { useToast } from '../lib/toast'
+import { useConfirm } from '../lib/confirm'
 import { findRefById, useCancelTask, useCreateTask, useRefs, useTasks, type TaskFilters } from '../lib/hooks'
 import { formatJSONField, formatDateTime, formatRelativeTime } from '../lib/format'
 
@@ -45,6 +47,17 @@ export function TasksPage() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   const cancelMutation = useCancelTask()
+  const toast = useToast()
+  const confirm = useConfirm()
+
+  const handleCancel = async (id: number) => {
+    if (await confirm({ title: 'Batalkan task', message: `Task #${id} tidak akan dikirim ke device.`, confirmLabel: 'Batalkan task', tone: 'danger' })) {
+      cancelMutation.mutate(id, {
+        onSuccess: () => toast.success(`Task #${id} dibatalkan.`),
+        onError: (e) => toast.error(e instanceof Error ? e.message : 'Gagal membatalkan task'),
+      })
+    }
+  }
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">
@@ -156,7 +169,7 @@ export function TasksPage() {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation()
-                                if (confirm('Batalkan task ini?')) cancelMutation.mutate(t.id)
+                                void handleCancel(t.id)
                               }}
                               className="rounded-md p-1.5 text-slate-400 dark:text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600"
                               title="Batalkan"

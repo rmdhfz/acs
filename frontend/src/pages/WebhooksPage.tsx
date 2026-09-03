@@ -15,6 +15,7 @@ import {
 import { PageSpinner } from '../components/Spinner'
 import { EmptyState } from '../components/EmptyState'
 import { Modal } from '../components/Modal'
+import { useToast } from '../lib/toast'
 import { fmtDatetime } from '../lib/format'
 
 // ---- Badge ----
@@ -78,36 +79,40 @@ function SubscriptionRow({ sub, eventLabel }: { sub: WebhookSubscription; eventL
   const updateMut = useUpdateWebhook()
   const deleteMut = useDeleteWebhook()
   const testMut = useTestWebhook()
+  const toast = useToast()
 
   function toggleActive() {
     updateMut.mutate(
       { id: sub.id, input: { name: sub.name, target_url: sub.target_url, is_active: !sub.is_active, description: sub.description ?? undefined } },
       {
-        onSuccess: () => alert(sub.is_active ? 'Webhook dinonaktifkan' : 'Webhook diaktifkan'),
-        onError: (e: Error) => alert(e.message),
+        onSuccess: () => toast.success(sub.is_active ? `Webhook "${sub.name}" dinonaktifkan.` : `Webhook "${sub.name}" diaktifkan.`),
+        onError: (e: Error) => toast.error(e.message),
       },
     )
   }
 
   function handleTest() {
     testMut.mutate(sub.id, {
-      onSuccess: () => alert('Test delivery dikirim ke antrian'),
-      onError: (e: Error) => alert(e.message),
+      onSuccess: () => toast.success('Test delivery diantre. Lihat log delivery untuk hasilnya.', 'Terkirim'),
+      onError: (e: Error) => toast.error(e.message),
     })
   }
 
   function handleDelete() {
     deleteMut.mutate(sub.id, {
       onSuccess: () => {
-        alert('Webhook dihapus')
+        toast.success(`Webhook "${sub.name}" dihapus.`)
         setShowDeleteConfirm(false)
       },
-      onError: (e: Error) => alert(e.message),
+      onError: (e: Error) => toast.error(e.message),
     })
   }
 
   function copyUUID() {
-    navigator.clipboard.writeText(sub.subscription_uuid).then(() => alert('UUID disalin'))
+    navigator.clipboard.writeText(sub.subscription_uuid).then(
+      () => toast.success('UUID disalin ke clipboard.'),
+      () => toast.error('Gagal menyalin.'),
+    )
   }
 
   return (
@@ -233,6 +238,7 @@ const EMPTY_FORM: CreateWebhookInput = {
 function CreateWebhookModal({ onClose }: { onClose: () => void }) {
   const { data: eventRefs } = useRefs('ref_webhook_event_types')
   const createMut = useCreateWebhook()
+  const toast = useToast()
   const [form, setForm] = useState<CreateWebhookInput>(EMPTY_FORM)
   const [createdSecret, setCreatedSecret] = useState<string | null>(null)
 
@@ -251,18 +257,18 @@ function CreateWebhookModal({ onClose }: { onClose: () => void }) {
       onSuccess: (data) => {
         if (data.secret) setCreatedSecret(data.secret)
         else {
-          alert('Webhook dibuat')
+          toast.success('Webhook dibuat.')
           onClose()
           setForm(EMPTY_FORM)
         }
       },
-      onError: (e: Error) => alert(e.message),
+      onError: (e: Error) => toast.error(e.message),
     })
   }
 
   function handleCloseSecret() {
     setCreatedSecret(null)
-    alert('Webhook berhasil dibuat')
+    toast.success('Webhook dibuat. Simpan secret yang tadi ditampilkan — tidak bisa dilihat lagi.')
     onClose()
     setForm(EMPTY_FORM)
   }
@@ -286,7 +292,7 @@ function CreateWebhookModal({ onClose }: { onClose: () => void }) {
                 {createdSecret}
               </code>
               <button
-                onClick={() => navigator.clipboard.writeText(createdSecret).then(() => alert('Secret disalin'))}
+                onClick={() => navigator.clipboard.writeText(createdSecret).then(() => toast.success('Secret disalin.'), () => toast.error('Gagal menyalin.'))}
                 className="flex-shrink-0 rounded-lg p-1.5 text-amber-600 hover:bg-amber-100 dark:text-amber-400 dark:hover:bg-amber-900/30"
               >
                 <Copy className="h-4 w-4" />

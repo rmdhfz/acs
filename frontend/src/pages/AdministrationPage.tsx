@@ -7,6 +7,8 @@ import { Modal } from '../components/Modal'
 import { PageSpinner } from '../components/Spinner'
 import { useAuth } from '../lib/auth'
 import { ApiError } from '../lib/api'
+import { useToast } from '../lib/toast'
+import { useConfirm } from '../lib/confirm'
 import {
   useCreateTenant,
   useCreateUser,
@@ -94,12 +96,21 @@ function UsersTab({ isSuperadmin }: { isSuperadmin: boolean }) {
   const { data, isLoading } = useUsers(tenantFilter ? Number(tenantFilter) : undefined)
   const users = data?.data ?? []
   const deleteMutation = useDeleteUser()
+  const toast = useToast()
+  const confirm = useConfirm()
 
   async function handleDelete(u: User) {
-    if (!confirm(`Hapus user "${u.username}"? Aksi ini tidak bisa dibatalkan.`)) return
+    const ok = await confirm({
+      title: 'Hapus user',
+      message: <>User <strong>{u.username}</strong> tidak akan bisa login lagi. Aksi ini tidak bisa dibatalkan.</>,
+      confirmLabel: 'Hapus user',
+      tone: 'danger',
+    })
+    if (!ok) return
     setDeleteError(null)
     try {
       await deleteMutation.mutateAsync(u.id)
+      toast.success(`User "${u.username}" dihapus.`)
     } catch (err) {
       setDeleteError(err instanceof ApiError ? err.message : 'Gagal menghapus user')
     }

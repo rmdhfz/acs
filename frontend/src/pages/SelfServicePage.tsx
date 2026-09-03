@@ -3,6 +3,7 @@ import { Wifi, RotateCw, Router as RouterIcon, CheckCircle2, AlertCircle } from 
 import { EmptyState } from '../components/EmptyState'
 import { PageSpinner } from '../components/Spinner'
 import { ApiError } from '../lib/api'
+import { useConfirm } from '../lib/confirm'
 import { useMyDevices, useChangeMyWiFi, useRebootMyDevice } from '../lib/hooks'
 import type { SelfServiceDevice } from '../lib/types'
 
@@ -47,9 +48,15 @@ function DeviceCard({ device }: { device: SelfServiceDevice }) {
   const [showWiFi, setShowWiFi] = useState(false)
   const rebootMut = useRebootMyDevice()
   const [rebootDone, setRebootDone] = useState(false)
+  const confirm = useConfirm()
 
-  function handleReboot() {
-    if (!confirm(`Restart perangkat ${device.serial_number}? Internet akan terputus sekitar 1–2 menit.`)) return
+  async function handleReboot() {
+    const ok = await confirm({
+      title: 'Restart perangkat',
+      message: `Internet akan terputus sekitar 1–2 menit selagi ${device.model ?? 'perangkat'} menyala ulang.`,
+      confirmLabel: 'Restart',
+    })
+    if (!ok) return
     rebootMut.mutate(device.id, {
       onSuccess: () => {
         setRebootDone(true)

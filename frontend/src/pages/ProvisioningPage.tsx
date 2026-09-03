@@ -6,6 +6,8 @@ import { Modal } from '../components/Modal'
 import { PageSpinner } from '../components/Spinner'
 import { useAuth } from '../lib/auth'
 import { ApiError } from '../lib/api'
+import { useToast } from '../lib/toast'
+import { useConfirm } from '../lib/confirm'
 import {
   useCreateProfile,
   useCreateZTRule,
@@ -77,6 +79,17 @@ function ProfilesTab({ canManage }: { canManage: boolean }) {
   const vendors = vendorsResp?.data ?? []
   const [modalId, setModalId] = useState<number | 'new' | null>(null)
   const deleteMutation = useDeleteProfile()
+  const toast = useToast()
+  const confirm = useConfirm()
+
+  const handleDelete = async (id: number, name: string) => {
+    if (await confirm({ title: 'Hapus provisioning profile', message: <>Hapus profil <strong>{name}</strong>? Device yang sudah terprovisioning tidak berubah.</>, confirmLabel: 'Hapus', tone: 'danger' })) {
+      deleteMutation.mutate(id, {
+        onSuccess: () => toast.success(`Profil "${name}" dihapus.`),
+        onError: (e) => toast.error(e instanceof Error ? e.message : 'Gagal menghapus profil'),
+      })
+    }
+  }
 
   const profiles = data?.data ?? []
 
@@ -126,7 +139,7 @@ function ProfilesTab({ canManage }: { canManage: boolean }) {
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
-                          if (confirm(`Hapus profil "${p.name}"?`)) deleteMutation.mutate(p.id)
+                          void handleDelete(p.id, p.name)
                         }}
                         className="rounded-md p-1.5 text-slate-400 dark:text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600"
                       >
@@ -352,6 +365,17 @@ function ZTRulesTab({ canManage }: { canManage: boolean }) {
   const profiles = profilesResp?.data ?? []
   const [modalId, setModalId] = useState<number | 'new' | null>(null)
   const deleteMutation = useDeleteZTRule()
+  const toast = useToast()
+  const confirm = useConfirm()
+
+  const handleDelete = async (id: number) => {
+    if (await confirm({ title: 'Hapus zero-touch rule', message: `Rule #${id} tidak akan dievaluasi lagi untuk device baru.`, confirmLabel: 'Hapus', tone: 'danger' })) {
+      deleteMutation.mutate(id, {
+        onSuccess: () => toast.success('Zero-touch rule dihapus.'),
+        onError: (e) => toast.error(e instanceof Error ? e.message : 'Gagal menghapus rule'),
+      })
+    }
+  }
 
   return (
     <div>
@@ -422,7 +446,7 @@ function ZTRulesTab({ canManage }: { canManage: boolean }) {
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
-                            if (confirm('Hapus rule ini?')) deleteMutation.mutate(r.id)
+                            void handleDelete(r.id)
                           }}
                           className="rounded-md p-1.5 text-slate-400 dark:text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600"
                         >

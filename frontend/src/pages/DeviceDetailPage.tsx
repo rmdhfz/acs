@@ -10,6 +10,8 @@ import { ConfigHistory } from '../components/ConfigHistory'
 import { Modal } from '../components/Modal'
 import { useAuth } from '../lib/auth'
 import { useTheme } from '../lib/theme'
+import { useToast } from '../lib/toast'
+import { useConfirm } from '../lib/confirm'
 import { ApiError } from '../lib/api'
 import {
   findRefById,
@@ -82,6 +84,8 @@ export function DeviceDetailPage() {
   const rebootMutation = useRebootDevice()
   const factoryResetMutation = useFactoryResetDevice()
   const [connReqError, setConnReqError] = useState<string | null>(null)
+  const toast = useToast()
+  const confirm = useConfirm()
 
   if (isLoading || !device) return <PageSpinner />
 
@@ -92,9 +96,34 @@ export function DeviceDetailPage() {
     setConnReqError(null)
     try {
       await triggerConnReq.mutateAsync(deviceId)
-      alert('Connection Request berhasil dikirim. Menunggu respons Inform dari device (bisa beberapa detik).')
+      toast.success('Connection Request terkirim. Device akan Inform dalam beberapa detik.', 'Berhasil')
     } catch (err) {
       setConnReqError(err instanceof ApiError ? err.message : 'Gagal mengirim Connection Request')
+    }
+  }
+
+  const handleReboot = async () => {
+    if (await confirm({ title: 'Reboot device', message: 'Device akan restart dan koneksi terputus sekitar 1–2 menit.', confirmLabel: 'Reboot' })) {
+      rebootMutation.mutate(deviceId, {
+        onSuccess: () => toast.success('Task reboot diantre.', 'Berhasil'),
+        onError: (e) => toast.error(e instanceof Error ? e.message : 'Gagal mengantre reboot'),
+      })
+    }
+  }
+
+  const handleFactoryReset = async () => {
+    if (
+      await confirm({
+        title: 'Factory Reset',
+        message: 'Device akan kembali ke setelan pabrik — SEMUA konfigurasi (WiFi, PPPoE, dsb.) hilang dan koneksi terputus. Aksi ini tidak bisa dibatalkan.',
+        confirmLabel: 'Factory Reset',
+        tone: 'danger',
+      })
+    ) {
+      factoryResetMutation.mutate(deviceId, {
+        onSuccess: () => toast.success('Task factory reset diantre.', 'Berhasil'),
+        onError: (e) => toast.error(e instanceof Error ? e.message : 'Gagal mengantre factory reset'),
+      })
     }
   }
 
@@ -128,11 +157,7 @@ export function DeviceDetailPage() {
           )}
           {hasRole('ADMIN', 'NOC') && (
             <button
-              onClick={() => {
-                if (window.confirm('Reboot device ini?')) {
-                  rebootMutation.mutate(deviceId)
-                }
-              }}
+              onClick={handleReboot}
               disabled={rebootMutation.isPending}
               className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-300 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50"
             >
@@ -141,11 +166,7 @@ export function DeviceDetailPage() {
           )}
           {hasRole('ADMIN') && (
             <button
-              onClick={() => {
-                if (window.confirm('PERINGATAN: Factory Reset akan mengembalikan device ke pengaturan pabrik dan memutus koneksi. Lanjutkan?')) {
-                  factoryResetMutation.mutate(deviceId)
-                }
-              }}
+              onClick={handleFactoryReset}
               disabled={factoryResetMutation.isPending}
               className="flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 dark:bg-red-900/30 dark:border-red-800 dark:text-red-400 transition-colors hover:bg-red-100 dark:hover:bg-red-900/50"
             >

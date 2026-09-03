@@ -5,13 +5,17 @@ import { EmptyState } from './EmptyState'
 import { PageSpinner } from './Spinner'
 import { formatDateTime } from '../lib/format'
 import { useAuth } from '../lib/auth'
+import { useToast } from '../lib/toast'
+import { useConfirm } from '../lib/confirm'
 import { clsx } from 'clsx'
 
 export function ConfigHistory({ deviceId }: { deviceId: number }) {
   const { data, isLoading } = useConfigSnapshots(deviceId)
   const createSnap = useCreateConfigSnapshot()
   const { hasRole } = useAuth()
-  
+  const toast = useToast()
+  const confirm = useConfirm()
+
   const [selectedLeft, setSelectedLeft] = useState<number | null>(null)
   const [selectedRight, setSelectedRight] = useState<number | null>(null)
 
@@ -19,8 +23,13 @@ export function ConfigHistory({ deviceId }: { deviceId: number }) {
   const snaps = data?.data || []
 
   const handleCreate = async () => {
-    if (confirm('Buat snapshot dari state parameter sekarang?')) {
-      await createSnap.mutateAsync(deviceId)
+    if (await confirm({ title: 'Buat snapshot', message: 'Simpan seluruh nilai parameter device saat ini sebagai satu snapshot untuk perbandingan nanti?', confirmLabel: 'Buat snapshot' })) {
+      try {
+        await createSnap.mutateAsync(deviceId)
+        toast.success('Snapshot konfigurasi tersimpan.', 'Berhasil')
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Gagal membuat snapshot')
+      }
     }
   }
 

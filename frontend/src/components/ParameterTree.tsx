@@ -24,6 +24,8 @@ import {
   useDeleteObject
 } from '../lib/hooks'
 import { useAuth } from '../lib/auth'
+import { useToast } from '../lib/toast'
+import { useConfirm } from '../lib/confirm'
 
 interface ParameterTreeProps {
   deviceId: number
@@ -230,38 +232,49 @@ export function ParameterTree({ deviceId, parameters, onRefresh, isLoading }: Pa
   const addObjectMut = useAddObject()
   const deleteObjectMut = useDeleteObject()
 
+  const toast = useToast()
+  const confirm = useConfirm()
+
   const isMutating = getParamNamesMut.isPending || getParamValsMut.isPending || setParamValsMut.isPending || addObjectMut.isPending || deleteObjectMut.isPending
+
+  const queued = (what: string) => toast.success(`${what} diantre — hasilnya muncul setelah device Inform berikutnya.`, 'Task ditambahkan')
+  const failed = (e: unknown) => toast.error(e instanceof Error ? e.message : 'Gagal menambahkan task')
 
   const handleRefreshNode = (path: string, isLeaf: boolean) => {
     if (isLeaf) {
       getParamValsMut.mutate({ deviceId, names: [path] }, {
-        onSuccess: () => alert('Task masuk antrean: Refresh ' + path)
+        onSuccess: () => queued(`Refresh nilai ${path}`),
+        onError: failed,
       })
     } else {
       getParamNamesMut.mutate({ deviceId, path, nextLevel: true }, {
-        onSuccess: () => alert('Task masuk antrean: Explore ' + path)
+        onSuccess: () => queued(`Jelajah ${path}`),
+        onError: failed,
       })
     }
   }
 
   const handleEditNode = (path: string, value: string) => {
     setParamValsMut.mutate({ deviceId, values: { [path]: value } }, {
-      onSuccess: () => alert('Task masuk antrean: Set ' + path)
+      onSuccess: () => queued(`Set ${path}`),
+      onError: failed,
     })
   }
 
-  const handleAddObject = (path: string) => {
-    if (confirm(`Tambahkan instance baru untuk ${path}?`)) {
+  const handleAddObject = async (path: string) => {
+    if (await confirm({ title: 'Tambah instance', message: <>Tambahkan instance baru untuk <code className="break-all">{path}</code>?</>, confirmLabel: 'Tambah' })) {
       addObjectMut.mutate({ deviceId, objectName: path }, {
-        onSuccess: () => alert('Task masuk antrean: AddObject ' + path)
+        onSuccess: () => queued(`AddObject ${path}`),
+        onError: failed,
       })
     }
   }
 
-  const handleDeleteObject = (path: string) => {
-    if (confirm(`Hapus instance ${path}?`)) {
+  const handleDeleteObject = async (path: string) => {
+    if (await confirm({ title: 'Hapus instance', message: <>Hapus instance <code className="break-all">{path}</code> dari device?</>, confirmLabel: 'Hapus', tone: 'danger' })) {
       deleteObjectMut.mutate({ deviceId, objectName: path }, {
-        onSuccess: () => alert('Task masuk antrean: DeleteObject ' + path)
+        onSuccess: () => queued(`DeleteObject ${path}`),
+        onError: failed,
       })
     }
   }
@@ -269,9 +282,10 @@ export function ParameterTree({ deviceId, parameters, onRefresh, isLoading }: Pa
   const handleGlobalRefresh = () => {
     getParamNamesMut.mutate({ deviceId, path: rootPrefix, nextLevel: false }, {
       onSuccess: () => {
-        alert(`Task GetParameterNames (${rootPrefix}) ditambahkan ke antrean.`)
+        queued(`Baca ulang parameter tree (${rootPrefix})`)
         onRefresh()
-      }
+      },
+      onError: failed,
     })
   }
 

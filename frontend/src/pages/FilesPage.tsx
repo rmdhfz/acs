@@ -1,235 +1,231 @@
-import { useState } from 'react'
-import {
-  FileText,
-  Upload,
-  Trash2,
-  AlertCircle,
-  Package,
-} from 'lucide-react'
-import {
-  useFiles,
-  useUploadFile,
-  useDeleteFile,
-} from '../lib/hooks'
+import { useState, type FormEvent } from 'react'
+import { FileText, Upload, Trash2, AlertCircle, Package } from 'lucide-react'
+import { useFiles, useUploadFile, useDeleteFile } from '../lib/hooks'
 import { Modal } from '../components/Modal'
+import { EmptyState } from '../components/EmptyState'
+import { PageSpinner } from '../components/Spinner'
+import { useToast } from '../lib/toast'
+import { formatDateTime } from '../lib/format'
 import type { GenericFile } from '../lib/types'
 
+const inputCls =
+  'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
+const primaryBtnCls =
+  'flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white'
+const ghostBtnCls =
+  'rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'
+
+const FILE_TYPES = [
+  '1 Firmware Upgrade Image',
+  '2 Web Content',
+  '3 Vendor Configuration File',
+  '4 Tone File',
+  '5 Ringer Melody File',
+]
+
+function formatBytes(bytes: number) {
+  if (!bytes) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`
+}
+
 export default function FilesPage() {
-  const { data: filesData, isLoading, isError } = useFiles({ pageSize: 50 })
+  const { data, isLoading, isError } = useFiles({ pageSize: 50 })
+  const files = data?.data ?? []
   const uploadMut = useUploadFile()
   const deleteMut = useDeleteFile()
+  const toast = useToast()
 
-  const [isUploadOpen, setIsUploadOpen] = useState(false)
-  const [fileType, setFileType] = useState('1 Firmware Upgrade Image')
-  const [fileName, setFileName] = useState('')
-  const [selectedFile, setSelectedFile] = useState<globalThis.File | null>(null)
-  
-  const [isDeleteOpen, setIsDeleteOpen] = useState(false)
-  const [fileToDelete, setFileToDelete] = useState<GenericFile | null>(null)
-
-  const handleUpload = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!selectedFile) return
-    const fd = new FormData()
-    fd.append('file_type', fileType)
-    fd.append('file_name', fileName || selectedFile.name)
-    fd.append('file', selectedFile)
-
-    uploadMut.mutate(fd, {
-      onSuccess: () => {
-        setIsUploadOpen(false)
-        setFileName('')
-        setSelectedFile(null)
-      },
-      onError: (err: any) => {
-        alert(err.response?.data?.message || 'Gagal mengunggah file')
-      }
-    })
-  }
+  const [uploadOpen, setUploadOpen] = useState(false)
+  const [toDelete, setToDelete] = useState<GenericFile | null>(null)
 
   const handleDelete = () => {
-    if (!fileToDelete) return
-    deleteMut.mutate(fileToDelete.id, {
+    if (!toDelete) return
+    deleteMut.mutate(toDelete.id, {
       onSuccess: () => {
-        setIsDeleteOpen(false)
-        setFileToDelete(null)
+        toast.success(`"${toDelete.file_name}" dihapus.`, 'Berhasil')
+        setToDelete(null)
       },
-      onError: (err: any) => {
-        alert(err.response?.data?.message || 'Gagal menghapus file')
-      }
+      onError: (err) => toast.error(err instanceof Error ? err.message : 'Gagal menghapus file'),
     })
   }
 
-  const formatBytes = (bytes: number) => {
-    if (bytes === 0) return '0 B'
-    const k = 1024
-    const sizes = ['B', 'KB', 'MB', 'GB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-  }
-
-  if (isLoading) return <div className="p-6 text-slate-400">Loading files...</div>
-  if (isError) return <div className="p-6 text-red-400">Failed to load files</div>
-
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="mx-auto max-w-6xl px-6 py-8">
+      <div className="mb-4 flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Package className="w-6 h-6 text-blue-400" />
-            File Management
+          <h1 className="flex items-center gap-2 text-xl font-semibold text-slate-900 dark:text-slate-100">
+            <Package className="h-5 w-5 text-slate-400" /> File
           </h1>
-          <p className="text-sm text-slate-400 mt-1">
-            Kelola file firmware, konfigurasi vendor, dan log dari CPE.
+          <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
+            Firmware image, konfigurasi vendor, dan file lain yang bisa di-push / di-pull dari CPE.
           </p>
         </div>
-        <button
-          onClick={() => setIsUploadOpen(true)}
-          className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
-        >
-          <Upload className="w-4 h-4" />
-          Upload File
+        <button onClick={() => setUploadOpen(true)} className={primaryBtnCls}>
+          <Upload className="h-4 w-4" /> Upload File
         </button>
       </div>
 
-      <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
-        <table className="w-full text-left text-sm text-slate-300">
-          <thead className="bg-slate-900/50 border-b border-slate-700 text-xs uppercase text-slate-400">
-            <tr>
-              <th className="px-6 py-4 font-medium">Nama File</th>
-              <th className="px-6 py-4 font-medium">Tipe</th>
-              <th className="px-6 py-4 font-medium">Ukuran</th>
-              <th className="px-6 py-4 font-medium">Waktu Upload</th>
-              <th className="px-6 py-4 font-medium text-right">Aksi</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-700">
-            {(filesData?.data || []).map((f: GenericFile) => (
-              <tr key={f.id} className="hover:bg-slate-700/30 transition-colors">
-                <td className="px-6 py-4 font-medium text-white flex items-center gap-3">
-                  <FileText className="w-5 h-5 text-slate-400" />
-                  {f.file_name}
-                </td>
-                <td className="px-6 py-4">
-                  <span className="px-2 py-1 bg-slate-700 text-slate-300 rounded text-xs border border-slate-600">
-                    {f.file_type}
-                  </span>
-                </td>
-                <td className="px-6 py-4 font-mono text-xs">
-                  {formatBytes(f.file_size_bytes)}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  {new Date(f.created_at).toLocaleString('id-ID')}
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <button
-                    onClick={() => {
-                      setFileToDelete(f)
-                      setIsDeleteOpen(true)
-                    }}
-                    className="text-red-400 hover:text-red-300 transition-colors p-2 rounded hover:bg-slate-700"
-                    title="Hapus"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {(filesData?.data || []).length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-6 py-8 text-center text-slate-500">
-                  Belum ada file yang diunggah.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        {isLoading ? (
+          <PageSpinner />
+        ) : isError ? (
+          <div className="flex items-center gap-2 p-6 text-sm text-red-600 dark:text-red-400">
+            <AlertCircle className="h-4 w-4" /> Gagal memuat daftar file.
+          </div>
+        ) : files.length === 0 ? (
+          <EmptyState icon={FileText} title="Belum ada file" description="Upload firmware atau file konfigurasi untuk mulai." />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
+                  <th className="px-5 py-3">Nama file</th>
+                  <th className="px-5 py-3">Tipe</th>
+                  <th className="px-5 py-3">Ukuran</th>
+                  <th className="px-5 py-3">Diupload</th>
+                  <th className="px-5 py-3"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {files.map((f) => (
+                  <tr key={f.id}>
+                    <td className="px-5 py-3.5">
+                      <span className="flex items-center gap-2.5 font-medium text-slate-900 dark:text-slate-100">
+                        <FileText className="h-4 w-4 shrink-0 text-slate-400" />
+                        <span className="truncate">{f.file_name}</span>
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <span className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                        {f.file_type}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5 font-mono text-xs tabular-nums text-slate-600 dark:text-slate-300">
+                      {formatBytes(f.file_size_bytes)}
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-3.5 text-slate-500 dark:text-slate-400">{formatDateTime(f.created_at)}</td>
+                    <td className="px-5 py-3.5 text-right">
+                      <button
+                        onClick={() => setToDelete(f)}
+                        className="rounded p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-400"
+                        title="Hapus file"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      {isUploadOpen && (
-        <Modal onClose={() => setIsUploadOpen(false)} title="Upload File">
-          <form onSubmit={handleUpload} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">Tipe File</label>
-            <select
-              value={fileType}
-              onChange={(e) => setFileType(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500"
-            >
-              <option value="1 Firmware Upgrade Image">1 Firmware Upgrade Image</option>
-              <option value="2 Web Content">2 Web Content</option>
-              <option value="3 Vendor Configuration File">3 Vendor Configuration File</option>
-              <option value="4 Tone File">4 Tone File</option>
-              <option value="5 Ringer Melody File">5 Ringer Melody File</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">Nama File (Opsional)</label>
-            <input
-              type="text"
-              value={fileName}
-              onChange={(e) => setFileName(e.target.value)}
-              placeholder="Kosongkan untuk pakai nama asli"
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">Pilih File</label>
-            <input
-              type="file"
-              onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-              required
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-slate-300 file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-500 cursor-pointer"
-            />
-          </div>
-          <div className="pt-4 flex justify-end gap-3 border-t border-slate-700">
-            <button
-              type="button"
-              onClick={() => setIsUploadOpen(false)}
-              className="px-4 py-2 text-sm font-medium text-slate-300 hover:text-white transition-colors"
-            >
-              Batal
-            </button>
-            <button
-              type="submit"
-              disabled={uploadMut.isPending || !selectedFile}
-              className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-            >
-              {uploadMut.isPending ? 'Mengunggah...' : 'Upload'}
-            </button>
-          </div>
-        </form>
-      </Modal>
+      {uploadOpen && (
+        <UploadModal
+          onClose={() => setUploadOpen(false)}
+          onDone={(name) => {
+            toast.success(`"${name}" berhasil diupload.`, 'Berhasil')
+            setUploadOpen(false)
+          }}
+          uploadMut={uploadMut}
+        />
       )}
 
-      {isDeleteOpen && (
-        <Modal onClose={() => setIsDeleteOpen(false)} title="Hapus File">
+      {toDelete && (
+        <Modal onClose={() => setToDelete(null)} title="Hapus File">
           <div className="space-y-4">
-            <div className="flex gap-3 text-red-400 p-4 bg-red-400/10 rounded-lg border border-red-400/20">
-            <AlertCircle className="w-5 h-5 shrink-0" />
-            <p className="text-sm">
-              Apakah Anda yakin ingin menghapus file <strong>{fileToDelete?.file_name}</strong>?
-              Tindakan ini tidak dapat dibatalkan dan file akan dihapus dari sistem.
-            </p>
+            <div className="flex gap-3 rounded-lg border border-red-100 bg-red-50 p-4 text-red-600 dark:border-red-400/20 dark:bg-red-400/10 dark:text-red-400">
+              <AlertCircle className="h-5 w-5 shrink-0" />
+              <p className="text-sm">
+                Hapus <strong>{toDelete.file_name}</strong>? File akan dihapus permanen dari object storage. Rollout /
+                task yang masih memakainya akan gagal.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2.5">
+              <button onClick={() => setToDelete(null)} className={ghostBtnCls}>Batal</button>
+              <button
+                onClick={handleDelete}
+                disabled={deleteMut.isPending}
+                className="rounded-lg bg-red-600 px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleteMut.isPending ? 'Menghapus…' : 'Ya, hapus'}
+              </button>
+            </div>
           </div>
-          <div className="flex justify-end gap-3 pt-2">
-            <button
-              onClick={() => setIsDeleteOpen(false)}
-              className="px-4 py-2 text-sm font-medium text-slate-300 hover:text-white transition-colors"
-            >
-              Batal
-            </button>
-            <button
-              onClick={handleDelete}
-              disabled={deleteMut.isPending}
-              className="bg-red-500 hover:bg-red-400 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-            >
-              {deleteMut.isPending ? 'Menghapus...' : 'Ya, Hapus File'}
-            </button>
-          </div>
-        </div>
-      </Modal>
+        </Modal>
       )}
     </div>
+  )
+}
+
+function UploadModal({
+  onClose,
+  onDone,
+  uploadMut,
+}: {
+  onClose: () => void
+  onDone: (name: string) => void
+  uploadMut: ReturnType<typeof useUploadFile>
+}) {
+  const toast = useToast()
+  const [fileType, setFileType] = useState(FILE_TYPES[0])
+  const [fileName, setFileName] = useState('')
+  const [file, setFile] = useState<globalThis.File | null>(null)
+
+  const handleSubmit = (e: FormEvent) => {
+    e.preventDefault()
+    if (!file) return
+    const fd = new FormData()
+    fd.append('file_type', fileType)
+    fd.append('file_name', fileName || file.name)
+    fd.append('file', file)
+    uploadMut.mutate(fd, {
+      onSuccess: () => onDone(fileName || file.name),
+      onError: (err) => toast.error(err instanceof Error ? err.message : 'Gagal mengunggah file'),
+    })
+  }
+
+  return (
+    <Modal onClose={onClose} title="Upload File">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="mb-1 block text-sm font-medium text-slate-600 dark:text-slate-400">Tipe file</label>
+          <select value={fileType} onChange={(e) => setFileType(e.target.value)} className={inputCls}>
+            {FILE_TYPES.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium text-slate-600 dark:text-slate-400">Nama file (opsional)</label>
+          <input
+            value={fileName}
+            onChange={(e) => setFileName(e.target.value)}
+            placeholder="Kosongkan untuk pakai nama asli"
+            className={inputCls}
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium text-slate-600 dark:text-slate-400">Pilih file</label>
+          <input
+            type="file"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            required
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-slate-900 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-white hover:file:bg-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:file:bg-slate-100 dark:file:text-slate-900"
+          />
+          <p className="mt-1 text-xs text-slate-400">Maksimum 256 MiB. Checksum SHA-256 dihitung otomatis di server.</p>
+        </div>
+        <div className="flex justify-end gap-2.5 pt-1">
+          <button type="button" onClick={onClose} className={ghostBtnCls}>Batal</button>
+          <button type="submit" disabled={uploadMut.isPending || !file} className={primaryBtnCls}>
+            {uploadMut.isPending ? 'Mengunggah…' : 'Upload'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   )
 }
