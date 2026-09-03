@@ -3,6 +3,7 @@ package mysql
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -440,6 +441,40 @@ func (r *activityLogRepository) ListByEntity(ctx context.Context, entityType str
 		 WHERE al.entity_type = ? AND al.entity_id = ? ORDER BY al.id DESC LIMIT ? OFFSET ?`,
 		entityType, entityID, p.Limit(), p.Offset())
 	if err != nil {
+		return nil, 0, translateErr(err)
+	}
+	return rows, total, nil
+}
+
+// ListByTenant — audit trail global, tenant-scoped. tenantID nil => lintas
+// tenant (superadmin). Untuk tenant tertentu, baris tenant_id NULL (aksi
+// katalog global) ikut disertakan sbg konteks bersama.
+func (r *activityLogRepository) ListByTenant(ctx context.Context, tenantID *uint64, f domain.ActivityLogFilter, p domain.Pagination) ([]domain.ActivityLog, int, error) {
+	where := []string{"1=1"}
+	args := []any{}
+	if tenantID != nil {
+		where = append(where, "(al.tenant_id = ? OR al.tenant_id IS NULL)")
+		args = append(args, *tenantID)
+	}
+	if f.Action != "" {
+		where = append(where, "al.action = ?")
+		args = append(args, f.Action)
+	}
+	if f.EntityType != "" {
+		where = append(where, "al.entity_type = ?")
+		args = append(args, f.EntityType)
+	}
+	whereSQL := strings.Join(where, " AND ")
+
+	var total int
+	if err := r.db.GetContext(ctx, &total, "SELECT COUNT(*) FROM activity_logs al WHERE "+whereSQL, args...); err != nil {
+		return nil, 0, translateErr(err)
+	}
+	var rows []domain.ActivityLog
+	q := `SELECT al.*, u.username AS username FROM activity_logs al
+		  LEFT JOIN users u ON u.id = al.user_id
+		  WHERE ` + whereSQL + ` ORDER BY al.id DESC LIMIT ? OFFSET ?`
+	if err := r.db.SelectContext(ctx, &rows, q, append(args, p.Limit(), p.Offset())...); err != nil {
 		return nil, 0, translateErr(err)
 	}
 	return rows, total, nil

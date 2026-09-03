@@ -143,6 +143,15 @@ export function useDeviceActivity(id: number) {
   })
 }
 
+// useActivityLog — audit trail global tenant-scoped (GET /activity, ADMIN+).
+export function useActivityLog(params: { action?: string; entity_type?: string; page?: number; page_size?: number } = {}) {
+  return useQuery({
+    queryKey: ['activity', params],
+    queryFn: () => api.get<ListResponse<ActivityLog>>('/activity' + buildQuery({ page_size: 100, ...params })),
+    refetchInterval: LIVE_REFRESH_MS,
+  })
+}
+
 export function useDeviceOpticalMetrics(id: number) {
   return useQuery({
     queryKey: ['device', id, 'optical-metrics'],

@@ -96,7 +96,20 @@ const MODELS = [
   { id: 1, vendor_id: 1, device_type_id: 1, data_model_version_id: 1, product_class: 'F660', model_name: 'ZTE F660', description: null, is_active: true },
   { id: 2, vendor_id: 2, device_type_id: 1, data_model_version_id: 2, product_class: 'HG8546M', model_name: 'Huawei HG8546M', description: null, is_active: true },
   { id: 3, vendor_id: 3, device_type_id: 1, data_model_version_id: 1, product_class: 'HG6243C', model_name: 'FiberHome HG6243C', description: null, is_active: true },
-]
+].map((m) => ({ ...m, created_at: iso(-6e8), updated_at: now(), created_by: 1, updated_by: 1, deleted_at: null, deleted_by: null, is_deleted: false }))
+
+const OUIS = [
+  { id: 1, vendor_id: 1, oui: '00259E', notes: 'ZTE ONT batch 2023' },
+  { id: 2, vendor_id: 1, oui: '347E5C', notes: null },
+  { id: 3, vendor_id: 2, oui: '48575D', notes: 'Huawei HG8xxx' },
+  { id: 4, vendor_id: 3, oui: 'D0577B', notes: null },
+].map((o) => ({ ...o, created_at: iso(-6e8), updated_at: now(), created_by: 1, updated_by: 1, deleted_at: null, deleted_by: null, is_deleted: false }))
+
+const MAPPINGS = [
+  { id: 1, vendor_id: 1, data_model_version_id: 1, device_model_id: null, software_version_pattern: null, logical_key: 'wifi.ssid', tr069_path: 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID', parameter_type_id: 1, description: null },
+  { id: 2, vendor_id: 1, data_model_version_id: 1, device_model_id: null, software_version_pattern: null, logical_key: 'wan.pppoe.username', tr069_path: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.Username', parameter_type_id: 1, description: null },
+  { id: 3, vendor_id: 2, data_model_version_id: 2, device_model_id: null, software_version_pattern: null, logical_key: 'wifi.ssid', tr069_path: 'Device.WiFi.SSID.1.SSID', parameter_type_id: 1, description: null },
+].map((x) => ({ ...x, created_at: iso(-6e8), updated_at: now(), created_by: 1, updated_by: 1, deleted_at: null, deleted_by: null, is_deleted: false }))
 
 const STATUS_MIX = ['ONLINE', 'ONLINE', 'ONLINE', 'ONLINE', 'ONLINE', 'OFFLINE', 'OFFLINE', 'PROVISIONING', 'FAULTY', 'UNREGISTERED']
 const DEVICES = Array.from({ length: 43 }, (_, i) => {
@@ -290,12 +303,16 @@ function handle(method, path, query, body) {
   if (method === 'GET' && path === '/tenants') return [200, list(TENANTS)]
   if (method === 'GET' && path === '/users') return [200, list(USERS)]
 
-  // CATALOG
+  // CATALOG — backend asli mengembalikan ARRAY telanjang utk ouis/models/mappings
+  // (bukan {data,total}); frontend meng-.map() langsung — lihat catalog_handler.go.
   if (method === 'GET' && path === '/vendors') return [200, list(VENDORS)]
-  if (method === 'GET' && path === '/device-models') return [200, list(query.vendor_id ? MODELS.filter((x) => String(x.vendor_id) === query.vendor_id) : MODELS)]
-  if (method === 'GET' && path === '/vendor-parameter-mappings') return [200, list([])]
+  if (method === 'GET' && path === '/device-models') return [200, query.vendor_id ? MODELS.filter((x) => String(x.vendor_id) === query.vendor_id) : MODELS]
+  if (method === 'GET' && path === '/vendor-parameter-mappings') {
+    const vid = query.vendor_id
+    return [200, vid ? MAPPINGS.filter((x) => String(x.vendor_id) === vid) : MAPPINGS]
+  }
   m = path.match(/^\/vendors\/(\d+)\/ouis$/)
-  if (method === 'GET' && m) return [200, list([])]
+  if (method === 'GET' && m) return [200, OUIS.filter((o) => o.vendor_id === +m[1])]
 
   // PROVISIONING
   if (method === 'GET' && path === '/provisioning-profiles') return [200, list(PROFILES)]
@@ -317,6 +334,24 @@ function handle(method, path, query, body) {
   m = path.match(/^\/webhooks\/(\d+)\/deliveries$/)
   if (method === 'GET' && m) return [200, list([{ id: 1, delivery_uuid: 'd-1', subscription_id: +m[1], event_type_id: 3, payload: { task_id: 5 }, status: 'DELIVERED', attempt_count: 1, max_attempts: 5, response_status: 200, error_message: null, next_attempt_at: null, delivered_at: iso(-3600_000), created_at: iso(-3600_000), updated_at: now() }])]
   if (method === 'GET' && path === '/webhooks/deliveries/failed-count') return [200, { count: 2 }]
+
+  // AUDIT TRAIL
+  if (method === 'GET' && path === '/activity') {
+    const acts = ['UPDATE_DEVICE', 'CREATE_PRESET', 'APPLY_PROFILE', 'DELETE_TAG', 'ASSIGN_TAG', 'CREATE_USER', 'REPLACE_USER_ROLES', 'UPSERT_VENDOR_PARAMETER_MAPPING', 'PRESET_APPLY', 'CREATE_VENDOR']
+    const ents = { UPDATE_DEVICE: 'device', CREATE_PRESET: 'preset', APPLY_PROFILE: 'device', DELETE_TAG: 'tag', ASSIGN_TAG: 'device', CREATE_USER: 'user', REPLACE_USER_ROLES: 'user', UPSERT_VENDOR_PARAMETER_MAPPING: 'vendor_parameter_mapping', PRESET_APPLY: 'device', CREATE_VENDOR: 'vendor' }
+    let rows = Array.from({ length: 40 }, (_, i) => {
+      const a = acts[i % acts.length]
+      return {
+        id: 500 - i, user_id: i % 5 === 0 ? null : 1, tenant_id: 1, action: a, entity_type: ents[a],
+        entity_id: (i % 40) + 1, description: a === 'PRESET_APPLY' ? 'preset_ids=1 drift=2' : null,
+        ip_address: i % 5 === 0 ? null : `10.0.${i % 4}.${(i * 7) % 250}`,
+        created_at: iso(-i * 1800_000), username: i % 5 === 0 ? null : ['superadmin', 'admin', 'noc1'][i % 3],
+      }
+    })
+    if (query.action) rows = rows.filter((r) => r.action === query.action)
+    if (query.entity_type) rows = rows.filter((r) => r.entity_type === query.entity_type)
+    return [200, { data: rows, total: rows.length }]
+  }
 
   // MISC
   if (method === 'GET' && path === '/cwmp/sessions/count') return [200, { count: 7 }]

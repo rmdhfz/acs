@@ -100,6 +100,8 @@ tags:
     description: Tabel referensi/enum (`ref_*`) untuk menerjemahkan `*_id` ke label yang bisa dibaca.
   - name: Sessions
     description: Observability sesi CWMP (jumlah sesi OPEN di seluruh load balancer).
+  - name: Audit
+    description: Audit trail global (`activity_logs`) — aktivitas admin & perubahan data, tenant-scoped.
   - name: Webhooks
     description: Langganan webhook keluar (typed event → BSS/OSS/NMS) dan log delivery-nya (migrations/0013).
   - name: Files
@@ -2852,6 +2854,40 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '403':
           description: Role di bawah NOC.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /activity:
+    get:
+      operationId: listActivity
+      tags: [Audit]
+      summary: Audit trail global (aktivitas admin & perubahan data)
+      description: |
+        ADMIN/SUPERADMIN. Feed `activity_logs` tenant-scoped: superadmin melihat
+        lintas tenant, ADMIN dibatasi ke tenant-nya (baris `tenant_id = NULL`
+        untuk aksi katalog global ikut ditampilkan sebagai konteks bersama).
+        Operator NOC/VIEWER memakai `GET /devices/:id/activity` (per-device),
+        bukan feed global ini. Terurut terbaru dulu.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: action, in: query, description: "Filter kode aksi persis (mis. `UPDATE_DEVICE`).", schema: { type: string } }
+        - { name: entity_type, in: query, description: "Filter tipe entitas persis (mis. `device`, `preset`).", schema: { type: string } }
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: Daftar aktivitas.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ActivityLogListResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role di bawah ADMIN, atau akun non-superadmin tanpa `tenant_id`.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }

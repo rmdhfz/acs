@@ -9,6 +9,7 @@ import { ThemeProvider } from './lib/theme.tsx'
 import { WebSocketProvider } from './lib/ws.tsx'
 import { ToastProvider } from './lib/toast.tsx'
 import { ConfirmProvider } from './lib/confirm.tsx'
+import { I18nProvider } from './lib/i18n.tsx'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -23,17 +24,19 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <ToastProvider>
-          <ConfirmProvider>
-            <BrowserRouter>
-              <AuthProvider>
-                <WebSocketProvider>
-                  <App />
-                </WebSocketProvider>
-              </AuthProvider>
-            </BrowserRouter>
-          </ConfirmProvider>
-        </ToastProvider>
+        <I18nProvider>
+          <ToastProvider>
+            <ConfirmProvider>
+              <BrowserRouter>
+                <AuthProvider>
+                  <WebSocketProvider>
+                    <App />
+                  </WebSocketProvider>
+                </AuthProvider>
+              </BrowserRouter>
+            </ConfirmProvider>
+          </ToastProvider>
+        </I18nProvider>
       </ThemeProvider>
     </QueryClientProvider>
   </StrictMode>,

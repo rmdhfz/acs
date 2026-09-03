@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Modal } from './Modal'
+import { PasswordStrengthBar } from './PasswordStrengthBar'
+import { scorePassword } from '../lib/password'
 import { ApiError } from '../lib/api'
 import { useToast } from '../lib/toast'
 import { useChangeOwnPassword } from '../lib/hooks'
@@ -23,6 +25,7 @@ export function ChangePasswordModal({ onClose }: { onClose: () => void }) {
     if (next.length < MIN_LEN) return setError(`Password baru minimal ${MIN_LEN} karakter.`)
     if (next !== confirm) return setError('Konfirmasi password tidak cocok.')
     if (next === current) return setError('Password baru harus berbeda dari yang lama.')
+    if (scorePassword(next).score < 2) return setError('Password terlalu lemah — gunakan kombinasi yang lebih kuat.')
     try {
       await mut.mutateAsync({ current_password: current, new_password: next })
       toast.success('Password berhasil diganti. Gunakan password baru saat login berikutnya.')
@@ -42,7 +45,7 @@ export function ChangePasswordModal({ onClose }: { onClose: () => void }) {
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-600 dark:text-slate-400">Password baru</label>
           <input type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} required minLength={MIN_LEN} className={inputCls} />
-          <p className="mt-1 text-xs text-slate-400">Minimal {MIN_LEN} karakter.</p>
+          {next ? <PasswordStrengthBar password={next} /> : <p className="mt-1 text-xs text-slate-400">Minimal {MIN_LEN} karakter.</p>}
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-600 dark:text-slate-400">Ulangi password baru</label>

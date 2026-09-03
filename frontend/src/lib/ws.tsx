@@ -18,11 +18,16 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient()
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeout = useRef<number | null>(null)
+  const backoffRef = useRef(3000)
 
   useEffect(() => {
     const connect = () => {
       const token = getAuthToken()
-      if (!token) return // Don't connect if not authenticated
+      if (!token) {
+        // Belum login — coba lagi nanti supaya WS tetap tersambung setelah login.
+        reconnectTimeout.current = window.setTimeout(connect, 5000)
+        return
+      }
 
       // Gunakan WSS jika HTTPS, WS jika HTTP
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -43,6 +48,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
       ws.onopen = () => {
         setConnected(true)
+        backoffRef.current = 3000
         if (reconnectTimeout.current) {
           clearTimeout(reconnectTimeout.current)
           reconnectTimeout.current = null
@@ -74,8 +80,10 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
       ws.onclose = () => {
         setConnected(false)
-        // Auto reconnect
-        reconnectTimeout.current = window.setTimeout(connect, 3000)
+        // Auto reconnect dengan exponential backoff (maks 30 dtk) supaya tidak
+        // membanjiri server saat backend WS memang tidak tersedia.
+        reconnectTimeout.current = window.setTimeout(connect, backoffRef.current)
+        backoffRef.current = Math.min(backoffRef.current * 2, 30000)
       }
 
       ws.onerror = (e) => {

@@ -12,37 +12,43 @@ import {
   ListChecks,
   LogOut,
   KeyRound,
+  Languages,
   Menu,
   Monitor,
   Moon,
   Radio,
+  ScrollText,
   Search,
   SlidersHorizontal,
   Sun,
   Tag,
+  UserCircle2,
   X,
 } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { useTheme, type Theme } from '../lib/theme'
+import { useI18n, type Lang } from '../lib/i18n'
 import { useCurrentTenant } from '../lib/hooks'
 import { CommandPalette } from './CommandPalette'
 import { NotificationBell } from './NotificationBell'
+import { NavClock } from './NavClock'
 import { ChangePasswordModal } from './ChangePasswordModal'
 import { NotificationProvider } from '../lib/notifications'
 
-const NAV_ITEMS: { to: string; label: string; icon: typeof LayoutGrid; requireRole?: string }[] = [
-  { to: '/self-service', label: 'My WiFi', icon: Radio, requireRole: 'ENDUSER' },
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, requireRole: 'VIEWER' },
-  { to: '/devices', label: 'Devices', icon: LayoutGrid, requireRole: 'VIEWER' },
-  { to: '/tasks', label: 'Tasks', icon: ListChecks, requireRole: 'VIEWER' },
-  { to: '/provisioning', label: 'Provisioning', icon: FileSliders, requireRole: 'VIEWER' },
-  { to: '/presets', label: 'Presets', icon: SlidersHorizontal, requireRole: 'ADMIN' },
-  { to: '/firmware', label: 'Firmware', icon: HardDrive, requireRole: 'VIEWER' },
-  { to: '/files', label: 'Files', icon: FolderArchive, requireRole: 'VIEWER' },
-  { to: '/tags', label: 'Tags', icon: Tag, requireRole: 'ADMIN' },
-  { to: '/webhooks', label: 'Webhooks', icon: Bell, requireRole: 'ADMIN' },
-  { to: '/catalog', label: 'Catalog Vendor', icon: Cable, requireRole: 'SUPERADMIN' },
-  { to: '/administration', label: 'Administration', icon: Building2, requireRole: 'ADMIN' },
+const NAV_ITEMS: { to: string; key: string; icon: typeof LayoutGrid; requireRole?: string }[] = [
+  { to: '/self-service', key: 'nav.myWifi', icon: Radio, requireRole: 'ENDUSER' },
+  { to: '/dashboard', key: 'nav.dashboard', icon: LayoutDashboard, requireRole: 'VIEWER' },
+  { to: '/devices', key: 'nav.devices', icon: LayoutGrid, requireRole: 'VIEWER' },
+  { to: '/tasks', key: 'nav.tasks', icon: ListChecks, requireRole: 'VIEWER' },
+  { to: '/provisioning', key: 'nav.provisioning', icon: FileSliders, requireRole: 'VIEWER' },
+  { to: '/presets', key: 'nav.presets', icon: SlidersHorizontal, requireRole: 'ADMIN' },
+  { to: '/firmware', key: 'nav.firmware', icon: HardDrive, requireRole: 'VIEWER' },
+  { to: '/files', key: 'nav.files', icon: FolderArchive, requireRole: 'VIEWER' },
+  { to: '/tags', key: 'nav.tags', icon: Tag, requireRole: 'ADMIN' },
+  { to: '/webhooks', key: 'nav.webhooks', icon: Bell, requireRole: 'ADMIN' },
+  { to: '/audit', key: 'nav.auditTrail', icon: ScrollText, requireRole: 'ADMIN' },
+  { to: '/catalog', key: 'nav.catalog', icon: Cable, requireRole: 'SUPERADMIN' },
+  { to: '/administration', key: 'nav.administration', icon: Building2, requireRole: 'ADMIN' },
 ]
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform ?? navigator.userAgent)
@@ -77,8 +83,25 @@ function ThemeToggle() {
   )
 }
 
+const LANG_CYCLE: Lang[] = ['id', 'en']
+
+function LangToggle() {
+  const { lang, setLang, t } = useI18n()
+  return (
+    <button
+      onClick={() => setLang(LANG_CYCLE[(LANG_CYCLE.indexOf(lang) + 1) % LANG_CYCLE.length])}
+      title={t('top.language')}
+      className="flex h-8 items-center gap-1 rounded-lg px-1.5 text-xs font-semibold uppercase text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+    >
+      <Languages className="h-4 w-4" strokeWidth={2} />
+      {lang}
+    </button>
+  )
+}
+
 export function Layout() {
   const { user, logout, hasRole } = useAuth()
+  const { t } = useI18n()
   const location = useLocation()
   const visibleNavItems = NAV_ITEMS.filter((item) => !item.requireRole || hasRole(item.requireRole))
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -142,7 +165,7 @@ export function Layout() {
           className="flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm text-slate-400 transition-colors hover:border-slate-300 hover:bg-white dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700 dark:hover:bg-slate-800"
         >
           <Search className="h-3.5 w-3.5" />
-          <span className="flex-1 text-left">Cari...</span>
+          <span className="flex-1 text-left">{t('common.search')}…</span>
           <kbd className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] text-slate-400 dark:border-slate-700 dark:bg-slate-950">
             {isMac ? '⌘K' : 'Ctrl+K'}
           </kbd>
@@ -166,31 +189,43 @@ export function Layout() {
             style={({ isActive }: { isActive: boolean }) => (isActive ? accentStyle : undefined)}
           >
             <item.icon className="h-4 w-4" strokeWidth={2} />
-            {item.label}
+            {t(item.key)}
           </NavLink>
         ))}
       </nav>
 
       <div className="border-t border-slate-200 p-3 dark:border-slate-800">
-        <div className="flex items-center gap-2.5 rounded-lg px-2 py-2">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+        <NavLink
+          to="/profile"
+          className={({ isActive }) =>
+            `flex items-center gap-2.5 rounded-lg px-2 py-2 transition-colors ${
+              isActive ? 'bg-slate-100 dark:bg-slate-800' : 'hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`
+          }
+        >
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600 dark:bg-slate-700 dark:text-slate-200">
             {user?.username.slice(0, 2).toUpperCase()}
           </div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{user?.username}</p>
             <p className="truncate text-[11px] text-slate-400 dark:text-slate-500">{user?.roles.join(', ')}</p>
           </div>
+          <UserCircle2 className="h-4 w-4 shrink-0 text-slate-400" strokeWidth={2} />
+        </NavLink>
+        <div className="mt-1 flex items-center gap-1 px-1">
           <button
             onClick={() => setPwOpen(true)}
-            title="Ganti password"
+            title={t('top.changePassword')}
             className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
           >
             <KeyRound className="h-4 w-4" strokeWidth={2} />
           </button>
+          <LangToggle />
+          <div className="flex-1" />
           <button
             onClick={logout}
-            title="Logout"
-            className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+            title={t('top.logout')}
+            className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-400"
           >
             <LogOut className="h-4 w-4" strokeWidth={2} />
           </button>
@@ -212,6 +247,7 @@ export function Layout() {
           </button>
           <span className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{brandName}</span>
           <div className="flex items-center gap-1">
+            <NavClock compact />
             <ThemeToggle />
             <NotificationBell />
           </div>
@@ -230,10 +266,14 @@ export function Layout() {
         </aside>
 
         <main className="min-w-0 flex-1 pt-14 md:pt-0">
-          {/* Top bar desktop — toggle tema & notifikasi, sidebar sudah py info user */}
-          <div className="hidden items-center justify-end gap-1 border-b border-slate-200 bg-white px-4 py-2 md:flex dark:border-slate-800 dark:bg-slate-900">
-            <ThemeToggle />
-            <NotificationBell />
+          {/* Top bar desktop — jam realtime kiri, kontrol kanan */}
+          <div className="hidden items-center justify-between border-b border-slate-200 bg-white px-4 py-2 md:flex dark:border-slate-800 dark:bg-slate-900">
+            <NavClock />
+            <div className="flex items-center gap-1">
+              <LangToggle />
+              <ThemeToggle />
+              <NotificationBell />
+            </div>
           </div>
           <Outlet />
         </main>

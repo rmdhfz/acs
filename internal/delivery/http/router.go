@@ -103,6 +103,11 @@ func (r *Router) Register(e *echo.Echo) {
 
 	authed.GET("/cwmp/sessions/count", r.countOpenSessions, RequireRoles(adminOrNOC...))
 
+	// Audit trail global tenant-scoped (activity_logs). ADMIN/SUPERADMIN —
+	// operator NOC/VIEWER melihat aktivitas per-device lewat
+	// GET /devices/:id/activity, bukan feed global ini.
+	authed.GET("/activity", r.listActivity, RequireRoles(admin...))
+
 	authed.POST("/tenants", r.createTenant, RequireRoles(superadminOnly...))
 	authed.GET("/tenants", r.listTenants, RequireRoles(superadminOnly...))
 	authed.GET("/tenants/current", r.getCurrentTenant)

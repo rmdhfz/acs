@@ -172,7 +172,19 @@ type ActivityLog struct {
 	Username *string `db:"username" json:"username"`
 }
 
+// ActivityLogFilter — opsi filter untuk daftar audit trail global.
+// Semua field opsional (string kosong / nil = tidak difilter).
+type ActivityLogFilter struct {
+	Action     string // exact match kode aksi (mis. "UPDATE_DEVICE")
+	EntityType string // exact match tipe entitas (mis. "device", "preset")
+}
+
 type ActivityLogRepository interface {
 	Record(ctx context.Context, log *ActivityLog) error
 	ListByEntity(ctx context.Context, entityType string, entityID uint64, p Pagination) ([]ActivityLog, int, error)
+	// ListByTenant — audit trail global. tenantID nil = lintas semua tenant
+	// (HANYA superadmin; pemanggil WAJIB sudah lewat auth.ScopedTenantFilter).
+	// Baris dgn tenant_id NULL (aksi katalog global) ikut muncul untuk
+	// superadmin, dan juga untuk admin tenant (dianggap konteks bersama).
+	ListByTenant(ctx context.Context, tenantID *uint64, f ActivityLogFilter, p Pagination) ([]ActivityLog, int, error)
 }

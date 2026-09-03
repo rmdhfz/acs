@@ -15,6 +15,8 @@ import { WebhooksPage } from './pages/WebhooksPage'
 import FilesPage from './pages/FilesPage'
 import TagsPage from './pages/TagsPage'
 import PresetsPage from './pages/PresetsPage'
+import ProfilePage from './pages/ProfilePage'
+import AuditPage from './pages/AuditPage'
 import SelfServicePage from './pages/SelfServicePage'
 import { useAuth } from './lib/auth'
 
@@ -47,6 +49,8 @@ function App() {
         <Route path="/files" element={<FilesPage />} />
         <Route path="/tags" element={<TagsPage />} />
         <Route path="/presets" element={<PresetsPage />} />
+        <Route path="/audit" element={<AuditPage />} />
+        <Route path="/profile" element={<ProfilePage />} />
         <Route path="/self-service" element={<SelfServicePage />} />
         <Route path="/webhooks" element={<WebhooksPage />} />
         <Route path="/catalog" element={<CatalogPage />} />

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { AlertTriangle } from 'lucide-react'
 
 // useConfirm() = pengganti window.confirm() yang blocking & tidak theme-aware.
@@ -23,7 +23,6 @@ interface PendingState extends ConfirmOptions {
 
 export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [pending, setPending] = useState<PendingState | null>(null)
-  const cancelRef = useRef<HTMLButtonElement>(null)
 
   const confirm = useCallback<ConfirmFn>((opts) => {
     return new Promise<boolean>((resolve) => {
@@ -39,6 +38,16 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     [pending],
   )
 
+  useEffect(() => {
+    if (!pending) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') settle(false)
+      if (e.key === 'Enter') settle(true)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [pending, settle])
+
   const isDanger = pending?.tone === 'danger'
 
   return (
@@ -50,8 +59,8 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
           role="dialog"
           aria-modal="true"
           aria-labelledby="confirm-title"
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') settle(false)
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) settle(false)
           }}
         >
           <div className="w-full max-w-md rounded-xl bg-white shadow-xl dark:bg-slate-900">
@@ -72,7 +81,6 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             </div>
             <div className="flex justify-end gap-2.5 border-t border-slate-200 px-5 py-3.5 dark:border-slate-800">
               <button
-                ref={cancelRef}
                 onClick={() => settle(false)}
                 className="rounded-lg px-3.5 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
               >

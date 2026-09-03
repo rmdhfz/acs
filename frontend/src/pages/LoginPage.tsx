@@ -2,11 +2,13 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Radio, AlertCircle, Eye, EyeOff } from 'lucide-react'
 import { useAuth } from '../lib/auth'
+import { useI18n } from '../lib/i18n'
 import { ApiError } from '../lib/api'
 import { Spinner } from '../components/Spinner'
 
 export function LoginPage() {
   const { login } = useAuth()
+  const { t, lang, setLang } = useI18n()
   const navigate = useNavigate()
   const location = useLocation()
   const [username, setUsername] = useState('')
@@ -29,7 +31,7 @@ export function LoginPage() {
       const from = (location.state as { from?: string } | null)?.from ?? '/'
       navigate(from, { replace: true })
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Gagal login, coba lagi')
+      setError(err instanceof ApiError ? err.message : t('login.error'))
     } finally {
       setIsSubmitting(false)
     }
@@ -37,20 +39,26 @@ export function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 dark:bg-slate-950">
+      <button
+        onClick={() => setLang(lang === 'id' ? 'en' : 'id')}
+        className="absolute right-4 top-4 rounded-lg px-2 py-1 text-xs font-semibold uppercase text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+      >
+        {lang === 'id' ? 'EN' : 'ID'}
+      </button>
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center text-center">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900">
             <Radio className="h-5 w-5" strokeWidth={2} />
           </div>
-          <h1 className="mt-4 text-lg font-semibold text-slate-900 dark:text-slate-100">ACS Console</h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Masuk untuk memonitor perangkat CPE</p>
+          <h1 className="mt-4 text-lg font-semibold text-slate-900 dark:text-slate-100">{t('login.title')}</h1>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{t('login.subtitle')}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="space-y-4">
             <div>
               <label htmlFor="username" className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
-                Username
+                {t('common.username')}
               </label>
               <input
                 id="username"
@@ -65,7 +73,7 @@ export function LoginPage() {
             </div>
             <div>
               <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
-                Password
+                {t('common.password')}
               </label>
               <div className="relative">
                 <input
@@ -80,7 +88,7 @@ export function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
-                  aria-label={showPassword ? 'Sembunyikan password' : 'Tampilkan password'}
+                  aria-label={showPassword ? t('login.hidePassword') : t('login.showPassword')}
                   tabIndex={-1}
                   className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 transition-colors hover:text-slate-600 dark:hover:text-slate-300"
                 >
@@ -102,7 +110,7 @@ export function LoginPage() {
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2.5 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
             >
               {isSubmitting && <Spinner className="h-4 w-4 text-white dark:text-slate-900" />}
-              {isSubmitting ? 'Memeriksa…' : 'Masuk'}
+              {isSubmitting ? t('login.checking') : t('login.submit')}
             </button>
 
             <div className="relative my-4">
@@ -110,7 +118,7 @@ export function LoginPage() {
                 <div className="w-full border-t border-slate-200 dark:border-slate-800" />
               </div>
               <div className="relative flex justify-center text-xs">
-                <span className="bg-white px-2 text-slate-500 dark:bg-slate-900 dark:text-slate-400">Atau</span>
+                <span className="bg-white px-2 text-slate-500 dark:bg-slate-900 dark:text-slate-400">{t('login.or')}</span>
               </div>
             </div>
 
@@ -118,17 +126,13 @@ export function LoginPage() {
               href="/api/v1/auth/oidc/login"
               className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
             >
-              Masuk dengan SSO
+              {t('login.sso')}
             </a>
-            <p className="text-center text-xs text-slate-400 dark:text-slate-500">
-              SSO hanya aktif bila operator sudah mengkonfigurasi Identity Provider.
-            </p>
+            <p className="text-center text-xs text-slate-400 dark:text-slate-500">{t('login.ssoHint')}</p>
           </div>
         </form>
 
-        <p className="mt-6 text-center text-xs text-slate-400 dark:text-slate-500">
-          Lupa password? Hubungi administrator tenant Anda untuk reset.
-        </p>
+        <p className="mt-6 text-center text-xs text-slate-400 dark:text-slate-500">{t('login.forgot')}</p>
       </div>
     </div>
   )
