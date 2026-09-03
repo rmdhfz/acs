@@ -37,7 +37,13 @@ Jika integrasi SSO (OIDC) telah dikonfigurasi (`ACS_OIDC_*`), tekan tombol
 **Masuk dengan SSO** di halaman login. Bila belum dikonfigurasi, tombol tetap
 muncul tapi mengarah ke halaman "tidak ditemukan" — pakai username/password.
 
-## 5. Akun terkunci
+## 5. Ganti password sendiri
+
+Setelah login, klik ikon **kunci** di pojok kiri bawah (samping nama + tombol
+Logout). Semua peran bisa. Alternatif API: `PATCH /api/v1/auth/password`
+(butuh `current_password`).
+
+## 6. Akun terkunci
 
 5× password salah berturut-turut → akun terkunci **15 menit**. Pesannya tetap
 "username atau password salah" (disamarkan). Solusi: tunggu 15 menit, atau minta

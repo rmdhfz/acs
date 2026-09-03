@@ -378,9 +378,11 @@ go run ./cmd/seed-admin \
 
   <h3>Mengganti kata sandi sendiri</h3>
   <p>
-    Endpoint tersedia di API (<code>PATCH /api/v1/auth/password</code>, memerlukan kata sandi lama),
-    namun tombol khusus di Console belum tersedia pada versi ini. Untuk saat ini, mintalah Admin tenant
-    Anda melakukan reset, atau gunakan API secara langsung:
+    Setelah login, klik ikon <strong>kunci</strong> di pojok kiri bawah (di samping nama Anda dan tombol Logout),
+    lalu isi kata sandi lama dan kata sandi baru. Tersedia untuk semua peran.
+  </p>
+  <p>
+    Alternatif via API bila diperlukan otomasi:
   </p>
   <pre><span class="cmt"># ganti &lt;TOKEN&gt; dengan access_token dari respons login</span>
 curl -X PATCH http://localhost:18080/api/v1/auth/password \

@@ -5,11 +5,13 @@ import {
   Building2,
   Cable,
   FileSliders,
+  FolderArchive,
   HardDrive,
   LayoutDashboard,
   LayoutGrid,
   ListChecks,
   LogOut,
+  KeyRound,
   Menu,
   Monitor,
   Moon,
@@ -25,6 +27,7 @@ import { useTheme, type Theme } from '../lib/theme'
 import { useCurrentTenant } from '../lib/hooks'
 import { CommandPalette } from './CommandPalette'
 import { NotificationBell } from './NotificationBell'
+import { ChangePasswordModal } from './ChangePasswordModal'
 import { NotificationProvider } from '../lib/notifications'
 
 const NAV_ITEMS: { to: string; label: string; icon: typeof LayoutGrid; requireRole?: string }[] = [
@@ -35,7 +38,7 @@ const NAV_ITEMS: { to: string; label: string; icon: typeof LayoutGrid; requireRo
   { to: '/provisioning', label: 'Provisioning', icon: FileSliders, requireRole: 'VIEWER' },
   { to: '/presets', label: 'Presets', icon: SlidersHorizontal, requireRole: 'ADMIN' },
   { to: '/firmware', label: 'Firmware', icon: HardDrive, requireRole: 'VIEWER' },
-  { to: '/files', label: 'Files', icon: HardDrive, requireRole: 'VIEWER' },
+  { to: '/files', label: 'Files', icon: FolderArchive, requireRole: 'VIEWER' },
   { to: '/tags', label: 'Tags', icon: Tag, requireRole: 'ADMIN' },
   { to: '/webhooks', label: 'Webhooks', icon: Bell, requireRole: 'ADMIN' },
   { to: '/catalog', label: 'Catalog Vendor', icon: Cable, requireRole: 'SUPERADMIN' },
@@ -80,6 +83,7 @@ export function Layout() {
   const visibleNavItems = NAV_ITEMS.filter((item) => !item.requireRole || hasRole(item.requireRole))
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [pwOpen, setPwOpen] = useState(false)
 
   // White-labeling (ROADMAP.md Fase 2) — undefined utk superadmin global
   // (tanpa tenant) atau tenant yang belum set branding -> fallback default.
@@ -177,6 +181,13 @@ export function Layout() {
             <p className="truncate text-[11px] text-slate-400 dark:text-slate-500">{user?.roles.join(', ')}</p>
           </div>
           <button
+            onClick={() => setPwOpen(true)}
+            title="Ganti password"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+          >
+            <KeyRound className="h-4 w-4" strokeWidth={2} />
+          </button>
+          <button
             onClick={logout}
             title="Logout"
             className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
@@ -228,6 +239,7 @@ export function Layout() {
         </main>
 
         <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+        {pwOpen && <ChangePasswordModal onClose={() => setPwOpen(false)} />}
       </div>
     </NotificationProvider>
   )

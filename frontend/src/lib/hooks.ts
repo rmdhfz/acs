@@ -715,6 +715,15 @@ export function useResetUserPassword() {
   })
 }
 
+// useChangeOwnPassword — user ganti password SENDIRI (PATCH /auth/password),
+// wajib password lama. Semua role. Tidak menyentuh query cache.
+export function useChangeOwnPassword() {
+  return useMutation({
+    mutationFn: (body: { current_password: string; new_password: string }) =>
+      api.patch<void>('/auth/password', body),
+  })
+}
+
 // useReplaceUserRoles — full-replace role (bukan tambah/hapus satu-satu),
 // body role_codes menggantikan seluruh set role user tsb. Backend menolak
 // assign SUPERADMIN oleh non-superadmin, dan ADMIN mencabut role ADMIN
