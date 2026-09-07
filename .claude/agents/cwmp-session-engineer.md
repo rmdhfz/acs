@@ -29,5 +29,10 @@ CWMP **bukan** request-response biasa. Ini adalah **stateful session state machi
 ## Sebelum menganggap perubahan selesai
 
 - Cek apakah perubahanmu mempengaruhi urutan RPC dalam satu sesi (banyak vendor sensitif terhadap urutan).
-- Jalankan test yang ada di `internal/usecase/session/` dan `internal/delivery/cwmp/` (`go test ./internal/usecase/session/... ./internal/delivery/cwmp/...`).
+- Jalankan test yang ada di `internal/usecase/session/` dan `internal/delivery/cwmp/`. **Host dev ini tidak punya Go toolchain** — `go` langsung akan "command not found", dan itu bukan error kode. Jalankan lewat Docker:
+  ```bash
+  docker run --rm -v "$PWD":/src -w /src -e GOFLAGS=-buildvcs=false golang:1.26 \
+    go test -race ./internal/usecase/session/... ./internal/delivery/cwmp/...
+  ```
+  Kalau test tidak sempat dijalankan, katakan itu eksplisit — jangan melapor selesai seolah sudah diuji. Untuk gerbang lengkap (gofmt/vet/build/test), serahkan ke agent `ci-gatekeeper`.
 - Kalau kuirk yang kamu tangani ternyata spesifik satu vendor (bukan spec standar), itu bukan tanggung jawabmu untuk hardcode — arahkan ke `vendor-mapping-specialist` agent atau `internal/vendor_adapter/`.

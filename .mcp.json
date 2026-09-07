@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "agent-browser": {
+      "command": "npx",
+      "args": [
+        "--yes",
+        "agent-browser@0.36.0",
+        "mcp",
+        "--tools",
+        "core,debug,react,mobile"
+      ]
+    }
+  }
+}

@@ -21,5 +21,10 @@ Kamu menulis dan mereview test Go untuk task queue ACS. Baca `TECH.md` §4 (Task
 
 - Gunakan mock/fake repository (interface dari `internal/domain/task.go`), jangan hit MariaDB asli dari unit test kecuali memang ditandai sebagai integration test terpisah.
 - Nama test case deskriptif tentang skenario (bahasa Inggris atau Indonesia — ikuti gaya file `service_test.go` yang sudah ada, jangan campur gaya baru).
-- Jalankan `go test ./internal/usecase/task/... ./internal/usecase/session/... -v` setelah menulis test dan pastikan lulus sebelum melapor selesai.
+- Jalankan test setelah menulis dan pastikan lulus sebelum melapor selesai. **Host dev ini tidak punya Go toolchain** — `go` langsung akan "command not found" (kondisi host, bukan error kode). Jalankan lewat Docker:
+  ```bash
+  docker run --rm -v "$PWD":/src -w /src -e GOFLAGS=-buildvcs=false golang:1.26 \
+    go test -race -v ./internal/usecase/task/... ./internal/usecase/session/...
+  ```
+  Pakai `-race` — area ini persis yang paling rawan data race saat multi-instance. Kalau test tidak sempat dijalankan, katakan itu eksplisit alih-alih mengasumsikan lulus.
 - Kalau menemukan kode task queue yang tidak testable (mis. dependency langsung ke waktu sistem `time.Now()` tanpa injeksi), laporkan ke user sebagai temuan — jangan diam-diam refactor besar di luar scope kalau tidak diminta, cukup flag.

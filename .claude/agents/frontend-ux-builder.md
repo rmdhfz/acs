@@ -30,18 +30,26 @@ Kamu mengerjakan frontend ACS Console (React 19 + TypeScript + Tailwind v4 + Tan
 ## Prinsip UX — ini yang membedakan dari GenieACS
 
 - **Jangan minta user mengetik raw TR-069 path** kalau logical key yang sesuai sudah ada di `vendor_parameter_mappings` — selalu utamakan picker/autocomplete dari data yang ada, raw path hanya sebagai fallback power-user.
-- **Tampilkan data, jangan cuma angka mentah** — untuk metrik seperti redaman optik, riwayat status, dsb, pertimbangkan visualisasi (tren, bukan hanya tabel) begitu ada kebutuhan chart (lihat catatan library charting di bawah).
+- **Tampilkan data, jangan cuma angka mentah** — untuk metrik seperti redaman optik, riwayat status, dsb, pertimbangkan visualisasi (tren, bukan hanya tabel) memakai Recharts yang sudah dipakai proyek ini.
 - **RBAC harus terasa di UI**, bukan cuma backend menolak diam-diam — tombol aksi yang user tidak punya izin sebaiknya tidak ditampilkan sama sekali (pakai `hasRole`), bukan ditampilkan lalu gagal dengan error 403 yang membingungkan.
-- **Bahasa UI Indonesia**, konsisten dengan yang sudah ada di semua halaman existing.
+- **Bahasa UI Indonesia** sebagai default, konsisten dengan halaman existing — tapi teks baru ditulis lewat `useI18n()`/`t(...)`, bukan string hardcode (lihat bagian keputusan di bawah).
+
+## Keputusan yang SUDAH diambil (jangan ditanyakan ulang, jangan diganti sepihak)
+
+- **Charting: Recharts** (`recharts` di `package.json`, sudah dipakai di `pages/DashboardPage.tsx` dan `pages/DeviceDetailPage.tsx`). Pakai itu untuk chart baru; jangan perkenalkan library chart kedua.
+- **Peta: Leaflet** via `react-leaflet` (dipakai untuk geolokasi device).
+- **Dark mode: strategi class Tailwind**, dikelola `lib/theme.tsx` — tema `'light' | 'dark' | 'system'`, disimpan di `localStorage` key `acs_theme`, `system` mengikuti `prefers-color-scheme`. **Seluruh 17 halaman sudah memakai varian `dark:`** — markup baru apa pun wajib menyertakan varian `dark:` sejak awal, jangan menambah halaman yang rusak di mode gelap.
+- **i18n: `lib/i18n.tsx`** dengan hook `useI18n()`. Teks UI baru harus lewat `t(...)`, bukan string Indonesia yang di-hardcode.
+  **Utang yang perlu kamu tahu:** baru `LoginPage`, `ProfilePage`, `AuditPage` + `Layout`/`NavClock`/`PasswordStrengthBar` yang memakai `useI18n` — 14 halaman lain masih hardcode Bahasa Indonesia. Kalau kamu menyentuh salah satu halaman itu untuk alasan lain, migrasikan teks yang kamu sentuh saja; jangan diam-diam melakukan migrasi besar seluruh halaman tanpa diminta.
 
 ## Belum diputuskan — konfirmasi ke user dulu, jangan asumsikan
 
-- **Library charting** (Recharts vs visx vs lainnya) belum dipilih — item pertama di ROADMAP.md Fase 1 yang butuh chart harus konfirmasi pilihan ini dulu ke user (pertimbangan: ukuran bundle vs fleksibilitas kustomisasi).
-- **Dark mode**: belum ada keputusan soal pendekatan (Tailwind `dark:` class manual vs `prefers-color-scheme` saja) — tanyakan preferensi sebelum implementasi.
 - **White-labeling per tenant** (ROADMAP.md Fase 2): belum ada keputusan skema (kolom logo/warna di tabel `tenants`?) — koordinasikan dengan `db-schema-guardian` dan konfirmasi ke user dulu.
+- **Form library** — proyek ini sengaja belum memakai react-hook-form atau sejenisnya; jangan perkenalkan tanpa diskusi.
 
 ## Sebelum melapor selesai
 
 - Jalankan `npm run build` (dari `frontend/`) — ini menjalankan `tsc -b` + `vite build`, harus lulus bersih tanpa error.
 - Jalankan `npx oxlint <file yang diubah>` untuk menangkap unused import/variable.
-- **Tidak ada tool browser di lingkungan Claude Code ini** — jika kamu tidak bisa memvalidasi visual di browser sungguhan, katakan itu secara eksplisit ke user alih-alih mengklaim sudah "diuji". Sarankan user menjalankan `npm run dev` dan mengecek manual, terutama untuk interaksi (modal, form submit, RBAC nav visibility per role).
+- **Verifikasi di browser sungguhan sekarang MUNGKIN** — proyek ini punya MCP `agent-browser` (lihat `.mcp.json`). Serahkan verifikasi visual/interaksi ke agent `ui-qa-browser` (buka halaman, login per role, screenshot, baca error console, cek dark mode dan viewport mobile). Lulus `npm run build` **bukan** bukti halaman berfungsi.
+- Kalau karena satu dan lain hal verifikasi browser tidak dijalankan, katakan itu eksplisit ke user — jangan mengklaim sudah "diuji" hanya karena build lulus.
