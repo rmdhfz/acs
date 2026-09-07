@@ -205,7 +205,7 @@ func (s *Service) HandleInform(ctx context.Context, in InformInput) (*InformResu
 	// Inform lanjutan di sesi yang sama, mis. sesudah value-change -- costnya
 	// murah, satu UPDATE) supaya NextRequest bisa memakainya utk RPC proaktif
 	// berikutnya (lihat migrations/0012).
-	if in.Namespace != "" {
+	if in.Namespace != "" && (sess.CWMPNamespace == nil || *sess.CWMPNamespace != in.Namespace) {
 		if err := s.sessions.SetCWMPNamespace(ctx, sess.ID, in.Namespace); err != nil {
 			return nil, fmt.Errorf("session: gagal menyimpan namespace CWMP: %w", err)
 		}
@@ -314,7 +314,7 @@ func (s *Service) HandleInform(ctx context.Context, in InformInput) (*InformResu
 		}
 	}
 
-	_ = s.deviceSvc.MarkOnline(ctx, dev.ID)
+	_ = s.deviceSvc.MarkOnline(ctx, dev)
 
 	if s.publisher != nil && dev.TenantID != nil {
 		s.publisher.BroadcastToTenant(*dev.TenantID, "DEVICE_ONLINE", map[string]interface{}{

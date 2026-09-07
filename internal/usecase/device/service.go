@@ -342,12 +342,24 @@ func (s *Service) FindOrCreateFromInform(ctx context.Context, info InformDeviceI
 	return d, true, nil
 }
 
-func (s *Service) MarkOnline(ctx context.Context, deviceID uint64) error {
+// MarkOnline menandai device ONLINE. dev adalah state device SAAT INI (dari
+// FindOrCreateFromInform) — bila sudah ONLINE, UPDATE dilewati (jalur panas
+// Inform: 333 write/detik ke `devices` pada 100k device kalau tidak dijaga,
+// temuan perf-scale-auditor). deviceStatusID dev di-update in-place bila
+// berubah supaya pemanggil melihat nilai baru.
+func (s *Service) MarkOnline(ctx context.Context, dev *domain.Device) error {
 	onlineStatus, err := s.refs.GetByCode(ctx, domain.RefTableDeviceStatus, domain.DeviceStatusOnline)
 	if err != nil {
 		return err
 	}
-	return s.devices.UpdateStatus(ctx, deviceID, onlineStatus.ID, nil)
+	if dev.DeviceStatusID == onlineStatus.ID {
+		return nil
+	}
+	if err := s.devices.UpdateStatus(ctx, dev.ID, onlineStatus.ID, nil); err != nil {
+		return err
+	}
+	dev.DeviceStatusID = onlineStatus.ID
+	return nil
 }
 
 func (s *Service) TouchLastBootEvent(ctx context.Context, d *domain.Device, at time.Time) error {

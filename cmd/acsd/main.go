@@ -89,7 +89,10 @@ func main() {
 		log.Fatalf("objectstorage: %v", err)
 	}
 
-	refRepo := mysql.NewRefRepository(db)
+	// Cache in-memory untuk lookup ref_* imutabel (event code, status, trigger
+	// ZTP) — menghilangkan ~6 query DB per Inform di jalur panas CWMP
+	// (perf-scale-auditor). GET /refs/:table (List) tetap selalu segar.
+	refRepo := mysql.NewCachedRefRepository(mysql.NewRefRepository(db))
 	tenantRepo := mysql.NewTenantRepository(db)
 	userRepo := mysql.NewUserRepository(db)
 	apiTokenRepo := mysql.NewAPITokenRepository(db)

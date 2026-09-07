@@ -128,15 +128,58 @@ anti-spoofing).
 
 ---
 
-## 5. Gap Menuju Go-Live Penuh (diurut dampak)
+## 5. Audit Performa Skala (`perf-scale-auditor`) — "tahan ribuan device"
+
+**Semua temuan dari pembacaan kode — belum ada load test sungguhan.**
+Hitungan: **≈17–20 round-trip DB per periodic Inform** (device dikenal, ~20
+param, tanpa ZTP/preset). Pada 100.000 device @ interval 300s = ~333 Inform/detik
+→ ~6.000 query/detik untuk inform "kosong"; jauh lebih tinggi bila preset enforce
+aktif.
+
+### 5.1 Diperbaiki sesi ini
+
+| # | Temuan | Fix |
+|---|---|---|
+| B2 | `ref_*` (event code, status, trigger ZTP) di-query dari DB **tiap Inform** padahal isinya enum konstan — ~6 query/Inform sia-sia | **`mysql.NewCachedRefRepository`** — cache in-memory untuk tabel imutabel (`ref_event_codes`, `ref_task_status`, `ref_task_types`, `ref_device_status`, `ref_ztp_trigger_event`, `ref_firmware_rollout_status`, `ref_roles`, `ref_parameter_types`), TTL 10 menit. `GET /refs/:table` (UI) tetap segar. |
+| B5 (parsial) | `MarkOnline` menulis `UPDATE devices` **setiap Inform** walau status sudah ONLINE; `SetCWMPNamespace` `UPDATE device_sessions` tiap Inform walau namespace tak berubah | `MarkOnline` menerima state device & **skip UPDATE bila sudah ONLINE**; `SetCWMPNamespace` **hanya menulis bila namespace berubah** |
+
+### 5.2 BLOCKER untuk klaim "ribuan device" — belum dikerjakan (butuh desain / load-test data)
+
+| # | Temuan | Rekomendasi | Mulai sakit di ~N |
+|---|---|---|---|
+| **B1** | Tabel jalur-panas tumbuh **tanpa retensi/pruning/partisi**: `device_sessions` (tak pernah dihapus, hanya OPEN→TIMEOUT), `device_events` (per event per Inform), `device_optical_metrics` (tiap Inform ONT, bukan saat berubah), `activity_logs`. 100k device ≈ 28 juta baris/hari `device_sessions`. | **Kebijakan retensi + job pruning WAJIB sebelum go-live penuh** (mis. hapus `device_sessions` non-OPEN > 7 hari, `device_events`/`optical` > 30–90 hari). Partisi RANGE by-month menyusul setelah ada data volume (keputusan sengaja ditunda di CLAUDE.md). | beberapa hari produksi @ puluhan ribu device |
+| **B3** | N+1 di `EvaluatePresets`/ZTP: resolusi path per-op per-preset tiap Inform. `ResolveParameterPath` = 3 query (devices+deviceModels+paramMappings) per op, tak dicache. 5 preset × 10 op = 200 query/Inform/device. | Resolve `VendorID`/`DeviceModelID`/`DataModelVersionID` sekali per Inform; cache `vendor_parameter_mappings` per `(vendor,dmv,model)`; ambil `device_parameters` relevan dalam 1 query `IN (...)`. | 1–5k device/tenant dengan preset enforce |
+| **B4** | Rate limiter `/cwmp` (5 req/s) & REST (30) **in-memory per-instance** + di-key **per-IP**. Multi-instance → limit efektif N×; **CGNAT → ribuan CPE satu ISP berbagi jatah 5 req/s → Inform sah ditolak 429 massal**. | Store terdistribusi (Redis, sudah ada). Untuk `/cwmp`: rate-limit per-device (OUI+serial) atau per-tenant, bukan per-IP. **Risiko tinggi**: bikin auto-provisioning gagal untuk fleet di belakang CGNAT. | begitu >1 instance ATAU fleet di CGNAT |
+| **B5** (penuh) | `FindOrCreateFromInform` → `devices.Update` **rewrite ~20 kolom termasuk `connection_request_password_enc`, `inform_password_enc`** tiap Inform. | `UPDATE devices SET last_inform_at=?, ip_address=?, software_version=?, ... WHERE id=?` — jangan pernah rewrite kolom kredensial di jalur Inform. (Butuh method repo baru + update 4 fake test.) | 20–50k device |
+
+### 5.3 Akan jadi masalah pada N tertentu — dicatat
+
+- **C1** `HasPendingForDevice` dipanggil 2× per Inform (ZTP + preset) — gabungkan.
+- **C3** Listing device: `serial LIKE '%x%'` (leading wildcard → full scan) + filter tag `EXISTS` — tambah `KEY device_tags (tag_id, device_id)`, ubah ke JOIN; batasi search ke prefix / FULLTEXT.
+- **C4** `SweepRolloutBatches` tarik SEMUA batch (termasuk COMPLETED historis) tiap 60s — tambah filter `status_id IN (...)` di SQL.
+- **C5** WS Hub **in-memory** — dengan >1 instance, event `DEVICE_ONLINE`/`TASK_STATUS_CHANGED` hanya sampai ke klien di instance yang memproses. Dashboard NOC parsial. Fan-out via Redis pub/sub. (Pelanggaran stateless TECH.md §9.)
+- **C6** Auto-discovery: `go handleAutoDiscoveryResponse(context.Background(), ...)` fire-and-forget tanpa pool/timeout, dipicu tiap BOOTSTRAP device vendor tak dikenal — worker pool + timeout.
+- **C7** Connection pool `MaxOpenConns(50)`/`MaxIdleConns(10)` — evaluasi 100–200 & naikkan idle setelah profiling.
+
+### 5.4 Dikonfirmasi OK
+`tasks.NextForDevice` (index `device_id,status,priority`, no global polling),
+`deviceParams.UpsertBatch` (multi-row per chunk 500), `GetByOUISerial` (unique
+index), session state di `device_sessions`+Redis (bukan in-memory),
+`webhook_deliveries.ClaimDue` (guarded UPDATE aman multi-instance),
+`TriggerConnectionRequest` (timeout + CheckRedirect + SSRF guard).
+
+---
+
+## 6. Gap Menuju Go-Live Penuh (diurut dampak)
 
 1. **Uji CPE fisik** — `PENGUJIAN_LAPANGAN.md` siap. Minimal 1–2 unit per vendor.
    Satu Inform nyata > sebulan simulasi. **Penahan #1.**
 2. **`vendor_ouis` kosong** — isi dari IEEE OUI registry sebelum uji lapangan.
-3. **Load test kapasitas** — butuh rig multi-IP (rate limiter `/cwmp` 5 req/s
-   per IP membatasi pengukuran dari satu sumber).
-4. **Follow-up keamanan non-blocker** di §4.3.
-5. **USP/TR-369** — Fase 3, tidak menghalangi go-live CWMP.
+3. **Retensi tabel log (B1)** — kebijakan pruning sebelum rollout lebar.
+4. **Rate limiter terdistribusi (B4)** — bila deploy multi-instance atau ada CPE di CGNAT.
+5. **Load test kapasitas** — butuh rig multi-IP; validasi B3/B5/C7 dengan angka nyata.
+6. **Follow-up keamanan non-blocker** di §4.3.
+7. **USP/TR-369** — Fase 3, tidak menghalangi go-live CWMP.
 
 ---
 
