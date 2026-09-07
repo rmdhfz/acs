@@ -115,6 +115,7 @@ func main() {
 		{"S7-connection-request", scenarioConnectionRequest},
 		{"S8-firmware-rollout", scenarioFirmwareRollout},
 		{"S9-preset-drift-heal", scenarioPresetDriftHeal},
+		{"S10-security-guards", scenarioSecurityGuards},
 	}
 
 	var results []result

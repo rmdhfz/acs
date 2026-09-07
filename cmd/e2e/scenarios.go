@@ -501,6 +501,63 @@ func scenarioPresetDriftHeal(ctx context.Context, w *World) result {
 	return pass("preset enforce: CPE drift -> ACS auto-SetParameterValues -> konvergen (%s=%s)", shortPath(presetPath), target)
 }
 
+// S10 — regresi keamanan: (a) role ENDUSER dikurung ke /self-service — token
+// portal pelanggan tidak boleh memanggil API staf; (b) SSRF guard menolak
+// Connection Request ke alamat internal (169.254.169.254 metadata cloud).
+func scenarioSecurityGuards(ctx context.Context, w *World) result {
+	_ = ctx
+	// (a) ENDUSER confinement.
+	enduPass := "EnduPass-" + randHex(8)
+	err := w.super.do(http.MethodPost, "/api/v1/users", map[string]any{
+		"tenant_id": w.pilotTenantID, "username": "endu-" + w.runID,
+		"email": "endu-" + w.runID + "@e2e.local", "password": enduPass,
+		"full_name": "E2E EndUser", "role_codes": []string{"ENDUSER"},
+	}, nil)
+	if err != nil {
+		return failr("buat ENDUSER: %v", err)
+	}
+	endu := NewClient(w.super.base, true)
+	if err := endu.Login("endu-"+w.runID, enduPass); err != nil {
+		return failr("login ENDUSER: %v", err)
+	}
+	for _, p := range []string{"/api/v1/devices", "/api/v1/tasks", "/api/v1/provisioning-profiles", "/api/v1/refs/ref_vendors", "/api/v1/presets"} {
+		if st, body := endu.status(http.MethodGet, p, nil); st != http.StatusForbidden {
+			return failr("ENDUSER GET %s = HTTP %d (%s), harusnya 403", p, st, body)
+		}
+	}
+	if st, _ := endu.status(http.MethodGet, "/api/v1/self-service/devices", nil); st == http.StatusForbidden {
+		return failr("ENDUSER GET /self-service/devices = 403, harusnya diizinkan")
+	}
+	if st, _ := endu.status(http.MethodPatch, "/api/v1/auth/password", map[string]any{"current_password": "x", "new_password": "yyyyyyyy"}); st == http.StatusForbidden {
+		return failr("ENDUSER PATCH /auth/password = 403, harusnya bisa (current_password salah -> 401)")
+	}
+
+	// (b) SSRF guard pada Connection Request.
+	serial := w.serials["zte"]
+	if serial == "" {
+		return failr("device zte dari S1 tidak ada untuk uji SSRF")
+	}
+	d, err := w.super.findDeviceBySerial(serial)
+	if err != nil {
+		return failr("%v", err)
+	}
+	// Admin set CR URL ke alamat metadata cloud (skenario: admin ceroboh /
+	// akun terkompromi, atau nilai dari Inform di versi lama tanpa guard).
+	metaURL := "http://169.254.169.254/latest/meta-data/"
+	if st, body := w.pilotAdmin.status(http.MethodPatch, fmt.Sprintf("/api/v1/devices/%d", d.ID),
+		map[string]any{"connection_request_url": metaURL}); st >= 400 {
+		return failr("PATCH device connection_request_url: HTTP %d %s", st, body)
+	}
+	st, body := w.pilotAdmin.status(http.MethodPost, fmt.Sprintf("/api/v1/devices/%d/connection-request", d.ID), map[string]any{})
+	if st < 400 || st >= 500 {
+		return failr("Connection Request ke 169.254.169.254 -> HTTP %d (%s), harusnya 4xx (ditolak SSRF guard, BUKAN 5xx/2xx)", st, body)
+	}
+	// Kembalikan ke nilai kosong supaya tidak mengganggu skenario lain.
+	_ = w.pilotAdmin.do(http.MethodPatch, fmt.Sprintf("/api/v1/devices/%d", d.ID), map[string]any{"connection_request_url": ""}, nil)
+
+	return pass("ENDUSER 403 di 5 API staf & lolos /self-service; Connection Request ke metadata-cloud ditolak (HTTP %d)", st)
+}
+
 // --- util assertion ---
 
 func (w *World) taskTypeCode(t taskJSON) string {
