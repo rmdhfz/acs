@@ -17,6 +17,12 @@ func (r *Router) createTag(c *echo.Context) error {
 	if err := c.Bind(&in); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
+	if err := checkMaxLen(
+		lenRule{"name", in.Name, maxTagName},
+		lenRule{"color", optStr(in.Color), maxTagColor},
+	); err != nil {
+		return err
+	}
 	res, err := r.Tags.Create(c.Request().Context(), actor, in)
 	if err != nil {
 		return handleErr(c, err)
@@ -126,6 +132,12 @@ func (r *Router) createPreset(c *echo.Context) error {
 	if err := c.Bind(&in); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
+	if err := checkMaxLen(
+		lenRule{"name", in.Name, maxPresetName},
+		lenRule{"channel", optStr(in.Channel), maxPresetChan},
+	); err != nil {
+		return err
+	}
 	res, err := r.Presets.Create(c.Request().Context(), actor, in)
 	if err != nil {
 		return handleErr(c, err)
@@ -159,6 +171,12 @@ func (r *Router) updatePreset(c *echo.Context) error {
 	var in domain.Preset
 	if err := c.Bind(&in); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	if err := checkMaxLen(
+		lenRule{"name", in.Name, maxPresetName},
+		lenRule{"channel", optStr(in.Channel), maxPresetChan},
+	); err != nil {
+		return err
 	}
 	if err := r.Presets.Update(c.Request().Context(), actor, id, in); err != nil {
 		return handleErr(c, err)

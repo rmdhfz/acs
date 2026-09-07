@@ -24,6 +24,13 @@ func (r *Router) createTenant(c *echo.Context) error {
 	if req.Code == "" || req.Name == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "code dan name wajib diisi")
 	}
+	if err := checkMaxLen(
+		lenRule{"code", req.Code, maxTenantCode},
+		lenRule{"name", req.Name, maxTenantName},
+		lenRule{"cwmp_inform_username", optStr(req.CWMPInformUsername), maxTenantCWMPUser},
+	); err != nil {
+		return err
+	}
 	t, err := r.IAM.CreateTenant(c.Request().Context(), actor, iam.CreateTenantInput{
 		Code: req.Code, Name: req.Name,
 		CWMPInformUsername: req.CWMPInformUsername, CWMPInformPassword: req.CWMPInformPassword,
@@ -51,6 +58,11 @@ func (r *Router) setTenantCWMPCredentials(c *echo.Context) error {
 	}
 	if req.Username == "" || req.Password == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "username dan password wajib diisi")
+	}
+	// Password TIDAK dicek panjangnya di sini: disimpan terenkripsi
+	// (VARBINARY), bukan sebagai VARCHAR polos.
+	if err := checkMaxLen(lenRule{"username", req.Username, maxTenantCWMPUser}); err != nil {
+		return err
 	}
 	if err := r.IAM.SetCWMPInformCredentials(c.Request().Context(), actor, id, req.Username, req.Password); err != nil {
 		return handleErr(c, err)
@@ -105,6 +117,13 @@ func (r *Router) updateTenantBranding(c *echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "payload tidak valid")
 	}
+	if err := checkMaxLen(
+		lenRule{"brand_name", optStr(req.BrandName), maxTenantBrandName},
+		lenRule{"logo_url", optStr(req.LogoURL), maxTenantLogoURL},
+		lenRule{"primary_color", optStr(req.PrimaryColor), maxTenantPrimaryHex},
+	); err != nil {
+		return err
+	}
 	if err := r.IAM.UpdateBranding(c.Request().Context(), actor, id, req.BrandName, req.LogoURL, req.PrimaryColor); err != nil {
 		return handleErr(c, err)
 	}
@@ -157,6 +176,12 @@ func (r *Router) updateTenant(c *echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "payload tidak valid")
 	}
+	if err := checkMaxLen(
+		lenRule{"code", optStr(req.Code), maxTenantCode},
+		lenRule{"name", optStr(req.Name), maxTenantName},
+	); err != nil {
+		return err
+	}
 	t, err := r.IAM.UpdateTenant(c.Request().Context(), actor, id, iam.UpdateTenantInput{
 		Code: req.Code, Name: req.Name, IsActive: req.IsActive,
 	})
@@ -192,6 +217,13 @@ func (r *Router) createUser(c *echo.Context) error {
 	}
 	if req.Username == "" || req.Password == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "username dan password wajib diisi")
+	}
+	if err := checkMaxLen(
+		lenRule{"username", req.Username, maxUsername},
+		lenRule{"email", req.Email, maxEmail},
+		lenRule{"full_name", req.FullName, maxFullName},
+	); err != nil {
+		return err
 	}
 	u, err := r.IAM.CreateUser(c.Request().Context(), actor, iam.CreateUserInput{
 		TenantID: req.TenantID, Username: req.Username, Email: req.Email,
@@ -232,6 +264,12 @@ func (r *Router) updateUser(c *echo.Context) error {
 	var req updateUserRequest
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "payload tidak valid")
+	}
+	if err := checkMaxLen(
+		lenRule{"full_name", optStr(req.FullName), maxFullName},
+		lenRule{"email", optStr(req.Email), maxEmail},
+	); err != nil {
+		return err
 	}
 	u, err := r.IAM.UpdateUser(c.Request().Context(), actor, id, iam.UpdateUserInput{
 		FullName: req.FullName, Email: req.Email, IsActive: req.IsActive,

@@ -2,6 +2,73 @@
 
 ---
 
+## SESI 2026-09-08 (`/siap-commit`: verifikasi + commit batch validasi input yang menggantung)
+
+### Kondisi saat sesi dimulai
+
+Branch `dev` (`1e467b0`). Working tree **penuh perubahan tak-tersimpan** dari sesi
+~5–7 Sep yang belum pernah di-commit: batch validasi panjang input
+(`validate.go`), endpoint `GET /vendor-parameter-mappings`, `limits.ts` + 45
+`maxLength` frontend, sinkron `openapi.yaml` + Postman, 7 agent + 8 slash command
+baru, `.mcp.json` (agent-browser), `scripts/`. Docker Desktop **mati**, host tanpa
+Go toolchain → gerbang Go tidak bisa dijalankan lokal.
+
+### Temuan penting: `go test ./...` di `dev` HEAD SEDANG MERAH
+
+Commit `1e467b0` menambah method `ListByTenant` ke interface
+`domain.ActivityLogRepository` + implementasinya, tapi **tidak** mengupdate 6 fake
+di `internal/usecase/{auth,firmware,provisioning,tag,task,webhook}/service_test.go`
+→ paket-paket itu gagal compile saat test. Batch yang menggantung ini yang
+memperbaikinya (6 fake dapat `ListByTenant` no-op). Jadi commit ini juga
+memulihkan CI.
+
+### Gerbang yang dijalankan sesi ini
+
+| Gerbang | Hasil |
+|---|---|
+| `npm run lint` (oxlint) | ✅ 0 error (4 warning pre-existing) |
+| `npm run build` (`tsc -b && vite build`) | ✅ bersih |
+| `redocly lint openapi.yaml` | ✅ valid (6 warning pre-existing/by-design) |
+| `gofmt`/`vet`/`build`/`go test -race` | ⚠️ TIDAK dijalankan (Docker mati) — diserahkan ke CI GitHub atas keputusan user |
+| `acs-code-reviewer` (arsitektur) | ✅ tidak ada blocker |
+| `acs-security-reviewer` (keamanan) | ✅ tidak ada blocker baru dari diff ini |
+| `api-contract-sync` | ✅ 103 route ↔ 103 operationId, 0 drift; Postman diregen (101→103 request) |
+
+### Follow-up dari review (dicatat, TIDAK diperbaiki sesi ini — bukan blocker)
+
+1. **Validasi ganda branding + `target_url`.** `updateTenantBranding` dan
+   `create/updateWebhook` memanggil `checkMaxLen` padahal `validateBranding`
+   (`iam/service.go:178`) dan `validateTargetURL` (`webhook/service.go:412`) sudah
+   memvalidasi field yang sama. Lebih buruk: `validateBranding` pakai `len()`
+   **byte**, `checkMaxLen` pakai **rune** — `brand_name` 128 karakter beraksen
+   bisa lolos delivery lalu ditolak usecase dengan pesan beda. Fix: samakan
+   `validateBranding`/`validateTargetURL` ke rune, atau hapus cek delivery yang
+   dobel.
+2. **Cakupan `checkMaxLen` belum lengkap.** `updateDevice` (`notes`,
+   `connection_request_url/username`), `uploadFirmware` (`version`, `file_name`),
+   firmware upgrade/batch (`from_version`/`to_version`, `notes`) masih bisa jadi
+   500 untuk input kepanjangan — kelas bug yang sama yang batch ini tutup
+   sebagian.
+3. **`createWebhook`/`updateWebhook`:** `checkMaxLen` dipanggil sebelum cek
+   "wajib diisi" — beda urutan dari 5 handler lain, pesan error kurang menuntun.
+4. **Tidak ada `middleware.BodyLimit`** di `restEcho`/`cwmpEcho` — `c.Bind()`
+   unbounded, termasuk `POST /auth/login` anonim. Tambah `BodyLimit("1M")` REST.
+5. **Password CWMP tanpa cap panjang** (`setTenantCWMPCredentials`,
+   `createTenant`) → plaintext >~227 char → ciphertext AES-GCM > `VARBINARY(255)`
+   → MariaDB 1406 → 500. Beri cap ~256.
+6. **Role ENDUSER tidak dikurung ke `/self-service`** — token ENDUSER diterima di
+   semua route grup `authed` tanpa `RequireRoles` (`GET /devices` dll. bocor
+   daftar device se-tenant ke principal portal pelanggan). Sudah tercatat samar
+   di ROADMAP "Gap jujur"; reviewer menguatkan. Item Fase 0/2, konfirmasi user.
+7. `TestLenRulesMatchSchema` hanya menjaga 10 dari ~30 konstanta `validate.go`.
+
+### BELUM
+
+- Gerbang Go lokal (butuh Docker) + `migrate up 0→21` ke MariaDB nyata.
+- Perbaikan 7 follow-up di atas.
+
+---
+
 ## SESI 2026-09-02 (`/goal`: lanjutkan proses pembuatan acs kita)
 
 ### Kondisi saat sesi dimulai

@@ -31,6 +31,13 @@ func (r *Router) createVendor(c *echo.Context) error {
 	if req.Code == "" || req.Name == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "code dan name wajib diisi")
 	}
+	if err := checkMaxLen(
+		lenRule{"code", req.Code, maxVendorCode},
+		lenRule{"name", req.Name, maxVendorName},
+		lenRule{"description", optStr(req.Description), maxDescription},
+	); err != nil {
+		return err
+	}
 	v := &domain.Vendor{
 		Code: req.Code, Name: req.Name, Description: req.Description, IsActive: true,
 		Audit: domain.Audit{CreatedBy: actor.UserIDPtr()},
@@ -61,6 +68,12 @@ func (r *Router) addVendorOUI(c *echo.Context) error {
 	}
 	if req.OUI == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "oui wajib diisi")
+	}
+	if err := checkMaxLen(
+		lenRule{"oui", req.OUI, maxOUI},
+		lenRule{"notes", optStr(req.Notes), maxOUINotes},
+	); err != nil {
+		return err
 	}
 	o := &domain.VendorOUI{
 		VendorID: vendorID, OUI: req.OUI, Notes: req.Notes, Audit: domain.Audit{CreatedBy: actor.UserIDPtr()},
@@ -116,6 +129,13 @@ func (r *Router) createDeviceModel(c *echo.Context) error {
 	if req.VendorID == 0 || req.ModelName == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "vendor_id dan model_name wajib diisi")
 	}
+	if err := checkMaxLen(
+		lenRule{"model_name", req.ModelName, maxModelName},
+		lenRule{"product_class", optStr(req.ProductClass), maxProductClass},
+		lenRule{"description", optStr(req.Description), maxDescription},
+	); err != nil {
+		return err
+	}
 	m := &domain.DeviceModel{
 		VendorID: req.VendorID, DeviceTypeID: req.DeviceTypeID, DataModelVersionID: req.DataModelVersionID,
 		ProductClass: req.ProductClass, ModelName: req.ModelName, Description: req.Description, IsActive: true,
@@ -128,6 +148,23 @@ func (r *Router) createDeviceModel(c *echo.Context) error {
 		UserID: actor.UserIDPtr(), Action: "CREATE_DEVICE_MODEL", EntityType: "device_model", EntityID: &m.ID,
 	})
 	return c.JSON(http.StatusCreated, m)
+}
+
+// listParameterMappings — daftar mapping milik satu vendor untuk Catalog UI.
+// Read-only dan dibuka ke semua role terautentikasi, konsisten dgn
+// GET /vendors dan GET /device-models: vendor_parameter_mappings adalah data
+// referensi GLOBAL lintas tenant (tidak py tenant_id), jadi tidak ada
+// filter tenant di sini — yang dibatasi superadmin adalah MUTASInya (POST).
+func (r *Router) listParameterMappings(c *echo.Context) error {
+	vendorID := queryUint64(c, "vendor_id")
+	if vendorID == nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "vendor_id wajib diisi")
+	}
+	mappings, err := r.ParamMappings.ListByVendor(c.Request().Context(), *vendorID)
+	if err != nil {
+		return handleErr(c, err)
+	}
+	return c.JSON(http.StatusOK, mappings)
 }
 
 type upsertMappingRequest struct {
@@ -155,6 +192,14 @@ func (r *Router) upsertParameterMapping(c *echo.Context) error {
 	}
 	if req.VendorID == 0 || req.LogicalKey == "" || req.TR069Path == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "vendor_id, logical_key, tr069_path wajib diisi")
+	}
+	if err := checkMaxLen(
+		lenRule{"logical_key", req.LogicalKey, maxLogicalKey},
+		lenRule{"tr069_path", req.TR069Path, maxTR069Path},
+		lenRule{"software_version_pattern", optStr(req.SoftwareVersionPattern), maxSoftwareVerPatt},
+		lenRule{"description", optStr(req.Description), maxDescription},
+	); err != nil {
+		return err
 	}
 	m := &domain.VendorParameterMapping{
 		VendorID: req.VendorID, DataModelVersionID: req.DataModelVersionID, DeviceModelID: req.DeviceModelID,

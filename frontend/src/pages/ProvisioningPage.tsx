@@ -26,6 +26,7 @@ import {
   type ProfileFormInput,
   type ZTRuleFormInput,
 } from '../lib/hooks'
+import { LIMITS } from '../lib/limits'
 import type { ProvisioningProfileParameter } from '../lib/types'
 
 const inputCls =
@@ -236,11 +237,11 @@ function ProfileModal({ id, onClose }: { id: number | undefined; onClose: () => 
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama</label>
-            <input required value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
+            <input required maxLength={LIMITS.profile.name} value={name} onChange={(e) => setName(e.target.value)} placeholder="mis. Default PPPoE Jakarta" className={inputCls} />
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Deskripsi</label>
-            <input value={description} onChange={(e) => setDescription(e.target.value)} className={inputCls} />
+            <input value={description} onChange={(e) => setDescription(e.target.value)} maxLength={LIMITS.description} placeholder="mis. profil PPPoE + WiFi untuk pelanggan retail" className={inputCls} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -620,25 +621,25 @@ function ZTRuleModal({ id, onClose }: { id: number | undefined; onClose: () => v
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">OUI</label>
-            <input value={oui} onChange={(e) => setOui(e.target.value)} placeholder="mis. 3C6A9D" className={inputCls} />
+            <input value={oui} onChange={(e) => setOui(e.target.value)} maxLength={LIMITS.vendor.oui} placeholder="mis. 3C6A9D" className={inputCls} />
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Serial Pattern (SQL LIKE)</label>
-            <input value={serialPattern} onChange={(e) => setSerialPattern(e.target.value)} placeholder="mis. ZTE%" className={inputCls} />
+            <input value={serialPattern} onChange={(e) => setSerialPattern(e.target.value)} maxLength={LIMITS.ztpRule.serialPattern} placeholder="mis. ZTE%" className={inputCls} />
           </div>
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Software Version Pattern (SQL LIKE)</label>
-          <input value={softwareVersionPattern} onChange={(e) => setSoftwareVersionPattern(e.target.value)} placeholder="mis. V5.%" className={inputCls} />
+          <input value={softwareVersionPattern} onChange={(e) => setSoftwareVersionPattern(e.target.value)} maxLength={LIMITS.mapping.softwareVersionPattern} placeholder="mis. V5.%" className={inputCls} />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Match Parameter Name</label>
-            <input value={matchParamName} onChange={(e) => setMatchParamName(e.target.value)} placeholder="mis. ...WANPPPConnection.1.Enable" className={`${inputCls} font-mono text-xs`} />
+            <input value={matchParamName} onChange={(e) => setMatchParamName(e.target.value)} maxLength={LIMITS.ztpRule.matchParameterName} placeholder="mis. ...WANPPPConnection.1.Enable" className={`${inputCls} font-mono text-xs`} />
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Match Value Pattern (SQL LIKE)</label>
-            <input value={matchParamValue} onChange={(e) => setMatchParamValue(e.target.value)} placeholder="mis. 0" className={inputCls} />
+            <input value={matchParamValue} onChange={(e) => setMatchParamValue(e.target.value)} maxLength={LIMITS.ztpRule.matchParameterValuePattern} placeholder="mis. 0" className={inputCls} />
           </div>
         </div>
 
@@ -673,7 +674,10 @@ function ZTRuleModal({ id, onClose }: { id: number | undefined; onClose: () => v
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Priority</label>
+            {/* Selalu terisi (default '10') sehingga placeholder tidak pernah
+                tampil — petunjuknya ditaruh sebagai teks bantuan di bawah. */}
             <input type="number" min={1} value={priority} onChange={(e) => setPriority(e.target.value)} className={inputCls} />
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Makin kecil angkanya, makin dulu aturan ini dievaluasi.</p>
           </div>
           <label className="mt-6 flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
             <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />

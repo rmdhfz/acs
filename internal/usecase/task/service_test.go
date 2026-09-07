@@ -197,6 +197,12 @@ func (f *fakeActivityRepo) ListByEntity(context.Context, string, uint64, domain.
 	return nil, 0, nil
 }
 
+// ListByTenant tidak dipakai test di paket ini — cukup penuhi kontrak
+// domain.ActivityLogRepository.
+func (f *fakeActivityRepo) ListByTenant(context.Context, *uint64, domain.ActivityLogFilter, domain.Pagination) ([]domain.ActivityLog, int, error) {
+	return nil, 0, nil
+}
+
 func superadminActor() domain.Actor {
 	return domain.Actor{UserID: 1, Roles: []string{domain.RoleSuperadmin}}
 }

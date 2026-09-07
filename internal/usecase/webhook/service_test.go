@@ -215,6 +215,12 @@ func (fakeActivityRepo) ListByEntity(_ context.Context, _ string, _ uint64, _ do
 	return nil, 0, nil
 }
 
+// ListByTenant tidak dipakai test di paket ini — cukup penuhi kontrak
+// domain.ActivityLogRepository.
+func (fakeActivityRepo) ListByTenant(_ context.Context, _ *uint64, _ domain.ActivityLogFilter, _ domain.Pagination) ([]domain.ActivityLog, int, error) {
+	return nil, 0, nil
+}
+
 func newTestService(t *testing.T) (*Service, *fakeSubRepo, *fakeDeliveryRepo) {
 	t.Helper()
 	key := make([]byte, 32)

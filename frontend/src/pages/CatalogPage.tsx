@@ -5,6 +5,7 @@ import { StatusBadge } from '../components/StatusBadge'
 import { Modal } from '../components/Modal'
 import { PageSpinner } from '../components/Spinner'
 import { ApiError } from '../lib/api'
+import { LIMITS } from '../lib/limits'
 import {
   useAddVendorOUI,
   useCreateDeviceModel,
@@ -171,15 +172,15 @@ function CreateVendorModal({ onClose }: { onClose: () => void }) {
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Code</label>
-          <input required value={code} onChange={(e) => setCode(e.target.value)} placeholder="mis. ZTE" className={inputCls} />
+          <input required maxLength={LIMITS.vendor.code} value={code} onChange={(e) => setCode(e.target.value)} placeholder="mis. ZTE" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama</label>
-          <input required value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
+          <input required maxLength={LIMITS.vendor.name} value={name} onChange={(e) => setName(e.target.value)} placeholder="mis. ZTE Corporation" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Deskripsi (opsional)</label>
-          <input value={description} onChange={(e) => setDescription(e.target.value)} className={inputCls} />
+          <input value={description} onChange={(e) => setDescription(e.target.value)} maxLength={LIMITS.description} className={inputCls} />
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
         <button type="submit" disabled={createMutation.isPending} className={`${primaryBtnCls} w-full`}>
@@ -212,11 +213,11 @@ function AddOUIModal({ vendorId, onClose }: { vendorId: number; onClose: () => v
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">OUI (6 hex digit)</label>
-          <input required value={oui} onChange={(e) => setOui(e.target.value.toUpperCase())} placeholder="mis. 3C6A9D" className={`${inputCls} font-mono`} />
+          <input required maxLength={LIMITS.vendor.oui} value={oui} onChange={(e) => setOui(e.target.value.toUpperCase())} placeholder="mis. 3C6A9D" className={`${inputCls} font-mono`} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Catatan (opsional)</label>
-          <input value={notes} onChange={(e) => setNotes(e.target.value)} className={inputCls} />
+          <input value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={LIMITS.vendor.notes} className={inputCls} />
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
         <button type="submit" disabled={addMutation.isPending} className={`${primaryBtnCls} w-full`}>
@@ -325,11 +326,11 @@ function CreateDeviceModelModal({ vendorId, onClose }: { vendorId: number; onClo
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama Model</label>
-          <input required value={modelName} onChange={(e) => setModelName(e.target.value)} placeholder="mis. F670L" className={inputCls} />
+          <input required maxLength={LIMITS.deviceModel.modelName} value={modelName} onChange={(e) => setModelName(e.target.value)} placeholder="mis. F670L" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Product Class (opsional)</label>
-          <input value={productClass} onChange={(e) => setProductClass(e.target.value)} className={`${inputCls} font-mono text-xs`} />
+          <input value={productClass} onChange={(e) => setProductClass(e.target.value)} maxLength={LIMITS.deviceModel.productClass} placeholder="ProductClass dari Inform, mis. F670L" className={`${inputCls} font-mono text-xs`} />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -357,7 +358,7 @@ function CreateDeviceModelModal({ vendorId, onClose }: { vendorId: number; onClo
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Deskripsi (opsional)</label>
-          <input value={description} onChange={(e) => setDescription(e.target.value)} className={inputCls} />
+          <input value={description} onChange={(e) => setDescription(e.target.value)} maxLength={LIMITS.description} className={inputCls} />
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
         <button type="submit" disabled={createMutation.isPending} className={`${primaryBtnCls} w-full`}>
@@ -476,12 +477,13 @@ function CreateMappingModal({ vendorId, onClose }: { vendorId: number; onClose: 
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Logical Key</label>
-          <input required value={logicalKey} onChange={(e) => setLogicalKey(e.target.value)} placeholder="mis. wifi.5g.ssid" className={`${inputCls} font-mono text-xs`} />
+          <input required maxLength={LIMITS.mapping.logicalKey} value={logicalKey} onChange={(e) => setLogicalKey(e.target.value)} placeholder="mis. wifi.5g.ssid" className={`${inputCls} font-mono text-xs`} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">TR-069 Path</label>
           <input
             required
+            maxLength={LIMITS.mapping.tr069Path}
             value={tr069Path}
             onChange={(e) => setTr069Path(e.target.value)}
             placeholder="mis. InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.SSID"
@@ -525,11 +527,11 @@ function CreateMappingModal({ vendorId, onClose }: { vendorId: number; onClose: 
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Software Version Pattern (opsional — SQL LIKE, mapping lebih spesifik menang)</label>
-          <input value={softwareVersionPattern} onChange={(e) => setSoftwareVersionPattern(e.target.value)} placeholder="mis. V5.% — kosong = berlaku lintas semua versi" className={inputCls} />
+          <input value={softwareVersionPattern} onChange={(e) => setSoftwareVersionPattern(e.target.value)} maxLength={LIMITS.mapping.softwareVersionPattern} placeholder="mis. V5.% — kosong = berlaku lintas semua versi" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Deskripsi (opsional)</label>
-          <input value={description} onChange={(e) => setDescription(e.target.value)} className={inputCls} />
+          <input value={description} onChange={(e) => setDescription(e.target.value)} maxLength={LIMITS.description} className={inputCls} />
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
         <button type="submit" disabled={upsertMutation.isPending} className={`${primaryBtnCls} w-full`}>

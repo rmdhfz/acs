@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './api'
 import type {
   ActivityLog,
+  ApiToken,
+  IssuedApiToken,
   CurrentTenant,
   Device,
   DeviceDiagnostic,
@@ -598,6 +600,40 @@ export function useTriggerDiagnostic() {
   })
 }
 
+// ---- Administration: API Token (integrasi BSS/OSS) ----
+
+export function useApiTokens(tenantId?: number) {
+  return useQuery({
+    queryKey: ['api-tokens', tenantId],
+    queryFn: () => api.get<ListResponse<ApiToken>>(`/auth/tokens${buildQuery({ tenant_id: tenantId, page_size: 200 })}`),
+  })
+}
+
+export interface IssueApiTokenInput {
+  name: string
+  tenant_id?: number
+  expires_at?: string | null
+}
+
+// useIssueApiToken — nilai plaintext token hanya dikembalikan sekali di respons
+// ini; pemanggil WAJIB menampilkannya ke user saat itu juga karena tidak bisa
+// diambil lagi setelahnya.
+export function useIssueApiToken() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: IssueApiTokenInput) => api.post<IssuedApiToken>('/auth/tokens', input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['api-tokens'] }),
+  })
+}
+
+export function useRevokeApiToken() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api.del<void>(`/auth/tokens/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['api-tokens'] }),
+  })
+}
+
 // ---- Administration: Tenants & Users ----
 
 export function useTenants() {
@@ -618,6 +654,25 @@ export function useCreateTenant() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (input: CreateTenantInput) => api.post<Tenant>('/tenants', input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tenants'] }),
+  })
+}
+
+export interface UpdateTenantInput {
+  code?: string
+  name?: string
+  is_active?: boolean
+}
+
+// useUpdateTenant — PATCH /tenants/:id (superadmin only). Menonaktifkan tenant
+// membuat seluruh user tenant itu tidak bisa login lagi, termasuk yang bearer
+// token-nya masih berlaku (lihat usecase/iam.UpdateTenant) — konfirmasi dulu
+// di UI sebelum memanggil ini.
+export function useUpdateTenant() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ tenantId, input }: { tenantId: number; input: UpdateTenantInput }) =>
+      api.patch<Tenant>(`/tenants/${tenantId}`, input),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tenants'] }),
   })
 }

@@ -5,6 +5,7 @@ import { EmptyState } from '../components/EmptyState'
 import { useAuth } from '../lib/auth'
 import { ApiError } from '../lib/api'
 import { useCreateTenant, useCreateUser, type CreateTenantInput } from '../lib/hooks'
+import { LIMITS } from '../lib/limits'
 import type { Tenant, User } from '../lib/types'
 
 const inputCls =
@@ -143,11 +144,11 @@ function TenantStep({ onCreated }: { onCreated: (tenant: Tenant) => void }) {
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Code</label>
-          <input required value={code} onChange={(e) => setCode(e.target.value)} placeholder="mis. ISP-JKT" className={inputCls} />
+          <input required maxLength={LIMITS.tenant.code} value={code} onChange={(e) => setCode(e.target.value)} placeholder="mis. ISP-JKT" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama Perusahaan</label>
-          <input required value={name} onChange={(e) => setName(e.target.value)} placeholder="mis. ISP Jakarta Sejahtera" className={inputCls} />
+          <input required maxLength={LIMITS.tenant.name} value={name} onChange={(e) => setName(e.target.value)} placeholder="mis. ISP Jakarta Sejahtera" className={inputCls} />
         </div>
         <div className="border-t border-slate-100 pt-3 dark:border-slate-800">
           <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
@@ -157,6 +158,7 @@ function TenantStep({ onCreated }: { onCreated: (tenant: Tenant) => void }) {
           <div className="grid grid-cols-2 gap-3">
             <input
               placeholder="Username Inform"
+              maxLength={LIMITS.tenant.cwmpUsername}
               value={cwmpUsername}
               onChange={(e) => setCwmpUsername(e.target.value)}
               className={`${inputCls} font-mono text-xs`}
@@ -222,15 +224,15 @@ function AdminUserStep({ tenant, onCreated, onBack }: { tenant: Tenant; onCreate
         </p>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Username</label>
-          <input required value={username} onChange={(e) => setUsername(e.target.value)} className={inputCls} />
+          <input required maxLength={LIMITS.user.username} value={username} onChange={(e) => setUsername(e.target.value)} placeholder="mis. admin.jkt" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama Lengkap</label>
-          <input value={fullName} onChange={(e) => setFullName(e.target.value)} className={inputCls} />
+          <input maxLength={LIMITS.user.fullName} value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="mis. Budi Santoso" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Email</label>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} />
+          <input type="email" maxLength={LIMITS.user.email} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="mis. budi@ispjakarta.co.id" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Password</label>

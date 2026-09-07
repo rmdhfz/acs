@@ -256,6 +256,12 @@ func (f *fakeActivityLogFW) ListByEntity(context.Context, string, uint64, domain
 	return nil, 0, nil
 }
 
+// ListByTenant tidak dipakai test di paket ini — cukup penuhi kontrak
+// domain.ActivityLogRepository.
+func (f *fakeActivityLogFW) ListByTenant(context.Context, *uint64, domain.ActivityLogFilter, domain.Pagination) ([]domain.ActivityLog, int, error) {
+	return nil, 0, nil
+}
+
 // fakeObjectStorage — implementasi in-memory domain.ObjectStorage, cukup
 // untuk menguji orkestrasi upload/checksum/cleanup tanpa MinIO sungguhan.
 type fakeObjectStorage struct {

@@ -210,6 +210,12 @@ func (f *fakeActivityRepoPV) ListByEntity(_ context.Context, entityType string, 
 	return matched[:limit], len(matched), nil
 }
 
+// ListByTenant tidak dipakai test di paket ini — cukup penuhi kontrak
+// domain.ActivityLogRepository.
+func (f *fakeActivityRepoPV) ListByTenant(_ context.Context, _ *uint64, _ domain.ActivityLogFilter, _ domain.Pagination) ([]domain.ActivityLog, int, error) {
+	return nil, 0, nil
+}
+
 // ---- helpers ----
 
 const (

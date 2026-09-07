@@ -44,7 +44,7 @@ export function ChangePasswordModal({ onClose }: { onClose: () => void }) {
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-600 dark:text-slate-400">Password baru</label>
-          <input type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} required minLength={MIN_LEN} className={inputCls} />
+          <input type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} required minLength={MIN_LEN} placeholder={`Minimal ${MIN_LEN} karakter`} className={inputCls} />
           {next ? <PasswordStrengthBar password={next} /> : <p className="mt-1 text-xs text-slate-400">Minimal {MIN_LEN} karakter.</p>}
         </div>
         <div>

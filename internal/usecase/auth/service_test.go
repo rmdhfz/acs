@@ -150,6 +150,12 @@ func (f *fakeActivityRepoAuth) ListByEntity(context.Context, string, uint64, dom
 	return nil, 0, nil
 }
 
+// ListByTenant tidak dipakai test di paket ini — cukup penuhi kontrak
+// domain.ActivityLogRepository.
+func (f *fakeActivityRepoAuth) ListByTenant(context.Context, *uint64, domain.ActivityLogFilter, domain.Pagination) ([]domain.ActivityLog, int, error) {
+	return nil, 0, nil
+}
+
 func hashFor(t *testing.T, password string) string {
 	t.Helper()
 	h, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)

@@ -48,6 +48,12 @@ func (nilActivity) ListByEntity(context.Context, string, uint64, domain.Paginati
 	return nil, 0, nil
 }
 
+// ListByTenant tidak dipakai test di paket ini — cukup penuhi kontrak
+// domain.ActivityLogRepository.
+func (nilActivity) ListByTenant(context.Context, *uint64, domain.ActivityLogFilter, domain.Pagination) ([]domain.ActivityLog, int, error) {
+	return nil, 0, nil
+}
+
 func u64(v uint64) *uint64 { return &v }
 
 func TestAssignToDevice_TenantScope(t *testing.T) {

@@ -25,9 +25,13 @@ info:
       `POST /auth/tokens` (ADMIN/SUPERADMIN), tidak pernah kedaluwarsa kecuali
       `expires_at` diisi.
 
-    Dua endpoint publik tanpa autentikasi: `POST /auth/login` (untuk mendapatkan
-    token) dan `GET /metrics` (scrape Prometheus read-only, lihat catatan di
-    endpoint tsb soal kenapa ini pengecualian yang aman).
+    Empat endpoint publik tanpa autentikasi, semuanya READ-ONLY atau titik masuk
+    login (tidak ada endpoint MUTASI tanpa autentikasi): `POST /auth/login`
+    (untuk mendapatkan token, rate-limit khusus per-IP), `GET /auth/oidc/login`
+    dan `GET /auth/oidc/callback` (alur login OIDC — identitas dibawa oleh
+    `code` dari IdP, bukan Bearer), serta `GET /metrics` (scrape Prometheus
+    read-only, lihat catatan di endpoint tsb soal kenapa ini pengecualian yang
+    aman).
 
     Token yang valid tapi tenant pemiliknya sudah dinonaktifkan (`is_active=false`)
     akan ditolak dengan `401` (`auth: tenant tidak aktif, hubungi administrator`)
@@ -322,21 +326,34 @@ paths:
       tags: [Refs]
       summary: Daftar baris tabel referensi/enum (`ref_*`)
       description: |
-        Nama tabel divalidasi lewat whitelist tetap di server (`ref_vendors`,
-        `ref_device_types`, `ref_data_model_versions`, `ref_event_codes`,
-        `ref_task_types`, `ref_task_status`, `ref_device_status`,
-        `ref_parameter_types`, `ref_roles`) — nama di luar whitelist ini
-        mengembalikan error (saat ini `500`, bukan `400`; lihat catatan
-        inkonsistensi di README/laporan audit). Semua role terautentikasi boleh
-        membaca (data referensi bukan data sensitif per-tenant).
+        Nama tabel divalidasi lewat whitelist tetap di server
+        (`repository/mysql/ref_repository.go`). Nama di luar whitelist ditolak
+        `400` (`domain.ErrInvalidInput`), TIDAK diteruskan mentah ke SQL.
+        Catatan: konstanta `ref_webhook_event_types` ada di `domain` tapi
+        SENGAJA belum masuk whitelist endpoint ini — memintanya tetap `400`.
+        Semua role terautentikasi boleh membaca (data referensi bukan data
+        sensitif per-tenant), tidak ada `RequireRoles` di router.
+      security: [{ bearerAuth: [] }]
       parameters:
         - name: table
           in: path
           required: true
-          description: Nama tabel referensi, lihat whitelist di atas.
+          description: Nama tabel referensi (harus salah satu nilai whitelist).
           schema:
             type: string
             example: ref_device_status
+            enum:
+              - ref_vendors
+              - ref_device_types
+              - ref_data_model_versions
+              - ref_event_codes
+              - ref_task_types
+              - ref_task_status
+              - ref_device_status
+              - ref_parameter_types
+              - ref_roles
+              - ref_ztp_trigger_event
+              - ref_firmware_rollout_status
       responses:
         '200':
           description: Daftar baris referensi.
@@ -344,14 +361,15 @@ paths:
             application/json:
               schema:
                 type: array
+                nullable: true
                 items: { $ref: '#/components/schemas/RefLookup' }
-        '401':
-          description: Tidak terautentikasi.
+        '400':
+          description: Nama tabel tidak dikenal/di luar whitelist.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
-        '500':
-          description: Nama tabel tidak dikenal/di luar whitelist (lihat catatan — idealnya `400`, tercatat sebagai inkonsistensi kecil, bukan bug keamanan).
+        '401':
+          description: Tidak terautentikasi.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -1555,31 +1573,41 @@ paths:
       tags: [Devices]
       summary: Reboot perangkat
       description: |
-        ADMIN/NOC/SUPERADMIN. Mengirim command reboot (event 'M Reboot') ke perangkat.
+        ADMIN/NOC/SUPERADMIN (`RequireRoles(ADMIN, NOC, SUPERADMIN)`). Mengantre
+        task `REBOOT` (event 'M Reboot') untuk dikirim ke CPE pada sesi CWMP
+        berikutnya. **Asinkron** — `202 Accepted` berarti task masuk antrean,
+        BUKAN device sudah reboot.
       security: [{ bearerAuth: [] }]
       parameters:
         - $ref: '#/components/parameters/deviceIdPath'
       responses:
-        '200':
+        '202':
           description: Task reboot telah dimasukkan ke dalam antrean.
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
+              schema: { $ref: '#/components/schemas/MessageResponse' }
+        '400':
+          description: "`id` tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
         '401':
           description: Tidak terautentikasi.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '403':
-          description: Role tidak cukup atau device milik tenant lain.
+          description: Role di bawah NOC, atau device milik tenant lain.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '404':
           description: Device tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Kuota task queue tenant sudah tercapai.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -1590,31 +1618,41 @@ paths:
       tags: [Devices]
       summary: Factory Reset perangkat
       description: |
-        ADMIN/SUPERADMIN. Mengirim command factory reset ke perangkat. Ini akan menghapus konfigurasi ACS pada ONT.
+        ADMIN/SUPERADMIN (`RequireRoles(ADMIN, SUPERADMIN)` — NOC TIDAK
+        diizinkan). Mengantre task `FACTORY_RESET`; ini akan menghapus
+        konfigurasi ACS pada ONT. **Asinkron** — `202 Accepted` berarti task
+        masuk antrean, bukan device sudah direset.
       security: [{ bearerAuth: [] }]
       parameters:
         - $ref: '#/components/parameters/deviceIdPath'
       responses:
-        '200':
+        '202':
           description: Task factory reset telah dimasukkan ke dalam antrean.
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
+              schema: { $ref: '#/components/schemas/MessageResponse' }
+        '400':
+          description: "`id` tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
         '401':
           description: Tidak terautentikasi.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '403':
-          description: Role tidak cukup (NOC tidak dizinkan) atau device milik tenant lain.
+          description: Role tidak cukup (NOC tidak diizinkan) atau device milik tenant lain.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '404':
           description: Device tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Kuota task queue tenant sudah tercapai.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -1625,7 +1663,10 @@ paths:
       tags: [Devices]
       summary: Push file (konfigurasi/log) ke perangkat
       description: |
-        ADMIN/NOC/SUPERADMIN. Mengirim file (misal konfigurasi TR-069) ke perangkat menggunakan command Download.
+        ADMIN/SUPERADMIN (`RequireRoles(ADMIN, SUPERADMIN)` — NOC TIDAK
+        diizinkan). Mengantre task `DOWNLOAD` berisi presigned URL GET (masa
+        berlaku 1 jam) ke berkas dari `POST /files`. **Asinkron** —
+        `202 Accepted` berarti task masuk antrean.
       security: [{ bearerAuth: [] }]
       parameters:
         - $ref: '#/components/parameters/deviceIdPath'
@@ -1633,34 +1674,35 @@ paths:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              required: [file_id]
-              properties:
-                file_id:
-                  type: integer
-                  format: int64
+            schema: { $ref: '#/components/schemas/PushFileRequest' }
       responses:
-        '200':
+        '202':
           description: Task push file telah dimasukkan ke dalam antrean.
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
+              schema: { $ref: '#/components/schemas/MessageResponse' }
+        '400':
+          description: "`id` tidak valid, payload tidak valid, atau `file_id` kosong/0."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
         '401':
           description: Tidak terautentikasi.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '403':
-          description: Role tidak cukup atau device/file milik tenant lain.
+          description: Role di bawah ADMIN, atau berkas milik tenant berbeda dari device.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '404':
-          description: Device atau File tidak ditemukan.
+          description: Device atau berkas tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Kuota task queue tenant sudah tercapai.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -1691,12 +1733,9 @@ paths:
           description: Task AddObject telah dimasukkan ke dalam antrean.
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
+              schema: { $ref: '#/components/schemas/MessageResponse' }
         '400':
-          description: Payload tidak valid.
+          description: "`id` tidak valid, payload tidak valid, atau `object_name` kosong."
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -1706,7 +1745,17 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '403':
-          description: Akses ditolak.
+          description: Role di bawah ADMIN, atau device milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Device tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Kuota task queue tenant sudah tercapai.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -1737,12 +1786,9 @@ paths:
           description: Task DeleteObject telah dimasukkan ke dalam antrean.
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
+              schema: { $ref: '#/components/schemas/MessageResponse' }
         '400':
-          description: Payload tidak valid.
+          description: "`id` tidak valid, payload tidak valid, atau `object_name` kosong."
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -1752,7 +1798,17 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '403':
-          description: Akses ditolak.
+          description: Role di bawah ADMIN, atau device milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Device tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Kuota task queue tenant sudah tercapai.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -1773,25 +1829,24 @@ paths:
           application/json:
             schema:
               type: object
-              required: [path, next_level]
+              required: [path]
               properties:
                 path:
                   type: string
                   example: "InternetGatewayDevice.WANDevice."
                 next_level:
                   type: boolean
+                  default: false
+                  description: "Opsional (bukan wajib di handler) — `false`/tidak dikirim berarti seluruh sub-tree, `true` hanya satu level di bawah `path`."
                   example: true
       responses:
         '202':
           description: Task GetParameterNames telah dimasukkan ke dalam antrean.
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
+              schema: { $ref: '#/components/schemas/MessageResponse' }
         '400':
-          description: Payload tidak valid.
+          description: "`id` tidak valid, payload tidak valid, atau `path` kosong."
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -1801,7 +1856,17 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '403':
-          description: Akses ditolak.
+          description: Role di bawah NOC, atau device milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Device tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Kuota task queue tenant sudah tercapai.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -1826,6 +1891,7 @@ paths:
               properties:
                 names:
                   type: array
+                  minItems: 1
                   items:
                     type: string
                   example: ["InternetGatewayDevice.DeviceInfo.HardwareVersion"]
@@ -1834,12 +1900,9 @@ paths:
           description: Task GetParameterValues telah dimasukkan ke dalam antrean.
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
+              schema: { $ref: '#/components/schemas/MessageResponse' }
         '400':
-          description: Payload tidak valid.
+          description: "`id` tidak valid, payload tidak valid, atau `names` kosong (minimal 1)."
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -1849,7 +1912,17 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '403':
-          description: Akses ditolak.
+          description: Role di bawah NOC, atau device milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Device tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Kuota task queue tenant sudah tercapai.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -1874,6 +1947,7 @@ paths:
               properties:
                 values:
                   type: object
+                  minProperties: 1
                   additionalProperties:
                     type: string
                   example:
@@ -1883,12 +1957,9 @@ paths:
           description: Task SetParameterValues telah dimasukkan ke dalam antrean.
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
+              schema: { $ref: '#/components/schemas/MessageResponse' }
         '400':
-          description: Payload tidak valid.
+          description: "`id` tidak valid, payload tidak valid, atau `values` kosong (minimal 1)."
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -1898,7 +1969,17 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '403':
-          description: Akses ditolak.
+          description: Role di bawah ADMIN, atau device milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Device tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Kuota task queue tenant sudah tercapai.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -2007,7 +2088,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ZeroTouchRule' }
         '400':
-          description: "Payload tidak valid atau `provisioning_profile_id` kosong."
+          description: "Payload tidak valid, `trigger_event_id` kosong/0, atau salah satu field pola melebihi batas panjang kolom. Catatan: `provisioning_profile_id` OPSIONAL sejak migrations/0009 (rule boleh hanya memicu reboot/firmware)."
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -2294,6 +2375,36 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   /vendor-parameter-mappings:
+    get:
+      operationId: listParameterMappings
+      tags: [Catalog]
+      summary: Daftar mapping logical key -> path TR-069 milik satu vendor
+      description: Semua role terautentikasi. Data referensi global lintas tenant (mutasi tetap superadmin only). `vendor_id` WAJIB diisi.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: vendor_id
+          in: query
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: Daftar mapping (array polos, TIDAK dibungkus `data`/`total`).
+          content:
+            application/json:
+              schema:
+                type: array
+                nullable: true
+                items: { $ref: '#/components/schemas/VendorParameterMapping' }
+        '400':
+          description: "`vendor_id` tidak diisi."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
     post:
       operationId: upsertParameterMapping
       tags: [Catalog]
@@ -2554,11 +2665,7 @@ paths:
         NOC/VIEWER untuk memantau progres tanpa bisa memicu/membatalkan.
       security: [{ bearerAuth: [] }]
       parameters:
-        - name: tenant_id
-          in: query
-          required: false
-          schema: { type: integer, format: int64 }
-          description: Hanya efektif untuk SUPERADMIN.
+        - $ref: '#/components/parameters/tenantIdQuery'
         - $ref: '#/components/parameters/page'
         - $ref: '#/components/parameters/pageSize'
       responses:
@@ -2768,14 +2875,18 @@ paths:
       summary: Mulai alur login OIDC (redirect ke Identity Provider)
       description: |
         Hanya aktif bila OIDC dikonfigurasi (`ACS_OIDC_*`). Endpoint browser
-        redirect — BUKAN JSON. Mengembalikan `302` ke authorization endpoint IdP
-        dengan `state`/`nonce`. Tanpa autentikasi (titik masuk login).
+        redirect — BUKAN JSON. Mengembalikan `302` (`http.StatusFound`) ke
+        authorization endpoint IdP. Tanpa autentikasi (titik masuk login).
+
+        **Catatan implementasi (bukan spec):** parameter `state` saat ini masih
+        nilai statis di handler (`oidcLogin`, ada `TODO` untuk generator state
+        acak) — jangan diandalkan sebagai proteksi CSRF sampai TODO itu selesai.
       security: []
       responses:
         '302':
           description: Redirect ke Identity Provider.
-        '404':
-          description: OIDC tidak dikonfigurasi di instance ini.
+        '500':
+          description: OIDC tidak dikonfigurasi/gagal membangun authorization URL di instance ini (handler mengembalikan `500`, bukan `404`).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -2785,19 +2896,34 @@ paths:
       tags: [Auth]
       summary: Callback OIDC — tukar authorization code jadi sesi
       description: |
-        Dipanggil oleh browser setelah IdP meng-authorize user. Memverifikasi
-        `state` + ID token, lalu menautkan/menerbitkan user lokal. BUKAN JSON
-        (redirect atau body kecil, tergantung konfigurasi). Tanpa autentikasi
-        Bearer (identitas dibawa oleh `code`).
+        Dipanggil oleh browser setelah IdP meng-authorize user. Menukar
+        authorization `code` menjadi ID token, lalu menautkan/menerbitkan user
+        lokal. Tanpa autentikasi Bearer (identitas dibawa oleh `code`).
+
+        Status implementasi saat ini (POC, lihat komentar di `oidcCallback`):
+        handler mengembalikan **`200` JSON dengan bentuk yang SAMA PERSIS
+        seperti `POST /auth/login`** (`access_token` + `user`), BUKAN redirect
+        `302` — frontend menyimpan token lalu berpindah halaman sendiri.
+        Handler hanya membaca query `code`; parameter `state` TIDAK dibaca
+        sama sekali (belum divalidasi — lihat catatan CSRF di
+        `GET /auth/oidc/login`), jadi sengaja tidak didokumentasikan sebagai
+        parameter kontrak.
       security: []
       parameters:
-        - { name: code, in: query, required: true, schema: { type: string } }
-        - { name: state, in: query, required: true, schema: { type: string } }
+        - { name: code, in: query, required: true, description: "Authorization code dari IdP.", schema: { type: string } }
       responses:
-        '302':
-          description: Redirect ke aplikasi frontend dengan sesi ter-set.
+        '200':
+          description: Login OIDC berhasil — bentuk response identik `POST /auth/login`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
         '400':
-          description: "`state` tidak cocok, `code` invalid, atau ID token gagal diverifikasi."
+          description: "Query `code` kosong/tidak ada."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: "`code` invalid, ID token gagal diverifikasi, atau user tidak bisa ditautkan."
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -3704,9 +3830,9 @@ paths:
       tags: [SelfService]
       summary: Device milik akun pelanggan ini
       description: |
-        Role `ENDUSER` saja. Bukan RBAC tenant — di-scope ke baris `user_devices`
-        (device yang dipetakan eksplisit ke akun). DTO sempit
-        (`SelfServiceDevice`), bukan `Device` penuh.
+        Role `ENDUSER` saja (`RequireRoles(ENDUSER)`). Bukan RBAC tenant —
+        di-scope ke baris `user_devices` (device yang dipetakan eksplisit ke
+        akun). DTO sempit (`SelfServiceDevice`), bukan `Device` penuh.
       security: [{ bearerAuth: [] }]
       responses:
         '200':
@@ -3730,7 +3856,11 @@ paths:
       operationId: getMyDevice
       tags: [SelfService]
       summary: Detail satu device pelanggan
-      description: Role `ENDUSER`. `403` bila device tidak dipetakan ke akun ini.
+      description: |
+        Role `ENDUSER` (`RequireRoles(ENDUSER)`). Device yang TIDAK dipetakan
+        ke akun ini mengembalikan **`404`, bukan `403`** — disengaja di
+        `selfservice.requireOwnership` supaya keberadaan device milik pelanggan
+        lain tidak bisa dienumerasi.
       security: [{ bearerAuth: [] }]
       parameters:
         - $ref: '#/components/parameters/deviceIdPath'
@@ -3751,7 +3881,12 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '403':
-          description: Device bukan milik akun ini (atau role bukan `ENDUSER`).
+          description: Role bukan `ENDUSER`, atau token tanpa `user_id` (mis. API token mesin).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Device tidak ditemukan ATAU tidak dipetakan ke akun ini (sengaja tidak dibedakan).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -3762,9 +3897,11 @@ paths:
       tags: [SelfService]
       summary: Ubah SSID/passphrase WiFi device sendiri
       description: |
-        Role `ENDUSER`. Mengantre satu task `SET_PARAMETER_VALUES`. Minimal
-        salah satu dari `ssid`/`passphrase` wajib diisi; passphrase (bila diisi)
-        8–63 karakter (batas WPA-PSK). `band` kosong = terapkan ke 2.4G & 5G.
+        Role `ENDUSER` (`RequireRoles(ENDUSER)`). Mengantre satu task
+        `SET_PARAMETER_VALUES` berisi logical key WiFi yang di-resolve per
+        vendor. Minimal salah satu dari `ssid`/`passphrase` wajib diisi (dicek
+        setelah `TrimSpace`); passphrase (bila diisi) 8–63 karakter (batas
+        WPA-PSK). Device yang tidak dipetakan ke akun ini → `404`, bukan `403`.
       security: [{ bearerAuth: [] }]
       parameters:
         - $ref: '#/components/parameters/deviceIdPath'
@@ -3780,7 +3917,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Task' }
         '400':
-          description: "`id` tidak valid, payload kosong, atau passphrase di luar 8–63 karakter."
+          description: "`id` tidak valid, `ssid` & `passphrase` sama-sama kosong, passphrase di luar 8–63 karakter, atau `band` di luar nilai yang dikenal."
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -3790,7 +3927,12 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '403':
-          description: Device bukan milik akun ini.
+          description: Role bukan `ENDUSER`, atau token tanpa `user_id`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Device tidak ditemukan ATAU tidak dipetakan ke akun ini.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -3805,13 +3947,15 @@ paths:
       operationId: rebootMyDevice
       tags: [SelfService]
       summary: Reboot device sendiri
-      description: Role `ENDUSER`. Mengantre task `REBOOT`.
+      description: |
+        Role `ENDUSER` (`RequireRoles(ENDUSER)`). Mengantre task `REBOOT`.
+        Device yang tidak dipetakan ke akun ini → `404`, bukan `403`.
       security: [{ bearerAuth: [] }]
       parameters:
         - $ref: '#/components/parameters/deviceIdPath'
       responses:
         '202':
-          description: Task reboot diantre.
+          description: Task reboot diantre — TANPA body (`204`-style no content pada status `202`).
         '400':
           description: "`id` tidak valid."
           content:
@@ -3823,7 +3967,12 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '403':
-          description: Device bukan milik akun ini.
+          description: Role bukan `ENDUSER`, atau token tanpa `user_id`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Device tidak ditemukan ATAU tidak dipetakan ke akun ini.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -4010,7 +4159,7 @@ components:
     IssueAPITokenRequest:
       type: object
       properties:
-        name: { type: string, description: Nama/label token untuk memudahkan identifikasi di masa depan. }
+        name: { type: string, maxLength: 128, description: Nama/label token untuk memudahkan identifikasi di masa depan. }
         tenant_id:
           type: integer
           format: int64
@@ -4107,18 +4256,28 @@ components:
 
     CreateTenantRequest:
       type: object
+      description: "Batas `maxLength` di bawah ditegakkan server (`delivery/http/validate.go`) dan sama persis dengan lebar kolom `schema.sql` — melebihi batas dijawab `400`, bukan `500`."
       properties:
-        code: { type: string }
-        name: { type: string }
-        cwmp_inform_username: { type: string, nullable: true }
-        cwmp_inform_password: { type: string, format: password, nullable: true, minLength: 16 }
+        code: { type: string, maxLength: 32 }
+        name: { type: string, maxLength: 128 }
+        cwmp_inform_username: { type: string, nullable: true, maxLength: 128 }
+        cwmp_inform_password:
+          type: string
+          format: password
+          nullable: true
+          minLength: 16
+          description: "Tidak dibatasi panjang maksimum di server (disimpan terenkripsi sebagai VARBINARY, bukan VARCHAR)."
       required: [code, name]
 
     SetTenantCWMPCredentialsRequest:
       type: object
       properties:
-        username: { type: string }
-        password: { type: string, format: password, minLength: 16 }
+        username: { type: string, maxLength: 128 }
+        password:
+          type: string
+          format: password
+          minLength: 16
+          description: "Tidak dicek panjang maksimumnya di server (disimpan terenkripsi)."
       required: [username, password]
 
     UpdateTenantBrandingRequest:
@@ -4127,7 +4286,7 @@ components:
       properties:
         brand_name: { type: string, nullable: true, maxLength: 128 }
         logo_url: { type: string, nullable: true, format: uri, maxLength: 512, description: "Harus http/https valid." }
-        primary_color: { type: string, nullable: true, pattern: '^#[0-9a-fA-F]{6}$' }
+        primary_color: { type: string, nullable: true, maxLength: 7, pattern: '^#[0-9a-fA-F]{6}$' }
 
     SetTenantTaskQuotaRequest:
       type: object
@@ -4141,8 +4300,8 @@ components:
       type: object
       description: Partial update — field yang tidak dikirim/`null` tidak diubah.
       properties:
-        code: { type: string, nullable: true }
-        name: { type: string, nullable: true }
+        code: { type: string, nullable: true, maxLength: 32 }
+        name: { type: string, nullable: true, maxLength: 128 }
         is_active: { type: boolean, nullable: true }
 
     # ---------- Users ----------
@@ -4182,10 +4341,18 @@ components:
           format: int64
           nullable: true
           description: "Non-superadmin: WAJIB sama dengan tenant miliknya sendiri."
-        username: { type: string }
-        email: { type: string, format: email }
-        password: { type: string, format: password }
-        full_name: { type: string }
+        username: { type: string, maxLength: 64 }
+        email: { type: string, format: email, maxLength: 191 }
+        password:
+          type: string
+          format: password
+          description: |
+            Hanya dicek TIDAK KOSONG. Berbeda dari `PATCH /users/{id}/password`
+            dan `PATCH /auth/password` yang menegakkan minimal 8 karakter,
+            `POST /users` saat ini TIDAK menegakkan panjang minimum maupun
+            maksimum (asimetri nyata di `usecase/iam.CreateUser`, bukan
+            kelalaian dokumentasi).
+        full_name: { type: string, maxLength: 128 }
         role_codes:
           type: array
           items: { type: string, enum: [SUPERADMIN, ADMIN, NOC, VIEWER, ENDUSER] }
@@ -4196,8 +4363,8 @@ components:
       type: object
       description: Partial update — field yang tidak dikirim/`null` tidak diubah.
       properties:
-        full_name: { type: string, nullable: true }
-        email: { type: string, format: email, nullable: true }
+        full_name: { type: string, nullable: true, maxLength: 128 }
+        email: { type: string, format: email, nullable: true, maxLength: 191 }
         is_active: { type: boolean, nullable: true, description: "Actor tidak bisa men-set `false` untuk akunnya sendiri (self-lockout guard)." }
 
     ResetUserPasswordRequest:
@@ -4219,11 +4386,13 @@ components:
     Device:
       type: object
       description: |
-        Inventory CPE. Kredensial (`connection_request_password`,
-        `inform_password`) disimpan terenkripsi dan TIDAK PERNAH muncul di
-        response ini. **Catatan:** `connection_request_username` MASIH
-        dikembalikan di response (beda perlakuan dari passwordnya) — lihat
-        catatan temuan di deskripsi endpoint terkait/laporan audit.
+        Inventory CPE. Kredensial connection request (`connection_request_username`
+        DAN `connection_request_password`) serta `inform_password` TIDAK PERNAH
+        muncul di response ini — di `domain.Device` ketiganya bertanda
+        `json:"-"`. `connection_request_username` bisa di-*set* lewat
+        `PATCH /devices/{id}` tapi tidak pernah dibaca kembali lewat API mana
+        pun. (`inform_username` sendiri BUKAN kredensial rahasia dan tetap
+        dikembalikan.)
       properties:
         id: { type: integer, format: int64 }
         device_uuid: { type: string, format: uuid }
@@ -4240,10 +4409,11 @@ components:
         hardware_version: { type: string, nullable: true }
         ip_address: { type: string, nullable: true }
         connection_request_url: { type: string, nullable: true }
-        connection_request_username: { type: string, nullable: true }
         inform_username: { type: string, nullable: true }
         last_inform_at: { type: string, format: date-time, nullable: true }
         last_boot_event_at: { type: string, format: date-time, nullable: true }
+        latitude: { type: number, format: double, nullable: true, description: "Koordinat lokasi pemasangan (opsional, di-set lewat `PATCH /devices/{id}`)." }
+        longitude: { type: number, format: double, nullable: true, description: "Koordinat lokasi pemasangan (opsional, di-set lewat `PATCH /devices/{id}`)." }
         notes: { type: string, nullable: true }
       allOf:
         - $ref: '#/components/schemas/Audit'
@@ -4291,6 +4461,16 @@ components:
           format: password
           nullable: true
           description: "Dienkripsi sebelum disimpan; tidak pernah dikembalikan lagi di response manapun."
+        latitude:
+          type: number
+          format: double
+          nullable: true
+          description: "Koordinat lokasi pemasangan device."
+        longitude:
+          type: number
+          format: double
+          nullable: true
+          description: "Koordinat lokasi pemasangan device."
 
     DeviceParameter:
       type: object
@@ -4530,8 +4710,8 @@ components:
           description: "NULL = profile global (superadmin only). Non-superadmin WAJIB isi dengan tenant miliknya sendiri."
         vendor_id: { type: integer, format: int64, nullable: true }
         device_model_id: { type: integer, format: int64, nullable: true }
-        name: { type: string }
-        description: { type: string, nullable: true }
+        name: { type: string, maxLength: 128 }
+        description: { type: string, nullable: true, maxLength: 255 }
         is_default: { type: boolean, default: false }
         parameters:
           type: array
@@ -4544,8 +4724,8 @@ components:
       properties:
         vendor_id: { type: integer, format: int64, nullable: true }
         device_model_id: { type: integer, format: int64, nullable: true }
-        name: { type: string }
-        description: { type: string, nullable: true }
+        name: { type: string, maxLength: 128 }
+        description: { type: string, nullable: true, maxLength: 255 }
         is_default: { type: boolean }
         is_active: { type: boolean }
         parameters:
@@ -4577,16 +4757,21 @@ components:
 
     ZeroTouchRuleRequest:
       type: object
+      description: |
+        Dipakai `POST /zero-touch-rules` DAN `PUT /zero-touch-rules/{id}`.
+        Catatan: pada PUT, `tenant_id` di body TIDAK dipakai (handler
+        `updateZTRule` tidak meneruskannya) — kepemilikan tenant rule tidak bisa
+        dipindah lewat update.
       properties:
-        tenant_id: { type: integer, format: int64, nullable: true }
+        tenant_id: { type: integer, format: int64, nullable: true, description: "Hanya berpengaruh saat create." }
         vendor_id: { type: integer, format: int64, nullable: true }
         device_model_id: { type: integer, format: int64, nullable: true }
-        oui: { type: string, nullable: true }
-        serial_pattern: { type: string, nullable: true }
-        software_version_pattern: { type: string, nullable: true }
-        match_parameter_name: { type: string, nullable: true }
-        match_parameter_value_pattern: { type: string, nullable: true }
-        provisioning_profile_id: { type: integer, format: int64, nullable: true }
+        oui: { type: string, nullable: true, maxLength: 6 }
+        serial_pattern: { type: string, nullable: true, maxLength: 255 }
+        software_version_pattern: { type: string, nullable: true, maxLength: 255 }
+        match_parameter_name: { type: string, nullable: true, maxLength: 512 }
+        match_parameter_value_pattern: { type: string, nullable: true, maxLength: 255 }
+        provisioning_profile_id: { type: integer, format: int64, nullable: true, description: "OPSIONAL sejak migrations/0009 — rule boleh hanya memicu reboot dan/atau firmware." }
         post_apply_reboot: { type: boolean, default: false }
         firmware_file_id: { type: integer, format: int64, nullable: true }
         trigger_event_id: { type: integer, format: int64, description: "WAJIB. Ambil id dari GET /refs/ref_ztp_trigger_event." }
@@ -4620,9 +4805,9 @@ components:
     CreateVendorRequest:
       type: object
       properties:
-        code: { type: string }
-        name: { type: string }
-        description: { type: string, nullable: true }
+        code: { type: string, maxLength: 32 }
+        name: { type: string, maxLength: 128 }
+        description: { type: string, nullable: true, maxLength: 255 }
       required: [code, name]
 
     VendorOUI:
@@ -4639,8 +4824,16 @@ components:
     AddVendorOUIRequest:
       type: object
       properties:
-        oui: { type: string }
-        notes: { type: string, nullable: true }
+        oui:
+          type: string
+          maxLength: 6
+          description: |
+            Kolom `vendor_ouis.oui` CHAR(6). Server HANYA menegakkan batas ATAS
+            (maks 6 karakter) — nilai lebih pendek TETAP diterima, dan tidak ada
+            validasi "wajib 6 digit heksadesimal" (keputusan produk eksplisit di
+            `delivery/http/validate.go`, bukan kelalaian).
+          example: "AABBCC"
+        notes: { type: string, nullable: true, maxLength: 255 }
       required: [oui]
 
     DeviceModel:
@@ -4664,9 +4857,9 @@ components:
         vendor_id: { type: integer, format: int64 }
         device_type_id: { type: integer, format: int64 }
         data_model_version_id: { type: integer, format: int64 }
-        product_class: { type: string, nullable: true }
-        model_name: { type: string }
-        description: { type: string, nullable: true }
+        product_class: { type: string, nullable: true, maxLength: 128 }
+        model_name: { type: string, maxLength: 128 }
+        description: { type: string, nullable: true, maxLength: 255 }
       required: [vendor_id, device_type_id, data_model_version_id, model_name]
 
     VendorParameterMapping:
@@ -4691,11 +4884,11 @@ components:
         vendor_id: { type: integer, format: int64 }
         data_model_version_id: { type: integer, format: int64 }
         device_model_id: { type: integer, format: int64, nullable: true }
-        software_version_pattern: { type: string, nullable: true }
-        logical_key: { type: string }
-        tr069_path: { type: string }
+        software_version_pattern: { type: string, nullable: true, maxLength: 255 }
+        logical_key: { type: string, maxLength: 128 }
+        tr069_path: { type: string, maxLength: 512 }
         parameter_type_id: { type: integer, format: int64, nullable: true }
-        description: { type: string, nullable: true }
+        description: { type: string, nullable: true, maxLength: 255 }
       required: [vendor_id, data_model_version_id, logical_key, tr069_path]
 
     # ---------- Firmware ----------
@@ -4758,6 +4951,8 @@ components:
         job_uuid: { type: string, format: uuid }
         device_id: { type: integer, format: int64 }
         firmware_id: { type: integer, format: int64 }
+        rollout_batch_id: { type: integer, format: int64, nullable: true, description: "Diisi bila job ini bagian dari staged rollout (`POST /firmware/rollout-batches`); NULL untuk upgrade satuan." }
+        wave_number: { type: integer, nullable: true, description: "Nomor wave rollout tempat job ini dibuat; NULL untuk upgrade satuan." }
         task_id: { type: integer, format: int64, nullable: true }
         task_status_id: { type: integer, format: int64 }
         from_version: { type: string, nullable: true }
@@ -4797,6 +4992,7 @@ components:
         current_wave: { type: integer, description: "Wave terakhir yang sudah/sedang dijalankan." }
         status_id: { type: integer, format: int64 }
         notes: { type: string, nullable: true }
+        scheduled_at: { type: string, format: date-time, nullable: true, description: "Waktu mulai terjadwal; NULL berarti wave 1 dipicu langsung saat batch dibuat." }
         started_at: { type: string, format: date-time, nullable: true }
         completed_at: { type: string, format: date-time, nullable: true }
       allOf:
@@ -4823,6 +5019,11 @@ components:
         wave_percentage: { type: integer, minimum: 1, maximum: 100, default: 10 }
         max_failure_rate_percent: { type: integer, minimum: 0, maximum: 100, default: 10 }
         notes: { type: string, nullable: true }
+        scheduled_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: "Bila diisi, wave pertama TIDAK langsung dipicu saat batch dibuat — menunggu sweeper `acsd` melewati waktu ini."
       required: [firmware_file_id]
 
     # ---------- Diagnostics ----------
@@ -4885,6 +5086,17 @@ components:
       properties:
         message: { type: string }
       required: [message]
+
+    PushFileRequest:
+      type: object
+      description: "Body `POST /devices/{id}/push-file` — berkas diambil dari katalog `POST /files`, bukan diupload ulang di sini."
+      properties:
+        file_id:
+          type: integer
+          format: int64
+          minimum: 1
+          description: "`id` berkas dari `GET /files`. Nilai `0`/tidak diisi ditolak `400`."
+      required: [file_id]
 
     # ---------- Device config snapshots (migrations/0014) ----------
     DeviceConfigSnapshot:
@@ -4953,19 +5165,19 @@ components:
           type: string
           enum: [DEVICE_FAULT, PARAMETER_VALUE_CHANGE, TASK_FAILED]
           description: "Kode `ref_webhook_event_types` yang sudah di-wire di usecase."
-        name: { type: string }
-        target_url: { type: string, format: uri }
-        description: { type: string, nullable: true }
+        name: { type: string, maxLength: 128 }
+        target_url: { type: string, format: uri, maxLength: 500 }
+        description: { type: string, nullable: true, maxLength: 255 }
       required: [event_type, name, target_url]
 
     UpdateWebhookRequest:
       type: object
-      description: "`name` & `target_url` WAJIB (bukan partial). `is_active`/`description` opsional (`null` = tidak diubah)."
+      description: "`name` & `target_url` WAJIB (bukan partial). `is_active`/`description` opsional (`null` = tidak diubah). `event_type` TIDAK bisa diubah setelah langganan dibuat."
       properties:
-        name: { type: string }
-        target_url: { type: string, format: uri }
+        name: { type: string, maxLength: 128 }
+        target_url: { type: string, format: uri, maxLength: 500 }
         is_active: { type: boolean, nullable: true }
-        description: { type: string, nullable: true }
+        description: { type: string, nullable: true, maxLength: 255 }
       required: [name, target_url]
 
     WebhookDelivery:
@@ -5038,12 +5250,22 @@ components:
       description: "`multipart/form-data` — semua field numerik dikirim sebagai teks."
       properties:
         file: { type: string, format: binary, description: "Isi berkas. Maksimum 256 MiB." }
-        file_type: { type: string, example: "3 Vendor Configuration File" }
+        file_type:
+          type: string
+          description: "Kode TR-069 file type — WAJIB (ditolak `400` bila kosong, dicek di `usecase/file.UploadFile`)."
+          example: "3 Vendor Configuration File"
+          enum:
+            - "1 Firmware Upgrade Image"
+            - "2 Web Content"
+            - "3 Vendor Configuration File"
+            - "4 Tone File"
+            - "5 Ringer Melody File"
+            - "Vendor Log File"
         file_name: { type: string, nullable: true, description: "Default: nama file asli dari multipart." }
         version: { type: string, nullable: true }
-        vendor_id: { type: string, nullable: true }
-        device_model_id: { type: string, nullable: true }
-      required: [file]
+        vendor_id: { type: string, nullable: true, description: "Numerik sebagai teks. Nilai yang tidak bisa di-parse diabaikan (dianggap tidak diisi), bukan `400`." }
+        device_model_id: { type: string, nullable: true, description: "Numerik sebagai teks. Nilai yang tidak bisa di-parse diabaikan, bukan `400`." }
+      required: [file, file_type]
 
     PageMeta:
       type: object
@@ -5078,8 +5300,8 @@ components:
     CreateTagRequest:
       type: object
       properties:
-        name: { type: string }
-        color: { type: string, nullable: true, example: "#1a73e8" }
+        name: { type: string, maxLength: 255 }
+        color: { type: string, nullable: true, maxLength: 7, example: "#1a73e8" }
       required: [name]
 
     AssignDeviceTagRequest:
@@ -5129,25 +5351,25 @@ components:
     CreatePresetRequest:
       type: object
       properties:
-        name: { type: string }
+        name: { type: string, maxLength: 255 }
         weight: { type: integer, default: 0 }
         precondition: { type: string, nullable: true, description: "JSON precondition (lihat skema Preset)." }
         configurations: { type: string, nullable: true, description: "JSON array op (lihat skema Preset)." }
         enforce: { type: boolean, default: false }
-        channel: { type: string, nullable: true }
+        channel: { type: string, nullable: true, maxLength: 64 }
       required: [name]
 
     UpdatePresetRequest:
       type: object
       description: "FULL replace field skalar."
       properties:
-        name: { type: string }
+        name: { type: string, maxLength: 255 }
         weight: { type: integer }
         precondition: { type: string, nullable: true }
         configurations: { type: string, nullable: true }
         is_active: { type: boolean }
         enforce: { type: boolean }
-        channel: { type: string, nullable: true }
+        channel: { type: string, nullable: true, maxLength: 64 }
       required: [name]
 
     # ---------- Self-service (portal pelanggan, migrations/0020) ----------
@@ -5175,12 +5397,16 @@ components:
 
     ChangeMyWiFiRequest:
       type: object
-      description: "Minimal salah satu `ssid`/`passphrase` wajib diisi."
+      description: "Minimal salah satu `ssid`/`passphrase` wajib diisi (dievaluasi setelah trim spasi)."
       properties:
         ssid: { type: string, nullable: true }
-        passphrase: { type: string, format: password, nullable: true, minLength: 8, maxLength: 63 }
+        passphrase: { type: string, format: password, nullable: true, minLength: 8, maxLength: 63, description: "Batas WPA-PSK; di luar 8–63 karakter ditolak `400`." }
         band:
           type: string
           nullable: true
-          enum: ["2g", "5g", ""]
-          description: "Kosong = terapkan ke 2.4G dan 5G sekaligus."
+          enum: ["", "2g", "2.4g", "5g"]
+          description: |
+            Dicocokkan case-insensitive di `selfservice.ChangeMyWiFi`. Nilai
+            `""`, `2g`, dan `2.4g` sama-sama memakai logical key `wifi.ssid` /
+            `wifi.wpa_passphrase`; `5g` memakai `wifi.5g.*`. Nilai lain
+            ditolak `400`.

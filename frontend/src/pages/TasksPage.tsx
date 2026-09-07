@@ -294,7 +294,7 @@ function CreateTaskModal({
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Device ID</label>
-          <input type="number" required value={deviceId} onChange={(e) => setDeviceId(e.target.value)} className={inputCls} />
+          <input type="number" required value={deviceId} onChange={(e) => setDeviceId(e.target.value)} placeholder="ID numerik device, mis. 12" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Tipe Task</label>
@@ -310,6 +310,8 @@ function CreateTaskModal({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Prioritas (1=tertinggi)</label>
+            {/* Tidak diberi placeholder: field ini selalu terisi (default '5'),
+                jadi placeholder tidak akan pernah dirender browser. */}
             <input type="number" min={1} max={9} value={priority} onChange={(e) => setPriority(e.target.value)} className={inputCls} />
           </div>
           <div>

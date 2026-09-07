@@ -185,6 +185,7 @@ func (r *Router) Register(e *echo.Echo) {
 	authed.POST("/vendors/:id/ouis", r.addVendorOUI, RequireRoles(superadminOnly...))
 	authed.GET("/device-models", r.listDeviceModels)
 	authed.POST("/device-models", r.createDeviceModel, RequireRoles(superadminOnly...))
+	authed.GET("/vendor-parameter-mappings", r.listParameterMappings)
 	authed.POST("/vendor-parameter-mappings", r.upsertParameterMapping, RequireRoles(superadminOnly...))
 
 	// firmware_files adalah katalog global lintas tenant (tidak py tenant_id,

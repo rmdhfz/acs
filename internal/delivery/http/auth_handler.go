@@ -72,6 +72,9 @@ func (r *Router) issueAPIToken(c *echo.Context) error {
 	if req.Name == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "name wajib diisi")
 	}
+	if err := checkMaxLen(lenRule{"name", req.Name, maxAPITokenName}); err != nil {
+		return err
+	}
 	tenantID := req.TenantID
 	if tenantID == nil {
 		tenantID = actor.TenantID

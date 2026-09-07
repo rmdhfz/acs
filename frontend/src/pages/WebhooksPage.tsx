@@ -17,6 +17,7 @@ import { EmptyState } from '../components/EmptyState'
 import { Modal } from '../components/Modal'
 import { useToast } from '../lib/toast'
 import { fmtDatetime } from '../lib/format'
+import { LIMITS } from '../lib/limits'
 
 // ---- Badge ----
 
@@ -326,7 +327,7 @@ function CreateWebhookModal({ onClose }: { onClose: () => void }) {
         <div className="space-y-4">
           <div>
             <label className={labelCls}>Nama *</label>
-            <input {...field('name')} required placeholder="mis. BSS Fault Notifier" className={inputCls} />
+            <input {...field('name')} required maxLength={LIMITS.webhook.name} placeholder="mis. BSS Fault Notifier" className={inputCls} />
           </div>
           <div>
             <label className={labelCls}>Event Type *</label>
@@ -339,13 +340,14 @@ function CreateWebhookModal({ onClose }: { onClose: () => void }) {
           </div>
           <div>
             <label className={labelCls}>Target URL *</label>
-            <input {...field('target_url')} required type="url" placeholder="https://bss.example.com/acs-webhook" className={inputCls} />
+            <input {...field('target_url')} required type="url" maxLength={LIMITS.webhook.targetUrl} placeholder="https://bss.example.com/acs-webhook" className={inputCls} />
           </div>
           <div>
             <label className={labelCls}>Deskripsi</label>
             <textarea
               value={form.description ?? ''}
               onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value || undefined }))}
+              maxLength={LIMITS.description}
               rows={2}
               className={inputCls}
               placeholder="opsional"

@@ -269,16 +269,16 @@ function EditDeviceModal({ device, onClose }: { device: NonNullable<ReturnType<t
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Catatan</label>
-          <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} className={inputCls} />
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder="mis. ONT lantai 2 ruang server, pelanggan korporat" className={inputCls} />
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Latitude</label>
-            <input type="number" step="any" value={latitude} onChange={e => setLatitude(e.target.value)} className={inputCls} />
+            <input type="number" step="any" value={latitude} onChange={e => setLatitude(e.target.value)} placeholder="derajat desimal, mis. -6.200000" className={inputCls} />
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Longitude</label>
-            <input type="number" step="any" value={longitude} onChange={e => setLongitude(e.target.value)} className={inputCls} />
+            <input type="number" step="any" value={longitude} onChange={e => setLongitude(e.target.value)} placeholder="derajat desimal, mis. 106.816666" className={inputCls} />
           </div>
         </div>
         <div className="pt-2">

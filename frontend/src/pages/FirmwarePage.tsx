@@ -375,7 +375,7 @@ function CreateRolloutModal({ onClose }: { onClose: () => void }) {
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Catatan (opsional)</label>
-          <input value={notes} onChange={(e) => setNotes(e.target.value)} className={inputCls} />
+          <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="mis. perbaikan WiFi drop pada firmware sebelumnya" className={inputCls} />
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
         <button type="submit" disabled={createMutation.isPending} className={`${primaryBtnCls} w-full`}>
@@ -460,7 +460,7 @@ function UploadFirmwareModal({ defaultVendorId, onClose }: { defaultVendorId: st
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Versi</label>
-          <input required value={version} onChange={(e) => setVersion(e.target.value)} className={inputCls} />
+          <input required value={version} onChange={(e) => setVersion(e.target.value)} placeholder="mis. V5.3.0P2" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">File Firmware</label>

@@ -8,6 +8,7 @@ import { ApiError } from '../lib/api'
 import { useToast } from '../lib/toast'
 import { useTags, useCreateTag, useDeleteTag } from '../lib/hooks'
 import { formatDateTime } from '../lib/format'
+import { LIMITS } from '../lib/limits'
 import type { Tag } from '../lib/types'
 
 const inputCls =
@@ -166,13 +167,13 @@ function CreateTagModal({ onClose }: { onClose: () => void }) {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-600 dark:text-slate-400">Nama Tag</label>
-          <input required value={name} onChange={(e) => setName(e.target.value)} placeholder="Contoh: VIP, Suspended, Beta" className={inputCls} />
+          <input required maxLength={LIMITS.tag.name} value={name} onChange={(e) => setName(e.target.value)} placeholder="Contoh: VIP, Suspended, Beta" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-600 dark:text-slate-400">Warna (Opsional)</label>
           <div className="flex items-center gap-3">
             <input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="h-10 w-10 cursor-pointer rounded border border-slate-300 p-1" />
-            <input type="text" value={color} onChange={(e) => setColor(e.target.value)} className={inputCls} />
+            <input type="text" maxLength={LIMITS.tag.color} value={color} onChange={(e) => setColor(e.target.value)} placeholder="#RRGGBB" className={inputCls} />
           </div>
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}

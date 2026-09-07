@@ -8,6 +8,7 @@ import { ApiError } from '../lib/api'
 import { useToast } from '../lib/toast'
 import { usePresets, useCreatePreset, useUpdatePreset, useDeletePreset } from '../lib/hooks'
 import { formatDateTime } from '../lib/format'
+import { LIMITS } from '../lib/limits'
 import type { Preset } from '../lib/types'
 
 const inputCls =
@@ -211,17 +212,22 @@ function PresetModal({ preset, onClose }: { preset: Preset | null; onClose: () =
         <div className="grid grid-cols-3 gap-3">
           <div className="col-span-2">
             <label className="mb-1 block text-sm font-medium text-slate-600 dark:text-slate-400">Nama</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} required />
+            <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} required maxLength={LIMITS.preset.name} placeholder="mis. WiFi default pelanggan retail" />
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-600 dark:text-slate-400">Weight</label>
+            {/* Selalu terisi (default '0') sehingga placeholder tidak pernah
+                tampil — petunjuknya ditaruh sebagai teks bantuan di bawah. */}
             <input type="number" value={weight} onChange={(e) => setWeight(e.target.value)} className={inputCls} />
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Preset dievaluasi urut weight menaik; bila dua preset mengatur parameter yang sama, weight lebih besar yang menang.
+            </p>
           </div>
         </div>
 
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-600 dark:text-slate-400">Channel (opsional)</label>
-          <input value={channel} onChange={(e) => setChannel(e.target.value)} placeholder="mis. wifi, mgmt" className={inputCls} />
+          <input value={channel} onChange={(e) => setChannel(e.target.value)} placeholder="mis. wifi, mgmt" maxLength={LIMITS.preset.channel} className={inputCls} />
         </div>
 
         <div>

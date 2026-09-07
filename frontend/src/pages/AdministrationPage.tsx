@@ -20,6 +20,10 @@ import {
   useSetTenantCWMPCredentials,
   useSetTenantTaskQuota,
   useTenants,
+  useApiTokens,
+  useIssueApiToken,
+  useRevokeApiToken,
+  useUpdateTenant,
   useUpdateTenantBranding,
   useUpdateUser,
   useUsers,
@@ -29,14 +33,18 @@ import {
   type UpdateUserInput,
 } from '../lib/hooks'
 import { formatDateTime } from '../lib/format'
-import type { Tenant, User } from '../lib/types'
+import { LIMITS } from '../lib/limits'
+import type { ApiToken, Tenant, User } from '../lib/types'
 
 const inputCls =
   'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
 const primaryBtnCls =
   'flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white'
 
-type Tab = 'users' | 'tenants' | 'branding'
+const secondaryBtnCls =
+  'flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
+
+type Tab = 'users' | 'tenants' | 'branding' | 'tokens'
 
 export function AdministrationPage() {
   const { hasRole } = useAuth()
@@ -56,12 +64,14 @@ export function AdministrationPage() {
           <TabButton active={tab === 'users'} onClick={() => setTab('users')} icon={UsersIcon} label="Users" />
           {isSuperadmin && <TabButton active={tab === 'tenants'} onClick={() => setTab('tenants')} icon={Building2} label="Tenants" />}
           {!isSuperadmin && <TabButton active={tab === 'branding'} onClick={() => setTab('branding')} icon={Palette} label="Branding" />}
+          <TabButton active={tab === 'tokens'} onClick={() => setTab('tokens')} icon={KeyRound} label="API Token" />
         </div>
       )}
 
       {tab === 'users' && <UsersTab isSuperadmin={isSuperadmin} />}
       {tab === 'tenants' && isSuperadmin && <TenantsTab />}
       {tab === 'branding' && !isSuperadmin && <MyBrandingTab />}
+      {tab === 'tokens' && isAdmin && <ApiTokensTab />}
     </div>
   )
 }
@@ -287,15 +297,15 @@ function CreateUserModal({
         )}
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Username</label>
-          <input required value={username} onChange={(e) => setUsername(e.target.value)} className={inputCls} />
+          <input required maxLength={LIMITS.user.username} value={username} onChange={(e) => setUsername(e.target.value)} placeholder="mis. admin.jkt" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama Lengkap</label>
-          <input value={fullName} onChange={(e) => setFullName(e.target.value)} className={inputCls} />
+          <input value={fullName} onChange={(e) => setFullName(e.target.value)} maxLength={LIMITS.user.fullName} placeholder="mis. Budi Santoso" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Email</label>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} />
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={LIMITS.user.email} placeholder="mis. budi@ispjakarta.co.id" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Password</label>
@@ -349,11 +359,11 @@ function EditUserModal({ user, isSelf, onClose }: { user: User; isSelf: boolean;
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama Lengkap</label>
-          <input value={fullName} onChange={(e) => setFullName(e.target.value)} className={inputCls} />
+          <input value={fullName} onChange={(e) => setFullName(e.target.value)} maxLength={LIMITS.user.fullName} placeholder="mis. Budi Santoso" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Email</label>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} />
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={LIMITS.user.email} placeholder="mis. budi@ispjakarta.co.id" className={inputCls} />
         </div>
         <div>
           <label className="flex items-center gap-1.5 text-sm text-slate-700 dark:text-slate-300">
@@ -462,6 +472,173 @@ function ManageRolesModal({ user, onClose }: { user: User; onClose: () => void }
 
 // ---- Tenants ----
 
+// ApiTokensTab — token untuk integrasi BSS/OSS. Endpoint POST/GET/DELETE
+// /auth/tokens sudah lama ada di backend tapi tidak pernah punya layar sama
+// sekali (temuan audit parity 2026-09-05), sehingga token hanya bisa dibuat
+// lewat curl/Postman.
+function ApiTokensTab() {
+  const { data, isLoading } = useApiTokens()
+  const tokens = data?.data ?? []
+  const [showIssue, setShowIssue] = useState(false)
+  const revoke = useRevokeApiToken()
+  const toast = useToast()
+  const confirm = useConfirm()
+
+  const handleRevoke = async (t: ApiToken) => {
+    const ok = await confirm({
+      title: 'Cabut API token?',
+      message: `Token "${t.name}" langsung berhenti berlaku. Integrasi yang masih memakainya akan gagal autentikasi.`,
+      confirmLabel: 'Cabut',
+      tone: 'danger',
+    })
+    if (!ok) return
+    revoke.mutate(t.id, {
+      onSuccess: () => toast.success(`Token ${t.name} dicabut`),
+      onError: (err) => toast.error(err instanceof ApiError ? err.message : 'Gagal mencabut token'),
+    })
+  }
+
+  return (
+    <div>
+      <div className="mb-4 flex justify-end">
+        <button onClick={() => setShowIssue(true)} className={primaryBtnCls}>
+          <Plus className="h-4 w-4" /> Terbitkan Token
+        </button>
+      </div>
+
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        {isLoading ? (
+          <PageSpinner />
+        ) : tokens.length === 0 ? (
+          <EmptyState icon={KeyRound} title="Belum ada API token" />
+        ) : (
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
+                <th className="px-5 py-3">Nama</th>
+                <th className="px-5 py-3">Status</th>
+                <th className="px-5 py-3">Kedaluwarsa</th>
+                <th className="px-5 py-3">Dibuat</th>
+                <th className="px-5 py-3"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              {tokens.map((t) => (
+                <tr key={t.id}>
+                  <td className="px-5 py-3.5 font-medium text-slate-900 dark:text-slate-100">{t.name}</td>
+                  <td className="px-5 py-3.5">
+                    <StatusBadge
+                      code={t.revoked_at ? 'OFFLINE' : 'ONLINE'}
+                      label={t.revoked_at ? 'Dicabut' : 'Aktif'}
+                    />
+                  </td>
+                  <td className="px-5 py-3.5 text-slate-600 dark:text-slate-400">
+                    {t.expires_at ? (
+                      formatDateTime(t.expires_at)
+                    ) : (
+                      <span className="text-xs text-slate-400 dark:text-slate-500">Tidak kedaluwarsa</span>
+                    )}
+                  </td>
+                  <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{formatDateTime(t.created_at)}</td>
+                  <td className="px-5 py-3.5 text-right">
+                    {!t.revoked_at && (
+                      <button
+                        onClick={() => handleRevoke(t)}
+                        className="flex items-center gap-1 text-xs font-medium text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Cabut
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {showIssue && <IssueApiTokenModal onClose={() => setShowIssue(false)} />}
+    </div>
+  )
+}
+
+function IssueApiTokenModal({ onClose }: { onClose: () => void }) {
+  const [name, setName] = useState('')
+  const [expiresAt, setExpiresAt] = useState('')
+  const [issued, setIssued] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const mutation = useIssueApiToken()
+
+  const handleSubmit = (e: FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    mutation.mutate(
+      { name, expires_at: expiresAt ? new Date(expiresAt).toISOString() : null },
+      {
+        // Token plaintext hanya dikirim sekali oleh backend — tahan modal
+        // terbuka dan tampilkan, jangan langsung menutup seperti form lain.
+        onSuccess: (res) => setIssued(res.token),
+        onError: (err) => setError(err instanceof ApiError ? err.message : 'Gagal menerbitkan token'),
+      },
+    )
+  }
+
+  if (issued) {
+    return (
+      <Modal title="Token diterbitkan" onClose={onClose}>
+        <div className="space-y-3">
+          <p className="text-sm text-slate-700 dark:text-slate-300">
+            Salin sekarang — nilai ini <strong>hanya ditampilkan satu kali</strong> dan tidak bisa diambil lagi setelah
+            modal ini ditutup.
+          </p>
+          <code className="block break-all rounded-lg border border-slate-200 bg-slate-50 p-3 font-mono text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+            {issued}
+          </code>
+          <div className="flex justify-end pt-1">
+            <button type="button" onClick={onClose} className={primaryBtnCls}>
+              Sudah disalin
+            </button>
+          </div>
+        </div>
+      </Modal>
+    )
+  }
+
+  return (
+    <Modal title="Terbitkan API Token" onClose={onClose}>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama</label>
+          <input
+            required
+            maxLength={LIMITS.apiToken.name}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="mis. Integrasi BSS Billing"
+            className={inputCls}
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+            Kedaluwarsa (opsional)
+          </label>
+          <input type="datetime-local" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} className={inputCls} />
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Kosongkan bila token tidak perlu kedaluwarsa.</p>
+        </div>
+        {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+        <div className="flex justify-end gap-2 pt-2">
+          <button type="button" onClick={onClose} className={secondaryBtnCls}>
+            Batal
+          </button>
+          <button type="submit" disabled={mutation.isPending} className={primaryBtnCls}>
+            {mutation.isPending ? 'Menerbitkan…' : 'Terbitkan'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  )
+}
+
 function TenantsTab() {
   const navigate = useNavigate()
   const { data, isLoading } = useTenants()
@@ -470,6 +647,7 @@ function TenantsTab() {
   const [rotateTarget, setRotateTarget] = useState<Tenant | null>(null)
   const [brandingTarget, setBrandingTarget] = useState<Tenant | null>(null)
   const [quotaTarget, setQuotaTarget] = useState<Tenant | null>(null)
+  const [editTarget, setEditTarget] = useState<Tenant | null>(null)
 
   return (
     <div>
@@ -529,6 +707,13 @@ function TenantsTab() {
                   <td className="px-5 py-3.5 text-right">
                     <div className="flex items-center justify-end gap-3">
                       <button
+                        onClick={() => setEditTarget(t)}
+                        className="flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
+                        title="Ubah code/nama tenant, atau aktif/nonaktifkan"
+                      >
+                        <Pencil className="h-3.5 w-3.5" /> Edit
+                      </button>
+                      <button
                         onClick={() => setBrandingTarget(t)}
                         className="flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
                         title="Edit branding (nama, logo, warna aksen)"
@@ -562,7 +747,69 @@ function TenantsTab() {
       {rotateTarget && <RotateCWMPCredentialsModal tenant={rotateTarget} onClose={() => setRotateTarget(null)} />}
       {brandingTarget && <EditBrandingModal tenant={brandingTarget} onClose={() => setBrandingTarget(null)} />}
       {quotaTarget && <EditTaskQuotaModal tenant={quotaTarget} onClose={() => setQuotaTarget(null)} />}
+      {editTarget && <EditTenantModal tenant={editTarget} onClose={() => setEditTarget(null)} />}
     </div>
+  )
+}
+
+// EditTenantModal — PATCH /tenants/:id. Endpoint ini sudah lama ada di backend
+// tapi tidak pernah punya UI (temuan audit parity 2026-09-05): tenant bisa
+// dibuat tapi tidak pernah bisa diganti nama atau dinonaktifkan dari Console.
+function EditTenantModal({ tenant, onClose }: { tenant: Tenant; onClose: () => void }) {
+  const [code, setCode] = useState(tenant.code)
+  const [name, setName] = useState(tenant.name)
+  const [isActive, setIsActive] = useState(tenant.is_active)
+  const [error, setError] = useState<string | null>(null)
+  const mutation = useUpdateTenant()
+  const toast = useToast()
+
+  const handleSubmit = (e: FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    mutation.mutate(
+      { tenantId: tenant.id, input: { code, name, is_active: isActive } },
+      {
+        onSuccess: () => {
+          toast.success(`Tenant ${name} diperbarui`)
+          onClose()
+        },
+        onError: (err) => setError(err instanceof ApiError ? err.message : 'Gagal memperbarui tenant'),
+      },
+    )
+  }
+
+  return (
+    <Modal title={`Edit Tenant — ${tenant.code}`} onClose={onClose}>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Code</label>
+          <input required maxLength={LIMITS.tenant.code} value={code} onChange={(e) => setCode(e.target.value)} placeholder="mis. ISP-JKT" className={inputCls} />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama</label>
+          <input required maxLength={LIMITS.tenant.name} value={name} onChange={(e) => setName(e.target.value)} placeholder="mis. ISP Jakarta Sejahtera" className={inputCls} />
+        </div>
+        <label className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-300">
+          <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} className="mt-0.5" />
+          <span>
+            Tenant aktif
+            <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">
+              Menonaktifkan tenant membuat SEMUA user tenant ini tidak bisa login lagi, termasuk yang bearer token-nya
+              masih berlaku.
+            </span>
+          </span>
+        </label>
+        {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+        <div className="flex justify-end gap-2 pt-2">
+          <button type="button" onClick={onClose} className={secondaryBtnCls}>
+            Batal
+          </button>
+          <button type="submit" disabled={mutation.isPending} className={primaryBtnCls}>
+            {mutation.isPending ? 'Menyimpan…' : 'Simpan'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   )
 }
 
@@ -596,11 +843,11 @@ function CreateTenantModal({ onClose }: { onClose: () => void }) {
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Code</label>
-          <input required value={code} onChange={(e) => setCode(e.target.value)} className={inputCls} />
+          <input required maxLength={LIMITS.tenant.code} value={code} onChange={(e) => setCode(e.target.value)} placeholder="mis. ISP-JKT" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama</label>
-          <input required value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
+          <input required maxLength={LIMITS.tenant.name} value={name} onChange={(e) => setName(e.target.value)} placeholder="mis. ISP Jakarta Sejahtera" className={inputCls} />
         </div>
         <div className="border-t border-slate-100 pt-3">
           <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
@@ -611,6 +858,7 @@ function CreateTenantModal({ onClose }: { onClose: () => void }) {
           <div className="grid grid-cols-2 gap-3">
             <input
               placeholder="Username Inform"
+              maxLength={LIMITS.tenant.cwmpUsername}
               value={cwmpUsername}
               onChange={(e) => setCwmpUsername(e.target.value)}
               className={`${inputCls} font-mono text-xs`}
@@ -659,7 +907,7 @@ function RotateCWMPCredentialsModal({ tenant, onClose }: { tenant: Tenant; onClo
         </p>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Username</label>
-          <input required value={username} onChange={(e) => setUsername(e.target.value)} className={`${inputCls} font-mono text-xs`} />
+          <input required maxLength={LIMITS.tenant.cwmpUsername} value={username} onChange={(e) => setUsername(e.target.value)} placeholder="username Inform yang akan diisi ke CPE" className={`${inputCls} font-mono text-xs`} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Password Baru</label>
@@ -773,6 +1021,7 @@ function BrandingForm({
         <input
           value={brandName}
           onChange={(e) => setBrandName(e.target.value)}
+          maxLength={LIMITS.tenant.brandName}
           placeholder="ACS Console"
           className={inputCls}
         />
@@ -782,6 +1031,7 @@ function BrandingForm({
         <input
           value={logoUrl}
           onChange={(e) => setLogoUrl(e.target.value)}
+          maxLength={LIMITS.tenant.logoUrl}
           placeholder="https://..."
           className={`${inputCls} font-mono text-xs`}
         />
@@ -798,6 +1048,7 @@ function BrandingForm({
           <input
             value={primaryColor}
             onChange={(e) => setPrimaryColor(e.target.value)}
+            maxLength={LIMITS.tenant.primaryColor}
             placeholder="#0f172a"
             className={`${inputCls} font-mono text-xs`}
           />

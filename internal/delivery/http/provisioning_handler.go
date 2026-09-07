@@ -44,6 +44,12 @@ func (r *Router) createProfile(c *echo.Context) error {
 	if req.Name == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "name wajib diisi")
 	}
+	if err := checkMaxLen(
+		lenRule{"name", req.Name, maxProfileName},
+		lenRule{"description", optStr(req.Description), maxDescription},
+	); err != nil {
+		return err
+	}
 	p, err := r.Provisioning.CreateProfile(c.Request().Context(), actor, provisioning.CreateProfileInput{
 		TenantID: req.TenantID, VendorID: req.VendorID, DeviceModelID: req.DeviceModelID,
 		Name: req.Name, Description: req.Description, IsDefault: req.IsDefault, Parameters: toDomainParams(req.Parameters),
@@ -95,6 +101,12 @@ func (r *Router) updateProfile(c *echo.Context) error {
 	var req updateProfileRequest
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "payload tidak valid")
+	}
+	if err := checkMaxLen(
+		lenRule{"name", req.Name, maxProfileName},
+		lenRule{"description", optStr(req.Description), maxDescription},
+	); err != nil {
+		return err
 	}
 	p := &domain.ProvisioningProfile{
 		ID: id, VendorID: req.VendorID, DeviceModelID: req.DeviceModelID,
@@ -167,6 +179,18 @@ type ztRuleRequest struct {
 	IsActive                   bool    `json:"is_active"`
 }
 
+// checkZTRuleLen — batas panjang kolom zero_touch_rules (schema.sql), dipakai
+// createZTRule dan updateZTRule supaya keduanya tidak bisa menyimpang.
+func checkZTRuleLen(req ztRuleRequest) error {
+	return checkMaxLen(
+		lenRule{"oui", optStr(req.OUI), maxOUI},
+		lenRule{"serial_pattern", optStr(req.SerialPattern), maxSerialPattern},
+		lenRule{"software_version_pattern", optStr(req.SoftwareVersionPattern), maxSoftwareVerPatt},
+		lenRule{"match_parameter_name", optStr(req.MatchParameterName), maxMatchParamName},
+		lenRule{"match_parameter_value_pattern", optStr(req.MatchParameterValuePattern), maxMatchParamValPatt},
+	)
+}
+
 func (r *Router) listZTRules(c *echo.Context) error {
 	actor := ActorFrom(c)
 	rules, err := r.Provisioning.ListZeroTouchRules(c.Request().Context(), actor, queryUint64(c, "tenant_id"))
@@ -187,6 +211,9 @@ func (r *Router) createZTRule(c *echo.Context) error {
 	// lagi. TriggerEventID TETAP wajib (kolom NOT NULL, FK ref_ztp_trigger_event).
 	if req.TriggerEventID == 0 {
 		return echo.NewHTTPError(http.StatusBadRequest, "trigger_event_id wajib diisi")
+	}
+	if err := checkZTRuleLen(req); err != nil {
+		return err
 	}
 	rule := &domain.ZeroTouchRule{
 		TenantID: req.TenantID, VendorID: req.VendorID, DeviceModelID: req.DeviceModelID,
@@ -214,6 +241,9 @@ func (r *Router) updateZTRule(c *echo.Context) error {
 	}
 	if req.TriggerEventID == 0 {
 		return echo.NewHTTPError(http.StatusBadRequest, "trigger_event_id wajib diisi")
+	}
+	if err := checkZTRuleLen(req); err != nil {
+		return err
 	}
 	rule := &domain.ZeroTouchRule{
 		ID: id, VendorID: req.VendorID, DeviceModelID: req.DeviceModelID,

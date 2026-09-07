@@ -4,7 +4,7 @@ Dokumen tracking hidup (living document) untuk membawa ACS ini dari "kerangka ar
 
 Update dokumen ini setiap kali sebuah item selesai atau prioritas berubah — jangan biarkan basi. Lihat `PRD.md` untuk requirement produk dan `TECH.md` untuk keputusan arsitektur; dokumen ini adalah **rencana eksekusi**, bukan pengganti keduanya.
 
-**Terakhir diperbarui:** 2026-09-02
+**Terakhir diperbarui:** 2026-09-05
 
 ---
 
@@ -293,9 +293,34 @@ Subagent proyek ada di `.claude/agents/` (lihat masing-masing file untuk detail 
 | `task-queue-test-writer` | 0, 3 — test retry/max_retries task queue |
 | `acs-code-reviewer` | semua fase — review sebelum lapor selesai |
 | `acs-security-reviewer` | 0, 2 — audit auth/RBAC/isolasi tenant/kredensial |
-| `frontend-ux-builder` **(baru)** | 1, 2 — kerja React/Tailwind, konvensi UI |
+| `frontend-ux-builder` | 1, 2 — kerja React/Tailwind, konvensi UI |
+| `ci-gatekeeper` **(baru 2026-09-05)** | semua fase — gerbang lokal meniru `.github/workflows/ci.yml` |
+| `api-contract-sync` **(baru 2026-09-05)** | 1, 2 — `openapi.yaml` ↔ `router.go` + regen Postman |
+| `cpe-troubleshooter` **(baru 2026-09-05)** | 0 — diagnosis gejala CPE lapangan (read-only) |
+| `observability-engineer` **(baru 2026-09-05)** | 3 — metrik, dashboard Grafana, alert, runbook |
+| `perf-scale-auditor` **(baru 2026-09-05)** | 3 — N+1, index, kesiapan skala, stateless |
+| `docs-keeper` **(baru 2026-09-05)** | semua fase — jaga PROGRESS/ROADMAP tetap jujur |
+| `ui-qa-browser` **(baru 2026-09-05)** | 0, 1 — uji frontend di browser sungguhan via MCP `agent-browser` |
+| `api-frontend-parity` **(baru 2026-09-05)** | 1 — cakupan endpoint + kesetiaan kontrak per-field backend ↔ frontend |
 
-**Gap yang baru ditutup:** sebelum dokumen ini dibuat, belum ada subagent yang meng-cover kerja frontend — padahal Fase 1 (prioritas utama user saat ini) adalah kerja frontend. Agent `frontend-ux-builder` dibuat bersamaan dengan dokumen ini untuk menutup gap tersebut.
+**Gap yang ditutup 2026-08-21:** belum ada subagent yang meng-cover kerja frontend — padahal Fase 1 (prioritas utama user saat ini) adalah kerja frontend. Agent `frontend-ux-builder` dibuat untuk menutup gap tersebut.
+
+**Gap yang ditutup 2026-09-05:** 8 agent lama semuanya berorientasi *menulis fitur*; tidak ada satu pun yang meng-cover **verifikasi, operasional, dan pemeliharaan dokumen** — padahal tiga hal itulah kelemahan yang paling sering muncul di §2 dan §6 (klaim belum tervalidasi, drift `openapi.yaml` 3 sesi berturut-turut, observability yang menyusul belakangan). Tujuh agent baru di atas menutup celah itu. Ditambah slash command di `.claude/commands/`: `/gate`, `/api-sync`, `/diagnose`, `/siap-commit`, `/vendor-baru`, `/tutup-sesi`, `/qa-ui`, `/parity`.
+
+**Parity backend ↔ frontend kini terukur.** `scripts/api-parity.mjs` (jalankan `node scripts/api-parity.mjs`) membandingkan seluruh route di `internal/delivery/http/` dengan pemanggilan `api.*` di `frontend/src/`. Hasil setelah perbaikan 2026-09-05: **103 route, 4 dikecualikan (WebSocket/Prometheus/redirect OIDC), 91 dari 99 sisanya dipakai frontend (91,9%), 0 panggilan yatim**.
+
+- **[x] BUG DIPERBAIKI (2026-09-05):** `frontend/src/lib/hooks.ts:309` memanggil `GET /vendor-parameter-mappings` yang tidak pernah didaftarkan — hanya POST yang ada, jadi daftar parameter mapping di Catalog UI menembak endpoint hantu. Repository sudah punya `ListByVendor`; yang hilang hanya handler + route. Ditambahkan `listParameterMappings` (`catalog_handler.go`) + `authed.GET("/vendor-parameter-mappings", ...)` mengikuti pola `GET /device-models` (baca terbuka untuk semua role terautentikasi, mutasi tetap superadmin-only), plus operasi `get` di `openapi.yaml` dan regenerasi koleksi Postman.
+- **[x] 8 endpoint tanpa UI — DITUTUP (2026-09-05).** Empat di antaranya memang gap fitur nyata dan kini punya layar: `POST|GET|DELETE /auth/tokens` lewat tab **API Token** baru di Administration (terbitkan, daftar, cabut; nilai plaintext token ditampilkan sekali saja sesuai perilaku backend) dan `PATCH /tenants/:id` lewat modal **Edit Tenant** (ubah code/nama, aktif/nonaktifkan, dengan peringatan bahwa menonaktifkan memutus login seluruh user tenant). Empat sisanya (`GET /tasks/:id`, `GET /webhooks/:id`, `GET /firmware/rollout-batches/:id`, `GET /self-service/devices/:id`) diperiksa satu per satu dan memang **sengaja** tidak dipakai — keempat halamannya merender dari data list dan tidak punya tampilan detail yang butuh fetch terpisah; ini dicatat sebagai `REVIEWED_UNUSED` di `scripts/api-parity.mjs` beserta alasannya, bukan dibungkam.
+- **[x] Kesetiaan kontrak — DITUTUP (2026-09-05), dua lapis.**
+  - **Backend (perbaikan bug sesungguhnya):** `internal/delivery/http/validate.go` baru — `checkMaxLen` menolak input kepanjangan dengan **400 beserta nama field**, bukan membiarkannya jadi error MariaDB 1406 → 500. Menghitung **rune, bukan byte**, karena `VARCHAR(n)` di `utf8mb4` membatasi karakter (kalau pakai `len()`, nama beraksen yang sah ikut tertolak). Dipasang di 15 handler mutasi: tenant (create/update/branding/kredensial CWMP), user (create/update), API token, tag, preset (create/update), vendor, OUI, device model, parameter mapping, provisioning profile (create/update), ZTP rule (create/update), webhook (create/update). Ditutup test `validate_test.go` — paket `internal/delivery/http` sebelumnya **tidak punya test sama sekali**; termasuk kasus batas, multibyte, dan penjaga sinkronisasi konstanta ↔ `schema.sql`.
+  - **Frontend (lapis UX):** `frontend/src/lib/limits.ts` mencerminkan lebar kolom, dipakai **45 atribut `maxLength`** di 7 halaman — sebelumnya nol di seluruh `frontend/src/`.
+  - **Masih terbuka (keputusan produk, bukan bug):** form user menandai `email`/`full_name` opsional dan `createUser` hanya mewajibkan `username`+`password`, padahal kolomnya `NOT NULL` — user masih bisa dibuat dengan email/nama kosong. Perlu keputusan apakah keduanya wajib.
+
+**Status parity 2026-09-05 setelah perbaikan: 103 route — 4 dikecualikan (WebSocket/Prometheus/redirect OIDC), 4 sengaja tidak dipakai (sudah ditinjau), 95 relevan, 95 terpakai = 100%, 0 panggilan yatim.**
+
+**Gap "frontend belum pernah dibuka di browser sungguhan" (§2) kini punya alat.** MCP server [`agent-browser`](https://github.com/vercel-labs/agent-browser) v0.36.0 dari Vercel Labs didaftarkan di `.mcp.json` (profil tool `core,debug,react,mobile`; Chrome for Testing 152 terpasang di `~/.agent-browser/browsers/`). Dipakai lewat agent `ui-qa-browser`. Catatan keamanan: alat ini bisa membuka domain apa pun — batasi ke host lokal, dan bila perlu dipagari permanen tambahkan `--allowed-domains localhost,127.0.0.1` ke `args` di `.mcp.json`.
+
+**Catatan lingkungan penting untuk agent mana pun:** host dev saat ini **tidak punya Go toolchain** (hanya Node 24 + Docker), sehingga `go build`/`go test` harus dijalankan lewat Docker image `golang:1.26`. "Command not found" untuk `go` adalah kondisi host, bukan kegagalan kode — `ci-gatekeeper` sudah dibekali fakta ini.
 
 **Alur kerja per item checklist:**
 1. Pilih satu item, delegasikan ke agent yang sesuai (atau kerjakan langsung bila item lintas-domain).

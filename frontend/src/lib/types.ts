@@ -405,3 +405,29 @@ export interface WebhookDelivery {
   updated_at: string
 }
 
+
+// ApiToken — token API untuk integrasi BSS/OSS. `token_hash` sengaja TIDAK ada
+// di sini: backend menandainya `json:"-"`, dan nilai plaintext token hanya
+// dikembalikan SEKALI saat penerbitan (lihat IssuedApiToken).
+export interface ApiToken {
+  id: number
+  token_uuid: string
+  user_id: number | null
+  tenant_id: number | null
+  name: string
+  scopes: string | null
+  expires_at: string | null
+  revoked_at: string | null
+  created_at: string
+  created_by: number | null
+  updated_at: string
+  updated_by: number | null
+}
+
+// IssuedApiToken — respons POST /auth/tokens. `token` adalah satu-satunya
+// kesempatan melihat nilai plaintext; setelah ini hanya hash yang tersimpan.
+export interface IssuedApiToken {
+  token: string
+  id: number
+  uuid: string
+}

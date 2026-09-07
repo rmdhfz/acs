@@ -26,6 +26,13 @@ func (r *Router) createWebhook(c *echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "payload tidak valid")
 	}
+	if err := checkMaxLen(
+		lenRule{"name", req.Name, maxWebhookName},
+		lenRule{"target_url", req.TargetURL, maxWebhookTargetURL},
+		lenRule{"description", optStr(req.Description), maxDescription},
+	); err != nil {
+		return err
+	}
 	if req.EventType == "" || req.Name == "" || req.TargetURL == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "event_type, name, target_url wajib diisi")
 	}
@@ -85,6 +92,13 @@ func (r *Router) updateWebhook(c *echo.Context) error {
 	var req updateWebhookRequest
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "payload tidak valid")
+	}
+	if err := checkMaxLen(
+		lenRule{"name", req.Name, maxWebhookName},
+		lenRule{"target_url", req.TargetURL, maxWebhookTargetURL},
+		lenRule{"description", optStr(req.Description), maxDescription},
+	); err != nil {
+		return err
 	}
 	if err := r.Webhooks.UpdateSubscription(c.Request().Context(), actor, id, webhook.UpdateSubscriptionInput{
 		Name: req.Name, TargetURL: req.TargetURL, IsActive: req.IsActive, Description: req.Description,

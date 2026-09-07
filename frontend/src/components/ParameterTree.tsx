@@ -107,10 +107,16 @@ function TreeNodeView({ node, depth = 0, onRefreshNode, onEditNode, onAddObject,
         <div className="flex-1 text-sm font-mono text-slate-400 truncate pl-4 border-l border-slate-700 flex items-center justify-between">
           {isEditing ? (
             <div className="flex items-center gap-2 w-full pr-2">
+              {/* Field edit inline ini tidak punya label terpisah karena muncul
+                  di dalam baris parameter. Nama aksesibelnya diambil dari
+                  aria-label; tanpa itu pembaca layar hanya menyebut "edit text"
+                  tanpa memberi tahu parameter mana yang sedang diubah. */}
               <input
                 type="text"
                 value={editVal}
                 onChange={(e) => setEditVal(e.target.value)}
+                aria-label={`Nilai baru untuk ${node.fullPath}`}
+                placeholder="Nilai baru"
                 className="flex-1 bg-slate-900 border border-slate-600 rounded px-2 py-0.5 text-slate-200 focus:outline-none focus:border-blue-500 text-xs"
                 autoFocus
                 onKeyDown={(e) => {
