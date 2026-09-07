@@ -236,6 +236,10 @@ func newTestService(t *testing.T) (*Service, *fakeSubRepo, *fakeDeliveryRepo) {
 		domain.WebhookEventTaskFailed:           {ID: 3, Code: domain.WebhookEventTaskFailed},
 	}}
 	svc := NewService(subs, del, refs, fakeActivityRepo{}, enc, nil)
+	// Test memakai URL httptest (loopback) & domain ".test" yang tidak
+	// resolvable — lewati SSRF guard di sini. Guard-nya sendiri diuji di
+	// pkg/netguard.
+	svc.guardURL = func(string) error { return nil }
 	return svc, subs, del
 }
 

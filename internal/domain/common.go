@@ -22,6 +22,12 @@ var (
 	// ROADMAP.md Fase 2). Di-map ke HTTP 429 Too Many Requests (delivery/http/middleware.go),
 	// beda dari ErrForbidden (403, soal wewenang) karena ini soal batas resource, bukan izin.
 	ErrQuotaExceeded = errors.New("domain: kuota tenant sudah tercapai")
+
+	// ErrUpstreamUnavailable — perangkat/layanan hilir tidak dapat dihubungi
+	// (mis. CPE offline saat Connection Request, objek storage tak merespons).
+	// Ini kondisi operasional yang WAJAR, bukan bug ACS — handler memetakannya
+	// ke HTTP 502, bukan 500, supaya operator tidak salah menganggap ACS rusak.
+	ErrUpstreamUnavailable = errors.New("domain: perangkat/layanan hilir tidak dapat dihubungi")
 )
 
 // Audit adalah 7 kolom audit standar (lihat CLAUDE.md - Konvensi Skema Database #2).

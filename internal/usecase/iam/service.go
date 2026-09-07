@@ -283,6 +283,12 @@ func (s *Service) CreateUser(ctx context.Context, actor domain.Actor, in CreateU
 	if err := validateRoleCodesAssignable(actor, in.RoleCodes); err != nil {
 		return nil, err
 	}
+	// Panjang minimum password disamakan dengan ResetUserPassword &
+	// ChangeOwnPassword (sebelumnya CreateUser tidak mengecek — akun bisa
+	// dibuat dengan password lemah/kosong).
+	if len(in.Password) < domain.MinUserPasswordLen {
+		return nil, fmt.Errorf("%w: password minimal %d karakter", domain.ErrInvalidInput, domain.MinUserPasswordLen)
+	}
 	hash, err := auth.HashPassword(in.Password)
 	if err != nil {
 		return nil, err

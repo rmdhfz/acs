@@ -127,11 +127,17 @@ func (h *Handler) handleInform(c *echo.Context, token string, env *cwmpxml.Envel
 		ProductClass:    inf.DeviceId.ProductClass,
 		SoftwareVersion: paramSuffix(params, "SoftwareVersion"),
 		HardwareVersion: paramSuffix(params, "HardwareVersion"),
-		InformUsername:  username,
-		InformPassword:  password,
-		Events:          events,
-		Parameters:      params,
-		Namespace:       ns,
+		// Suffix segmen lengkap (bukan cuma "ConnectionRequestURL") supaya
+		// vendor-extension yang kebetulan berakhiran sama — mis.
+		// X_ACME_ConnectionRequestURL — tidak keliru dipakai sebagai target
+		// GET Connection Request. Cocok utk TR-098 & TR-181 (keduanya
+		// berakhiran .ManagementServer.ConnectionRequestURL).
+		ConnectionRequestURL: paramSuffix(params, ".ManagementServer.ConnectionRequestURL"),
+		InformUsername:       username,
+		InformPassword:       password,
+		Events:               events,
+		Parameters:           params,
+		Namespace:            ns,
 	})
 	if err != nil {
 		if errors.Is(err, domain.ErrUnauthorized) {

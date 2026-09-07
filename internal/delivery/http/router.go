@@ -80,7 +80,15 @@ func (r *Router) Register(e *echo.Echo) {
 	// endpoint tanpa autentikasi" (CLAUDE.md, yang menyasar endpoint mutasi).
 	api.GET("/metrics", r.metrics)
 
-	authed := api.Group("", AuthMiddleware(r.Auth))
+	// Grup "authed" = staff internal (BSS/NOC/portal operator). Middleware
+	// staffOnly menolak principal yang HANYA punya role ENDUSER: portal
+	// pelanggan dikurung ke /self-service/* (grup terpisah di
+	// mountSelfServiceRoutes) supaya token ENDUSER tidak bisa memanggil
+	// GET /devices, /tasks, dll. dan membaca data seluruh tenant.
+	// Pengecualian: PATCH /auth/password (ganti kata sandi sendiri) — di-mount
+	// di grup authedSelf di bawah tanpa gate staffOnly.
+	authedSelf := api.Group("", AuthMiddleware(r.Auth))
+	authed := api.Group("", AuthMiddleware(r.Auth), staffOnly)
 	admin := []string{domain.RoleAdmin, domain.RoleSuperadmin}
 	adminOrNOC := []string{domain.RoleAdmin, domain.RoleNOC, domain.RoleSuperadmin}
 	superadminOnly := []string{domain.RoleSuperadmin}
@@ -95,9 +103,9 @@ func (r *Router) Register(e *echo.Echo) {
 	authed.DELETE("/auth/tokens/:id", r.revokeAPIToken, RequireRoles(admin...))
 	// Self-service ganti password sendiri (BEDA dari admin-reset
 	// PATCH /users/:id/password di bawah) -- actor dari JWT langsung, bukan
-	// target :id, jadi semua role yang sudah login boleh (tidak ada
-	// RequireRoles di sini, sengaja).
-	authed.PATCH("/auth/password", r.changeOwnPassword)
+	// target :id, jadi semua role yang sudah login boleh, TERMASUK ENDUSER
+	// (karena itu di authedSelf, bukan authed yang di-gate staffOnly).
+	authedSelf.PATCH("/auth/password", r.changeOwnPassword)
 
 	authed.GET("/refs/:table", r.listRefs)
 

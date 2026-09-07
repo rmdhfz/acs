@@ -156,8 +156,13 @@ type InformInput struct {
 	// sekali (CLAUDE.md: kredensial CWMP wajib divalidasi, TECH.md §3/§8).
 	InformUsername string
 	InformPassword string
-	Events         []InformEvent
-	Parameters     []InformParameter
+	// ConnectionRequestURL dari parameter Inform standar
+	// ManagementServer.ConnectionRequestURL — di-capture ke devices supaya
+	// operator bisa memicu Connection Request tanpa konfigurasi manual
+	// (penting untuk skala ribuan CPE). Kosong = tidak dilaporkan Inform ini.
+	ConnectionRequestURL string
+	Events               []InformEvent
+	Parameters           []InformParameter
 	// Namespace -- namespace CWMP yang dideklarasikan CPE pada Inform ini
 	// (mis. "urn:dslforum-org:cwmp-1-0"/"cwmp-1-2"), disimpan ke sesi
 	// (migrations/0012) supaya RPC proaktif berikutnya dalam sesi yang sama
@@ -178,14 +183,15 @@ func (s *Service) HandleInform(ctx context.Context, in InformInput) (*InformResu
 	}
 
 	dev, _, err := s.deviceSvc.FindOrCreateFromInform(ctx, device.InformDeviceInfo{
-		OUI:             in.DeviceOUI,
-		SerialNumber:    in.SerialNumber,
-		ProductClass:    in.ProductClass,
-		SoftwareVersion: in.SoftwareVersion,
-		HardwareVersion: in.HardwareVersion,
-		RemoteIP:        in.RemoteIP,
-		TenantID:        auth.TenantID,
-		ExistingDevice:  auth.Device,
+		OUI:                  in.DeviceOUI,
+		SerialNumber:         in.SerialNumber,
+		ProductClass:         in.ProductClass,
+		SoftwareVersion:      in.SoftwareVersion,
+		HardwareVersion:      in.HardwareVersion,
+		RemoteIP:             in.RemoteIP,
+		ConnectionRequestURL: in.ConnectionRequestURL,
+		TenantID:             auth.TenantID,
+		ExistingDevice:       auth.Device,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("session: gagal upsert device dari Inform: %w", err)

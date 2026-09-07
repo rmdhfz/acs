@@ -174,6 +174,18 @@ func main() {
 	restEcho := echo.New()
 	restEcho.Use(middleware.Recover())
 	restEcho.Use(middleware.RequestLogger())
+	// Batas ukuran body: `c.Bind()` di /auth/login (anonim) & endpoint lain
+	// membaca body ke memori tanpa batas -> satu POST raksasa = memory
+	// exhaustion. 2 MB cukup longgar untuk semua payload JSON REST. Upload
+	// firmware (multipart, bisa ratusan MB) DIKECUALIKAN — route itu punya
+	// http.MaxBytesReader streaming sendiri (firmware_handler.go) yang dicek
+	// dari Content-Length sebelum body dibaca.
+	restEcho.Use(middleware.BodyLimitWithConfig(middleware.BodyLimitConfig{
+		LimitBytes: 2 << 20, // 2 MiB
+		Skipper: func(c *echo.Context) bool {
+			return c.Request().Method == http.MethodPost && c.Request().URL.Path == "/api/v1/firmware"
+		},
+	}))
 	restEcho.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: cfg.CORSAllowOrigins,
 		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodPut, http.MethodDelete, http.MethodOptions},
@@ -202,6 +214,11 @@ func main() {
 	// publik bisa diatur berbeda dari REST API internal (TECH.md §8). ----
 	cwmpEcho := echo.New()
 	cwmpEcho.Use(middleware.Recover())
+	// Batas body CWMP: handler.go melakukan io.ReadAll pada endpoint yang
+	// PRA-autentikasi (auth Inform dicek belakangan). 4 MiB jauh di atas
+	// envelope CWMP terbesar yang wajar (Inform / GetParameterValuesResponse
+	// ribuan parameter) tapi mencegah POST raksasa dari CPE nakal/anonim.
+	cwmpEcho.Use(middleware.BodyLimit(4 << 20))
 	// Rate limit per identifier (default: IP) — endpoint ini sekarang menjaga
 	// shared secret Inform CWMP sungguhan (bukan cuma anti CPE nakal/loop
 	// seperti sebelumnya), jadi juga jadi mitigasi brute-force kredensial.

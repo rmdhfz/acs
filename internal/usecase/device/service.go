@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,7 +18,40 @@ import (
 	"acs/internal/domain"
 	"acs/internal/usecase/auth"
 	"acs/pkg/cryptoutil"
+	"acs/pkg/netguard"
 )
+
+// safeInformConnectionRequestURL memvalidasi `ManagementServer.
+// ConnectionRequestURL` yang dilaporkan CPE pada Inform SEBELUM disimpan ke
+// `devices.connection_request_url` (yang nantinya di-GET oleh ACS pada
+// TriggerConnectionRequest — jalur permintaan keluar → risiko SSRF).
+//
+// Aturan: nilai ini SELALU adalah URL di interface WAN CPE itu sendiri
+// (TR-069 §A.3.2.2), jadi host-nya HARUS berupa literal IP yang sama persis
+// dengan RemoteIP (alamat sumber Inform ini). Segala yang lain — nama DNS
+// (rawan rebinding), IP internal lain (169.254.169.254, metadata cloud,
+// service internal), IP privat yang bukan si device — adalah anomali /
+// upaya menjadikan ACS proxy permintaan, dan DITOLAK (URL tidak disimpan).
+//
+// ok=false → jangan ubah nilai yang sudah ada; biarkan operator mengisinya
+// manual lewat PATCH /devices/:id bila memang perlu (mis. skenario NAT).
+func safeInformConnectionRequestURL(rawURL, remoteIP string) (string, bool) {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" || remoteIP == "" {
+		return "", false
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return "", false
+	}
+	host := u.Hostname()
+	hostIP := net.ParseIP(host)
+	remote := net.ParseIP(remoteIP)
+	if hostIP == nil || remote == nil || !hostIP.Equal(remote) {
+		return "", false
+	}
+	return rawURL, true
+}
 
 type Service struct {
 	devices        domain.DeviceRepository
@@ -218,6 +253,13 @@ type InformDeviceInfo struct {
 	SoftwareVersion string
 	HardwareVersion string
 	RemoteIP        string
+	// ConnectionRequestURL — dari parameter Inform standar
+	// ManagementServer.ConnectionRequestURL (dilaporkan CPE pada tiap Inform,
+	// TR-069 §A.3.2.2). Di-capture otomatis supaya operator tidak perlu
+	// mengisinya manual per device sebelum bisa memicu Connection Request —
+	// penting untuk skala auto-provisioning ribuan CPE. Kosong = tidak
+	// dilaporkan pada Inform ini, jangan timpa nilai yang sudah ada.
+	ConnectionRequestURL string
 	// TenantID hasil resolusi kredensial Inform (usecase/session). Dipakai
 	// saat device baru dibuat, DAN untuk "menyembuhkan" device lama yang
 	// belum punya tenant_id (mis. dibuat sebelum kredensial Inform wajib) —
@@ -256,6 +298,10 @@ func (s *Service) FindOrCreateFromInform(ctx context.Context, info InformDeviceI
 		if existing.TenantID == nil && info.TenantID != nil {
 			existing.TenantID = info.TenantID
 		}
+		if crURL, ok := safeInformConnectionRequestURL(info.ConnectionRequestURL, info.RemoteIP); ok &&
+			(existing.ConnectionRequestURL == nil || *existing.ConnectionRequestURL != crURL) {
+			existing.ConnectionRequestURL = &crURL
+		}
 		if err := s.devices.Update(ctx, existing); err != nil {
 			return nil, false, err
 		}
@@ -278,6 +324,9 @@ func (s *Service) FindOrCreateFromInform(ctx context.Context, info InformDeviceI
 		HardwareVersion: &info.HardwareVersion,
 		IPAddress:       &info.RemoteIP,
 		LastInformAt:    &now,
+	}
+	if crURL, ok := safeInformConnectionRequestURL(info.ConnectionRequestURL, info.RemoteIP); ok {
+		d.ConnectionRequestURL = &crURL
 	}
 
 	if vOUI, err := s.vendorOUIs.GetByOUI(ctx, info.OUI); err == nil {
@@ -390,9 +439,20 @@ func (s *Service) TriggerConnectionRequest(ctx context.Context, actor domain.Act
 		password = plain
 	}
 
+	// SSRF guard: tolak target loopback/link-local/multicast/unspecified
+	// (mis. 169.254.169.254 metadata cloud, 127.0.0.1 service internal).
+	// IP privat (10/8, 192.168/16) DIIZINKAN — deployment enterprise sah
+	// menaruh ACS & CPE di jaringan privat yang sama. Nilai dari Inform
+	// sudah dijaga host==RemoteIP (safeInformConnectionRequestURL); guard ini
+	// menutup nilai yang diisi lewat PATCH /devices/:id atau baris lama.
+	if err := netguard.CheckURL(*d.ConnectionRequestURL); err != nil {
+		s.log().Warn("cwmp: Connection Request URL ditolak SSRF guard", "device_id", deviceID, "error", err)
+		return fmt.Errorf("%w: connection_request_url device menunjuk alamat yang tidak diizinkan", domain.ErrInvalidInput)
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, *d.ConnectionRequestURL, nil)
 	if err != nil {
-		return fmt.Errorf("%w: URL connection request tidak valid: %v", domain.ErrInvalidInput, err)
+		return fmt.Errorf("%w: URL connection request tidak valid", domain.ErrInvalidInput)
 	}
 	if username != "" {
 		req.SetBasicAuth(username, password)
@@ -400,7 +460,14 @@ func (s *Service) TriggerConnectionRequest(ctx context.Context, actor domain.Act
 
 	// Timeout singkat: respons connection request seharusnya sangat cepat
 	// (CPE hanya perlu menerima request dan memulai Inform, tidak return body).
-	client := &http.Client{Timeout: 10 * time.Second}
+	// CheckRedirect menolak redirect — cegah target sah yang me-redirect ke
+	// alamat internal (bypass guard di atas).
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
 	resp, err := client.Do(req)
 
 	// Jika gagal via TCP (mis. timeout karena NAT), fallback ke STUN UDP (TR-111).
@@ -424,9 +491,21 @@ func (s *Service) TriggerConnectionRequest(ctx context.Context, actor domain.Act
 		}
 
 		if err != nil {
-			return fmt.Errorf("triggerConnectionRequest: gagal menghubungi device: %w", err)
+			// CPE offline / DNS gagal / TCP refused / STUN fallback juga gagal —
+			// kondisi operasional wajar (device di lapangan sering offline),
+			// BUKAN bug ACS. ErrUpstreamUnavailable -> HTTP 502, bukan 500.
+			// Detail galat (IP internal, path CR URL, error dial low-level) hanya
+			// ke log server-side; body 502 dapat pesan statis (kontrak handleErr).
+			s.log().Warn("cwmp: Connection Request gagal, device tak dapat dihubungi",
+				"device_id", deviceID, "error", err)
+			return fmt.Errorf("%w: device tidak dapat dihubungi saat Connection Request",
+				domain.ErrUpstreamUnavailable)
 		}
-		return fmt.Errorf("%w: device menolak connection request (HTTP %d)", domain.ErrInvalidInput, resp.StatusCode)
+		// Status upstream di-log server-side saja (jangan jadi oracle port-scan
+		// internal untuk pemanggil API).
+		s.log().Warn("cwmp: Connection Request dibalas non-2xx oleh device",
+			"device_id", deviceID, "status", resp.StatusCode)
+		return fmt.Errorf("%w: device menolak connection request", domain.ErrUpstreamUnavailable)
 	}
 	defer resp.Body.Close()
 
@@ -445,6 +524,12 @@ func (s *Service) sendUDPConnectionRequest(ctx context.Context, udpURL, username
 		host = udpURL // Terkadang disimpan langsung sebagai IP:Port
 	} else {
 		host = u.Host
+	}
+
+	// SSRF guard: UDPConnectionRequestAddress juga dikontrol CPE (dari
+	// device_parameters). Tolak emisi paket UDP ke loopback/link-local/dst.
+	if err := netguard.CheckHostPort(host); err != nil {
+		return fmt.Errorf("UDP connection request address ditolak: %w", err)
 	}
 
 	// Gunakan WakeUpViaUDP dari stun_client.go untuk mem-format STUN Request yang valid (RFC 3489)

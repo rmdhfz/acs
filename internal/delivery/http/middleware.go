@@ -77,6 +77,22 @@ func RequireRoles(roles ...string) echo.MiddlewareFunc {
 	}
 }
 
+// staffOnly menolak principal yang tidak memiliki satu pun role staf internal
+// (SUPERADMIN/ADMIN/NOC/VIEWER). Tujuannya mengurung token ENDUSER (portal
+// pelanggan) agar tidak bisa memanggil API staf — GET /devices, /tasks, dll.
+// yang hanya ter-scope tenant, bukan role, dan akan membocorkan data seluruh
+// tenant ke satu pelanggan. Portal ENDUSER punya grup sendiri (/self-service).
+func staffOnly(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c *echo.Context) error {
+		a := ActorFrom(c)
+		if a.IsSuperadmin() || a.HasRole(domain.RoleAdmin) ||
+			a.HasRole(domain.RoleNOC) || a.HasRole(domain.RoleViewer) {
+			return next(c)
+		}
+		return echo.NewHTTPError(http.StatusForbidden, "akses terbatas: portal pelanggan hanya /self-service")
+	}
+}
+
 func handleErr(c *echo.Context, err error) error {
 	switch {
 	// auth.ErrInvalidCredentials -- dipakai auth.Service.ChangeOwnPassword saat
@@ -97,6 +113,10 @@ func handleErr(c *echo.Context, err error) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	case errors.Is(err, domain.ErrQuotaExceeded):
 		return echo.NewHTTPError(http.StatusTooManyRequests, err.Error())
+	case errors.Is(err, domain.ErrUpstreamUnavailable):
+		// CPE offline / tak dapat dihubungi — kondisi operasional wajar,
+		// bukan bug ACS. 502, bukan 500.
+		return echo.NewHTTPError(http.StatusBadGateway, err.Error())
 	default:
 		// Error sistem (DB timeout, query error, dsb.) — JANGAN di-expose
 		// ke client (bisa bocor detail internal: query SQL, stack trace,

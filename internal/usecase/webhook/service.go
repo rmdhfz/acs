@@ -33,6 +33,7 @@ import (
 	"acs/internal/domain"
 	"acs/internal/usecase/auth"
 	"acs/pkg/cryptoutil"
+	"acs/pkg/netguard"
 )
 
 const (
@@ -50,6 +51,9 @@ type Service struct {
 	enc        *cryptoutil.Encryptor
 	http       *http.Client
 	logger     *slog.Logger
+	// guardURL — SSRF guard untuk target_url. Default netguard.CheckURL;
+	// di-override di test (yang memakai httptest loopback / domain .test).
+	guardURL func(string) error
 }
 
 func NewService(
@@ -65,8 +69,16 @@ func NewService(
 	}
 	return &Service{
 		subs: subs, deliveries: deliveries, refs: refs, activity: activity, enc: enc,
-		http:   &http.Client{Timeout: deliveryHTTPTimeout},
-		logger: logger,
+		http: &http.Client{
+			Timeout: deliveryHTTPTimeout,
+			// Jangan ikuti redirect — target sah yang me-redirect ke alamat
+			// internal akan mem-bypass SSRF guard di validateTargetURL.
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
+		logger:   logger,
+		guardURL: netguard.CheckURL,
 	}
 }
 
@@ -95,7 +107,7 @@ func (s *Service) CreateSubscription(ctx context.Context, actor domain.Actor, in
 	if in.Name == "" {
 		return nil, fmt.Errorf("%w: name wajib diisi", domain.ErrInvalidInput)
 	}
-	if err := validateTargetURL(in.TargetURL); err != nil {
+	if err := s.validateTargetURL(in.TargetURL); err != nil {
 		return nil, err
 	}
 	evt, err := s.refs.GetByCode(ctx, domain.RefTableWebhookEventTypes, in.EventCode)
@@ -183,7 +195,7 @@ func (s *Service) UpdateSubscription(ctx context.Context, actor domain.Actor, id
 	if in.Name == "" {
 		return fmt.Errorf("%w: name wajib diisi", domain.ErrInvalidInput)
 	}
-	if err := validateTargetURL(in.TargetURL); err != nil {
+	if err := s.validateTargetURL(in.TargetURL); err != nil {
 		return err
 	}
 	sub.Name = in.Name
@@ -371,6 +383,13 @@ func (s *Service) postDelivery(ctx context.Context, sub *domain.WebhookSubscript
 	mac.Write(body)
 	sig := "sha256=" + hex.EncodeToString(mac.Sum(nil))
 
+	// Re-cek saat dispatch (bukan cuma saat create) — baris lama, atau DNS
+	// yang berubah jadi menunjuk internal setelah subscription dibuat.
+	if err := s.guardURL(sub.TargetURL); err != nil {
+		m := "target_url ditolak SSRF guard"
+		return domain.WebhookDeliveryStatusFailed, nil, &m
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, sub.TargetURL, bytes.NewReader(body))
 	if err != nil {
 		m := "gagal membangun request: " + err.Error()
@@ -409,13 +428,19 @@ func (s *Service) requireScope(actor domain.Actor, sub *domain.WebhookSubscripti
 	return auth.RequireTenantScope(actor, sub.TenantID)
 }
 
-func validateTargetURL(raw string) error {
+func (s *Service) validateTargetURL(raw string) error {
 	u, err := url.Parse(raw)
 	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
 		return fmt.Errorf("%w: target_url harus URL http(s) absolut yang valid", domain.ErrInvalidInput)
 	}
 	if len(raw) > 500 {
 		return fmt.Errorf("%w: target_url maksimum 500 karakter", domain.ErrInvalidInput)
+	}
+	// SSRF guard: webhook di-POST dari dalam jaringan ACS. Tolak target yang
+	// menunjuk loopback/link-local/metadata-cloud — admin tenant tidak boleh
+	// menjadikan ACS proxy ke infrastruktur internal.
+	if err := s.guardURL(raw); err != nil {
+		return fmt.Errorf("%w: target_url menunjuk alamat yang tidak diizinkan", domain.ErrInvalidInput)
 	}
 	return nil
 }

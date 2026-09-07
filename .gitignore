@@ -6,6 +6,8 @@
 /migrate
 /seed-admin
 /loadtest
+/cpesim
+/e2e
 
 # Env lokal (jangan commit secret) - lihat .env.example untuk template
 .env
