@@ -75,12 +75,30 @@ statis. M2 `paramSuffix` suffix penuh `.ManagementServer.ConnectionRequestURL`.
 M3 S8 advance hanya saat macet. Dead code (`qv`, `failuresOnly`, `booted`)
 dihapus.
 
+### DIKERJAKAN: audit performa skala (`perf-scale-auditor`) + perbaikan
+
+Temuan: ~17–20 round-trip DB per periodic Inform; 100k device @ 300s ≈ 6.000
+query/detik untuk inform "kosong".
+
+**Diperbaiki (commit `dfbdbfe`):**
+- **B2** — `mysql.NewCachedRefRepository` (baru): cache tabel `ref_*` imutabel
+  (event code, status, trigger ZTP, role, tipe param) — hilangkan ~6 query DB
+  per Inform. `List()` (UI) tetap segar.
+- **B5 parsial** — `MarkOnline` skip `UPDATE devices` bila sudah ONLINE;
+  `SetCWMPNamespace` hanya `UPDATE device_sessions` bila namespace berubah.
+
+**BLOCKER skala belum dikerjakan** (butuh desain/load-test — `LAPORAN_KESIAPAN.md`
+§5.2): B1 retensi tabel log tanpa batas, B3 N+1 resolusi path preset, B4 rate
+limiter in-memory per-IP (gagal untuk CGNAT/multi-instance), B5 penuh (targeted
+UPDATE devices tanpa rewrite kolom kredensial). C1/C3/C4/C5/C6 dicatat §5.3.
+
 ### Gerbang & deliverable
 
-- `ci-gatekeeper`: gofmt/vet/build/`go test -race`/frontend/redocly — **HIJAU**
-  (dijalankan sebelum & sesudah perbaikan keamanan; `pkg/netguard` + 6 fake test
-  webhook diverifikasi).
-- `LAPORAN_KESIAPAN.md` (baru) — status jujur go-live.
+- `ci-gatekeeper` + gate lokal: gofmt/vet/build/`go test -race`/frontend/redocly
+  — **HIJAU** setiap commit (`pkg/netguard` + 6 fake test webhook + ref cache
+  diverifikasi).
+- e2e: **10/10 LULUS stabil 3×** setelah SEMUA perbaikan (keamanan + perf).
+- `LAPORAN_KESIAPAN.md` (baru) — status jujur go-live + audit perf §5.
 - `BUKU_PANDUAN_ACS.html` + `.pdf` (baru) — panduan operasional 15 bagian.
 
 ### Verdict go-live
