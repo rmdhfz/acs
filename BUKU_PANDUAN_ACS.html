@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Buku Panduan ACS</title>
+<style>
+  :root {
+    --ink: #1a1f24; --muted: #55606b; --faint: #8a929b; --accent: #1d4ed8;
+    --rule: #d7dbe0; --rule-soft: #e9ecef;
+    --info-bg: #eef4ff; --info-bd: #c7dbff;
+    --warn-bg: #fdf5e4; --warn-bd: #f0dcae;
+    --danger-bg: #fdecea; --danger-bd: #f3c9c4;
+    --ok-bg: #eaf7ee; --ok-bd: #bfe3c9;
+    --code-bg: #f3f4f6;
+  }
+  * { box-sizing: border-box; }
+  html { font-size: 10.5pt; }
+  body {
+    margin: 0; color: var(--ink);
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.55; -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .page { max-width: 17cm; margin: 0 auto; padding: 0 0 2cm; }
+
+  .cover { border-bottom: 3px solid var(--accent); padding-bottom: 14px; margin-bottom: 22px; }
+  .cover .kicker { font-size: 8pt; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); }
+  .cover h1 { font-size: 23pt; line-height: 1.12; margin: 6px 0 4px; font-weight: 700; }
+  .cover .sub { color: var(--muted); font-size: 10.5pt; margin: 0; }
+  .cover .meta { margin-top: 12px; font-size: 8.5pt; color: var(--faint); }
+  .cover .meta strong { color: var(--muted); font-weight: 600; }
+
+  h2 { font-size: 13pt; margin: 24px 0 8px; padding-top: 14px; font-weight: 700; border-top: 1px solid var(--rule); }
+  h2 .num { display: inline-block; min-width: 1.5em; color: var(--accent); }
+  h3 { font-size: 10.5pt; margin: 15px 0 5px; font-weight: 700; }
+  p { margin: 7px 0; }
+  a { color: var(--accent); text-decoration: none; }
+  ul, ol { margin: 7px 0; padding-left: 1.3em; }
+  li { margin: 3px 0; }
+
+  code { font-family: "Consolas","SF Mono","Menlo",monospace; font-size: 9pt; background: var(--code-bg); padding: 1px 4px; border-radius: 3px; }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--rule-soft); border-radius: 5px;
+    padding: 10px 12px; font-family: "Consolas","SF Mono","Menlo",monospace;
+    font-size: 8.6pt; line-height: 1.5; white-space: pre-wrap; word-break: break-word; margin: 8px 0;
+  }
+  pre .cmt { color: #6a7480; }
+
+  ol.steps { list-style: none; padding-left: 0; counter-reset: step; margin: 10px 0; }
+  ol.steps > li { position: relative; padding-left: 30px; margin: 8px 0; }
+  ol.steps > li::before {
+    counter-increment: step; content: counter(step); position: absolute; left: 0; top: 0;
+    width: 20px; height: 20px; background: var(--accent); color: #fff; font-size: 8.5pt; font-weight: 700;
+    border-radius: 50%; text-align: center; line-height: 20px;
+  }
+
+  .callout { border: 1px solid var(--rule); border-left-width: 4px; border-radius: 4px; padding: 9px 12px; margin: 11px 0; font-size: 9.6pt; }
+  .callout .label { font-weight: 700; font-size: 8pt; letter-spacing: 0.08em; text-transform: uppercase; display: block; margin-bottom: 2px; }
+  .callout p:first-of-type { margin-top: 0; } .callout p:last-child { margin-bottom: 0; }
+  .callout.info { background: var(--info-bg); border-color: var(--info-bd); border-left-color: var(--accent); } .callout.info .label { color: var(--accent); }
+  .callout.warn { background: var(--warn-bg); border-color: var(--warn-bd); border-left-color: #b8860b; } .callout.warn .label { color: #96690a; }
+  .callout.danger { background: var(--danger-bg); border-color: var(--danger-bd); border-left-color: #c0392b; } .callout.danger .label { color: #a93226; }
+  .callout.ok { background: var(--ok-bg); border-color: var(--ok-bd); border-left-color: #2e7d43; } .callout.ok .label { color: #256b38; }
+
+  table { width: 100%; border-collapse: collapse; margin: 11px 0; font-size: 9.2pt; }
+  th, td { border: 1px solid var(--rule); padding: 6px 9px; text-align: left; vertical-align: top; }
+  th { background: #f5f6f8; font-weight: 700; font-size: 8.5pt; letter-spacing: 0.03em; }
+  td code { font-size: 8.3pt; }
+  .role-name { font-weight: 700; white-space: nowrap; }
+
+  .toc { font-size: 9.4pt; columns: 2; column-gap: 24px; margin: 10px 0 4px; }
+  .toc ol { margin: 0; padding-left: 1.4em; }
+  .toc a { color: var(--ink); }
+
+  .flow { font-family: "Consolas","SF Mono","Menlo",monospace; font-size: 8.6pt; background: #fbfbfc; border: 1px solid var(--rule-soft); border-radius: 5px; padding: 12px; white-space: pre; overflow-x: auto; margin: 10px 0; line-height: 1.45; }
+
+  @page { size: A4; margin: 18mm 16mm 16mm; }
+  @media print {
+    h2, h3 { page-break-after: avoid; }
+    .callout, pre, table, ol.steps > li, .flow { page-break-inside: avoid; }
+    .cover { page-break-after: avoid; }
+  }
+  footer { margin-top: 28px; border-top: 1px solid var(--rule); padding-top: 8px; font-size: 8pt; color: var(--faint); }
+</style>
+</head>
+<body>
+<div class="page">
+
+<div class="cover">
+  <div class="kicker">Panduan Operasional</div>
+  <h1>Buku Panduan ACS</h1>
+  <p class="sub">Auto Configuration Server multi-vendor (TR-069/CWMP) untuk manajemen CPE lintas merek</p>
+  <div class="meta">
+    <strong>Versi dokumen:</strong> 1.0 &nbsp;·&nbsp;
+    <strong>Tanggal:</strong> 8 September 2026 &nbsp;·&nbsp;
+    <strong>Audiens:</strong> Operator NOC, Administrator Tenant, Tim Integrasi BSS/OSS
+  </div>
+</div>
+
+<p>ACS ini adalah platform manajemen perangkat pelanggan (CPE — ONT/ONU/router)
+berbasis protokol standar <strong>Broadband Forum TR-069 (CWMP)</strong>. Satu
+instalasi melayani banyak perusahaan (multi-tenant) dan banyak merek perangkat —
+ZTE, Huawei, FiberHome, Nokia, Cdata, dan vendor lain — <em>tanpa perubahan
+kode</em>, cukup penambahan data katalog.</p>
+
+<div class="toc">
+<ol>
+  <li><a href="#s1">Konsep dasar &amp; komponen</a></li>
+  <li><a href="#s2">Menjalankan ACS</a></li>
+  <li><a href="#s3">Login, peran, dan tenant</a></li>
+  <li><a href="#s4">Onboarding vendor &amp; OUI</a></li>
+  <li><a href="#s5">Menghubungkan CPE ke ACS</a></li>
+  <li><a href="#s6">Melihat &amp; menelusuri perangkat</a></li>
+  <li><a href="#s7">Task: reboot, baca/tulis parameter</a></li>
+  <li><a href="#s8">Provisioning otomatis (Profile &amp; Zero-Touch)</a></li>
+  <li><a href="#s9">Preset engine (penegakan konfigurasi)</a></li>
+  <li><a href="#s10">Firmware &amp; canary rollout</a></li>
+  <li><a href="#s11">Integrasi sistem lain (API, token, webhook)</a></li>
+  <li><a href="#s12">Observability &amp; alert</a></li>
+  <li><a href="#s13">Keamanan operasional</a></li>
+  <li><a href="#s14">Pemecahan masalah</a></li>
+  <li><a href="#s15">Batasan yang perlu diketahui</a></li>
+</ol>
+</div>
+
+<h2 id="s1"><span class="num">1</span> Konsep dasar &amp; komponen</h2>
+
+<p>CWMP adalah protokol <strong>stateful berbasis sesi</strong>, bukan
+request-response biasa. Perangkat (CPE) yang memulai kontak — bukan ACS:</p>
+
+<div class="flow">CPE                              ACS
+ │  Inform (event: BOOTSTRAP/BOOT/PERIODIC/...)   →   │  autentikasi shared secret, upsert inventory,
+ │                                  ←   InformResponse │  evaluasi Zero-Touch + Preset
+ │  POST kosong ("siap terima perintah")          →   │  ambil 1 task dari antrean
+ │                                  ←   RPC (SetParameterValues / Reboot / Download / ...)
+ │  jawaban RPC / cwmp:Fault                       →   │  tandai task selesai/gagal, ambil task berikutnya
+ │  POST kosong                                    →   │
+ │                                  ←   204 (sesi ditutup — tidak ada task lagi)</div>
+
+<table>
+<tr><th>Komponen</th><th>Fungsi</th><th>Port (dev)</th></tr>
+<tr><td>Backend <code>acsd</code></td><td>Endpoint CWMP untuk CPE + REST API untuk operator/BSS</td><td>REST <code>18080</code>, CWMP <code>17547</code></td></tr>
+<tr><td>MariaDB</td><td>Inventory, task, audit trail, katalog vendor</td><td><code>13306</code></td></tr>
+<tr><td>MinIO</td><td>Penyimpanan file firmware (S3-compatible)</td><td><code>19000</code> / konsol <code>19001</code></td></tr>
+<tr><td>Redis</td><td>Koordinasi antar-instance (event pub/sub)</td><td><code>16379</code></td></tr>
+<tr><td>Prometheus + Grafana</td><td>Metrik &amp; dashboard</td><td><code>19090</code> / <code>13000</code></td></tr>
+<tr><td>Frontend (Console)</td><td>Antarmuka web operator — dijalankan terpisah (<code>npm run dev</code>, port <code>5173</code>)</td><td>—</td></tr>
+</table>
+
+<div class="callout info"><span class="label">Prinsip perancangan</span>
+<p>Perbedaan path parameter TR-069 antar vendor <strong>tidak</strong> ditangani
+dengan percabangan kode, melainkan lewat tabel pemetaan
+(<code>vendor_parameter_mappings</code>). Menambah dukungan vendor/model baru =
+operasi data, bukan rilis software.</p></div>
+
+<h2 id="s2"><span class="num">2</span> Menjalankan ACS</h2>
+
+<ol class="steps">
+  <li>Siapkan berkas <code>.env</code> dari <code>.env.example</code> — isi
+  <code>ACS_DB_ROOT_PASSWORD</code>, <code>ACS_DB_PASSWORD</code>,
+  <code>ACS_JWT_SECRET</code> (min. 32 karakter),
+  <code>ACS_CREDENTIAL_ENC_KEY</code> (base64, 32 byte),
+  <code>ACS_MINIO_ACCESS_KEY</code>, <code>ACS_MINIO_SECRET_KEY</code>.</li>
+  <li>Jalankan stack:
+<pre>docker compose up -d        <span class="cmt"># menjalankan migrasi 0001→0021 lalu acsd</span></pre></li>
+  <li>Buat Superadmin pertama (sekali saja):
+<pre>docker compose exec acsd /app/seed-admin \
+  -username admin -password '&lt;kata sandi kuat&gt;' -email admin@perusahaan.id</pre></li>
+  <li>Verifikasi: <code>curl -s localhost:18080/api/v1/metrics</code> membalas
+  <code>200</code>, dan <code>POST</code> kosong ke <code>localhost:17547/cwmp</code>
+  membalas <code>204</code>.</li>
+</ol>
+
+<div class="callout warn"><span class="label">Produksi</span>
+<p>Endpoint CWMP <strong>wajib</strong> di belakang terminasi TLS (reverse proxy).
+Endpoint <code>/api/v1/metrics</code> tidak berautentikasi (konvensi Prometheus
+exporter) — <strong>firewall di level jaringan</strong>. MinIO harus reachable
+dari jaringan CPE fisik bila memakai strategi presigned-URL untuk firmware.</p></div>
+
+<h2 id="s3"><span class="num">3</span> Login, peran, dan tenant</h2>
+
+<p>Detail lengkap alur login, SSO/OIDC, akun terkunci, dan pemecahan masalah
+login ada di <strong>PANDUAN_LOGIN_ACS.pdf</strong>. Ringkas:</p>
+
+<table>
+<tr><th>Peran</th><th>Cakupan</th></tr>
+<tr><td class="role-name">SUPERADMIN</td><td>Lintas semua tenant. Kelola tenant, katalog vendor global, firmware, kuota.</td></tr>
+<tr><td class="role-name">ADMIN</td><td>Satu tenant. Kelola user tenant sendiri, provisioning, preset, branding, webhook.</td></tr>
+<tr><td class="role-name">NOC</td><td>Satu tenant. Operasi harian: task, reboot, diagnostics, connection request. Tidak mengubah konfigurasi kebijakan.</td></tr>
+<tr><td class="role-name">VIEWER</td><td>Satu tenant, hanya baca.</td></tr>
+<tr><td class="role-name">ENDUSER</td><td>Portal pelanggan (<code>/self-service</code>): kelola WiFi &amp; restart perangkat miliknya sendiri.</td></tr>
+</table>
+
+<p><strong>Tenant</strong> adalah batas isolasi data. Tiap tenant punya
+<em>shared secret Inform CWMP</em> sendiri (username/password yang diisikan ke
+setiap CPE milik tenant itu). Device baru yang Inform dengan secret tenant
+otomatis masuk ke tenant tersebut.</p>
+
+<p>Buat tenant: <strong>Administration → Tenants → Tambah</strong>, atau pakai
+<strong>Wizard Onboarding Tenant</strong> (Administration → Onboarding) yang
+memandu: tenant + secret CWMP → admin pertama → langkah lanjutan.</p>
+
+<h2 id="s4"><span class="num">4</span> Onboarding vendor &amp; OUI</h2>
+
+<p>Sebelum CPE sebuah vendor bisa dikenali penuh, katalog perlu tahu:</p>
+<ol>
+  <li><strong>Vendor</strong> (<code>ref_vendors</code>) — sudah terisi: ZTE, Huawei, FiberHome, Nokia, Cdata.</li>
+  <li><strong>OUI</strong> (<code>vendor_ouis</code>) — 6 digit heksadesimal dari
+  <a href="https://standards-oui.ieee.org/">IEEE OUI registry</a>. <strong>Belum
+  terisi</strong> — wajib diisi per vendor sebelum uji lapangan (lihat callout).</li>
+  <li><strong>Model perangkat</strong> (<code>device_models</code>) — opsional, untuk pemetaan spesifik per model.</li>
+  <li><strong>Pemetaan parameter</strong> (<code>vendor_parameter_mappings</code>) —
+  12 <em>logical key</em> standar sudah dipetakan untuk kelima vendor (nama/model/
+  serial/versi, SSID, passphrase WiFi, PPPoE username/password, interval inform).</li>
+</ol>
+
+<div class="callout danger"><span class="label">Wajib sebelum uji lapangan</span>
+<p><code>vendor_ouis</code> masih kosong. Setiap CPE yang Inform akan muncul
+sebagai <em>"vendor belum diketahui"</em> sampai OUI-nya didaftarkan. Ini bukan
+kegagalan — segera tambahkan OUI perangkat lewat <strong>Catalog → Vendors →
+OUI Terdaftar</strong> begitu MAC address-nya terlihat. Satu digit OUI salah bisa
+membuat perangkat ter-assign ke vendor yang keliru — verifikasi dari registri
+IEEE, jangan dari ingatan.</p></div>
+
+<p>Prosedur langkah-demi-langkah menambah vendor/model baru: lihat
+<strong>VENDOR_ONBOARDING.md</strong>.</p>
+
+<h2 id="s5"><span class="num">5</span> Menghubungkan CPE ke ACS</h2>
+
+<p>Di GUI/CLI tiap CPE, isi bagian <em>TR-069 / ACS / Remote Management</em>:</p>
+
+<table>
+<tr><th>Field CPE</th><th>Isi dengan</th></tr>
+<tr><td>ACS URL</td><td><code>https://acs.perusahaan.id/cwmp</code> (dev: <code>http://&lt;ip&gt;:17547/cwmp</code>)</td></tr>
+<tr><td>ACS Username / Password</td><td>shared secret Inform tenant (dari Administration → Tenants → Kredensial CWMP)</td></tr>
+<tr><td>Periodic Inform Enable</td><td><code>true</code></td></tr>
+<tr><td>Periodic Inform Interval</td><td><code>300</code>–<code>3600</code> detik (ACS menambahkan <em>jitter</em> otomatis untuk mencegah lonjakan serempak)</td></tr>
+</table>
+
+<p>Setelah tersimpan, CPE akan mengirim Inform <code>1 BOOT</code> atau
+<code>0 BOOTSTRAP</code>. Dalam beberapa detik perangkat muncul di
+<strong>Devices</strong>. <code>ConnectionRequestURL</code> perangkat
+di-<strong>capture otomatis</strong> dari Inform — operator tidak perlu
+mengisinya manual agar bisa memicu Connection Request.</p>
+
+<h2 id="s6"><span class="num">6</span> Melihat &amp; menelusuri perangkat</h2>
+
+<ul>
+  <li><strong>Devices</strong> — daftar dengan filter (vendor, status, tag,
+  pencarian serial/MAC), seleksi massal, dan aksi massal (apply profile /
+  firmware / reboot untuk banyak perangkat sekaligus).</li>
+  <li><strong>Device Detail</strong> — tab: Parameter (tree TR-069, bisa
+  expand/edit/AddObject/DeleteObject), Histori Event (CWMP), Task (RPC),
+  Diagnostics, Firmware, Redaman Optik (tren RX/TX power), Timeline Audit
+  (siapa mengubah apa).</li>
+  <li><strong>Ctrl/Cmd + K</strong> — command palette: cari perangkat atau
+  lompat ke halaman mana pun.</li>
+  <li><strong>Dashboard</strong> — distribusi status, perangkat per vendor,
+  antrean task, tren redaman optik.</li>
+</ul>
+
+<h3>Memaksa perangkat lapor sekarang (Connection Request)</h3>
+<p><strong>Device Detail → Connection Request</strong> (atau
+<code>POST /devices/:id/connection-request</code>). ACS menghubungi CPE agar
+segera membuka sesi, tanpa menunggu periodic inform. Bila CPE offline / di balik
+CGNAT, ACS mencoba fallback UDP (STUN/TR-111); bila tetap gagal, jawaban
+<strong>HTTP 502</strong> berarti "perangkat tidak dapat dihubungi" — kondisi
+lapangan biasa, bukan kerusakan ACS.</p>
+
+<h2 id="s7"><span class="num">7</span> Task: reboot, baca/tulis parameter</h2>
+
+<p>Semua perintah ke CPE adalah <strong>task</strong> yang mengantre di ACS dan
+dieksekusi saat CPE membuka sesi berikutnya (atau segera, bila dipicu Connection
+Request).</p>
+
+<table>
+<tr><th>Aksi</th><th>Endpoint / UI</th><th>Peran</th></tr>
+<tr><td>Reboot</td><td><code>POST /devices/:id/reboot</code></td><td>NOC, ADMIN</td></tr>
+<tr><td>Baca parameter</td><td><code>POST /devices/:id/tasks/get-parameter-values</code></td><td>NOC, ADMIN</td></tr>
+<tr><td>Tulis parameter</td><td><code>POST /devices/:id/tasks/set-parameter-values</code></td><td>ADMIN</td></tr>
+<tr><td>Tambah/hapus objek</td><td><code>.../tasks/add-object</code>, <code>.../tasks/delete-object</code></td><td>ADMIN</td></tr>
+<tr><td>Factory reset</td><td><code>POST /devices/:id/factory-reset</code></td><td>ADMIN</td></tr>
+</table>
+
+<div class="callout info"><span class="label">Retry &amp; kegagalan</span>
+<p>Task yang gagal karena <code>cwmp:Fault</code> generik di-retry hingga
+<code>max_retries</code>. Fault <strong>9005 (Invalid Parameter Name)</strong>
+langsung <code>FAILED</code> permanen — retry pasti percuma. Fault
+<strong>9003</strong> pada GetParameterValues memicu pemecahan daftar parameter
+menjadi dua task.</p></div>
+
+<h2 id="s8"><span class="num">8</span> Provisioning otomatis (Profile &amp; Zero-Touch)</h2>
+
+<h3>Provisioning Profile</h3>
+<p>Kumpulan parameter target (mis. SSID, kredensial PPPoE, interval inform).
+Dibuat di <strong>Provisioning → Profiles</strong>. Builder punya autocomplete
+<em>logical key</em> (di-resolve ke path TR-069 sesuai vendor) dengan fallback
+raw-path manual. Terapkan ke satu perangkat lewat <strong>Device Detail →
+Apply Profile</strong>, atau massal lewat Devices → seleksi → Apply Profile.</p>
+
+<div class="callout warn"><span class="label">FR-18 — keputusan produk</span>
+<p>Mengubah isi profile <strong>tidak</strong> otomatis mendorong ulang ke
+perangkat yang sudah terprovisioning. Ini disengaja. Untuk penegakan
+berkelanjutan, gunakan <strong>Preset</strong> (bagian 9).</p></div>
+
+<h3>Zero-Touch Rule (ZTP)</h3>
+<p><strong>Provisioning → Zero-Touch Rules</strong>. Cocokkan perangkat baru
+berdasar OUI / serial pattern / vendor / model / versi firmware / nilai
+parameter, lalu jalankan aksi gabungan: apply profile <em>dan/atau</em> reboot
+<em>dan/atau</em> push firmware. Pilih pemicu evaluasi per rule:</p>
+<ul>
+  <li><code>BOOTSTRAP_ONLY</code> — sekali, saat perangkat pertama kali dikenal.</li>
+  <li><code>BOOTSTRAP_OR_BOOT</code> — tiap kali perangkat reboot.</li>
+  <li><code>EVERY_INFORM</code> — pengawasan berkelanjutan (mis. "tiap inform,
+  cek versi firmware; kalau usang, upgrade"). Ada pagar anti-loop: perangkat
+  dengan task in-flight tidak mendapat aksi baru.</li>
+</ul>
+
+<h2 id="s9"><span class="num">9</span> Preset engine (penegakan konfigurasi)</h2>
+
+<p><strong>Presets</strong> (peran ADMIN). Setara "preset" GenieACS. Tiap sesi
+CWMP, preset dengan <code>enforce=1</code> yang <em>precondition</em>-nya cocok
+akan memeriksa apakah nilai perangkat menyimpang dari target; bila menyimpang,
+ACS otomatis mengantre satu <code>SetParameterValues</code> gabungan
+(drift-heal).</p>
+
+<p>Pagar bawaan: task in-flight ditunggu; cooldown 15 menit antar upaya; menyerah
+setelah 3 kegagalan berturut-turut (dan mencatat <code>activity_logs</code> agar
+NOC tahu). Precondition memakai kosakata yang sama dengan Zero-Touch Rule
+(vendor, OUI, serial pattern, versi firmware, nilai parameter).</p>
+
+<div class="callout info"><span class="label">Jitter interval inform</span>
+<p>Bila preset/profile menyetel <code>PeriodicInformInterval</code>, ACS
+menambahkan offset deterministik per perangkat agar armada tidak Inform di detik
+yang sama. Nilai akhir di perangkat sengaja sedikit berbeda dari angka literal —
+ini fitur, bukan bug.</p></div>
+
+<h2 id="s10"><span class="num">10</span> Firmware &amp; canary rollout</h2>
+
+<ol class="steps">
+  <li><strong>Upload</strong> (Superadmin): <strong>Firmware → Upload</strong> —
+  unggah file biner sungguhan. Checksum SHA-256 dihitung di server saat
+  streaming.</li>
+  <li><strong>Upgrade satu perangkat</strong>: Device Detail → Firmware →
+  Jadwalkan. ACS mengirim RPC <code>Download</code> dengan presigned URL MinIO
+  (berlaku 1 jam), perangkat mengunduh lalu mengirim <code>TransferComplete</code>.</li>
+  <li><strong>Canary / staged rollout</strong> (<strong>Firmware → Rollout
+  Batches</strong>): tentukan populasi (tenant/vendor/model), persentase per
+  wave, dan ambang <em>failure rate</em>. Wave berikutnya jalan otomatis hanya
+  bila wave sebelumnya tuntas dan gagalnya di bawah ambang; bila melebihi ambang,
+  batch <strong>PAUSED</strong> menunggu keputusan operator.</li>
+</ol>
+
+<div class="callout danger"><span class="label">Risiko tinggi</span>
+<p>Upgrade firmware bisa mem-<em>brick</em> perangkat di lokasi pelanggan.
+Selalu mulai dengan wave kecil (mis. 5%), ambang failure rate ketat, dan pantau
+sebelum melanjutkan. Jangan uji firmware ke perangkat produksi di sesi uji
+pertama.</p></div>
+
+<h2 id="s11"><span class="num">11</span> Integrasi sistem lain (API, token, webhook)</h2>
+
+<h3>REST API &amp; token</h3>
+<ul>
+  <li><strong>Kontrak lengkap:</strong> <code>openapi.yaml</code> (OpenAPI 3.0.3,
+  103 operation) + <code>ACS-API.postman_collection.json</code> siap impor ke
+  Postman/Newman.</li>
+  <li><strong>Autentikasi mesin-ke-mesin:</strong> terbitkan API token di
+  <strong>Administration → API Token</strong> (<code>POST /auth/tokens</code>).
+  Token ber-prefix <code>acs_</code>, ditampilkan sekali. Kirim sebagai
+  <code>Authorization: Bearer acs_...</code>. Cabut lewat
+  <code>DELETE /auth/tokens/:id</code> bila bocor / karyawan resign.</li>
+  <li>Token &amp; JWT sama-sama ter-scope tenant + peran. Menonaktifkan tenant
+  langsung menolak semua token/JWT-nya pada request berikutnya.</li>
+</ul>
+
+<h3>Webhook keluar</h3>
+<p><strong>Webhooks</strong> (peran ADMIN). Daftarkan URL target untuk menerima
+event bertipe (mis. <code>PARAMETER_VALUE_CHANGE</code>, <code>DEVICE_FAULT</code>,
+<code>TASK_FAILED</code>) ke BSS/OSS/NMS. Payload ditandatangani; ada log
+pengiriman &amp; hitung kegagalan.</p>
+
+<h2 id="s12"><span class="num">12</span> Observability &amp; alert</h2>
+
+<table>
+<tr><th>Metrik Prometheus</th><th>Arti</th></tr>
+<tr><td><code>acs_devices_by_status</code></td><td>jumlah perangkat per status</td></tr>
+<tr><td><code>acs_devices_by_vendor</code></td><td>jumlah perangkat per vendor</td></tr>
+<tr><td><code>acs_task_queue_depth</code></td><td>kedalaman antrean task per status</td></tr>
+<tr><td><code>acs_task_failed_current</code></td><td>task gagal saat ini, per vendor</td></tr>
+<tr><td><code>acs_cwmp_sessions_open</code></td><td>sesi CWMP terbuka saat ini</td></tr>
+<tr><td><code>acs_cwmp_inform_response_latency_seconds</code></td><td>latensi Inform→InformResponse (histogram)</td></tr>
+</table>
+
+<p>Aturan alert bawaan (<code>deploy/prometheus_alerts.yml</code>): backlog task
+<code>PENDING</code> &gt; 50 selama 5 menit, dan task <code>FAILED</code> per
+vendor &gt; 10. Prosedur operasional insiden: <strong>RUNBOOK.md</strong>.</p>
+
+<h2 id="s13"><span class="num">13</span> Keamanan operasional</h2>
+
+<ul>
+  <li><strong>Rate limit berlapis:</strong> <code>/auth/login</code> 2 req/s per IP,
+  <code>/cwmp</code> 5 req/s per IP, REST lainnya 30 req/s per IP.</li>
+  <li><strong>Proteksi brute-force:</strong> 5 login gagal berturut-turut →
+  akun terkunci 15 menit (pesan error disamarkan dengan "password salah" biasa).</li>
+  <li><strong>Kuota task queue per tenant</strong> (Superadmin, opsional) —
+  membatasi task <code>PENDING</code>/<code>QUEUED</code> agar satu tenant tidak
+  membanjiri antrean bersama.</li>
+  <li><strong>Kredensial terenkripsi at-rest</strong> (AES-256-GCM): shared secret
+  Inform tenant, kredensial connection-request per-device. Tidak pernah ditulis
+  plaintext ke log atau response API.</li>
+  <li><strong>Audit trail:</strong> 7 kolom audit di tabel master + feed
+  <code>activity_logs</code> ("siapa mengubah apa") + timeline per-device.</li>
+  <li><strong>Backup:</strong> prosedur <code>mariadb-dump</code> + restore drill
+  di <strong>PENGUJIAN_LAPANGAN.md §7</strong>. Uji restore secara berkala, bukan
+  hanya menyimpan dump.</li>
+</ul>
+
+<h2 id="s14"><span class="num">14</span> Pemecahan masalah</h2>
+
+<table>
+<tr><th>Gejala</th><th>Kemungkinan penyebab &amp; tindakan</th></tr>
+<tr><td>Perangkat tidak muncul di Devices</td><td>Inform ditolak (secret salah / tenant nonaktif) — cek log <code>acsd</code> untuk <code>Inform ditolak (unauthorized)</code>. Pastikan ACS URL &amp; secret di CPE benar, port CWMP reachable dari VLAN CPE.</td></tr>
+<tr><td>Perangkat muncul "vendor belum diketahui"</td><td>OUI belum terdaftar. Tambahkan di Catalog → Vendors → OUI. Assign <code>vendor_id</code> manual untuk perangkat yang sudah kadung dibuat.</td></tr>
+<tr><td>Task PENDING tidak pernah terkirim</td><td>Perangkat belum membuka sesi baru. Picu Connection Request. Bila 502, perangkat memang tidak dapat dihubungi (offline/CGNAT).</td></tr>
+<tr><td>SetParameterValues gagal 9005</td><td>Path parameter tidak ada di perangkat itu (beda per vendor/firmware). Cek pemetaan <code>vendor_parameter_mappings</code> untuk model tersebut.</td></tr>
+<tr><td>HTTP 429</td><td>Rate limit. Untuk integrasi, sebar beban; jangan burst.</td></tr>
+<tr><td>HTTP 401 "token ditolak" mendadak untuk semua user satu tenant</td><td>Tenant dinonaktifkan. Aktifkan kembali via Administration → Tenants.</td></tr>
+<tr><td>Rollout batch PAUSED</td><td>Failure rate wave melebihi ambang, atau 0 perangkat berhasil dijadwalkan (kuota task queue penuh). Periksa <code>activity_logs</code>, perbaiki penyebab, lalu Advance manual.</td></tr>
+</table>
+
+<p>Untuk diagnosis gejala CPE yang lebih dalam (rantai Inform → sesi → task →
+pemetaan parameter), gunakan panduan diagnostik di <strong>PENGUJIAN_LAPANGAN.md
+§2</strong> yang membedakan bug asli dari batasan yang sudah diketahui.</p>
+
+<h2 id="s15"><span class="num">15</span> Batasan yang perlu diketahui</h2>
+
+<div class="callout warn"><span class="label">Sebelum go-live penuh</span>
+<ul>
+  <li><strong>Uji CPE fisik belum dilakukan.</strong> Seluruh validasi alur
+  sejauh ini memakai simulator (lihat PENGUJIAN_E2E.md, 9/9 skenario lulus) —
+  bukan firmware vendor sungguhan. Jalankan PENGUJIAN_LAPANGAN.md dengan minimal
+  1–2 unit per vendor sebelum rollout lebar.</li>
+  <li><strong><code>vendor_ouis</code> masih kosong</strong> untuk kelima vendor.</li>
+  <li><strong>Load test kapasitas puncak</strong> belum dilakukan — rate limiter
+  <code>/cwmp</code> membatasi pengukuran dari satu IP. Butuh rig multi-IP untuk
+  angka "ribuan sesi concurrent".</li>
+  <li><strong>USP / TR-369</strong> baru kerangka — belum operasional.</li>
+  <li><strong>Ekspresivitas provisioning</strong> sengaja dibatasi ke data
+  terstruktur (bukan skrip bebas seperti GenieACS) demi auditability.</li>
+</ul>
+</div>
+
+<p>Rekomendasi peluncuran: mulai dengan <strong>pilot terbatas</strong> (satu
+anak perusahaan, populasi perangkat kecil, pemantauan ketat), bukan rollout
+penuh serentak ke semua tenant.</p>
+
+<footer>
+Buku Panduan ACS v1.0 — 8 September 2026. Dokumen pendamping:
+PANDUAN_LOGIN_ACS.pdf, PENGUJIAN_LAPANGAN.md, PENGUJIAN_E2E.md,
+VENDOR_ONBOARDING.md, RUNBOOK.md, openapi.yaml.
+</footer>
+
+</div>
+</body>
+</html>

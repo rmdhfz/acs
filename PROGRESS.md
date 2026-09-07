@@ -2,6 +2,95 @@
 
 ---
 
+## SESI 2026-09-08 (2) (`/goal`: harness uji e2e + audit keamanan + kesiapan go-live)
+
+Lanjutan sesi yang sama. Setelah commit batch validasi input (`ac7209a`), user
+minta: bangun pengujian sampai "benar-benar bisa dipakai", audit keamanan
+menyeluruh (OWASP), buat laporan + `BUKU_PANDUAN.pdf`. Docker dinyalakan user.
+
+### DIKERJAKAN: harness uji end-to-end + simulator CPE multi-vendor
+
+- **`internal/simcpe/`** (baru) — simulator CPE TR-069/CWMP: klien CWMP sungguhan
+  (Inform semua event code, terima & jawab RPC, `cwmp:Fault` konfigurabel,
+  listener Connection Request), data model in-memory yang **benar-benar berubah**
+  saat di-`Set`, 5 profil vendor (ZTE/Huawei/FiberHome/Nokia/Cdata) dengan
+  namespace CWMP `cwmp-1-0`/`1-1`/`1-2` & root TR-098/TR-181 yang bervariasi.
+- **`cmd/cpesim/`** (baru) — CLI: single/fleet/fault-injection/conn-req.
+- **`cmd/e2e/`** (baru) — 9 skenario terhadap stack `docker-compose` hidup
+  (REST + CWMP + MariaDB + MinIO), assertion via REST API.
+- `PENGUJIAN_E2E.md` + `scripts/e2e.ps1`.
+
+**Hasil: 9/9 LULUS, stabil 3× berturut-turut** — S1 onboarding 5 vendor, S2
+provisioning push, S3 reboot, S4 get-param, S5 fault-9005-no-retry, S6 isolasi
+tenant, S7 connection-request, S8 firmware canary rollout, S9 preset drift-heal.
+Fleet: 20 device × 2 siklus = 40/40 sesi OK. Migrasi `0→21` ke MariaDB nyata: ✅.
+
+### Bug/gap ACS ditemukan & diperbaiki lewat e2e
+
+- **ACS tidak meng-capture `ConnectionRequestURL` dari Inform** — operator harus
+  isi manual per device sebelum bisa Connection Request. Diperbaiki:
+  `FindOrCreateFromInform` meng-capture dari parameter Inform standar (penting
+  untuk skala auto-provisioning ribuan CPE).
+- **`TriggerConnectionRequest` ke CPE offline → HTTP 500** ("internal server
+  error"). Diperbaiki: `domain.ErrUpstreamUnavailable` → **502**.
+- Assertion e2e menyingkap: task list JSON tidak mengisi `task_type_code`/
+  `task_status_code` (harus resolve via `ref_*`) — bukan bug, catatan.
+- `jitterPeriodicInformInterval` (anti thundering-herd) membuat nilai akhir
+  PeriodicInformInterval beda dari literal preset — **fitur**, bukan bug.
+
+### DIKERJAKAN: audit keamanan OWASP Top 10 (`acs-security-reviewer`)
+
+**2 BLOCKER — diperbaiki:**
+1. **SSRF via `connection_request_url`** (diperkenalkan fitur capture di atas).
+   CPE terkompromi → `http://169.254.169.254/...` → ACS meng-GET saat operator
+   trigger CR. Fix: (a) capture hanya bila host URL == IP sumber Inform
+   (`safeInformConnectionRequestURL`); (b) `pkg/netguard` (baru) tolak
+   loopback/link-local/metadata + `CheckRedirect` tolak redirect di
+   `TriggerConnectionRequest`; (c) guard sama untuk `UDPConnectionRequestAddress`
+   (jalur STUN); (d) status/host upstream tidak lagi bocor ke response.
+   Diverifikasi e2e S7 masih lulus (host container == RemoteIP).
+2. **Role ENDUSER tidak dikurung** — token portal pelanggan bisa `GET /devices`
+   dll. → baca data seluruh tenant. Fix: middleware `staffOnly` di grup `authed`
+   (`router.go`), ENDUSER → 403 di semua API staf, hanya `/self-service/*` +
+   `PATCH /auth/password` (grup `authedSelf`). Diverifikasi live: 6 endpoint staf
+   → 403, `/self-service/devices` → 200.
+
+**NON-BLOCKER — diperbaiki:**
+- `middleware.BodyLimit` — REST 2 MiB (upload firmware dikecualikan via Skipper),
+  CWMP 4 MiB. Menutup memory-exhaustion via POST raksasa pra-auth.
+- `iam.CreateUser` kini validasi panjang password minimum (disamakan dgn
+  reset/change).
+- SSRF webhook `target_url` — `pkg/netguard` + `CheckRedirect` + re-cek saat
+  dispatch. `validateTargetURL` jadi method (guard injectable untuk test).
+
+**NON-BLOCKER — dicatat, belum dikerjakan:** OIDC `state`/`nonce` tidak
+divalidasi; rate limiter in-memory per-instance; API token tanpa expiry;
+`govulncheck` belum di CI; security headers. Detail: `LAPORAN_KESIAPAN.md` §4.3.
+
+### Review kode (`acs-code-reviewer`) — temuan ditindaklanjuti
+
+B1 binary `cpesim`/`e2e` nyangkut di root → `.gitignore` + dihapus. B2 data race
+slice `got` di S7 → mutex. M1 pesan `ErrUpstreamUnavailable` bocor detail infra →
+statis. M2 `paramSuffix` suffix penuh `.ManagementServer.ConnectionRequestURL`.
+M3 S8 advance hanya saat macet. Dead code (`qv`, `failuresOnly`, `booted`)
+dihapus.
+
+### Gerbang & deliverable
+
+- `ci-gatekeeper`: gofmt/vet/build/`go test -race`/frontend/redocly — **HIJAU**
+  (dijalankan sebelum & sesudah perbaikan keamanan; `pkg/netguard` + 6 fake test
+  webhook diverifikasi).
+- `LAPORAN_KESIAPAN.md` (baru) — status jujur go-live.
+- `BUKU_PANDUAN_ACS.html` + `.pdf` (baru) — panduan operasional 15 bagian.
+
+### Verdict go-live
+
+**Siap pilot terbatas** (1 tenant, populasi kecil, monitoring ketat). **Belum
+siap rollout penuh** — penahan: nol bukti CPE fisik (tak bisa disimulasikan),
+`vendor_ouis` kosong, load test kapasitas puncak butuh rig multi-IP.
+
+---
+
 ## SESI 2026-09-08 (`/siap-commit`: verifikasi + commit batch validasi input yang menggantung)
 
 ### Kondisi saat sesi dimulai

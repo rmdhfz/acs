@@ -4,7 +4,7 @@ Dokumen tracking hidup (living document) untuk membawa ACS ini dari "kerangka ar
 
 Update dokumen ini setiap kali sebuah item selesai atau prioritas berubah — jangan biarkan basi. Lihat `PRD.md` untuk requirement produk dan `TECH.md` untuk keputusan arsitektur; dokumen ini adalah **rencana eksekusi**, bukan pengganti keduanya.
 
-**Terakhir diperbarui:** 2026-09-05
+**Terakhir diperbarui:** 2026-09-08
 
 ---
 
@@ -272,6 +272,10 @@ Fix: `TaskFilter` dapat `TenantID` (resolve via JOIN devices), `task.Service.Lis
  Diurut dampak. Yang menahan klaim "lebih baik secara keseluruhan":
 
 - [ ] **Uji lapangan CPE fisik** — belum pernah terjadi. `PENGUJIAN_LAPANGAN.md` siap. Ini gap #1: satu Inform nyata > sebulan koding. (Fase 0 juga masih menahan item ini.)
+
+  **[2026-09-08] Harness uji e2e OTOMATIS dibuat** (`internal/simcpe/` simulator CPE multi-vendor + `cmd/e2e/` 9 skenario + `cmd/cpesim/` CLI, lihat `PENGUJIAN_E2E.md`). **9/9 skenario LULUS** terhadap stack `docker-compose` hidup (REST+CWMP+MariaDB+MinIO), stabil 3×: onboarding 5 vendor, provisioning push, reboot, get-param, fault-9005-no-retry, isolasi tenant, connection-request, firmware canary rollout, preset drift-heal. Fleet 20 device × 2 siklus = 40/40 OK. Migrasi `0→21` ke MariaDB nyata: bersih. **INI BUKAN pengganti uji fisik** — simulator tidak menjalankan firmware vendor sungguhan; item checklist ini tetap belum dicentang. Tapi alur ACS end-to-end kini terbukti benar & jadi jaring regresi CWMP. Detail: `LAPORAN_KESIAPAN.md`.
+
+  **Perbaikan yang muncul dari e2e + audit keamanan 2026-09-08:** ACS kini meng-capture `ConnectionRequestURL` dari Inform (sebelumnya harus diisi manual per device) — dijaga anti-SSRF (host==RemoteIP + `pkg/netguard`); `TriggerConnectionRequest` ke CPE offline → 502 bukan 500; `middleware.BodyLimit` ditambahkan; role ENDUSER dikurung ke `/self-service` (sebelumnya bisa baca data seluruh tenant); SSRF guard webhook `target_url`. 2 blocker keamanan (SSRF, ENDUSER) diperbaiki. Non-blocker tersisa di `LAPORAN_KESIAPAN.md` §4.3.
 - [~] **Engine preset** — **v1 backend DIIMPLEMENTASIKAN 2026-09-02** (keputusan user: Opsi C + 5a/5b). `provisioning.Service.EvaluatePresets` dipanggil tiap sesi CWMP setelah ZTP: preset `enforce=1` dijaga sesuai `configurations` (op `set_parameter`), drift-heal + pagar (pending-task / cooldown 15m / give-up 3×). Migrasi `0021_preset_engine`, 7 unit test, `openapi`. **CI hijau** (`59f9014`: gofmt/vet/build/`go test -race` lulus). **Belum:** `migrate up 0→21` ke MariaDB nyata (CI tanpa service DB). UI: `PresetsPage.tsx` dibuat sesi ini (list + editor JSON precondition/configurations + toggle enforce + banner FR-18) + route/nav. **BELUM:** estimasi "N device terpengaruh" saat aktifkan enforce (butuh endpoint count — v1.1); op `apply_profile`/`refresh`, precondition `tag_id`, `channel` aktif — v1.1. Detail: `PRESET_ENGINE_DESIGN.md`.
 - [ ] **USP/TR-369 nyata** — `internal/delivery/usp` + `usecase/usp_session` hanya kerangka: `HandleMessage` no-op, state in-memory (bukan multi-instance), dan `pkg/usp` pakai JSON buatan sendiri (USP asli = Protobuf). **Proposal desain lengkap → `USP_TR369_DESIGN.md` (2026-09-02):** rekomendasi MTP WebSocket dulu (menghilangkan masalah CGNAT untuk USP), routing lintas-instance via Redis pub/sub, protobuf BBF di build, reuse `vendor_parameter_mappings`/`tasks`/ZTP/preset. 6 pertanyaan produk menunggu jawaban (§8). **Rekomendasi doc itu sendiri: TUNDA sampai uji lapangan CWMP selesai** — kematangan CWMP lapangan blocker yang lebih menentukan. PRD menaruh USP di Fase 3.
 - [ ] **Load test sungguhan** — rig multi-IP / instance dgn rate limiter dinaikkan; ukur p95 Inform di ribuan sesi concurrent (NFR <300ms). `cmd/loadtest` ada tapi terbatas rate limiter 5 req/s.
