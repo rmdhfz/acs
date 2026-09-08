@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Status Fitur ACS</title>
+<style>
+  :root{--ink:#1a1f24;--muted:#55606b;--faint:#8a929b;--accent:#1d4ed8;--rule:#d7dbe0;--rule-soft:#e9ecef;
+    --ok:#1a7f37;--part:#9a6700;--no:#b42318;--code-bg:#f3f4f6;}
+  *{box-sizing:border-box;}
+  html{font-size:10pt;}
+  body{margin:0;color:var(--ink);font-family:"Segoe UI","Helvetica Neue",Arial,sans-serif;line-height:1.5;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  .page{max-width:19cm;margin:0 auto;padding:0 0 2cm;}
+  .cover{border-bottom:3px solid var(--accent);padding-bottom:12px;margin-bottom:16px;}
+  .cover .kicker{font-size:7.5pt;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);}
+  .cover h1{font-size:22pt;margin:5px 0 3px;font-weight:700;}
+  .cover .sub{color:var(--muted);font-size:10pt;margin:0;}
+  .cover .meta{margin-top:10px;font-size:8pt;color:var(--faint);}
+  h2{font-size:12pt;margin:20px 0 6px;padding-top:12px;font-weight:700;border-top:1px solid var(--rule);}
+  h2 .n{color:var(--accent);}
+  p{margin:6px 0;}
+  code{font-family:"Consolas","Menlo",monospace;font-size:8.4pt;background:var(--code-bg);padding:1px 3px;border-radius:3px;}
+  table{width:100%;border-collapse:collapse;margin:8px 0 14px;font-size:8.6pt;}
+  th,td{border:1px solid var(--rule);padding:4px 7px;text-align:left;vertical-align:top;}
+  th{background:#f5f6f8;font-weight:700;font-size:8pt;}
+  th:nth-child(2),th:nth-child(3),th:nth-child(4),
+  td:nth-child(2),td:nth-child(3),td:nth-child(4){text-align:center;white-space:nowrap;width:1%;}
+  .s-ok{color:var(--ok);font-weight:700;}
+  .s-part{color:var(--part);font-weight:700;}
+  .s-no{color:var(--no);font-weight:700;}
+  .legend{font-size:8.5pt;background:#fbfbfc;border:1px solid var(--rule-soft);border-radius:5px;padding:8px 12px;margin:10px 0;}
+  .legend span{margin-right:14px;}
+  .callout{border:1px solid var(--rule);border-left-width:4px;border-left-color:var(--accent);background:#eef4ff;
+    border-radius:4px;padding:8px 12px;margin:10px 0;font-size:9pt;}
+  .callout .label{font-weight:700;font-size:7.5pt;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);display:block;margin-bottom:2px;}
+  @page{size:A4 landscape;margin:14mm 12mm;}
+  @media print{h2{page-break-after:avoid;}table{page-break-inside:auto;}tr{page-break-inside:avoid;}}
+  footer{margin-top:22px;border-top:1px solid var(--rule);padding-top:8px;font-size:7.5pt;color:var(--faint);}
+</style>
+</head>
+<body>
+<div class="page">
+
+<div class="cover">
+  <div class="kicker">Checklist Kelengkapan</div>
+  <h1>Status Fitur ACS</h1>
+  <p class="sub">Daftar fitur · status backend · ketersediaan UI · integrasi &amp; pengujian</p>
+  <div class="meta"><strong>Versi:</strong> 1.0 &nbsp;·&nbsp; <strong>Tanggal:</strong> 8 September 2026 &nbsp;·&nbsp; <strong>Basis:</strong> branch <code>dev</code> commit <code>5568383</code></div>
+</div>
+
+<div class="legend">
+  <strong>Legenda kolom:</strong><br>
+  <strong>Backend</strong> / <strong>UI</strong> / <strong>Integrasi &amp; Uji</strong>:
+  <span><span class="s-ok">&#10003;</span> lengkap</span>
+  <span><span class="s-part">&#9679;</span> sebagian</span>
+  <span><span class="s-no">&#10007;</span> belum</span>
+  <span>&mdash; tidak berlaku</span><br>
+  <strong>Integrasi &amp; Uji</strong>: "e2e S#" = tercakup skenario end-to-end otomatis (10/10 lulus, lihat PENGUJIAN_E2E.md).
+  "lapangan" = menunggu uji CPE fisik. "browser" = menunggu uji UI di browser.
+</div>
+
+<div class="callout"><span class="label">Catatan penting</span>
+Hampir semua UI <strong>belum diverifikasi visual di browser sungguhan</strong> — uji <code>ui-qa-browser</code>
+belum tuntas. "&#10003;" pada kolom UI berarti halaman/komponen &amp; wiring API-nya <em>ada dan lulus build</em>,
+bukan "sudah diklik &amp; dikonfirmasi tampil benar".
+</div>
+
+<h2><span class="n">1.</span> Autentikasi &amp; Keamanan</h2>
+<table>
+<tr><th>Fitur</th><th>Backend</th><th>UI</th><th>Integrasi &amp; Uji</th><th>Catatan</th></tr>
+<tr><td>Login username/password (JWT)</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td>e2e (semua skenario)</td><td>JWT 8 jam; <code>LoginPage</code></td></tr>
+<tr><td>Proteksi brute-force (5&times; &rarr; kunci 15 mnt)</td><td class="s-ok">&#10003;</td><td>&mdash;</td><td class="s-ok">unit test</td><td>pesan error disamarkan</td></tr>
+<tr><td>Rate limit berlapis (login 2/s, CWMP 5/s, REST 30/s)</td><td class="s-ok">&#10003;</td><td>&mdash;</td><td class="s-ok">e2e</td><td>in-memory per-IP &mdash; ganti Redis sebelum multi-instance</td></tr>
+<tr><td>Ganti password sendiri</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">e2e S10</td><td><code>ProfilePage</code> &middot; <code>PATCH /auth/password</code></td></tr>
+<tr><td>Admin reset password user lain</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679;</td><td>Administration &rarr; Users</td></tr>
+<tr><td>SSO / OIDC</td><td class="s-part">&#9679;</td><td class="s-part">&#9679;</td><td class="s-no">&#10007;</td><td><code>state</code>/<code>nonce</code> belum divalidasi (LAPORAN &sect;4.3)</td></tr>
+<tr><td>API Token M2M (terbit / daftar / cabut)</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">e2e</td><td>Administration &rarr; API Token; <code>Bearer acs_&hellip;</code></td></tr>
+<tr><td>Batas ukuran body (anti-DoS)</td><td class="s-ok">&#10003;</td><td>&mdash;</td><td class="s-ok">e2e (regresi)</td><td>REST 2&nbsp;MiB, CWMP 4&nbsp;MiB</td></tr>
+<tr><td>SSRF guard (Connection Request URL &amp; webhook)</td><td class="s-ok">&#10003;</td><td>&mdash;</td><td class="s-ok">e2e S10 + unit</td><td><code>pkg/netguard</code> + host==RemoteIP</td></tr>
+<tr><td>Enkripsi kredensial at-rest (AES-256-GCM)</td><td class="s-ok">&#10003;</td><td>&mdash;</td><td class="s-ok">&#10003;</td><td>shared secret CWMP, connection-request password</td></tr>
+</table>
+
+<h2><span class="n">2.</span> Multi-tenant &amp; IAM</h2>
+<table>
+<tr><th>Fitur</th><th>Backend</th><th>UI</th><th>Integrasi &amp; Uji</th><th>Catatan</th></tr>
+<tr><td>Tenant CRUD + aktif/nonaktif</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">e2e S6/S10</td><td>Administration &rarr; Tenants; nonaktif = token langsung ditolak</td></tr>
+<tr><td>Shared secret Inform CWMP per tenant</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">e2e S1</td><td>Administration &rarr; Kredensial CWMP</td></tr>
+<tr><td>Wizard onboarding tenant</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679; browser</td><td><code>/administration/onboarding</code>, 3 langkah</td></tr>
+<tr><td>User CRUD + kelola peran (RBAC 5 role)</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">e2e S6/S10</td><td>SUPERADMIN / ADMIN / NOC / VIEWER / ENDUSER</td></tr>
+<tr><td>Isolasi data antar-tenant</td><td class="s-ok">&#10003;</td><td>&mdash;</td><td class="s-ok">e2e S6</td><td>admin tenant B tidak lihat device tenant A</td></tr>
+<tr><td>ENDUSER dikurung ke <code>/self-service</code></td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">e2e S10</td><td>middleware <code>staffOnly</code> &mdash; 403 di semua API staf</td></tr>
+<tr><td>White-labeling (logo / nama / warna aksen)</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679; browser</td><td>Administration &rarr; Branding; ADMIN self-service</td></tr>
+<tr><td>Kuota task queue per tenant</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">e2e (kuota)</td><td>Administration &rarr; Kuota Task; superadmin only</td></tr>
+</table>
+
+<h2><span class="n">3.</span> Inventory &amp; Monitoring Perangkat</h2>
+<table>
+<tr><th>Fitur</th><th>Backend</th><th>UI</th><th>Integrasi &amp; Uji</th><th>Catatan</th></tr>
+<tr><td>Onboarding device dari Inform</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">e2e S1 (5 vendor)</td><td>tenant &amp; vendor auto-resolve</td></tr>
+<tr><td>Daftar device + filter &amp; pencarian + seleksi massal</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">e2e</td><td><code>DevicesPage</code>; filter vendor/status/tag/search</td></tr>
+<tr><td>Detail device + tree parameter TR-069</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679;</td><td>expand / edit / AddObject / DeleteObject (<code>ParameterTree</code>)</td></tr>
+<tr><td>Histori event CWMP</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">e2e S1/S7</td><td>tab "Histori Event"</td></tr>
+<tr><td>Nilai parameter tersimpan (EAV)</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">e2e S4</td><td>tab "Parameter"</td></tr>
+<tr><td>Capture <code>ConnectionRequestURL</code> otomatis</td><td class="s-ok">&#10003;</td><td>&mdash;</td><td class="s-ok">e2e S7</td><td>dari parameter Inform; anti-SSRF (host==RemoteIP)</td></tr>
+<tr><td>Config snapshot device (ambil / riwayat)</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679;</td><td>tab "Config History"</td></tr>
+<tr><td>Geolokasi device (lat / long)</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679;</td><td class="s-part">&#9679;</td><td>field ada (PATCH device); tampilan peta belum</td></tr>
+<tr><td>Redaman optik RX/TX power (ONT GPON)</td><td class="s-part">&#9679;</td><td class="s-ok">&#10003;</td><td class="s-no">&#10007; lapangan</td><td>tab "Redaman Optik"; mapping optical per vendor <strong>kosong</strong></td></tr>
+<tr><td>Status online/offline + reaper sesi basi</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td>sweeper 15 menit</td></tr>
+<tr><td>Deteksi anomali (DNS hijack, reboot loop, redaman kritis)</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679;</td><td class="s-no">&#10007; lapangan</td><td>tercatat di <code>activity_logs</code> + webhook</td></tr>
+</table>
+
+<h2><span class="n">4.</span> Protokol CWMP / TR-069</h2>
+<table>
+<tr><th>Fitur</th><th>Backend</th><th>UI</th><th>Integrasi &amp; Uji</th><th>Catatan</th></tr>
+<tr><td>Inform semua event code (0/1/2/4/6/7)</td><td class="s-ok">&#10003;</td><td>&mdash;</td><td class="s-ok">e2e S1/S7</td><td>string spec Broadband Forum</td></tr>
+<tr><td>Auth Inform (shared secret + anti-spoof lintas tenant)</td><td class="s-ok">&#10003;</td><td>&mdash;</td><td class="s-ok">e2e S1</td><td>+ orphan healing device lama</td></tr>
+<tr><td>Echo namespace CWMP (cwmp-1-0 / 1-1 / 1-2)</td><td class="s-ok">&#10003;</td><td>&mdash;</td><td class="s-ok">e2e S1</td><td>5 profil vendor beda namespace</td></tr>
+<tr><td>Root data model TR-098 &amp; TR-181</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">e2e S1</td><td>resolve per device, tidak diasumsikan</td></tr>
+<tr><td>RPC Get / SetParameterValues</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">e2e S2/S4</td><td>+ chunking proaktif 50 nama/task</td></tr>
+<tr><td>RPC GetParameterNames + auto-discovery</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679;</td><td>refresh tree; auto utk vendor tak dikenal saat BOOTSTRAP</td></tr>
+<tr><td>RPC AddObject / DeleteObject</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679;</td><td>tombol di <code>ParameterTree</code></td></tr>
+<tr><td>RPC Reboot</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">e2e S3</td><td>Device Detail + bulk</td></tr>
+<tr><td>RPC FactoryReset</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679;</td><td>Device Detail (ADMIN)</td></tr>
+<tr><td>RPC Download (firmware) + TransferComplete</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">e2e S8</td><td>presigned URL MinIO</td></tr>
+<tr><td>Fault handling: 9005 gagal permanen, 9003 split</td><td class="s-ok">&#10003;</td><td>&mdash;</td><td class="s-ok">e2e S5</td><td>tidak retry percuma</td></tr>
+<tr><td>Connection Request HTTP (ACS &rarr; CPE)</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">e2e S7</td><td>502 (bukan 500) bila CPE offline</td></tr>
+<tr><td>Connection Request UDP / STUN (TR-111, CGNAT)</td><td class="s-part">&#9679;</td><td>&mdash;</td><td class="s-no">&#10007; lapangan</td><td>kode ada, belum teruji ke CGNAT nyata</td></tr>
+<tr><td>Sesi stateful multi-instance (state di Redis + MariaDB)</td><td class="s-ok">&#10003;</td><td>&mdash;</td><td class="s-ok">e2e</td><td>app server horizontal-scale</td></tr>
+<tr><td>Logging terstruktur jalur CWMP (<code>slog</code> JSON)</td><td class="s-ok">&#10003;</td><td>&mdash;</td><td class="s-ok">&#10003;</td><td>+ metrik latensi Inform&rarr;InformResponse</td></tr>
+</table>
+
+<h2><span class="n">5.</span> Task / Antrean RPC</h2>
+<table>
+<tr><th>Fitur</th><th>Backend</th><th>UI</th><th>Integrasi &amp; Uji</th><th>Catatan</th></tr>
+<tr><td>Antrean task per device + prioritas</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">e2e</td><td><code>TasksPage</code>; index <code>(device_id,status,priority)</code></td></tr>
+<tr><td>Retry + <code>max_retries</code> + backoff eksponensial</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">unit + e2e S5</td><td></td></tr>
+<tr><td>Batalkan task</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679;</td><td><code>TasksPage</code></td></tr>
+<tr><td>Statistik task (dashboard)</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td>agregat tenant-scoped</td></tr>
+<tr><td>Redaksi URL/kredensial di task utk role &lt; ADMIN</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td>NOC/VIEWER dapat <code>[redacted]</code></td></tr>
+</table>
+
+<h2><span class="n">6.</span> Provisioning (Profile + Zero-Touch)</h2>
+<table>
+<tr><th>Fitur</th><th>Backend</th><th>UI</th><th>Integrasi &amp; Uji</th><th>Catatan</th></tr>
+<tr><td>Provisioning Profile CRUD</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">e2e S2</td><td><code>ProvisioningPage</code></td></tr>
+<tr><td>Parameter picker (autocomplete logical key)</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679; browser</td><td>preview <code>tr069_path</code> hasil resolve</td></tr>
+<tr><td>Apply profile (1 device / massal)</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">e2e S2</td><td>Device Detail + Devices bulk</td></tr>
+<tr><td>Zero-Touch Rule CRUD</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679;</td><td><code>ZTRuleModal</code> di ProvisioningPage</td></tr>
+<tr><td>ZTP match: OUI / serial / vendor / model / versi FW / nilai param</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679;</td><td>SQL LIKE wildcard sudah diperbaiki</td></tr>
+<tr><td>ZTP aksi gabungan (profile + reboot + firmware)</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679;</td><td></td></tr>
+<tr><td>ZTP trigger BOOTSTRAP_ONLY / BOOT / EVERY_INFORM</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679;</td><td>+ pagar anti-reboot-loop</td></tr>
+<tr><td>ZTP gagal &rarr; tercatat (bukan gagal senyap, FR-15)</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679;</td><td class="s-ok">&#10003;</td><td><code>ZERO_TOUCH_APPLY_FAILED</code> di activity_logs</td></tr>
+</table>
+
+<h2><span class="n">7.</span> Preset Engine (penegakan konfigurasi)</h2>
+<table>
+<tr><th>Fitur</th><th>Backend</th><th>UI</th><th>Integrasi &amp; Uji</th><th>Catatan</th></tr>
+<tr><td>Preset CRUD (precondition + configurations JSON)</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">e2e S9</td><td><code>PresetsPage</code>; editor JSON</td></tr>
+<tr><td>Enforce=1 drift-heal tiap Inform</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">e2e S9</td><td>device menyimpang &rarr; auto SetParameterValues</td></tr>
+<tr><td>Pagar: cooldown 15m / maks 3 gagal / tunggu task in-flight</td><td class="s-ok">&#10003;</td><td>&mdash;</td><td class="s-ok">unit</td><td></td></tr>
+<tr><td>Jitter <code>PeriodicInformInterval</code> (anti thundering-herd)</td><td class="s-ok">&#10003;</td><td>&mdash;</td><td class="s-ok">&#10003;</td><td>offset deterministik per device</td></tr>
+<tr><td>Estimasi "N device terpengaruh" saat aktifkan enforce</td><td class="s-no">&#10007;</td><td class="s-no">&#10007;</td><td>&mdash;</td><td>v1.1 (butuh endpoint count)</td></tr>
+<tr><td>Op <code>apply_profile</code> / <code>refresh</code>, precondition <code>tag_id</code>/<code>channel</code></td><td class="s-no">&#10007;</td><td class="s-no">&#10007;</td><td>&mdash;</td><td>v1.1; v1 hanya <code>set_parameter</code></td></tr>
+</table>
+
+<h2><span class="n">8.</span> Firmware</h2>
+<table>
+<tr><th>Fitur</th><th>Backend</th><th>UI</th><th>Integrasi &amp; Uji</th><th>Catatan</th></tr>
+<tr><td>Upload file firmware (multipart, checksum SHA-256 server-side)</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">e2e S8</td><td>superadmin only</td></tr>
+<tr><td>Object storage MinIO + presigned URL ke CPE</td><td class="s-ok">&#10003;</td><td>&mdash;</td><td class="s-ok">e2e S8</td><td>URL 1 jam, digenerate on-demand</td></tr>
+<tr><td>Upgrade 1 device</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679;</td><td>Device Detail &rarr; Firmware</td></tr>
+<tr><td>Canary / staged rollout batch (wave % + failure threshold)</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">e2e S8</td><td>Firmware &rarr; Rollout Batches</td></tr>
+<tr><td>Auto-advance wave / advance manual / cancel / auto-pause</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">e2e S8</td><td>PAUSED bila failure rate &gt; ambang</td></tr>
+<tr><td>Firmware jobs per device</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">e2e S8</td><td></td></tr>
+<tr><td>Sweeper objek yatim MinIO</td><td class="s-no">&#10007;</td><td>&mdash;</td><td>&mdash;</td><td>follow-up (LAPORAN)</td></tr>
+</table>
+
+<h2><span class="n">9.</span> Diagnostics</h2>
+<table>
+<tr><th>Fitur</th><th>Backend</th><th>UI</th><th>Integrasi &amp; Uji</th><th>Catatan</th></tr>
+<tr><td>Trigger diagnostic (ping / traceroute / dll)</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679; lapangan</td><td>tab "Diagnostics"</td></tr>
+<tr><td>Hasil diagnostic</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679; lapangan</td><td>korelasi ke task GetParameterValues</td></tr>
+</table>
+
+<h2><span class="n">10.</span> Katalog Vendor</h2>
+<table>
+<tr><th>Fitur</th><th>Backend</th><th>UI</th><th>Integrasi &amp; Uji</th><th>Catatan</th></tr>
+<tr><td>Vendor CRUD</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">e2e (add OUI)</td><td>5 vendor: ZTE/Huawei/FiberHome/Nokia/Cdata</td></tr>
+<tr><td>OUI per vendor</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">e2e S1</td><td><strong>data kosong &mdash; isi dari IEEE registry sebelum uji lapangan</strong></td></tr>
+<tr><td>Device Model</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679;</td><td>0 baris (butuh sample device nyata)</td></tr>
+<tr><td>Vendor Parameter Mapping (logical key &rarr; path TR-069)</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679;</td><td>120 baris seeded (migrasi 0004): 12 key &times; 5 vendor &times; TR-098/181</td></tr>
+<tr><td>Playbook onboarding vendor baru</td><td class="s-ok">&#10003;</td><td>&mdash;</td><td>&mdash;</td><td><code>VENDOR_ONBOARDING.md</code></td></tr>
+</table>
+
+<h2><span class="n">11.</span> Tags &amp; Segmentasi</h2>
+<table>
+<tr><th>Fitur</th><th>Backend</th><th>UI</th><th>Integrasi &amp; Uji</th><th>Catatan</th></tr>
+<tr><td>Tag CRUD</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">e2e S10 (create)</td><td><code>TagsPage</code></td></tr>
+<tr><td>Assign / remove tag ke device</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679;</td><td>Device Detail</td></tr>
+<tr><td>Filter device by tag</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679;</td><td><code>GET /devices?tag_id=</code> &mdash; butuh index <code>(tag_id,device_id)</code> di skala besar</td></tr>
+</table>
+
+<h2><span class="n">12.</span> Audit Trail &amp; Observability</h2>
+<table>
+<tr><th>Fitur</th><th>Backend</th><th>UI</th><th>Integrasi &amp; Uji</th><th>Catatan</th></tr>
+<tr><td>Audit trail 7-kolom (tabel master)</td><td class="s-ok">&#10003;</td><td>&mdash;</td><td class="s-ok">&#10003;</td><td>created/updated/deleted by+at</td></tr>
+<tr><td>Feed activity log global ("siapa mengubah apa")</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679;</td><td><code>AuditPage</code> (ADMIN+), tenant-scoped</td></tr>
+<tr><td>Timeline audit per device</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td>tab "Timeline Audit"</td></tr>
+<tr><td>Metrik Prometheus (6 metrik + histogram latensi)</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679;</td><td class="s-ok">&#10003;</td><td><code>/metrics</code> tanpa auth (firewall di jaringan)</td></tr>
+<tr><td>Alert rules (backlog PENDING, task FAILED per vendor)</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679;</td><td class="s-part">&#9679;</td><td><code>prometheus_alerts.yml</code>; Alertmanager belum kirim keluar</td></tr>
+<tr><td>Dashboard Grafana visual</td><td class="s-no">&#10007;</td><td class="s-no">&#10007;</td><td>&mdash;</td><td>hanya UI bawaan Prometheus</td></tr>
+<tr><td>Runbook operasional insiden</td><td class="s-ok">&#10003;</td><td>&mdash;</td><td>&mdash;</td><td><code>RUNBOOK.md</code></td></tr>
+</table>
+
+<h2><span class="n">13.</span> Integrasi Sistem Lain</h2>
+<table>
+<tr><th>Fitur</th><th>Backend</th><th>UI</th><th>Integrasi &amp; Uji</th><th>Catatan</th></tr>
+<tr><td>REST API internal (103 endpoint, RBAC + tenant-scope)</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">e2e</td><td>parity backend&harr;frontend 95/95 relevan</td></tr>
+<tr><td>Spesifikasi OpenAPI 3.0.3</td><td class="s-ok">&#10003;</td><td>&mdash;</td><td class="s-ok">redocly lint</td><td><code>openapi.yaml</code> 1:1 dengan <code>router.go</code></td></tr>
+<tr><td>Koleksi Postman (auto-generate)</td><td class="s-ok">&#10003;</td><td>&mdash;</td><td class="s-ok">Newman</td><td><code>ACS-API.postman_collection.json</code></td></tr>
+<tr><td>API token untuk integrasi machine-to-machine</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">e2e</td><td>ter-scope tenant + peran, bisa dicabut</td></tr>
+<tr><td>Webhook keluar (typed event, HMAC-SHA256)</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679;</td><td>create/list/test/log delivery UI; SSRF guard</td></tr>
+<tr><td>WebSocket push event (realtime dashboard)</td><td class="s-part">&#9679;</td><td class="s-part">&#9679;</td><td class="s-no">&#10007;</td><td>hub in-memory &mdash; parsial di multi-instance (LAPORAN C5)</td></tr>
+<tr><td>Prometheus scrape endpoint</td><td class="s-ok">&#10003;</td><td>&mdash;</td><td class="s-ok">&#10003;</td><td></td></tr>
+<tr><td>USP / TR-369</td><td class="s-no">&#10007;</td><td class="s-no">&#10007;</td><td>&mdash;</td><td>hanya kerangka (<code>HandleMessage</code> no-op) &mdash; tidak operasional</td></tr>
+<tr><td>Notifikasi email / WhatsApp</td><td class="s-no">&#10007;</td><td class="s-no">&#10007;</td><td>&mdash;</td><td>tidak ada di lingkup proyek ini</td></tr>
+</table>
+
+<h2><span class="n">14.</span> Portal Self-Service (ENDUSER)</h2>
+<table>
+<tr><th>Fitur</th><th>Backend</th><th>UI</th><th>Integrasi &amp; Uji</th><th>Catatan</th></tr>
+<tr><td>List perangkat milik pelanggan</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-ok">e2e S10</td><td>via <code>user_devices</code></td></tr>
+<tr><td>Ubah SSID / passphrase / band WiFi</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679; browser</td><td><code>SelfServicePage</code></td></tr>
+<tr><td>Restart perangkat sendiri</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679; browser</td><td></td></tr>
+<tr><td>Isolasi: hanya perangkat sendiri (bukan se-tenant)</td><td class="s-ok">&#10003;</td><td>&mdash;</td><td class="s-ok">e2e S10</td><td></td></tr>
+</table>
+
+<h2><span class="n">15.</span> UI/UX Umum</h2>
+<table>
+<tr><th>Fitur</th><th>Backend</th><th>UI</th><th>Integrasi &amp; Uji</th><th>Catatan</th></tr>
+<tr><td>Dashboard analitik (Recharts: status, vendor, task, redaman optik)</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679; browser</td><td><code>DashboardPage</code></td></tr>
+<tr><td>Dark mode (3-state: sistem / terang / gelap)</td><td>&mdash;</td><td class="s-ok">&#10003;</td><td class="s-no">&#10007; browser</td><td>belum diverifikasi visual</td></tr>
+<tr><td>Tampilan mobile-responsive (sidebar drawer)</td><td>&mdash;</td><td class="s-ok">&#10003;</td><td class="s-no">&#10007; browser</td><td>belum diverifikasi visual</td></tr>
+<tr><td>Command palette (Ctrl/Cmd+K)</td><td>&mdash;</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679; browser</td><td>cari device + navigasi</td></tr>
+<tr><td>Notifikasi in-app (bell + panel)</td><td>&mdash;</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679; browser</td><td>polling (bukan push realtime)</td></tr>
+<tr><td>i18n (Bahasa Indonesia / Inggris)</td><td>&mdash;</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679; browser</td><td>cakupan awal, fallback ke ID</td></tr>
+<tr><td>Bulk actions (apply profile / firmware / reboot ke banyak device)</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679;</td><td>device vendor tak cocok dilewati otomatis</td></tr>
+<tr><td>Halaman Profil user</td><td class="s-ok">&#10003;</td><td class="s-ok">&#10003;</td><td class="s-part">&#9679;</td><td><code>ProfilePage</code></td></tr>
+</table>
+
+<h2><span class="n">16.</span> Ringkasan</h2>
+<table>
+<tr><th>Kategori</th><th>Backend lengkap</th><th>Ada UI</th><th>Tercakup e2e</th></tr>
+<tr><td>Autentikasi &amp; Keamanan</td><td>8 / 10</td><td>6 / 10</td><td>7 / 10</td></tr>
+<tr><td>Multi-tenant &amp; IAM</td><td>8 / 8</td><td>8 / 8</td><td>7 / 8</td></tr>
+<tr><td>Inventory &amp; Monitoring</td><td>9 / 11</td><td>10 / 11</td><td>6 / 11</td></tr>
+<tr><td>Protokol CWMP</td><td>13 / 15</td><td>9 / 9 relevan</td><td>10 / 15</td></tr>
+<tr><td>Task queue</td><td>5 / 5</td><td>5 / 5</td><td>4 / 5</td></tr>
+<tr><td>Provisioning</td><td>8 / 8</td><td>8 / 8</td><td>3 / 8</td></tr>
+<tr><td>Preset engine</td><td>4 / 6</td><td>4 / 6</td><td>2 / 6</td></tr>
+<tr><td>Firmware</td><td>6 / 7</td><td>6 / 7</td><td>5 / 7</td></tr>
+<tr><td>Katalog vendor</td><td>5 / 5</td><td>4 / 4 relevan</td><td>2 / 5</td></tr>
+<tr><td>Audit &amp; Observability</td><td>6 / 7</td><td>5 / 7</td><td>3 / 7</td></tr>
+<tr><td>Integrasi eksternal</td><td>6 / 9</td><td>5 / 9</td><td>5 / 9</td></tr>
+<tr><td>Portal self-service</td><td>4 / 4</td><td>4 / 4</td><td>2 / 4</td></tr>
+</table>
+
+<p><strong>Yang benar-benar belum ada (backend + UI):</strong> USP/TR-369 operasional,
+dashboard Grafana, estimasi "N device" preset, op preset <code>apply_profile</code>,
+sweeper objek yatim firmware, Alertmanager notifikasi keluar, notifikasi email/WA.</p>
+
+<p><strong>Ada tapi butuh pekerjaan:</strong> OIDC (validasi state), WebSocket
+multi-instance (Redis pub/sub), rate limiter terdistribusi, redaman optik
+(mapping vendor), CGNAT/STUN (uji lapangan).</p>
+
+<p><strong>Verifikasi yang tertunda:</strong> uji UI di browser sungguhan (semua
+halaman), uji CPE fisik (interoperabilitas firmware vendor), load test kapasitas.</p>
+
+<footer>
+Status Fitur ACS v1.0 &mdash; 8 September 2026. Basis: hasil audit kode +
+suite e2e (PENGUJIAN_E2E.md, 10/10). Dokumen pendamping: LAPORAN_KESIAPAN.md,
+BUKU_PANDUAN_ACS.pdf, PANDUAN_PENGUJIAN_LAPANGAN.pdf.
+</footer>
+
+</div>
+</body>
+</html>
