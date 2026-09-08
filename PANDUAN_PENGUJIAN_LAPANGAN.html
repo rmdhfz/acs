@@ -1,0 +1,585 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Panduan Pengujian Lapangan ACS</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({
+    startOnLoad: true, theme: 'neutral', securityLevel: 'loose',
+    flowchart: { useMaxWidth: true, htmlLabels: true },
+    er: { useMaxWidth: true }, sequence: { useMaxWidth: true }
+  });
+</script>
+<style>
+  :root {
+    --ink:#1a1f24; --muted:#55606b; --faint:#8a929b; --accent:#1d4ed8;
+    --rule:#d7dbe0; --rule-soft:#e9ecef;
+    --info-bg:#eef4ff; --info-bd:#c7dbff; --warn-bg:#fdf5e4; --warn-bd:#f0dcae;
+    --danger-bg:#fdecea; --danger-bd:#f3c9c4; --ok-bg:#eaf7ee; --ok-bd:#bfe3c9;
+    --code-bg:#f3f4f6;
+  }
+  * { box-sizing:border-box; }
+  html { font-size:10.5pt; }
+  body { margin:0; color:var(--ink); font-family:"Segoe UI","Helvetica Neue",Arial,sans-serif;
+    line-height:1.55; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .page { max-width:17.5cm; margin:0 auto; padding:0 0 2cm; }
+
+  .cover { border-bottom:3px solid var(--accent); padding-bottom:14px; margin-bottom:22px; }
+  .cover .kicker { font-size:8pt; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:var(--accent); }
+  .cover h1 { font-size:23pt; line-height:1.12; margin:6px 0 4px; font-weight:700; }
+  .cover .sub { color:var(--muted); font-size:10.5pt; margin:0; }
+  .cover .meta { margin-top:12px; font-size:8.5pt; color:var(--faint); }
+  .cover .meta strong { color:var(--muted); font-weight:600; }
+
+  h2 { font-size:13pt; margin:24px 0 8px; padding-top:14px; font-weight:700; border-top:1px solid var(--rule); }
+  h2 .num { display:inline-block; min-width:1.5em; color:var(--accent); }
+  h3 { font-size:10.5pt; margin:15px 0 5px; font-weight:700; }
+  p { margin:7px 0; }
+  a { color:var(--accent); text-decoration:none; }
+  ul,ol { margin:7px 0; padding-left:1.3em; }
+  li { margin:3px 0; }
+
+  code { font-family:"Consolas","SF Mono","Menlo",monospace; font-size:9pt; background:var(--code-bg); padding:1px 4px; border-radius:3px; }
+  pre { background:var(--code-bg); border:1px solid var(--rule-soft); border-radius:5px; padding:10px 12px;
+    font-family:"Consolas","SF Mono","Menlo",monospace; font-size:8.6pt; line-height:1.5;
+    white-space:pre-wrap; word-break:break-word; margin:8px 0; }
+
+  .callout { border:1px solid var(--rule); border-left-width:4px; border-radius:4px; padding:9px 12px; margin:11px 0; font-size:9.6pt; }
+  .callout .label { font-weight:700; font-size:8pt; letter-spacing:.08em; text-transform:uppercase; display:block; margin-bottom:2px; }
+  .callout p:first-of-type { margin-top:0; } .callout p:last-child { margin-bottom:0; }
+  .callout.info { background:var(--info-bg); border-color:var(--info-bd); border-left-color:var(--accent); } .callout.info .label { color:var(--accent); }
+  .callout.warn { background:var(--warn-bg); border-color:var(--warn-bd); border-left-color:#b8860b; } .callout.warn .label { color:#96690a; }
+  .callout.danger { background:var(--danger-bg); border-color:var(--danger-bd); border-left-color:#c0392b; } .callout.danger .label { color:#a93226; }
+  .callout.ok { background:var(--ok-bg); border-color:var(--ok-bd); border-left-color:#2e7d43; } .callout.ok .label { color:#256b38; }
+
+  table { width:100%; border-collapse:collapse; margin:11px 0; font-size:9.1pt; }
+  th,td { border:1px solid var(--rule); padding:6px 9px; text-align:left; vertical-align:top; }
+  th { background:#f5f6f8; font-weight:700; font-size:8.5pt; letter-spacing:.03em; }
+  td code { font-size:8.3pt; }
+
+  .fig { margin:14px 0 18px; text-align:center; page-break-inside:avoid; }
+  .fig .mermaid { display:block; margin:0 auto; line-height:normal; }
+  .fig figcaption { font-size:8.4pt; color:var(--faint); margin-top:6px; font-style:italic; }
+  /* Batasi tinggi diagram agar muat satu halaman A4 (area cetak ~24cm) —
+     mermaid SVG menyusut proporsional. */
+  .fig .mermaid svg { max-width:100% !important; max-height:23cm; height:auto !important; }
+
+  .toc { font-size:9.4pt; columns:2; column-gap:24px; margin:10px 0 4px; }
+  .toc ol { margin:0; padding-left:1.4em; }
+  .toc a { color:var(--ink); }
+
+  .chk { list-style:none; padding-left:0; }
+  .chk li { padding-left:22px; position:relative; margin:5px 0; }
+  .chk li::before { content:"\2610"; position:absolute; left:0; font-size:12pt; line-height:1; color:var(--accent); }
+
+  @page { size:A4; margin:17mm 15mm 15mm; }
+  @media print {
+    h2,h3 { page-break-after:avoid; }
+    .callout,pre,table,.fig { page-break-inside:avoid; }
+    .cover { page-break-after:avoid; }
+  }
+  footer { margin-top:28px; border-top:1px solid var(--rule); padding-top:8px; font-size:8pt; color:var(--faint); }
+</style>
+</head>
+<body>
+<div class="page">
+
+<div class="cover">
+  <div class="kicker">Panduan Koordinasi &amp; Eksekusi</div>
+  <h1>Pengujian Lapangan ACS</h1>
+  <p class="sub">Persiapan jaringan, prosedur uji CPE fisik multi-vendor, dan pembagian tanggung jawab tim</p>
+  <div class="meta">
+    <strong>Versi:</strong> 1.0 &nbsp;·&nbsp;
+    <strong>Tanggal:</strong> 8 September 2026 &nbsp;·&nbsp;
+    <strong>Untuk:</strong> Tim Network, Tim NOC/ACS, Koordinator Uji
+  </div>
+</div>
+
+<p>Dokumen ini menyiapkan <strong>uji lapangan pertama</strong> ACS ke CPE fisik
+(ZTE, Huawei, FiberHome, Nokia, Cdata). Sampai saat ini seluruh validasi alur
+memakai simulator (9/9 skenario e2e lulus) — <strong>belum ada satu Inform pun
+dari perangkat fisik</strong>. Tujuan sesi ini: membuktikan interoperabilitas
+protokol &amp; pemetaan parameter dengan firmware vendor sungguhan.</p>
+
+<div class="toc">
+<ol>
+  <li><a href="#s1">Ringkasan &amp; alur uji</a></li>
+  <li><a href="#s2">Topologi jaringan uji</a></li>
+  <li><a href="#s3">Yang perlu disiapkan — Tim Network</a></li>
+  <li><a href="#s4">Yang perlu disiapkan — Tim NOC/ACS</a></li>
+  <li><a href="#s5">Yang perlu disiapkan — per perangkat CPE</a></li>
+  <li><a href="#s6">Cara kerja sesi CWMP (referensi)</a></li>
+  <li><a href="#s7">Alur provisioning otomatis</a></li>
+  <li><a href="#s8">Aktor &amp; use case sistem</a></li>
+  <li><a href="#s9">Model data inti</a></li>
+  <li><a href="#s10">Prosedur uji per perangkat</a></li>
+  <li><a href="#s11">Batasan yang sudah diketahui</a></li>
+  <li><a href="#s12">Yang tidak dicoba di sesi pertama</a></li>
+  <li><a href="#s13">Pelaporan temuan</a></li>
+  <li><a href="#s14">Matriks tanggung jawab (RACI)</a></li>
+  <li><a href="#s15">Checklist kesiapan (Go / No-Go)</a></li>
+</ol>
+</div>
+
+<h2 id="s1"><span class="num">1</span> Ringkasan &amp; alur uji</h2>
+
+<p>Alur tingkat tinggi dari persiapan sampai laporan:</p>
+
+<div class="fig">
+<pre class="mermaid">
+flowchart TD
+  A([Mulai]) --&gt; B{Prasyarat jaringan OK?}
+  B -- Tidak --&gt; B1[Network: port, routing, DNS, TLS] --&gt; B
+  B -- Ya --&gt; C[Backup DB] --&gt; D[Tenant pilot + shared secret]
+  D --&gt; E[Catat MAC / serial CPE] --&gt; F[Set ACS URL di CPE]
+  F --&gt; G{Device muncul &lt; 60 dtk?}
+  G -- Tidak --&gt; G1[Diagnosa: log auth · port 7547 · secret] --&gt; F
+  G -- Ya --&gt; H[Tambah OUI → assign vendor_id]
+  H --&gt; I[Verifikasi serial / MAC / model / data model]
+  I --&gt; J[GetParameterValues dasar]
+  J --&gt; K[Provisioning profile kecil: SSID]
+  K --&gt; L[Apply → SSID BERUBAH di CPE]
+  L --&gt; M[Uji Connection Request] --&gt; N[Uji Reboot]
+  N --&gt; O[Catat temuan]
+  O --&gt; P{Vendor lain?}
+  P -- Ya --&gt; F
+  P -- Tidak --&gt; Q([Selesai — kompilasi laporan])
+</pre>
+<figcaption>Gambar 1 — Alur persiapan &amp; eksekusi uji lapangan (satu iterasi per vendor).</figcaption>
+</div>
+
+<h2 id="s2"><span class="num">2</span> Topologi jaringan uji</h2>
+
+<p>Diagram di bawah menunjukkan jalur komunikasi dan port yang <strong>wajib
+diizinkan</strong> antar-zona. Semua panah adalah koneksi yang harus lolos
+firewall/routing.</p>
+
+<div class="fig">
+<pre class="mermaid">
+flowchart TB
+  subgraph AKSES["ZONA AKSES — pelanggan / lab"]
+    CPE["CPE fisik&nbsp;&nbsp;ZTE · Huawei ·<br/>FiberHome · Nokia · Cdata"]
+  end
+  subgraph OPS["ZONA NOC / BSS"]
+    NOC["Browser NOC<br/>(ACS Console)"]
+    BSS["Sistem BSS / OSS"]
+  end
+  subgraph DMZ["ZONA DMZ"]
+    PROXY["Reverse Proxy<br/>terminasi TLS"]
+  end
+  subgraph APP["ZONA APLIKASI"]
+    ACSD["acsd&nbsp;&nbsp;CWMP :7547 · REST :8080"]
+  end
+  subgraph DATA["ZONA DATA (privat)"]
+    DB[("MariaDB<br/>:3306")]
+    MINIO[("MinIO :9000<br/>firmware")]
+    REDIS[("Redis<br/>:6379")]
+  end
+
+  CPE -- "N1&nbsp; HTTPS :443 — Inform" --&gt; PROXY
+  NOC -- "N4&nbsp; HTTPS :443 — REST" --&gt; PROXY
+  BSS -- "N5&nbsp; HTTPS :443 — REST + token" --&gt; PROXY
+  PROXY -- ":7547 / :8080" --&gt; ACSD
+  ACSD -- "N2&nbsp; Connection Request<br/>HTTP / UDP → :7547 di CPE" --&gt; CPE
+  CPE -- "N3&nbsp; HTTPS :443 — unduh firmware<br/>(presigned URL)" --&gt; MINIO
+  ACSD --&gt; DB
+  ACSD --&gt; MINIO
+  ACSD --&gt; REDIS
+  ACSD -- "webhook keluar (HTTPS)" --&gt; BSS
+</pre>
+<figcaption>Gambar 2 — Topologi &amp; matriks port. Panah = arah inisiasi koneksi.</figcaption>
+</div>
+
+<div class="callout info"><span class="label">Untuk uji lab sederhana</span>
+<p>Bila ACS dan CPE berada di <strong>satu segmen L2 yang sama</strong> dan
+memakai HTTP polos (tanpa proxy TLS), CPE cukup diarahkan ke
+<code>http://&lt;IP-ACS&gt;:7547/cwmp</code> langsung. Reverse proxy + TLS tetap
+<strong>wajib untuk produksi</strong> (TR-069 mengangkut kredensial).</p></div>
+
+<h2 id="s3"><span class="num">3</span> Yang perlu disiapkan — Tim Network</h2>
+
+<h3>3.1 Firewall &amp; routing</h3>
+<table>
+<tr><th>#</th><th>Sumber → Tujuan</th><th>Port / Protokol</th><th>Alasan</th></tr>
+<tr><td>N1</td><td>Segmen CPE → ACS (proxy)</td><td>TCP 443 (atau 7547 utk lab HTTP)</td><td>CPE mengirim <em>Inform</em> ke ACS. <strong>Tanpa ini device tidak akan pernah muncul.</strong></td></tr>
+<tr><td>N2</td><td>ACS (acsd) → Segmen CPE</td><td>TCP 7547 (default) / UDP utk STUN</td><td><em>Connection Request</em>: ACS memaksa CPE Inform segera. Port di sisi CPE bervariasi (7547 / 30005) — cek per model.</td></tr>
+<tr><td>N3</td><td>Segmen CPE → MinIO/object storage</td><td>TCP 443</td><td>CPE mengunduh file firmware via presigned URL. Hanya perlu bila menguji fitur firmware.</td></tr>
+<tr><td>N4</td><td>Segmen NOC → ACS (proxy)</td><td>TCP 443</td><td>Operator membuka ACS Console.</td></tr>
+<tr><td>N5</td><td>Sistem BSS → ACS (proxy)</td><td>TCP 443</td><td>Integrasi REST API + penerimaan webhook (opsional untuk uji pertama).</td></tr>
+<tr><td>N6</td><td>acsd → MariaDB / Redis / MinIO</td><td>TCP 3306 / 6379 / 9000</td><td>Internal zona data — biasanya sudah 1 host (docker-compose) saat uji.</td></tr>
+</table>
+
+<div class="callout warn"><span class="label">Titik gagal paling umum</span>
+<p><strong>N1</strong> (CPE tidak bisa mencapai ACS) dan <strong>N2</strong>
+(ACS tidak bisa balik ke CPE). Uji keduanya <strong>sebelum</strong> hari-H:
+dari host di segmen CPE, <code>curl -v telnet://&lt;IP-ACS&gt;:7547</code>; dari
+host ACS, <code>curl -v telnet://&lt;IP-CPE&gt;:7547</code>. Jangan mendiagnosa
+ini di tengah sesi uji.</p></div>
+
+<h3>3.2 DNS</h3>
+<ul>
+  <li>Satu FQDN untuk ACS, mis. <code>acs.perusahaan.id</code>, resolve ke IP
+  reverse proxy — dari <strong>segmen CPE</strong> dan dari <strong>segmen
+  NOC</strong>. CPE menyimpan URL ini permanen; ganti IP tanpa DNS =
+  re-provisioning manual semua CPE.</li>
+  <li>Bila memakai presigned URL MinIO: host MinIO juga harus resolvable &amp;
+  reachable dari segmen CPE (bukan hanya dari ACS).</li>
+</ul>
+
+<h3>3.3 TLS (produksi — untuk lab HTTP boleh dilewati)</h3>
+<ul>
+  <li>Sertifikat valid (bukan self-signed) pada FQDN ACS di reverse proxy —
+  banyak firmware CPE menolak sertifikat yang tidak tepercaya pada endpoint ACS.</li>
+  <li>Terminasi TLS di proxy; proxy meneruskan <code>X-Forwarded-For</code> agar
+  ACS melihat IP CPE yang sebenarnya (dipakai untuk validasi Connection Request
+  anti-SSRF: URL CR harus se-host dengan IP Inform).</li>
+</ul>
+
+<h3>3.4 Rencana pengalamatan IP</h3>
+<ul>
+  <li>IP statis / reservasi DHCP untuk server ACS.</li>
+  <li>Daftar IP CPE yang akan diuji (untuk uji reachability N2 &amp; mencocokkan
+  di log). Bila CPE di belakang NAT/CGNAT, catat — Connection Request HTTP
+  langsung tidak akan bekerja; fallback STUN/UDP belum teruji lapangan (§11).</li>
+</ul>
+
+<h2 id="s4"><span class="num">4</span> Yang perlu disiapkan — Tim NOC/ACS</h2>
+
+<ul class="chk">
+  <li>Stack ACS berjalan &amp; sehat: <code>docker compose up -d</code>, lalu
+  <code>curl -s localhost:8080/api/v1/metrics</code> → <code>200</code> dan POST
+  kosong ke <code>:7547/cwmp</code> → <code>204</code>.</li>
+  <li>Migrasi database <code>0001</code>→<code>0021</code> jalan bersih (otomatis
+  saat <code>up</code>).</li>
+  <li><strong>Backup database</strong> sebelum sesi (§13 punya perintahnya).</li>
+  <li>Buat <strong>tenant pilot khusus</strong> (Administration → Tenants) —
+  jangan pakai tenant yang sudah berisi data lain.</li>
+  <li>Set <strong>shared secret Inform CWMP</strong> tenant pilot (tombol
+  "Kredensial CWMP") — catat username &amp; password, minimal 16 karakter.</li>
+  <li>Siapkan akun operator: 1 SUPERADMIN + 1 ADMIN/NOC untuk tenant pilot.</li>
+  <li>Siapkan daftar <strong>OUI</strong> (6 digit heksadesimal, dari
+  <a href="https://standards-oui.ieee.org/">IEEE registry</a>) untuk tiap vendor
+  yang akan diuji — <code>vendor_ouis</code> masih kosong (§11).</li>
+  <li>Buka <strong>log acsd</strong> real-time selama sesi:
+  <code>docker compose logs -f acsd</code> — cari <code>cwmp: Inform diterima</code>
+  dan <code>Inform ditolak (unauthorized)</code>.</li>
+</ul>
+
+<h2 id="s5"><span class="num">5</span> Yang perlu disiapkan — per perangkat CPE</h2>
+
+<ul class="chk">
+  <li>Minimal <strong>1 unit per vendor</strong> (boleh bertahap, tidak harus
+  kelimanya di hari yang sama). Unit yang <strong>boleh gagal/reboot</strong> —
+  jangan unit pelanggan aktif.</li>
+  <li>Akses admin GUI/CLI tiap CPE (untuk mengisi ACS URL).</li>
+  <li>Catat <strong>MAC address</strong> &amp; <strong>serial number</strong>
+  tiap unit sebelum mulai — untuk dicocokkan di daftar Devices.</li>
+  <li>Catat <strong>model persis</strong> &amp; <strong>versi firmware</strong>
+  tiap unit.</li>
+  <li>Koneksi WAN aktif di tiap CPE (agar bisa menjangkau ACS).</li>
+</ul>
+
+<p>Isi di menu TR-069 / CWMP / Remote Management tiap CPE:</p>
+<table>
+<tr><th>Field CPE</th><th>Isi</th></tr>
+<tr><td>ACS URL</td><td><code>https://acs.perusahaan.id/cwmp</code> (lab: <code>http://&lt;IP-ACS&gt;:7547/cwmp</code>)</td></tr>
+<tr><td>ACS Username / Password</td><td>shared secret Inform tenant pilot (§4)</td></tr>
+<tr><td>Periodic Inform Enable</td><td><code>true</code></td></tr>
+<tr><td>Periodic Inform Interval</td><td><code>300</code> detik (untuk uji, supaya tidak perlu reboot tiap ingin Inform baru)</td></tr>
+<tr><td>Connection Request Username / Password</td><td>bebas per device (dicatat) — dipakai ACS untuk CR balik</td></tr>
+</table>
+
+<h2 id="s6"><span class="num">6</span> Cara kerja sesi CWMP (referensi)</h2>
+
+<p>CWMP adalah protokol <strong>stateful berbasis sesi</strong> — CPE yang
+memulai. Memahami ini penting saat mendiagnosa "kenapa task tidak jalan".</p>
+
+<div class="fig">
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant C as CPE
+  participant P as Reverse Proxy
+  participant A as acsd
+  participant D as MariaDB
+
+  C-&gt;&gt;P: HTTPS POST — Inform (Basic Auth, event 0 BOOTSTRAP)
+  P-&gt;&gt;A: teruskan :7547
+  A-&gt;&gt;D: validasi shared secret tenant
+  A-&gt;&gt;D: upsert device + catat event + sesi
+  A-&gt;&gt;A: evaluasi Zero-Touch + Preset
+  A--&gt;&gt;C: 200 InformResponse (Set-Cookie: sesi)
+  C-&gt;&gt;A: POST kosong ("siap terima perintah")
+  A-&gt;&gt;D: ambil 1 task dari antrean
+  A--&gt;&gt;C: RPC — SetParameterValues / Reboot / Download
+  C-&gt;&gt;A: jawaban RPC  atau  cwmp:Fault
+  A-&gt;&gt;D: tandai task COMPLETED / FAILED
+  A--&gt;&gt;C: task berikutnya  atau  204 (sesi ditutup)
+  Note over C,A: Task hanya terkirim SAAT sesi terbuka.<br/>Connection Request memaksa CPE membuka sesi tanpa menunggu Periodic Inform.
+</pre>
+<figcaption>Gambar 3 — Sekuens satu sesi CWMP: Inform → InformResponse → pertukaran RPC → penutupan.</figcaption>
+</div>
+
+<h2 id="s7"><span class="num">7</span> Alur provisioning otomatis</h2>
+
+<p>Setiap Inform memicu evaluasi <strong>Zero-Touch Rule</strong> (untuk device
+baru / kondisi tertentu) lalu <strong>Preset engine</strong> (penegakan
+konfigurasi berkelanjutan). Keduanya bisa menghasilkan task yang muncul
+"sendiri" — itu perilaku yang benar, bukan bug.</p>
+
+<div class="fig">
+<pre class="mermaid">
+flowchart LR
+  I[Inform diterima] --&gt; U[Parameter di-upsert]
+  U --&gt; Z{Zero-Touch Rule<br/>cocok?}
+  Z -- Ya --&gt; ZA[Aksi gabungan:<br/>apply profile ·<br/>reboot · firmware]
+  Z -- Tidak --&gt; PR{Preset enforce=1<br/>cocok?}
+  ZA --&gt; PR
+  PR -- Tidak --&gt; E([Selesai])
+  PR -- Ya --&gt; DR{Device menyimpang<br/>dari target?}
+  DR -- Tidak --&gt; E
+  DR -- Ya --&gt; Q[Antre SetParameterValues<br/>gabungan<br/>pagar: cooldown 15m ·<br/>maks 3 gagal ·<br/>tunggu task in-flight]
+  ZA --&gt; T[(Antrean task)]
+  Q --&gt; T
+  T --&gt; S[Dikirim di sesi<br/>CWMP berikutnya] --&gt; K[CPE konvergen]
+</pre>
+<figcaption>Gambar 4 — Zero-Touch Provisioning + Preset drift-heal per Inform.</figcaption>
+</div>
+
+<h2 id="s8"><span class="num">8</span> Aktor &amp; use case sistem</h2>
+
+<div class="fig">
+<pre class="mermaid">
+flowchart LR
+  SUP(("Superadmin"))
+  ADM(("Admin Tenant"))
+  NOC(("Operator NOC"))
+  VWR(("Viewer"))
+  END(("Pelanggan<br/>ENDUSER"))
+  CPE(("CPE<br/>(sistem)"))
+  BSS(("BSS/OSS<br/>(sistem)"))
+
+  subgraph ACS["ACS"]
+    direction TB
+    u1(["Kelola tenant &amp; katalog vendor"])
+    u2(["Kelola user &amp; peran tenant"])
+    u3(["Onboarding perangkat<br/>(Inform → inventory)"])
+    u4(["Provisioning: profile &amp; Zero-Touch"])
+    u5(["Preset: penegakan konfigurasi"])
+    u6(["Task: reboot, baca/tulis parameter"])
+    u7(["Connection Request"])
+    u8(["Firmware: upload &amp; canary rollout"])
+    u9(["Diagnostics &amp; monitoring"])
+    u10(["Audit trail &amp; observability"])
+    u11(["Kelola WiFi &amp; restart<br/>perangkat sendiri"])
+    u12(["Konsumsi REST API + webhook"])
+  end
+
+  SUP --- u1 & u2 & u8
+  ADM --- u2 & u4 & u5 & u10
+  NOC --- u6 & u7 & u9
+  VWR --- u9 & u10
+  END --- u11
+  CPE --- u3
+  BSS --- u12
+</pre>
+<figcaption>Gambar 5 — Diagram use case: aktor (lingkaran) dan fungsi utama ACS.</figcaption>
+</div>
+
+<h2 id="s9"><span class="num">9</span> Model data inti</h2>
+
+<p>42 tabel total. Dipecah dua diagram agar terbaca: (A) multi-tenant, inventory,
+&amp; katalog vendor; (B) operasi — task, provisioning, preset, firmware.
+<code>DEVICES</code> adalah hub keduanya.</p>
+
+<div class="fig">
+<pre class="mermaid">
+erDiagram
+  TENANTS   ||--o{ USERS : "punya"
+  TENANTS   ||--o{ DEVICES : "memiliki"
+  USERS     ||--o{ USER_ROLES : "diberi"
+  USERS     ||--o{ USER_DEVICES : "portal self-service"
+  DEVICES   ||--o{ USER_DEVICES : ""
+  REF_VENDORS ||--o{ VENDOR_OUIS : "OUI"
+  REF_VENDORS ||--o{ DEVICE_MODELS : "model"
+  REF_VENDORS ||--o{ VENDOR_PARAMETER_MAPPINGS : "path TR-069 per vendor"
+  REF_VENDORS ||--o{ DEVICES : "identifikasi via OUI"
+  DEVICE_MODELS ||--o{ DEVICES : "klasifikasi"
+  DEVICES   ||--o{ DEVICE_SESSIONS : "sesi CWMP"
+  DEVICES   ||--o{ DEVICE_EVENTS : "event"
+  DEVICES   ||--o{ DEVICE_PARAMETERS : "nilai TR-069 (EAV)"
+  DEVICES {
+    bigint id PK
+    bigint tenant_id FK
+    bigint vendor_id FK
+    char oui
+    varchar serial_number
+    varchar mac_address
+    varchar software_version
+    bigint device_status_id
+    datetime last_inform_at
+  }
+  VENDOR_PARAMETER_MAPPINGS {
+    bigint vendor_id FK
+    varchar logical_key
+    varchar tr069_path
+  }
+  DEVICE_SESSIONS {
+    varchar session_token
+    varchar cwmp_namespace
+    varchar status
+  }
+</pre>
+<figcaption>Gambar 6A — ERD: multi-tenant, inventory perangkat, &amp; katalog vendor.</figcaption>
+</div>
+
+<div class="fig">
+<pre class="mermaid">
+erDiagram
+  DEVICES ||--o{ TASKS : "antrean RPC"
+  DEVICES ||--o{ DEVICE_OPTICAL_METRICS : "redaman optik"
+  DEVICES ||--o{ FIRMWARE_UPGRADE_JOBS : "job upgrade"
+  TENANTS ||--o{ PROVISIONING_PROFILES : "punya"
+  TENANTS ||--o{ ZERO_TOUCH_RULES : "punya"
+  TENANTS ||--o{ PRESETS : "punya"
+  TENANTS ||--o{ WEBHOOK_SUBSCRIPTIONS : "langganan"
+  TENANTS ||--o{ ACTIVITY_LOGS : "audit trail"
+  PROVISIONING_PROFILES ||--o{ PROVISIONING_PROFILE_PARAMETERS : "parameter target"
+  PROVISIONING_PROFILES ||--o{ DEVICES : "diterapkan"
+  ZERO_TOUCH_RULES ||--o{ PROVISIONING_PROFILES : "memicu apply"
+  FIRMWARE_FILES ||--o{ FIRMWARE_UPGRADE_JOBS : "sumber"
+  FIRMWARE_FILES ||--o{ FIRMWARE_ROLLOUT_BATCHES : "sumber"
+  FIRMWARE_ROLLOUT_BATCHES ||--o{ FIRMWARE_UPGRADE_JOBS : "wave"
+  TASKS {
+    bigint device_id FK
+    bigint task_type_id
+    bigint task_status_id
+    json parameters
+    int retry_count
+  }
+  PRESETS {
+    bigint tenant_id FK
+    varchar name
+    json precondition
+    json configurations
+    bool enforce
+  }
+  FIRMWARE_ROLLOUT_BATCHES {
+    bigint firmware_file_id FK
+    int wave_percentage
+    int max_failure_rate_percent
+    bigint status_id
+  }
+</pre>
+<figcaption>Gambar 6B — ERD: task queue, provisioning, preset engine, &amp; firmware rollout.</figcaption>
+</div>
+
+<h2 id="s10"><span class="num">10</span> Prosedur uji per perangkat</h2>
+
+<p>Ulangi untuk tiap unit. <strong>Jangan lompat langkah</strong> — kalau langkah
+N gagal, hentikan di situ supaya jelas titik masalahnya.</p>
+
+<table>
+<tr><th>#</th><th>Langkah</th><th>Diharapkan</th><th>Jika gagal</th></tr>
+<tr><td>1</td><td>Set ACS URL di CPE, tunggu Inform pertama (atau reboot CPE utk memicu <code>1 BOOT</code>)</td><td>Device baru muncul di <strong>Devices</strong> (scope tenant pilot) dalam &lt; 60 dtk, serial/MAC cocok</td><td>Cek log acsd: <code>Inform ditolak (unauthorized)</code> → secret salah. Tidak ada log sama sekali → N1 (reachability). Salah tenant → secret milik tenant lain.</td></tr>
+<tr><td>2</td><td>Tambah OUI perangkat ke Catalog → Vendors, lalu assign <code>vendor_id</code> ke device</td><td>Kolom vendor di Device Detail bukan "Vendor belum diketahui"</td><td>OUI salah ketik — verifikasi 6 hex dari IEEE. Device lama tidak "sembuh" otomatis, assign manual.</td></tr>
+<tr><td>3</td><td>Cek data model di Device Detail</td><td>Ter-resolve TR-098 (<code>InternetGatewayDevice.*</code>) atau TR-181 (<code>Device.*</code>) sesuai spek</td><td>Catat model+firmware; kemungkinan butuh mapping data-model-version manual.</td></tr>
+<tr><td>4</td><td>Tab "Histori Event" di Device Detail</td><td>Event CWMP terbaru tercatat dengan kode PERSIS (<code>0 BOOTSTRAP</code>/<code>1 BOOT</code>/<code>2 PERIODIC</code>)</td><td>Kode event ter-transformasi salah → laporkan (bug parsing).</td></tr>
+<tr><td>5</td><td><code>GetParameterValues</code> untuk: SSID, firmware version, uptime</td><td>Nilai kembali &amp; tersimpan di tab Parameter</td><td>Fault 9005 → path tidak ada di firmware itu → catat, kandidat update <code>vendor_parameter_mappings</code>.</td></tr>
+<tr><td>6</td><td>Buat Provisioning Profile kecil (WiFi SSID saja), apply ke device</td><td>SSID di CPE <strong>benar-benar berubah</strong> (cek dari sisi device, bukan hanya status task "COMPLETED")</td><td>Task COMPLETED tapi SSID tidak berubah → sebagian firmware butuh reboot / commit; catat. Task FAILED → lihat fault code.</td></tr>
+<tr><td>7</td><td>Matikan CPE saat task berjalan, nyalakan lagi</td><td>Task <strong>retry</strong>, bukan langsung gagal permanen</td><td>Langsung FAILED permanen (padahal bukan 9005) → laporkan.</td></tr>
+<tr><td>8</td><td>Connection Request dari Device Detail</td><td>CPE membuka sesi baru dalam beberapa detik, event <code>6 CONNECTION REQUEST</code> tercatat</td><td>HTTP 502 "tidak dapat dihubungi" → N2 (firewall balik) atau CPE di NAT. HTTP 400 → <code>connection_request_url</code> device tidak valid.</td></tr>
+<tr><td>9</td><td>Kirim task Reboot</td><td>CPE benar-benar reboot, lalu Inform dengan event <code>1 BOOT</code></td><td>—</td></tr>
+<tr><td>10</td><td><em>(Opsional, ONT GPON)</em> Cek tab "Redaman Optik"</td><td>Nilai RX/TX power muncul <strong>bila</strong> vendor sudah punya mapping optical terkonfirmasi</td><td>Kosong = mapping belum diisi (§11), bukan bug. Catat model+firmware.</td></tr>
+</table>
+
+<h2 id="s11"><span class="num">11</span> Batasan yang sudah diketahui</h2>
+
+<p>Ini <strong>bukan bug baru</strong> kalau ditemukan di lapangan:</p>
+<ul>
+  <li><strong><code>vendor_ouis</code> kosong</strong> untuk kelima vendor —
+  device baru selalu muncul "Vendor belum diketahui" sampai OUI didaftarkan.</li>
+  <li><strong>Logical key yang sudah dipetakan</strong> (semua vendor, TR-098 &amp;
+  TR-181): manufacturer, model, serial, hardware/software version, uptime,
+  periodic inform interval, connection request URL, WiFi SSID, WiFi passphrase,
+  PPPoE username/password — semua asumsi instance pertama (<code>.1</code>).</li>
+  <li><strong>Belum dipetakan</strong> (jangan kaget kalau tidak ada di
+  provisioning profile): split SSID 2.4G/5G, WAN IP address, optical power RX/TX
+  (selalu vendor extension nonstandar <code>X_&lt;OUI&gt;_...</code>).</li>
+  <li><strong>STUN/CGNAT</strong>: ada fallback UDP TR-111 tapi <strong>belum
+  teruji ke CGNAT nyata</strong>. CPE di belakang NAT berlapis + Connection
+  Request gagal = belum tentu bug.</li>
+  <li><strong>Firmware upgrade end-to-end</strong> ke perangkat fisik belum
+  pernah dilakukan.</li>
+  <li>Dark mode &amp; tampilan mobile Console belum diverifikasi visual di
+  browser sungguhan.</li>
+</ul>
+
+<h2 id="s12"><span class="num">12</span> Yang tidak dicoba di sesi pertama</h2>
+<ul>
+  <li>Firmware upgrade ke perangkat pelanggan aktif — hanya unit yang boleh brick.</li>
+  <li>Push kredensial PPPoE pelanggan asli — pakai dummy sampai path parameter terbukti cocok.</li>
+  <li>Bulk actions ke banyak device — satu-satu dulu agar jelas device mana yang bermasalah.</li>
+  <li>Preset <code>enforce=1</code> di tenant produksi — bikin task otomatis.</li>
+</ul>
+
+<h2 id="s13"><span class="num">13</span> Pelaporan temuan</h2>
+
+<p>Untuk tiap device catat: vendor, model persis, versi firmware, hasil tiap
+langkah §10 (berhasil/gagal/skip + catatan), path TR-069 yang berbeda dari yang
+dipetakan, OUI yang belum terdaftar, screenshot/log untuk perilaku tak terduga.</p>
+
+<h3>Backup database (jalankan sebelum sesi)</h3>
+<pre>docker compose exec mariadb sh -c 'mariadb-dump -uacs -p"$MARIADB_PASSWORD" acs' \
+  &gt; backup_sebelum_uji_$(date +%Y%m%d).sql</pre>
+<h3>Restore (bila data berantakan)</h3>
+<pre>docker compose exec -T mariadb sh -c 'mariadb -uacs -p"$MARIADB_PASSWORD" acs' \
+  &lt; backup_sebelum_uji_YYYYMMDD.sql</pre>
+
+<h2 id="s14"><span class="num">14</span> Matriks tanggung jawab (RACI)</h2>
+
+<table>
+<tr><th>Aktivitas</th><th>Network</th><th>NOC/ACS</th><th>Field/Lab</th><th>Koordinator</th></tr>
+<tr><td>Buka firewall N1–N6, routing, DNS, TLS</td><td><strong>R</strong></td><td>C</td><td>I</td><td>A</td></tr>
+<tr><td>Uji reachability port (pra hari-H)</td><td><strong>R</strong></td><td>C</td><td>C</td><td>A</td></tr>
+<tr><td>Stack ACS sehat + backup DB</td><td>I</td><td><strong>R</strong></td><td>I</td><td>A</td></tr>
+<tr><td>Tenant pilot + shared secret + OUI</td><td>I</td><td><strong>R</strong></td><td>I</td><td>A</td></tr>
+<tr><td>Siapkan unit CPE + catat MAC/serial/firmware</td><td>I</td><td>C</td><td><strong>R</strong></td><td>A</td></tr>
+<tr><td>Set ACS URL di CPE</td><td>I</td><td>C</td><td><strong>R</strong></td><td>A</td></tr>
+<tr><td>Eksekusi prosedur §10 &amp; monitor log</td><td>I</td><td><strong>R</strong></td><td><strong>R</strong></td><td>A</td></tr>
+<tr><td>Kompilasi laporan &amp; update ROADMAP</td><td>I</td><td>C</td><td>C</td><td><strong>R</strong></td></tr>
+</table>
+<p style="font-size:8.5pt;color:var(--faint)">R = Responsible · A = Accountable · C = Consulted · I = Informed</p>
+
+<h2 id="s15"><span class="num">15</span> Checklist kesiapan (Go / No-Go)</h2>
+
+<p>Semua harus tercentang sebelum sesi dimulai:</p>
+<ul class="chk">
+  <li><strong>Network:</strong> reachability CPE→ACS :443/:7547 terbukti dari host di segmen CPE</li>
+  <li><strong>Network:</strong> reachability ACS→CPE :7547 terbukti dari host ACS</li>
+  <li><strong>Network:</strong> FQDN ACS resolve dari segmen CPE &amp; NOC</li>
+  <li><strong>Network:</strong> (produksi) sertifikat TLS valid, <code>X-Forwarded-For</code> diteruskan proxy</li>
+  <li><strong>NOC/ACS:</strong> <code>/api/v1/metrics</code> → 200, POST kosong <code>/cwmp</code> → 204</li>
+  <li><strong>NOC/ACS:</strong> backup database sudah dibuat &amp; diverifikasi ukurannya wajar</li>
+  <li><strong>NOC/ACS:</strong> tenant pilot dibuat, shared secret dicatat</li>
+  <li><strong>NOC/ACS:</strong> daftar OUI per vendor sudah disiapkan (dari IEEE)</li>
+  <li><strong>NOC/ACS:</strong> <code>docker compose logs -f acsd</code> terbuka di layar monitor</li>
+  <li><strong>Field:</strong> ≥ 1 unit CPE per vendor, MAC/serial/firmware tercatat, WAN aktif</li>
+  <li><strong>Field:</strong> akses admin GUI tiap CPE tersedia</li>
+  <li><strong>Koordinator:</strong> lembar pelaporan §13 siap, RACI dikomunikasikan</li>
+</ul>
+
+<div class="callout danger"><span class="label">No-Go bila</span>
+<p>Reachability N1 atau N2 belum terbukti — sesi akan habis untuk debugging
+jaringan, bukan menguji ACS. Tunda sampai tim Network mengkonfirmasi kedua arah.</p></div>
+
+<footer>
+Panduan Pengujian Lapangan ACS v1.0 — 8 September 2026. Dokumen pendamping:
+BUKU_PANDUAN_ACS.pdf, PANDUAN_LOGIN_ACS.pdf, LAPORAN_KESIAPAN.md, RUNBOOK.md,
+VENDOR_ONBOARDING.md, openapi.yaml.
+</footer>
+
+</div>
+</body>
+</html>

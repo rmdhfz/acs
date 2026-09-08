@@ -3,6 +3,14 @@
 <head>
 <meta charset="utf-8">
 <title>Buku Panduan ACS</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({
+    startOnLoad: true, theme: 'neutral', securityLevel: 'loose',
+    flowchart: { useMaxWidth: true, htmlLabels: true },
+    er: { useMaxWidth: true }, sequence: { useMaxWidth: true }
+  });
+</script>
 <style>
   :root {
     --ink: #1a1f24; --muted: #55606b; --faint: #8a929b; --accent: #1d4ed8;
@@ -73,10 +81,15 @@
 
   .flow { font-family: "Consolas","SF Mono","Menlo",monospace; font-size: 8.6pt; background: #fbfbfc; border: 1px solid var(--rule-soft); border-radius: 5px; padding: 12px; white-space: pre; overflow-x: auto; margin: 10px 0; line-height: 1.45; }
 
+  .fig { margin: 14px 0 18px; text-align: center; page-break-inside: avoid; }
+  .fig .mermaid { display: block; margin: 0 auto; line-height: normal; }
+  .fig .mermaid svg { max-width: 100% !important; max-height: 23cm; height: auto !important; }
+  .fig figcaption { font-size: 8.4pt; color: var(--faint); margin-top: 6px; font-style: italic; }
+
   @page { size: A4; margin: 18mm 16mm 16mm; }
   @media print {
     h2, h3 { page-break-after: avoid; }
-    .callout, pre, table, ol.steps > li, .flow { page-break-inside: avoid; }
+    .callout, pre, table, ol.steps > li, .flow, .fig { page-break-inside: avoid; }
     .cover { page-break-after: avoid; }
   }
   footer { margin-top: 28px; border-top: 1px solid var(--rule); padding-top: 8px; font-size: 8pt; color: var(--faint); }
@@ -119,6 +132,7 @@ kode</em>, cukup penambahan data katalog.</p>
   <li><a href="#s13">Keamanan operasional</a></li>
   <li><a href="#s14">Pemecahan masalah</a></li>
   <li><a href="#s15">Batasan yang perlu diketahui</a></li>
+  <li><a href="#s16">Lampiran — Diagram arsitektur &amp; alur</a></li>
 </ol>
 </div>
 
@@ -452,6 +466,181 @@ pemetaan parameter), gunakan panduan diagnostik di <strong>PENGUJIAN_LAPANGAN.md
 <p>Rekomendasi peluncuran: mulai dengan <strong>pilot terbatas</strong> (satu
 anak perusahaan, populasi perangkat kecil, pemantauan ketat), bukan rollout
 penuh serentak ke semua tenant.</p>
+
+<h2 id="s16"><span class="num">16</span> Lampiran — Diagram arsitektur &amp; alur</h2>
+
+<h3>16.1 Topologi &amp; matriks port</h3>
+<div class="fig">
+<pre class="mermaid">
+flowchart TB
+  subgraph AKSES["ZONA AKSES — pelanggan"]
+    CPE["CPE&nbsp;&nbsp;ZTE · Huawei · FiberHome<br/>Nokia · Cdata"]
+  end
+  subgraph OPS["ZONA NOC / BSS"]
+    NOC["Browser NOC (ACS Console)"]
+    BSS["Sistem BSS / OSS"]
+  end
+  subgraph DMZ["ZONA DMZ"]
+    PROXY["Reverse Proxy — terminasi TLS"]
+  end
+  subgraph APP["ZONA APLIKASI"]
+    ACSD["acsd&nbsp;&nbsp;CWMP :7547 · REST :8080"]
+  end
+  subgraph DATA["ZONA DATA (privat)"]
+    DB[("MariaDB :3306")]
+    MINIO[("MinIO :9000 — firmware")]
+    REDIS[("Redis :6379")]
+  end
+  CPE -- "HTTPS :443 — Inform" --&gt; PROXY
+  NOC -- "HTTPS :443 — REST" --&gt; PROXY
+  BSS -- "HTTPS :443 — REST + token" --&gt; PROXY
+  PROXY -- ":7547 / :8080" --&gt; ACSD
+  ACSD -- "Connection Request<br/>→ :7547 di CPE" --&gt; CPE
+  CPE -- "HTTPS :443 — unduh firmware<br/>(presigned URL)" --&gt; MINIO
+  ACSD --&gt; DB
+  ACSD --&gt; MINIO
+  ACSD --&gt; REDIS
+  ACSD -- "webhook keluar (HTTPS)" --&gt; BSS
+</pre>
+<figcaption>Gambar A — Topologi deployment. Panah = arah inisiasi koneksi.</figcaption>
+</div>
+
+<h3>16.2 Sekuens sesi CWMP</h3>
+<div class="fig">
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant C as CPE
+  participant A as acsd
+  participant D as MariaDB
+  C-&gt;&gt;A: HTTPS POST — Inform (Basic Auth, event 0 BOOTSTRAP)
+  A-&gt;&gt;D: validasi shared secret tenant
+  A-&gt;&gt;D: upsert device + catat event + sesi
+  A-&gt;&gt;A: evaluasi Zero-Touch + Preset
+  A--&gt;&gt;C: 200 InformResponse (Set-Cookie: sesi)
+  C-&gt;&gt;A: POST kosong ("siap terima perintah")
+  A-&gt;&gt;D: ambil 1 task dari antrean
+  A--&gt;&gt;C: RPC — SetParameterValues / Reboot / Download
+  C-&gt;&gt;A: jawaban RPC  atau  cwmp:Fault
+  A-&gt;&gt;D: tandai task COMPLETED / FAILED
+  A--&gt;&gt;C: task berikutnya  atau  204 (sesi ditutup)
+  Note over C,A: Task hanya terkirim SAAT sesi terbuka.
+</pre>
+<figcaption>Gambar B — Satu sesi CWMP.</figcaption>
+</div>
+
+<h3>16.3 Provisioning otomatis (Zero-Touch + Preset)</h3>
+<div class="fig">
+<pre class="mermaid">
+flowchart LR
+  I[Inform diterima] --&gt; U[Parameter di-upsert]
+  U --&gt; Z{Zero-Touch Rule<br/>cocok?}
+  Z -- Ya --&gt; ZA[Aksi gabungan:<br/>apply profile ·<br/>reboot · firmware]
+  Z -- Tidak --&gt; PR{Preset enforce=1<br/>cocok?}
+  ZA --&gt; PR
+  PR -- Tidak --&gt; E([Selesai])
+  PR -- Ya --&gt; DR{Device menyimpang<br/>dari target?}
+  DR -- Tidak --&gt; E
+  DR -- Ya --&gt; Q[Antre SetParameterValues gabungan<br/>pagar: cooldown 15m ·<br/>maks 3 gagal · tunggu in-flight]
+  ZA --&gt; T[(Antrean task)]
+  Q --&gt; T
+  T --&gt; S[Dikirim di sesi<br/>CWMP berikutnya] --&gt; K[CPE konvergen]
+</pre>
+<figcaption>Gambar C — Evaluasi ZTP + Preset drift-heal per Inform.</figcaption>
+</div>
+
+<h3>16.4 Aktor &amp; use case</h3>
+<div class="fig">
+<pre class="mermaid">
+flowchart LR
+  SUP(("Superadmin"))
+  ADM(("Admin Tenant"))
+  NOC(("Operator NOC"))
+  VWR(("Viewer"))
+  END(("Pelanggan<br/>ENDUSER"))
+  CPE(("CPE<br/>(sistem)"))
+  BSS(("BSS/OSS<br/>(sistem)"))
+  subgraph ACS["ACS"]
+    direction TB
+    u1(["Kelola tenant &amp; katalog vendor"])
+    u2(["Kelola user &amp; peran tenant"])
+    u3(["Onboarding perangkat"])
+    u4(["Provisioning: profile &amp; Zero-Touch"])
+    u5(["Preset: penegakan konfigurasi"])
+    u6(["Task: reboot, baca/tulis parameter"])
+    u7(["Connection Request"])
+    u8(["Firmware: upload &amp; canary rollout"])
+    u9(["Diagnostics &amp; monitoring"])
+    u10(["Audit trail &amp; observability"])
+    u11(["Kelola WiFi &amp; restart sendiri"])
+    u12(["Konsumsi REST API + webhook"])
+  end
+  SUP --- u1 & u2 & u8
+  ADM --- u2 & u4 & u5 & u10
+  NOC --- u6 & u7 & u9
+  VWR --- u9 & u10
+  END --- u11
+  CPE --- u3
+  BSS --- u12
+</pre>
+<figcaption>Gambar D — Diagram use case.</figcaption>
+</div>
+
+<h3>16.5 Model data (ERD inti)</h3>
+<div class="fig">
+<pre class="mermaid">
+erDiagram
+  TENANTS   ||--o{ USERS : "punya"
+  TENANTS   ||--o{ DEVICES : "memiliki"
+  USERS     ||--o{ USER_ROLES : "diberi"
+  USERS     ||--o{ USER_DEVICES : "portal self-service"
+  DEVICES   ||--o{ USER_DEVICES : ""
+  REF_VENDORS ||--o{ VENDOR_OUIS : "OUI"
+  REF_VENDORS ||--o{ DEVICE_MODELS : "model"
+  REF_VENDORS ||--o{ VENDOR_PARAMETER_MAPPINGS : "path TR-069 per vendor"
+  REF_VENDORS ||--o{ DEVICES : "identifikasi via OUI"
+  DEVICE_MODELS ||--o{ DEVICES : "klasifikasi"
+  DEVICES   ||--o{ DEVICE_SESSIONS : "sesi CWMP"
+  DEVICES   ||--o{ DEVICE_EVENTS : "event"
+  DEVICES   ||--o{ DEVICE_PARAMETERS : "nilai TR-069 (EAV)"
+  DEVICES {
+    bigint tenant_id FK
+    bigint vendor_id FK
+    char oui
+    varchar serial_number
+    varchar mac_address
+    varchar software_version
+    datetime last_inform_at
+  }
+</pre>
+<figcaption>Gambar E1 — ERD: multi-tenant, inventory, katalog vendor.</figcaption>
+</div>
+<div class="fig">
+<pre class="mermaid">
+erDiagram
+  DEVICES ||--o{ TASKS : "antrean RPC"
+  DEVICES ||--o{ FIRMWARE_UPGRADE_JOBS : "job upgrade"
+  DEVICES ||--o{ DEVICE_OPTICAL_METRICS : "redaman optik"
+  TENANTS ||--o{ PROVISIONING_PROFILES : "punya"
+  TENANTS ||--o{ ZERO_TOUCH_RULES : "punya"
+  TENANTS ||--o{ PRESETS : "punya"
+  TENANTS ||--o{ WEBHOOK_SUBSCRIPTIONS : "langganan"
+  TENANTS ||--o{ ACTIVITY_LOGS : "audit trail"
+  PROVISIONING_PROFILES ||--o{ PROVISIONING_PROFILE_PARAMETERS : "parameter target"
+  PROVISIONING_PROFILES ||--o{ DEVICES : "diterapkan"
+  ZERO_TOUCH_RULES ||--o{ PROVISIONING_PROFILES : "memicu apply"
+  FIRMWARE_FILES ||--o{ FIRMWARE_UPGRADE_JOBS : "sumber"
+  FIRMWARE_FILES ||--o{ FIRMWARE_ROLLOUT_BATCHES : "sumber"
+  FIRMWARE_ROLLOUT_BATCHES ||--o{ FIRMWARE_UPGRADE_JOBS : "wave"
+  PRESETS {
+    varchar name
+    json precondition
+    json configurations
+    bool enforce
+  }
+</pre>
+<figcaption>Gambar E2 — ERD: task queue, provisioning, preset, firmware rollout.</figcaption>
+</div>
 
 <footer>
 Buku Panduan ACS v1.0 — 8 September 2026. Dokumen pendamping:
