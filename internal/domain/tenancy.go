@@ -59,22 +59,44 @@ type User struct {
 	// (migrations/0008, usecase/auth.Service.Login). Tidak diekspos ke JSON
 	// (json:"-"): ini state keamanan internal, bukan sesuatu yang perlu
 	// ditampilkan lewat API listing user manapun.
+	// PasswordChangedAt — JWT sesi dengan iat lebih awal dari ini ditolak
+	// (migrations/0024): mencabut sesi lama setelah password berubah.
+	PasswordChangedAt *time.Time `db:"password_changed_at" json:"-"`
 	FailedLoginAttempts uint32     `db:"failed_login_attempts" json:"-"`
 	LockedUntil         *time.Time `db:"locked_until" json:"-"`
 	Roles               []string   `db:"-" json:"roles"`
 	Audit
 }
 
+// UserAuthState — subset kecil user untuk validasi sesi per-request.
+type UserAuthState struct {
+	IsActive          bool       `db:"is_active"`
+	PasswordChangedAt *time.Time `db:"password_changed_at"`
+}
+
 type UserRepository interface {
 	Create(ctx context.Context, u *User) error
 	GetByID(ctx context.Context, id uint64) (*User, error)
 	GetByUsername(ctx context.Context, username string) (*User, error)
+	// GetByEmail — pencarian tak-peka-huruf-besar (collation utf8mb4_unicode_ci);
+	// hanya user yang belum di-soft-delete. Dipakai login dengan email dan
+	// permintaan reset password.
+	GetByEmail(ctx context.Context, email string) (*User, error)
 	List(ctx context.Context, tenantID *uint64, p Pagination) ([]User, int, error)
 	Update(ctx context.Context, u *User) error
 	// UpdatePassword mengganti password_hash user (admin-reset atau ganti
 	// password sendiri) — terpisah dari Update karena Update tidak menyentuh
 	// kolom password_hash (lihat repository/mysql/tenancy_repository.go).
 	UpdatePassword(ctx context.Context, id uint64, passwordHash string, updatedBy *uint64) error
+	// RehashPassword mengganti hash HANYA bila hash tersimpan masih `oldHash`
+	// (compare-and-swap) — dipakai upgrade bcrypt->Argon2id saat login supaya
+	// tidak menimpa password yang baru saja diganti oleh jalur lain. Tidak
+	// menyentuh password_changed_at (rehash bukan pergantian kredensial).
+	RehashPassword(ctx context.Context, id uint64, oldHash, newHash string) (bool, error)
+	// AuthState — status ringan (satu query PK) yang dicek di SETIAP request
+	// ber-JWT: akun masih aktif & kapan password terakhir diganti. ErrNotFound
+	// bila user sudah dihapus.
+	AuthState(ctx context.Context, id uint64) (*UserAuthState, error)
 	SoftDelete(ctx context.Context, id, deletedBy uint64) error
 	TouchLastLogin(ctx context.Context, id uint64, at time.Time) error
 	RolesByUserID(ctx context.Context, userID uint64) ([]string, error)
@@ -92,7 +114,10 @@ type UserRepository interface {
 	// memanfaatkan row-level locking MariaDB: increment & keputusan lock
 	// dihitung dari nilai baris SETELAH lock diperoleh, bukan dari snapshot
 	// baca terpisah sebelumnya.
-	RecordFailedLogin(ctx context.Context, id uint64, maxAttempts uint32, lockUntil time.Time) error
+	//
+	// Mengembalikan locked=true bila pemanggilan INI yang membuat akun terkunci
+	// (dipakai mengirim email pemberitahuan sekali, bukan tiap percobaan gagal).
+	RecordFailedLogin(ctx context.Context, id uint64, maxAttempts uint32, lockUntil time.Time) (locked bool, err error)
 	// ResetLoginLockout mengembalikan failed_login_attempts ke 0 dan
 	// mengosongkan locked_until -- dipanggil saat login berhasil ATAU saat
 	// admin mereset password user lain (ResetUserPassword, usecase/iam):
@@ -187,4 +212,25 @@ type ActivityLogRepository interface {
 	// Baris dgn tenant_id NULL (aksi katalog global) ikut muncul untuk
 	// superadmin, dan juga untuk admin tenant (dianggap konteks bersama).
 	ListByTenant(ctx context.Context, tenantID *uint64, f ActivityLogFilter, p Pagination) ([]ActivityLog, int, error)
+}
+
+// PasswordResetRepository menyimpan token reset password (hash SHA-256 saja,
+// migrations/0023). Token asli tidak pernah menyentuh database.
+type PasswordResetRepository interface {
+	Create(ctx context.Context, userID uint64, tokenHash string, expiresAt time.Time, requestedIP string) error
+	// Consume menandai token terpakai SECARA ATOMIK dan mengembalikan user_id
+	// pemiliknya. ErrNotFound bila token tidak ada, sudah dipakai, atau kedaluwarsa
+	// — pemanggil tidak boleh membedakan ketiganya ke klien.
+	Consume(ctx context.Context, tokenHash string, now time.Time) (uint64, error)
+	// Peek memeriksa token (belum dipakai & belum kedaluwarsa) TANPA
+	// menghanguskannya — murah, dipakai menolak token ngawur sebelum kerja mahal
+	// (hash Argon2) dan memvalidasi pemilik sebelum Consume. ErrNotFound bila tidak valid.
+	Peek(ctx context.Context, tokenHash string, now time.Time) (uint64, error)
+	// CountRecentByUser menghitung permintaan reset sejak `since` (rate limit per akun).
+	CountRecentByUser(ctx context.Context, userID uint64, since time.Time) (int, error)
+	// InvalidateAllForUser mematikan semua token reset yang belum dipakai milik user
+	// (dipanggil setelah password berubah, apa pun jalurnya).
+	InvalidateAllForUser(ctx context.Context, userID uint64, now time.Time) error
+	// DeleteExpired menghapus FISIK token yang kedaluwarsa sebelum `before` (retensi).
+	DeleteExpired(ctx context.Context, before time.Time) (int64, error)
 }

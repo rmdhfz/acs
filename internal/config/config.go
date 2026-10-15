@@ -42,6 +42,21 @@ type Config struct {
 	OIDCClientID     string
 	OIDCClientSecret string
 	OIDCRedirectURL  string
+
+	// Email (SMTP) untuk reset password & notifikasi keamanan. SMTPHost kosong
+	// = email nonaktif (fitur reset lewat email tidak mengirim apa pun; sisa
+	// sistem tetap jalan). Kredensial WAJIB dari env — jangan di-commit.
+	SMTPHost     string
+	SMTPPort     int
+	SMTPUsername string
+	SMTPPassword string
+	SMTPFrom     string
+	SMTPFromName string
+	// PublicURL — origin frontend yang dipakai membangun tautan di email
+	// (mis. https://acs.example.com). Tanpa slash akhir.
+	PublicURL string
+	// PasswordResetTTL — masa berlaku tautan reset password.
+	PasswordResetTTL time.Duration
 }
 
 func Load() (*Config, error) {
@@ -129,6 +144,30 @@ func Load() (*Config, error) {
 	cfg.OIDCClientID = os.Getenv("ACS_OIDC_CLIENT_ID")
 	cfg.OIDCClientSecret = os.Getenv("ACS_OIDC_CLIENT_SECRET")
 	cfg.OIDCRedirectURL = getEnv("ACS_OIDC_REDIRECT_URL", "http://localhost:8080/api/v1/auth/oidc/callback")
+
+	cfg.SMTPHost = os.Getenv("ACS_SMTP_HOST")
+	smtpPort, err := strconv.Atoi(getEnv("ACS_SMTP_PORT", "587"))
+	if err != nil || smtpPort < 1 || smtpPort > 65535 {
+		return nil, fmt.Errorf("config: ACS_SMTP_PORT tidak valid")
+	}
+	cfg.SMTPPort = smtpPort
+	cfg.SMTPUsername = os.Getenv("ACS_SMTP_USERNAME")
+	cfg.SMTPPassword = os.Getenv("ACS_SMTP_PASSWORD")
+	cfg.SMTPFrom = getEnv("ACS_SMTP_FROM", cfg.SMTPUsername)
+	cfg.SMTPFromName = getEnv("ACS_SMTP_FROM_NAME", "ACS Console")
+	if cfg.SMTPHost != "" && cfg.SMTPFrom == "" {
+		return nil, fmt.Errorf("config: ACS_SMTP_FROM (atau ACS_SMTP_USERNAME) wajib diisi bila ACS_SMTP_HOST diisi")
+	}
+
+	cfg.PublicURL = strings.TrimRight(getEnv("ACS_PUBLIC_URL", "http://localhost:5173"), "/")
+	if !strings.HasPrefix(cfg.PublicURL, "http://") && !strings.HasPrefix(cfg.PublicURL, "https://") {
+		return nil, fmt.Errorf("config: ACS_PUBLIC_URL harus diawali http:// atau https://")
+	}
+	resetTTL, err := time.ParseDuration(getEnv("ACS_PASSWORD_RESET_TTL", "30m"))
+	if err != nil || resetTTL < time.Minute || resetTTL > 24*time.Hour {
+		return nil, fmt.Errorf("config: ACS_PASSWORD_RESET_TTL tidak valid (1m–24h)")
+	}
+	cfg.PasswordResetTTL = resetTTL
 
 	return cfg, nil
 }

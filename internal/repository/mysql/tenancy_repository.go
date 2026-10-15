@@ -178,6 +178,21 @@ func (r *userRepository) GetByUsername(ctx context.Context, username string) (*d
 	return &u, nil
 }
 
+func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
+	var u domain.User
+	// Collation utf8mb4_unicode_ci sudah tak-peka-huruf-besar; LIMIT 1 untuk
+	// berjaga bila ada baris lama bertabrakan (uq_users_email mencegahnya).
+	if err := r.db.GetContext(ctx, &u, `SELECT * FROM users WHERE email = ? AND is_deleted = 0 LIMIT 1`, email); err != nil {
+		return nil, translateErr(err)
+	}
+	roles, err := r.RolesByUserID(ctx, u.ID)
+	if err != nil {
+		return nil, err
+	}
+	u.Roles = roles
+	return &u, nil
+}
+
 func (r *userRepository) List(ctx context.Context, tenantID *uint64, p domain.Pagination) ([]domain.User, int, error) {
 	where := "is_deleted = 0"
 	args := []interface{}{}
@@ -261,10 +276,37 @@ func (r *userRepository) UpdatePassword(ctx context.Context, id uint64, password
 	if !exists {
 		return domain.ErrNotFound
 	}
+	// password_changed_at diisi dari jam aplikasi (sumber waktu yang sama dgn
+	// iat JWT) -> JWT yang diterbitkan sebelum ini ditolak (migrations/0024).
 	_, err := r.db.ExecContext(ctx,
-		`UPDATE users SET password_hash = ?, updated_by = ? WHERE id = ? AND is_deleted = 0`,
-		passwordHash, updatedBy, id)
+		`UPDATE users SET password_hash = ?, password_changed_at = ?, updated_by = ? WHERE id = ? AND is_deleted = 0`,
+		passwordHash, time.Now(), updatedBy, id)
 	return translateErr(err)
+}
+
+// RehashPassword — compare-and-swap: hanya berhasil bila hash tersimpan masih
+// oldHash, sehingga upgrade bcrypt->Argon2id saat login tidak bisa menimpa
+// password yang baru saja diganti jalur lain (reset/ganti password).
+func (r *userRepository) RehashPassword(ctx context.Context, id uint64, oldHash, newHash string) (bool, error) {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE users SET password_hash = ? WHERE id = ? AND password_hash = ? AND is_deleted = 0`,
+		newHash, id, oldHash)
+	if err != nil {
+		return false, translateErr(err)
+	}
+	n, _ := res.RowsAffected()
+	return n == 1, nil
+}
+
+// AuthState — satu query PK untuk validasi sesi per-request (akun aktif &
+// kapan password terakhir diganti).
+func (r *userRepository) AuthState(ctx context.Context, id uint64) (*domain.UserAuthState, error) {
+	var st domain.UserAuthState
+	if err := r.db.GetContext(ctx, &st,
+		`SELECT is_active, password_changed_at FROM users WHERE id = ? AND is_deleted = 0`, id); err != nil {
+		return nil, translateErr(err)
+	}
+	return &st, nil
 }
 
 func (r *userRepository) SoftDelete(ctx context.Context, id, deletedBy uint64) error {
@@ -285,14 +327,30 @@ func (r *userRepository) TouchLastLogin(ctx context.Context, id uint64, at time.
 // versi lama py celah TOCTOU nyata (lihat komentar interface
 // domain.UserRepository.RecordFailedLogin): request paralel bisa lolos
 // lockout krn semuanya membaca counter lama sebelum salah satu sempat commit.
-func (r *userRepository) RecordFailedLogin(ctx context.Context, id uint64, maxAttempts uint32, lockUntil time.Time) error {
+func (r *userRepository) RecordFailedLogin(ctx context.Context, id uint64, maxAttempts uint32, lockUntil time.Time) (bool, error) {
+	// URUTAN ASSIGNMENT PENTING: MariaDB/MySQL mengevaluasi SET dari kiri ke kanan
+	// dan klausa berikutnya melihat nilai kolom yang SUDAH diubah. locked_until
+	// harus dihitung SEBELUM failed_login_attempts di-increment; kalau terbalik,
+	// "failed_login_attempts + 1" di CASE memakai nilai baru -> akun terkunci satu
+	// percobaan lebih awal dari ambang (terbukti test integrasi).
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE users SET
-			failed_login_attempts = failed_login_attempts + 1,
-			locked_until = CASE WHEN failed_login_attempts + 1 >= ? THEN ? ELSE locked_until END
+			locked_until = CASE WHEN failed_login_attempts + 1 >= ? THEN ? ELSE locked_until END,
+			failed_login_attempts = failed_login_attempts + 1
 		WHERE id = ? AND is_deleted = 0`,
 		maxAttempts, lockUntil, id)
-	return translateErr(err)
+	if err != nil {
+		return false, translateErr(err)
+	}
+	// Pemanggilan ini yang mengunci akun bila locked_until sekarang == nilai yang
+	// baru kita set (presisi detik; DATETIME tanpa pecahan). Percobaan paralel
+	// lain yang menimpa dgn lockUntil berbeda berarti BUKAN kita — jadi email
+	// pemberitahuan tidak dikirim berulang.
+	var cur *time.Time
+	if err := r.db.GetContext(ctx, &cur, `SELECT locked_until FROM users WHERE id = ? AND is_deleted = 0`, id); err != nil {
+		return false, translateErr(err)
+	}
+	return cur != nil && cur.Unix() == lockUntil.Unix(), nil
 }
 
 func (r *userRepository) ResetLoginLockout(ctx context.Context, id uint64) error {

@@ -72,6 +72,12 @@ func (r *Router) Register(e *echo.Echo) {
 	// pengganti fix TOCTOU-nya (temuan acs-security-reviewer).
 	api.POST("/auth/login", r.login, middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(2)))
 
+	// Reset password lewat email — PUBLIK secara sengaja (pemanggil tidak bisa
+	// login), kontrol: rate limit per-IP lebih ketat dari login, respons seragam
+	// (anti-enumerasi), token sekali-pakai berumur pendek. Lihat auth_handler.go.
+	api.POST("/auth/forgot-password", r.forgotPassword, middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(0.2)))
+	api.POST("/auth/reset-password", r.resetPassword, middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(0.5)))
+
 	api.GET("/auth/oidc/login", r.oidcLogin)
 	api.GET("/auth/oidc/callback", r.oidcCallback)
 

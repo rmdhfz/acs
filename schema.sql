@@ -232,6 +232,7 @@ CREATE TABLE users (
     username        VARCHAR(64)     NOT NULL,
     email           VARCHAR(191)    NOT NULL,
     password_hash   VARCHAR(255)    NOT NULL,
+    password_changed_at DATETIME    NULL COMMENT 'Waktu terakhir password diganti; JWT dengan iat lebih awal ditolak (migrations/0024)',
     full_name       VARCHAR(128)    NOT NULL,
     is_active       TINYINT(1)      NOT NULL DEFAULT 1,
     last_login_at   DATETIME        NULL,
@@ -4362,3 +4363,21 @@ INSERT INTO vendor_ouis (vendor_id, oui, notes) VALUES
     (@vendor_id, 'E067B3', 'seed-0022 IEEE MA-L: Shenzhen C-Data Technology Co., Ltd.'),
     (@vendor_id, 'E0E8E6', 'seed-0022 IEEE MA-L: Shenzhen C-Data Technology Co., Ltd.')
   ON DUPLICATE KEY UPDATE id = id;
+
+-- Reset password lewat email (migrations/0023). Pengecualian audit 7-kolom
+-- DISENGAJA: token efemeral, audit minimal (created_at/used_at), hapus fisik
+-- setelah kedaluwarsa. Hanya hash token yang disimpan.
+CREATE TABLE password_reset_tokens (
+    id           BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id      BIGINT UNSIGNED NOT NULL,
+    token_hash   CHAR(64)        NOT NULL COMMENT 'SHA-256 hex dari token; token asli tidak pernah disimpan',
+    expires_at   DATETIME        NOT NULL,
+    used_at      DATETIME        NULL     COMMENT 'NULL = belum dipakai',
+    requested_ip VARCHAR(45)     NULL,
+    created_at   DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_prt_token_hash (token_hash),
+    KEY idx_prt_user_created (user_id, created_at),
+    KEY idx_prt_expires (expires_at),
+    CONSTRAINT fk_prt_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Token reset password sekali-pakai (hash saja); audit minimal & hapus fisik kedaluwarsa — pengecualian eksplisit (migrations/0023)';

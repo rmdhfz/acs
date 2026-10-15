@@ -1,14 +1,29 @@
 package http
 
 import (
+	"context"
+	"errors"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/labstack/echo/v5"
+
+	"acs/internal/usecase/auth"
+	"acs/pkg/passwordhash"
 )
 
+// forgotSlots membatasi jumlah pemrosesan forgot-password yang berjalan
+// bersamaan (goroutine terlepas dari request). Penuh -> permintaan tetap dijawab
+// 202 seragam tetapi tidak diproses (sedang dibanjiri; limiter per-IP sudah
+// membatasi sumbernya).
+var forgotSlots = make(chan struct{}, 32)
+
+// loginRequest — login memakai EMAIL + password. Field username tetap
+// diterima (kompatibilitas skrip/klien lama); bila keduanya ada, email menang.
 type loginRequest struct {
+	Email    string `json:"email"`
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
@@ -18,12 +33,26 @@ func (r *Router) login(c *echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "payload tidak valid")
 	}
-	if req.Username == "" || req.Password == "" {
-		return echo.NewHTTPError(http.StatusBadRequest, "username dan password wajib diisi")
+	identifier := strings.TrimSpace(req.Email)
+	if identifier == "" {
+		identifier = strings.TrimSpace(req.Username)
 	}
-	u, token, err := r.Auth.Login(c.Request().Context(), req.Username, req.Password)
+	if identifier == "" || req.Password == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "email dan password wajib diisi")
+	}
+	u, token, err := r.Auth.Login(c.Request().Context(), identifier, req.Password)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
+		switch {
+		case errors.Is(err, auth.ErrInvalidCredentials), errors.Is(err, auth.ErrTenantInactive):
+			return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
+		case errors.Is(err, passwordhash.ErrBusy):
+			// Antrean hashing penuh — BUKAN kredensial salah.
+			return echo.NewHTTPError(http.StatusServiceUnavailable, "server sedang sibuk, coba lagi sebentar")
+		default:
+			// Error sistem (DB, dll.): jangan bocorkan teksnya ke klien anonim
+			// dan jangan menyamarkannya sebagai "kredensial salah" (handleErr: 500 generik + log).
+			return handleErr(c, err)
+		}
 	}
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"access_token": token,
@@ -52,10 +81,16 @@ func (r *Router) changeOwnPassword(c *echo.Context) error {
 	if req.CurrentPassword == "" || req.NewPassword == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "current_password dan new_password wajib diisi")
 	}
-	if err := r.Auth.ChangeOwnPassword(c.Request().Context(), actor, req.CurrentPassword, req.NewPassword); err != nil {
+	// Pergantian password mencabut semua sesi lama; respons membawa JWT baru
+	// supaya pemanggil tetap login.
+	token, err := r.Auth.ChangeOwnPassword(c.Request().Context(), actor, req.CurrentPassword, req.NewPassword)
+	if err != nil {
+		if errors.Is(err, passwordhash.ErrBusy) {
+			return echo.NewHTTPError(http.StatusServiceUnavailable, "server sedang sibuk, coba lagi sebentar")
+		}
 		return handleErr(c, err)
 	}
-	return c.NoContent(http.StatusNoContent)
+	return c.JSON(http.StatusOK, map[string]string{"access_token": token, "token_type": "Bearer"})
 }
 
 type issueTokenRequest struct {
@@ -163,4 +198,78 @@ func (r *Router) oidcCallback(c *echo.Context) error {
 			"id": u.ID, "uuid": u.UserUUID, "username": u.Username, "roles": u.Roles, "tenant_id": u.TenantID,
 		},
 	})
+}
+
+type forgotPasswordRequest struct {
+	Email string `json:"email"`
+}
+
+// forgotPassword — PUBLIK (tanpa token) karena pemanggilnya justru user yang tidak
+// bisa login; pengecualian setara /auth/login atas aturan "tidak ada endpoint
+// mutasi tanpa autentikasi", dengan kontrol: rate limit per-IP ketat (router),
+// batas permintaan per akun per jam (usecase), respons SERAGAM terlepas dari
+// apakah email terdaftar, dan pemrosesan di goroutine terpisah supaya waktu
+// respons tidak membocorkan keberadaan akun.
+func (r *Router) forgotPassword(c *echo.Context) error {
+	var req forgotPasswordRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "payload tidak valid")
+	}
+	if strings.TrimSpace(req.Email) == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "email wajib diisi")
+	}
+	if !r.Auth.PasswordResetEnabled() {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "reset password lewat email belum diaktifkan — hubungi administrator")
+	}
+	email, ip := req.Email, c.RealIP()
+	select {
+	case forgotSlots <- struct{}{}:
+		go func() {
+			defer func() { <-forgotSlots }()
+			// Goroutine terlepas dari request: Recover middleware Echo TIDAK
+			// melindunginya, jadi panic di sini harus ditangkap sendiri.
+			defer func() {
+				if rec := recover(); rec != nil {
+					log.Printf("forgotPassword: panic: %v", rec)
+				}
+			}()
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			r.Auth.RequestPasswordReset(ctx, email, ip)
+		}()
+	default:
+		// Slot habis (banjir): tidak diproses, respons tetap seragam.
+	}
+	return c.JSON(http.StatusAccepted, map[string]string{
+		"message": "Jika email terdaftar, tautan reset password telah dikirim. Periksa kotak masuk (dan folder spam).",
+	})
+}
+
+type resetPasswordRequest struct {
+	Token       string `json:"token"`
+	NewPassword string `json:"new_password"`
+}
+
+// resetPassword — PUBLIK, tetapi hanya bisa berhasil dengan token sekali-pakai
+// dari email (hash-nya di DB, berumur pendek). Dilindungi rate limit per-IP.
+func (r *Router) resetPassword(c *echo.Context) error {
+	var req resetPasswordRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "payload tidak valid")
+	}
+	if req.Token == "" || req.NewPassword == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "token dan new_password wajib diisi")
+	}
+	err := r.Auth.ResetPassword(c.Request().Context(), req.Token, req.NewPassword)
+	switch {
+	case err == nil:
+		return c.NoContent(http.StatusNoContent)
+	case errors.Is(err, auth.ErrInvalidResetToken):
+		return echo.NewHTTPError(http.StatusBadRequest, "tautan reset tidak valid atau sudah kedaluwarsa — minta tautan baru")
+	case errors.Is(err, auth.ErrPasswordResetDisabled):
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "reset password lewat email belum diaktifkan")
+	case errors.Is(err, passwordhash.ErrBusy):
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "server sedang sibuk, coba lagi sebentar")
+	}
+	return handleErr(c, err)
 }

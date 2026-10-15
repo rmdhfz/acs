@@ -17,13 +17,15 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/oauth2"
 
 	"acs/internal/domain"
+	"acs/internal/usecase/notify"
+	"acs/pkg/mailer"
+	"acs/pkg/passwordhash"
 )
 
-var ErrInvalidCredentials = errors.New("auth: username atau password salah")
+var ErrInvalidCredentials = errors.New("auth: email atau password salah")
 
 // ErrTenantInactive -- login/akses ditolak krn tenant pemilik akun sudah
 // dinonaktifkan superadmin (lihat usecase/iam.UpdateTenant). BEDA dari
@@ -79,6 +81,29 @@ type Service struct {
 
 	oidcProvider *oidc.Provider
 	oauth2Config *oauth2.Config
+
+	// Reset password lewat email & notifikasi keamanan — opsional (lihat
+	// WithPasswordReset); tanpa ini fitur tersebut nonaktif dan Service
+	// berperilaku persis seperti sebelumnya.
+	resets   domain.PasswordResetRepository
+	notifier mailer.Notifier
+	mail     *notify.Builder
+	resetTTL time.Duration
+}
+
+// WithPasswordReset mengaktifkan reset password lewat email + email notifikasi
+// keamanan (akun terkunci, password diganti). notifier tidak pernah memblok
+// request dan kegagalannya tidak menggagalkan operasi.
+func (s *Service) WithPasswordReset(resets domain.PasswordResetRepository, notifier mailer.Notifier, mail *notify.Builder, ttl time.Duration) *Service {
+	s.resets, s.notifier, s.mail, s.resetTTL = resets, notifier, mail, ttl
+	return s
+}
+
+// notify mengantrekan email bila pengiriman diaktifkan.
+func (s *Service) notify(m mailer.Message) {
+	if s.notifier != nil {
+		s.notifier.Notify(m)
+	}
 }
 
 func NewService(users domain.UserRepository, tokens domain.APITokenRepository, tenants domain.TenantRepository, activity domain.ActivityLogRepository, jwtSecret []byte, jwtExpiry time.Duration, issuer, clientID, clientSecret, redirectURL string) *Service {
@@ -100,42 +125,76 @@ func NewService(users domain.UserRepository, tokens domain.APITokenRepository, t
 	return s
 }
 
+// HashPassword menghasilkan hash Argon2id (lihat pkg/passwordhash). Hash bcrypt
+// lama tetap diterima Login dan di-upgrade otomatis saat login berhasil.
 func HashPassword(password string) (string, error) {
-	b, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	return string(b), err
+	h, err := passwordhash.Hash(password)
+	if errors.Is(err, passwordhash.ErrPasswordTooLong) {
+		return "", fmt.Errorf("%w: password maksimal %d karakter", domain.ErrInvalidInput, passwordhash.MaxPasswordLen)
+	}
+	return h, err
 }
 
-func (s *Service) Login(ctx context.Context, username, password string) (*domain.User, string, error) {
-	u, err := s.users.GetByUsername(ctx, username)
+// Login memverifikasi kredensial. identifier = EMAIL (berisi "@") atau username
+// (kompatibilitas klien/skrip lama). Hash Argon2id; hash bcrypt lama diterima
+// lalu di-upgrade ke Argon2id saat login berhasil.
+func (s *Service) Login(ctx context.Context, identifier, password string) (*domain.User, string, error) {
+	identifier = strings.TrimSpace(identifier)
+	var (
+		u   *domain.User
+		err error
+	)
+	if strings.Contains(identifier, "@") {
+		u, err = s.users.GetByEmail(ctx, strings.ToLower(identifier))
+	} else {
+		u, err = s.users.GetByUsername(ctx, identifier)
+	}
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
+			// Ratakan waktu respons dgn jalur "akun ada" — cegah enumerasi
+			// akun lewat selisih waktu (tanpa ini jalur ini ~instan).
+			passwordhash.DummyVerify(password)
 			return nil, "", ErrInvalidCredentials
 		}
 		return nil, "", err
 	}
-	// Lockout check SEBELUM verifikasi password (dan sebelum bcrypt dipanggil
-	// sama sekali) -- pesan error yang dikembalikan SAMA PERSIS dgn
-	// ErrInvalidCredentials biasa, sengaja tidak membedakan "akun terkunci"
-	// dari "password salah" supaya penyerang yang menebak username tidak
-	// bisa memakai respons ini utk memastikan username tsb valid.
-	if u.LockedUntil != nil && u.LockedUntil.After(time.Now()) {
+	// Lockout check SEBELUM verifikasi password -- pesan error yang
+	// dikembalikan SAMA PERSIS dgn ErrInvalidCredentials biasa, sengaja tidak
+	// membedakan "akun terkunci" dari "password salah" supaya penyerang yang
+	// menebak akun tidak bisa memakai respons ini utk memastikan akun tsb valid.
+	if (u.LockedUntil != nil && u.LockedUntil.After(time.Now())) || !u.IsActive {
+		passwordhash.DummyVerify(password)
 		return nil, "", ErrInvalidCredentials
 	}
-	if !u.IsActive {
-		return nil, "", ErrInvalidCredentials
+	ok, needsRehash, verr := passwordhash.Verify(password, u.PasswordHash)
+	if errors.Is(verr, passwordhash.ErrBusy) {
+		// Antrean Argon2 penuh: BUKAN password salah — jangan hitung sebagai
+		// percobaan gagal (bisa mengunci akun sah saat server padat/diserang).
+		return nil, "", verr
 	}
-	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)); err != nil {
+	if verr != nil || !ok {
 		// Password salah -- catat via SATU UPDATE atomik (increment +
 		// keputusan lock, lihat RecordFailedLogin) supaya request login
-		// paralel utk username yang sama tidak bisa saling lolos lockout
-		// (celah TOCTOU yang sempat ada di versi dua-langkah sebelumnya,
-		// ditemukan acs-security-reviewer). Kegagalan mencatat di sini
-		// sengaja tidak menggagalkan respons login (tetap
-		// ErrInvalidCredentials) -- gangguan pada proteksi brute-force tidak
-		// boleh membuka celah lain (mis. leak error DB ke klien) atau
-		// menghalangi user lain login.
-		_ = s.users.RecordFailedLogin(ctx, u.ID, maxFailedLoginAttempts, time.Now().Add(lockoutDuration))
+		// paralel utk akun yang sama tidak bisa saling lolos lockout (celah
+		// TOCTOU, temuan acs-security-reviewer). Kegagalan mencatat di sini
+		// sengaja tidak menggagalkan respons login.
+		locked, _ := s.users.RecordFailedLogin(ctx, u.ID, maxFailedLoginAttempts, time.Now().Add(lockoutDuration))
+		if s.mail != nil && locked {
+			// Pemanggilan INI yang mengunci akun (repo membandingkan locked_until
+			// dgn nilai yang ia set): beri tahu pemilik akun SEKALI, bukan tiap
+			// percobaan gagal / tiap request paralel.
+			s.notify(s.mail.AccountLocked(u.Email, u.FullName, int(lockoutDuration.Minutes())))
+		}
 		return nil, "", ErrInvalidCredentials
+	}
+	if needsRehash {
+		// Upgrade bertahap bcrypt -> Argon2id (atau parameter lebih kuat).
+		// Best-effort: kegagalan tidak menggagalkan login.
+		// Compare-and-swap: hanya bila hash di DB masih yang barusan diverifikasi
+		// — tidak menimpa password yang baru diganti jalur lain (reset/ganti).
+		if h, herr := passwordhash.Hash(password); herr == nil {
+			_, _ = s.users.RehashPassword(ctx, u.ID, u.PasswordHash, h)
+		}
 	}
 
 	// Password benar -- reset lockout counter, percobaan gagal sebelumnya
@@ -191,37 +250,53 @@ func (s *Service) checkTenantActive(ctx context.Context, tenantID *uint64) error
 // (termasuk VIEWER) boleh memanggil ini utk akunnya sendiri -- tidak ada
 // RBAC role gate di sini, cukup actor.UserID yg dipakai (bukan target ID
 // dari path), lihat delivery/http router.go PATCH /auth/password.
-func (s *Service) ChangeOwnPassword(ctx context.Context, actor domain.Actor, currentPassword, newPassword string) error {
+//
+// Mengembalikan JWT BARU: pergantian password mencabut semua sesi lama
+// (password_changed_at), termasuk sesi pemanggil sendiri — token baru ini
+// membuat pemanggil tetap login tanpa harus masuk ulang.
+func (s *Service) ChangeOwnPassword(ctx context.Context, actor domain.Actor, currentPassword, newPassword string) (string, error) {
 	u, err := s.users.GetByID(ctx, actor.UserID)
 	if err != nil {
-		return err
+		return "", err
 	}
 	// Verifikasi password lama WAJIB sebelum izinkan ganti -- tanpa ini,
 	// siapa pun yg mencuri/membajak bearer token (mis. lewat XSS) bisa
 	// mengunci pemilik akun asli keluar permanen dgn mengganti password tanpa
 	// perlu tahu password lama sama sekali.
-	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(currentPassword)); err != nil {
-		return ErrInvalidCredentials
+	ok, _, verr := passwordhash.Verify(currentPassword, u.PasswordHash)
+	if errors.Is(verr, passwordhash.ErrBusy) {
+		return "", verr
+	}
+	if verr != nil || !ok {
+		return "", ErrInvalidCredentials
 	}
 	if len(newPassword) < domain.MinUserPasswordLen {
-		return fmt.Errorf("%w: password minimal %d karakter", domain.ErrInvalidInput, domain.MinUserPasswordLen)
+		return "", fmt.Errorf("%w: password minimal %d karakter", domain.ErrInvalidInput, domain.MinUserPasswordLen)
 	}
 	hash, err := HashPassword(newPassword)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if err := s.users.UpdatePassword(ctx, u.ID, hash, actor.UserIDPtr()); err != nil {
-		return err
+		return "", err
 	}
 	// Reset lockout juga di sini utk konsistensi dgn ResetUserPassword admin
 	// (ganti password berhasil = kesempatan baru), meski jalur ini hanya bisa
 	// dicapai user yg sudah lolos verifikasi password lama (jadi akun ybs
 	// pasti sedang tidak dalam status terkunci).
 	_ = s.users.ResetLoginLockout(ctx, u.ID)
+	// Token reset yang masih beredar tidak boleh bisa dipakai setelah password berubah.
+	if s.resets != nil {
+		_ = s.resets.InvalidateAllForUser(ctx, u.ID, time.Now())
+	}
 	// Password lama/baru TIDAK PERNAH dicatat ke activity_logs, hanya aksi +
 	// entity (CLAUDE.md §8 -- kredensial tidak boleh muncul di log).
 	_ = s.activity.Record(ctx, &domain.ActivityLog{UserID: actor.UserIDPtr(), TenantID: u.TenantID, Action: "CHANGE_OWN_PASSWORD", EntityType: "user", EntityID: &u.ID})
-	return nil
+	if s.mail != nil {
+		s.notify(s.mail.PasswordChanged(u.Email, u.FullName))
+	}
+	// iat token baru >= password_changed_at (presisi detik) sehingga lolos cek sesi.
+	return s.issueJWT(u)
 }
 
 func (s *Service) issueJWT(u *domain.User) (string, error) {
@@ -241,6 +316,14 @@ func (s *Service) issueJWT(u *domain.User) (string, error) {
 }
 
 func (s *Service) ParseJWT(tokenStr string) (*domain.Actor, error) {
+	claims, err := s.parseClaims(tokenStr)
+	if err != nil {
+		return nil, err
+	}
+	return &domain.Actor{UserID: claims.UserID, TenantID: claims.TenantID, Roles: claims.Roles}, nil
+}
+
+func (s *Service) parseClaims(tokenStr string) (*Claims, error) {
 	claims := &Claims{}
 	_, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -251,7 +334,7 @@ func (s *Service) ParseJWT(tokenStr string) (*domain.Actor, error) {
 	if err != nil {
 		return nil, fmt.Errorf("auth: token tidak valid: %w", err)
 	}
-	return &domain.Actor{UserID: claims.UserID, TenantID: claims.TenantID, Roles: claims.Roles}, nil
+	return claims, nil
 }
 
 // ResolveActor adalah titik masuk TUNGGAL yang dipakai AuthMiddleware utk
@@ -270,15 +353,47 @@ func (s *Service) ResolveActor(ctx context.Context, tokenStr string) (*domain.Ac
 	if strings.HasPrefix(tokenStr, "acs_") {
 		actor, err = s.AuthenticateAPIToken(ctx, tokenStr)
 	} else {
-		actor, err = s.ParseJWT(tokenStr)
+		var claims *Claims
+		if claims, err = s.parseClaims(tokenStr); err == nil {
+			actor = &domain.Actor{UserID: claims.UserID, TenantID: claims.TenantID, Roles: claims.Roles}
+			err = s.checkSession(ctx, claims)
+		}
 	}
 	if err != nil {
+		if errors.Is(err, errSessionLookup) {
+			return nil, err // error SISTEM (DB) — bukan token invalid; jangan disamarkan
+		}
 		return nil, fmt.Errorf("%w: %v", ErrInvalidToken, err)
 	}
 	if err := s.checkTenantActive(ctx, actor.TenantID); err != nil {
 		return nil, err
 	}
 	return actor, nil
+}
+
+// errSessionLookup — kegagalan SISTEM saat membaca status sesi (mis. DB putus);
+// dibedakan dari token invalid supaya AuthMiddleware merespons 500, bukan 401.
+var errSessionLookup = errors.New("auth: gagal memeriksa sesi")
+
+// checkSession menolak JWT milik akun yang sudah dihapus/dinonaktifkan atau
+// yang diterbitkan SEBELUM password terakhir diganti (migrations/0024). Satu
+// query PK per request (trade-off sama dgn checkTenantActive).
+func (s *Service) checkSession(ctx context.Context, claims *Claims) error {
+	st, err := s.users.AuthState(ctx, claims.UserID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return errors.New("akun tidak ada")
+		}
+		return fmt.Errorf("%w: %v", errSessionLookup, err)
+	}
+	if !st.IsActive {
+		return errors.New("akun nonaktif")
+	}
+	if st.PasswordChangedAt != nil && claims.IssuedAt != nil &&
+		claims.IssuedAt.Time.Before(st.PasswordChangedAt.Truncate(time.Second)) {
+		return errors.New("sesi dicabut karena password diganti")
+	}
+	return nil
 }
 
 // ---- API Token ----

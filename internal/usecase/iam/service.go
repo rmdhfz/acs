@@ -6,16 +6,20 @@ package iam
 import (
 	"context"
 	"fmt"
+	"net/mail"
 	"net/url"
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
 	"acs/internal/domain"
 	"acs/internal/usecase/auth"
+	"acs/internal/usecase/notify"
 	"acs/pkg/cryptoutil"
+	"acs/pkg/mailer"
 )
 
 // minCWMPInformPasswordLen — shared secret Inform CWMP dipakai lewat HTTP
@@ -31,6 +35,18 @@ type Service struct {
 	activity domain.ActivityLogRepository
 	enc      *cryptoutil.Encryptor
 	usage    domain.UsageRepository
+
+	// Email notifikasi (opsional, lihat WithEmail) — nil = tidak ada email.
+	notifier mailer.Notifier
+	mail     *notify.Builder
+	resets   domain.PasswordResetRepository
+}
+
+// WithEmail mengaktifkan email notifikasi (akun baru, password direset admin)
+// dan pembatalan token reset yang masih beredar saat admin mereset password.
+func (s *Service) WithEmail(n mailer.Notifier, b *notify.Builder, resets domain.PasswordResetRepository) *Service {
+	s.notifier, s.mail, s.resets = n, b, resets
+	return s
 }
 
 func NewService(tenants domain.TenantRepository, users domain.UserRepository, refs domain.RefRepository, activity domain.ActivityLogRepository, enc *cryptoutil.Encryptor, usage domain.UsageRepository) *Service {
@@ -310,6 +326,17 @@ func validateRoleCodesAssignable(actor domain.Actor, roleCodes []string) error {
 	return nil
 }
 
+// validateUserEmail — email dipakai login, reset password, dan tujuan email
+// notifikasi, jadi harus alamat polos yang valid (tanpa nama tampilan/spasi/
+// karakter kontrol). Mencegah email selamat-datang dikirim ke "alamat" aneh.
+func validateUserEmail(email string) error {
+	a, err := mail.ParseAddress(email)
+	if err != nil || a.Address != email || len(email) > 191 {
+		return fmt.Errorf("%w: email tidak valid", domain.ErrInvalidInput)
+	}
+	return nil
+}
+
 // CreateUser: superadmin bisa membuat user di tenant manapun (atau lintas
 // tenant untuk sesama superadmin); admin tenant hanya bisa membuat user di
 // tenant-nya sendiri (RBAC scope tenant, CLAUDE.md). ADMIN non-superadmin juga
@@ -324,6 +351,9 @@ func (s *Service) CreateUser(ctx context.Context, actor domain.Actor, in CreateU
 		}
 	}
 	if err := validateRoleCodesAssignable(actor, in.RoleCodes); err != nil {
+		return nil, err
+	}
+	if err := validateUserEmail(in.Email); err != nil {
 		return nil, err
 	}
 	// Panjang minimum password disamakan dengan ResetUserPassword &
@@ -352,6 +382,14 @@ func (s *Service) CreateUser(ctx context.Context, actor domain.Actor, in CreateU
 	}
 	u.Roles = in.RoleCodes
 	_ = s.activity.Record(ctx, &domain.ActivityLog{UserID: actor.UserIDPtr(), TenantID: in.TenantID, Action: "CREATE_USER", EntityType: "user", EntityID: &u.ID})
+	if s.notifier != nil && s.mail != nil {
+		role := ""
+		if len(in.RoleCodes) > 0 {
+			role = in.RoleCodes[0]
+		}
+		// Email TIDAK memuat password — hanya info akun & tautan "buat password".
+		s.notifier.Notify(s.mail.Welcome(u.Email, u.FullName, u.Email, role))
+	}
 	return u, nil
 }
 
@@ -418,7 +456,12 @@ func (s *Service) UpdateUser(ctx context.Context, actor domain.Actor, targetID u
 	if in.FullName != nil {
 		target.FullName = *in.FullName
 	}
+	emailChanged := false
 	if in.Email != nil {
+		if err := validateUserEmail(*in.Email); err != nil {
+			return nil, err
+		}
+		emailChanged = !strings.EqualFold(target.Email, *in.Email)
 		target.Email = *in.Email
 	}
 	if in.IsActive != nil {
@@ -427,6 +470,11 @@ func (s *Service) UpdateUser(ctx context.Context, actor domain.Actor, targetID u
 	target.UpdatedBy = actor.UserIDPtr()
 	if err := s.users.Update(ctx, target); err != nil {
 		return nil, err
+	}
+	// Tautan reset yang sudah terkirim ke email LAMA tidak boleh tetap bisa dipakai
+	// (juga saat akun dinonaktifkan).
+	if s.resets != nil && (emailChanged || (in.IsActive != nil && !*in.IsActive)) {
+		_ = s.resets.InvalidateAllForUser(ctx, target.ID, time.Now())
 	}
 	_ = s.activity.Record(ctx, &domain.ActivityLog{UserID: actor.UserIDPtr(), TenantID: target.TenantID, Action: "UPDATE_USER", EntityType: "user", EntityID: &target.ID})
 	return target, nil
@@ -457,7 +505,13 @@ func (s *Service) ResetUserPassword(ctx context.Context, actor domain.Actor, tar
 	if err := s.users.ResetLoginLockout(ctx, target.ID); err != nil {
 		return err
 	}
+	if s.resets != nil {
+		_ = s.resets.InvalidateAllForUser(ctx, target.ID, time.Now())
+	}
 	_ = s.activity.Record(ctx, &domain.ActivityLog{UserID: actor.UserIDPtr(), TenantID: target.TenantID, Action: "RESET_USER_PASSWORD", EntityType: "user", EntityID: &target.ID})
+	if s.notifier != nil && s.mail != nil {
+		s.notifier.Notify(s.mail.PasswordResetByAdmin(target.Email, target.FullName))
+	}
 	return nil
 }
 

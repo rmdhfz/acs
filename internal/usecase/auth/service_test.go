@@ -3,12 +3,14 @@ package auth
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
 
 	"acs/internal/domain"
+	"acs/pkg/passwordhash"
 )
 
 // ---- fakes (pola sama seperti internal/usecase/task/service_test.go) ----
@@ -35,6 +37,14 @@ func (f *fakeUserRepoAuth) GetByUsername(_ context.Context, username string) (*d
 	}
 	return nil, domain.ErrNotFound
 }
+func (f *fakeUserRepoAuth) GetByEmail(_ context.Context, email string) (*domain.User, error) {
+	for _, u := range f.byID {
+		if strings.EqualFold(u.Email, email) {
+			return u, nil
+		}
+	}
+	return nil, domain.ErrNotFound
+}
 func (f *fakeUserRepoAuth) List(context.Context, *uint64, domain.Pagination) ([]domain.User, int, error) {
 	return nil, 0, nil
 }
@@ -43,8 +53,28 @@ func (f *fakeUserRepoAuth) UpdatePassword(_ context.Context, id uint64, hash str
 	f.updatedHash = hash
 	if u, ok := f.byID[id]; ok {
 		u.PasswordHash = hash
+		now := time.Now()
+		u.PasswordChangedAt = &now
 	}
 	return nil
+}
+
+// RehashPassword meniru compare-and-swap repo asli.
+func (f *fakeUserRepoAuth) RehashPassword(_ context.Context, id uint64, oldHash, newHash string) (bool, error) {
+	u, ok := f.byID[id]
+	if !ok || u.PasswordHash != oldHash {
+		return false, nil
+	}
+	u.PasswordHash = newHash
+	return true, nil
+}
+
+func (f *fakeUserRepoAuth) AuthState(_ context.Context, id uint64) (*domain.UserAuthState, error) {
+	u, ok := f.byID[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	return &domain.UserAuthState{IsActive: u.IsActive, PasswordChangedAt: u.PasswordChangedAt}, nil
 }
 func (f *fakeUserRepoAuth) SoftDelete(context.Context, uint64, uint64) error        { return nil }
 func (f *fakeUserRepoAuth) TouchLastLogin(context.Context, uint64, time.Time) error { return nil }
@@ -53,18 +83,19 @@ func (f *fakeUserRepoAuth) RolesByUserID(context.Context, uint64) ([]string, err
 }
 func (f *fakeUserRepoAuth) AssignRole(context.Context, uint64, uint64, *uint64) error { return nil }
 func (f *fakeUserRepoAuth) RevokeRole(context.Context, uint64, uint64) error          { return nil }
-func (f *fakeUserRepoAuth) RecordFailedLogin(_ context.Context, id uint64, maxAttempts uint32, lockUntil time.Time) error {
+func (f *fakeUserRepoAuth) RecordFailedLogin(_ context.Context, id uint64, maxAttempts uint32, lockUntil time.Time) (bool, error) {
 	f.recordedFails++
 	u, ok := f.byID[id]
 	if !ok {
-		return domain.ErrNotFound
+		return false, domain.ErrNotFound
 	}
 	u.FailedLoginAttempts++
 	if u.FailedLoginAttempts >= maxAttempts {
 		u.LockedUntil = &lockUntil
 		f.lastLockUntil = lockUntil
+		return true, nil
 	}
-	return nil
+	return false, nil
 }
 func (f *fakeUserRepoAuth) ResetLoginLockout(_ context.Context, id uint64) error {
 	f.resetCalled = true
@@ -226,18 +257,21 @@ func TestChangeOwnPassword_RequiresCorrectCurrentPassword(t *testing.T) {
 
 	actor := domain.Actor{UserID: 1}
 
-	if err := svc.ChangeOwnPassword(context.Background(), actor, "salah-password-lama", "password-baru-yang-panjang"); !errors.Is(err, ErrInvalidCredentials) {
+	if _, err := svc.ChangeOwnPassword(context.Background(), actor, "salah-password-lama", "password-baru-yang-panjang"); !errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("current_password salah: error = %v, want ErrInvalidCredentials", err)
 	}
 	if users.updatedHash != "" {
 		t.Fatal("password tidak seharusnya berubah saat current_password salah")
 	}
 
-	if err := svc.ChangeOwnPassword(context.Background(), actor, "old-password", "password-baru-yang-panjang"); err != nil {
+	if _, err := svc.ChangeOwnPassword(context.Background(), actor, "old-password", "password-baru-yang-panjang"); err != nil {
 		t.Fatalf("current_password benar: error = %v, want nil", err)
 	}
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte("password-baru-yang-panjang")); err != nil {
-		t.Fatalf("password_hash tidak ter-update ke password baru: %v", err)
+	if ok, _, err := passwordhash.Verify("password-baru-yang-panjang", user.PasswordHash); err != nil || !ok {
+		t.Fatalf("password_hash tidak ter-update ke password baru: ok=%v err=%v", ok, err)
+	}
+	if !strings.HasPrefix(user.PasswordHash, "$argon2id$") {
+		t.Fatalf("hash baru harus Argon2id, dapat %q", user.PasswordHash[:10])
 	}
 }
 
@@ -247,7 +281,7 @@ func TestChangeOwnPassword_RejectsShortNewPassword(t *testing.T) {
 	users := &fakeUserRepoAuth{byID: map[uint64]*domain.User{1: user}}
 	svc := NewService(users, &fakeTokenRepoAuth{}, &fakeTenantRepoAuthTest{}, &fakeActivityRepoAuth{}, []byte("test-secret-at-least-32-bytes!!"), time.Hour, "", "", "", "")
 
-	err := svc.ChangeOwnPassword(context.Background(), domain.Actor{UserID: 1}, "old-password", "short")
+	_, err := svc.ChangeOwnPassword(context.Background(), domain.Actor{UserID: 1}, "old-password", "short")
 	if !errors.Is(err, domain.ErrInvalidInput) {
 		t.Fatalf("password baru terlalu pendek: error = %v, want ErrInvalidInput", err)
 	}
@@ -264,7 +298,7 @@ func TestChangeOwnPassword_OnlyAffectsActorsOwnAccount(t *testing.T) {
 	// actor.UserID = 1 memanggil ChangeOwnPassword -- tidak ada cara memasukkan
 	// ID user lain, jadi hanya user 1 yang mungkin terpengaruh secara desain
 	// (lihat signature ChangeOwnPassword: tidak menerima target ID sama sekali).
-	if err := svc.ChangeOwnPassword(context.Background(), domain.Actor{UserID: 1}, "password-a", "password-baru-panjang"); err != nil {
+	if _, err := svc.ChangeOwnPassword(context.Background(), domain.Actor{UserID: 1}, "password-a", "password-baru-panjang"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if userB.PasswordHash != hashB {

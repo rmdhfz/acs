@@ -96,6 +96,16 @@ services:
       ACS_MINIO_BUCKET: ${ACS_MINIO_BUCKET:-acs-firmware}
       ACS_MINIO_USE_SSL: "false"
       ACS_REDIS_ADDR: "redis:6379"
+      # Email (reset password & notifikasi keamanan). Kosongkan ACS_SMTP_HOST
+      # untuk menonaktifkan. Kredensial HANYA dari .env (tidak di-commit).
+      ACS_SMTP_HOST: ${ACS_SMTP_HOST:-}
+      ACS_SMTP_PORT: ${ACS_SMTP_PORT:-587}
+      ACS_SMTP_USERNAME: ${ACS_SMTP_USERNAME:-}
+      ACS_SMTP_PASSWORD: ${ACS_SMTP_PASSWORD:-}
+      ACS_SMTP_FROM: ${ACS_SMTP_FROM:-}
+      ACS_SMTP_FROM_NAME: ${ACS_SMTP_FROM_NAME:-ACS Console}
+      ACS_PUBLIC_URL: ${ACS_PUBLIC_URL:-http://localhost:5173}
+      ACS_PASSWORD_RESET_TTL: ${ACS_PASSWORD_RESET_TTL:-30m}
     ports:
       - "18080:8080"
       - "17547:7547"

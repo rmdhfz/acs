@@ -119,6 +119,7 @@ func main() {
 		{"S9-preset-drift-heal", scenarioPresetDriftHeal},
 		{"S10-security-guards", scenarioSecurityGuards},
 		{"S11-crud-lengkap", scenarioCRUDLengkap},
+		{"S12-auth-email-reset", scenarioAuthEmailReset},
 	}
 
 	var results []result

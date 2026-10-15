@@ -36,6 +36,7 @@ import (
 	"acs/internal/usecase/file"
 	"acs/internal/usecase/firmware"
 	"acs/internal/usecase/iam"
+	"acs/internal/usecase/notify"
 	"acs/internal/usecase/preset"
 	"acs/internal/usecase/provisioning"
 	"acs/internal/usecase/selfservice"
@@ -45,6 +46,7 @@ import (
 	"acs/internal/usecase/usp_session"
 	"acs/internal/usecase/webhook"
 	"acs/pkg/cryptoutil"
+	"acs/pkg/mailer"
 	"acs/pkg/objectstorage"
 	"acs/pkg/redisutil"
 )
@@ -134,8 +136,27 @@ func main() {
 		deviceSessionRepo = redisrepo.NewDeviceSessionRepository(deviceSessionRepoMysql, redisClient)
 	}
 
+	// Email (SMTP): reset password + notifikasi keamanan. SMTP belum
+	// dikonfigurasi -> notifier Noop & reset lewat email nonaktif (503 di API).
+	passwordResetRepo := mysql.NewPasswordResetRepository(db)
+	mailNotifier, closeMail := mailer.NewNotifier(mailer.Config{
+		Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername, Password: cfg.SMTPPassword,
+		From: cfg.SMTPFrom, FromName: cfg.SMTPFromName,
+	}, logger)
+	defer closeMail()
+	mailBuilder := notify.NewBuilder(cfg.SMTPFromName, cfg.PublicURL)
+	if cfg.SMTPHost != "" {
+		logger.Info("email: SMTP aktif", "host", cfg.SMTPHost, "port", cfg.SMTPPort, "from", mailer.MaskEmail(cfg.SMTPFrom))
+	}
+
 	authSvc := auth.NewService(userRepo, apiTokenRepo, tenantRepo, activityLogRepo, cfg.JWTSecret, cfg.JWTExpiry, cfg.OIDCIssuer, cfg.OIDCClientID, cfg.OIDCClientSecret, cfg.OIDCRedirectURL)
+	if cfg.SMTPHost != "" {
+		authSvc.WithPasswordReset(passwordResetRepo, mailNotifier, mailBuilder, cfg.PasswordResetTTL)
+	}
 	iamSvc := iam.NewService(tenantRepo, userRepo, refRepo, activityLogRepo, enc, usageRepo)
+	if cfg.SMTPHost != "" {
+		iamSvc.WithEmail(mailNotifier, mailBuilder, passwordResetRepo)
+	}
 	catalogSvc := catalog.NewService(vendorRepo, vendorOUIRepo, deviceModelRepo, paramMappingRepo, usageRepo, activityLogRepo)
 	// webhookSvc dikonstruksi lebih dulu -- session & task memakainya lewat
 	// domain.WebhookEnqueuer (interface sempit, tanpa import cycle), worker
