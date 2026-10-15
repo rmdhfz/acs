@@ -379,6 +379,9 @@ function CreateWebhookModal({ onClose }: { onClose: () => void }) {
 
 // ---- Main Page ----
 
+import { ExportMenu } from '../components/ExportMenu'
+import { loadWebhookExportRows, webhookExportColumns } from '../imports/webhooks'
+
 export function WebhooksPage() {
   const [showCreate, setShowCreate] = useState(false)
   const { data: eventRefs } = useRefs('ref_webhook_event_types')
@@ -399,14 +402,22 @@ export function WebhooksPage() {
             Kelola langganan webhook keluar — event ACS dikirim otomatis ke sistem BSS/OSS/NMS Anda.
           </p>
         </div>
-        <button
-          id="webhook-create-btn"
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-        >
-          <Plus className="h-4 w-4" />
-          Tambah Webhook
-        </button>
+        <div className="flex items-center gap-2">
+          <ExportMenu
+            filename="webhook"
+            columns={webhookExportColumns(eventRefs)}
+            hint="Secret penandatangan tidak pernah diekspor; kredensial di URL tujuan disamarkan."
+            getRows={(ctx) => loadWebhookExportRows(ctx)}
+          />
+          <button
+            id="webhook-create-btn"
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+          >
+            <Plus className="h-4 w-4" />
+            Tambah Webhook
+          </button>
+        </div>
       </div>
 
       {/* Info banner */}

@@ -20,7 +20,7 @@ nyata dan tidak punya kuirk per-firmware. Gunanya:
 
 ---
 
-## 1. Yang Diuji (12 skenario)
+## 1. Yang Diuji (13 skenario)
 
 | # | Skenario | Yang dibuktikan |
 |---|---|---|
@@ -36,6 +36,7 @@ nyata dan tidak punya kuirk per-firmware. Gunanya:
 | S10 | Regresi keamanan | Role ENDUSER dikurung ke `/self-service` (403 di API staf); Connection Request ke alamat metadata-cloud ditolak (SSRF guard) |
 | S11 | CRUD lengkap | Katalog (vendor/OUI/model/mapping) get·patch·delete + **guard 409** bila masih dipakai (vendor ZTE nyata), **revive OUI** yang pernah dihapus, device delete → task terbuka **CANCELLED** → Inform berikutnya **revive** (id sama, task lama tidak jalan), tenant get/delete (guard user/device) + scope, GET user by id + scope, firmware get/patch/delete (identitas isi file tak berubah), tag patch (+ tag global hanya superadmin), preset get (scope), ZTP get 404 |
 | S12 | Auth email & reset | Login dengan **email** (tak peka huruf besar, spasi dipangkas) + kompatibilitas username; pesan 401 **seragam** (salah password vs email tak dikenal); `forgot-password` 202 generik untuk email tak terdaftar + **429** rate limit; `reset-password` token ngawur → 400; **admin reset** → password baru berlaku, lama ditolak, dan **JWT lama dicabut (401)**. Tidak mengirim email ke alamat nyata (domain `@e2e.local` dibuang mailer). Alur token email→tautan→password baru dibuktikan di test unit + integrasi MariaDB (`ACS_TEST_DSN`) + uji manual |
+| S13 | Pra-registrasi & impor perangkat | `POST /devices` (ADMIN dikunci ke tenant sendiri; duplikat/tenant lain 409; OUI/MAC/koordinat/vendor salah 400; superadmin wajib tenant), **PATCH menyimpan notes/MAC/lokasi/vendor** (regresi: repository dulu tidak menulis latitude/longitude), `POST /devices/import` — **dry-run mengklasifikasi tanpa menulis**, eksekusi = pratinjau, impor ulang idempoten, mode skip, tenant lain ditolak tanpa membocorkan pemilik; **Inform pertama CPE pra-registrasi memakai baris yang sama** (id sama, catatan terjaga, status berubah, vendor ter-resolve) sementara tenant LAIN ditolak |
 
 Status terakhir: **11/11 PASS**, stabil pada 3 run berturut-turut (2026-10-15).
 

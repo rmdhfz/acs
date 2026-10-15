@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import { ScrollText, User, Cog } from 'lucide-react'
 import { EmptyState } from '../components/EmptyState'
+import { ExportMenu } from '../components/ExportMenu'
+import { activityExportColumns, loadActivityExportRows } from '../imports/audit'
 import { PageSpinner } from '../components/Spinner'
 import { useI18n } from '../lib/i18n'
 import { useActivityLog } from '../lib/hooks'
@@ -45,11 +47,19 @@ export default function AuditPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-8">
-      <div className="mb-4">
-        <h1 className="flex items-center gap-2 text-xl font-semibold text-slate-900 dark:text-slate-100">
-          <ScrollText className="h-5 w-5 text-slate-400" /> {t('audit.title')}
-        </h1>
-        <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">{t('audit.subtitle')}</p>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="flex items-center gap-2 text-xl font-semibold text-slate-900 dark:text-slate-100">
+            <ScrollText className="h-5 w-5 text-slate-400" /> {t('audit.title')}
+          </h1>
+          <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">{t('audit.subtitle')}</p>
+        </div>
+        <ExportMenu
+          filename="audit-trail"
+          columns={activityExportColumns()}
+          hint="Mengekspor seluruh log sesuai filter aksi/objek yang aktif (bukan hanya baris yang tampil)."
+          getRows={(ctx) => loadActivityExportRows({ action: action || undefined, entity_type: entityType || undefined }, ctx)}
+        />
       </div>
 
       <div className="mb-4 flex flex-wrap gap-2">

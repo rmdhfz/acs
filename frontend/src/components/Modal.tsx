@@ -6,11 +6,13 @@ interface ModalProps {
   onClose: () => void
   children: ReactNode
   wide?: boolean
+  /** Lebih lebar lagi (mis. wizard impor dengan tabel pratinjau). */
+  xl?: boolean
   /** Nonaktifkan tutup via Esc / klik backdrop (mis. saat ada operasi berjalan). */
   dismissable?: boolean
 }
 
-export function Modal({ title, onClose, children, wide, dismissable = true }: ModalProps) {
+export function Modal({ title, onClose, children, wide, xl, dismissable = true }: ModalProps) {
   useEffect(() => {
     if (!dismissable) return
     function onKey(e: KeyboardEvent) {
@@ -42,7 +44,7 @@ export function Modal({ title, onClose, children, wide, dismissable = true }: Mo
       role="dialog"
       aria-modal="true"
     >
-      <div className={`w-full ${wide ? 'max-w-2xl' : 'max-w-md'} rounded-xl bg-white shadow-xl dark:bg-slate-900`}>
+      <div className={`w-full ${xl ? 'max-w-5xl' : wide ? 'max-w-2xl' : 'max-w-md'} rounded-xl bg-white shadow-xl dark:bg-slate-900`}>
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 dark:border-slate-800">
           <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
           <button

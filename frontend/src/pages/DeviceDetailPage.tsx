@@ -1,13 +1,14 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Line, LineChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { Activity, ArrowLeft, Cpu, Gauge, HardDrive, History, ListChecks, Radio, ScrollText, Sparkles, SlidersHorizontal, RefreshCcw, AlertTriangle, FileUp, Trash2 } from 'lucide-react'
+import { Activity, ArrowLeft, Cpu, Gauge, HardDrive, History, ListChecks, Radio, ScrollText, Sparkles, SlidersHorizontal, RefreshCcw, AlertTriangle, FileUp, Pencil, Trash2 } from 'lucide-react'
 import { StatusBadge } from '../components/StatusBadge'
 import { EmptyState } from '../components/EmptyState'
 import { PageSpinner } from '../components/Spinner'
 import { ParameterTree } from '../components/ParameterTree'
 import { ConfigHistory } from '../components/ConfigHistory'
 import { Modal } from '../components/Modal'
+import { DeviceFormModal } from '../components/DeviceFormModal'
 import { useAuth } from '../lib/auth'
 import { useTheme } from '../lib/theme'
 import { useToast } from '../lib/toast'
@@ -30,7 +31,6 @@ import {
   useScheduleFirmwareUpgrade,
   useTriggerConnectionRequest,
   useTriggerDiagnostic,
-  useUpdateDevice,
   useVendors,
   useRebootDevice,
   useFactoryResetDevice,
@@ -75,6 +75,7 @@ export function DeviceDetailPage() {
   const navigate = useNavigate()
   const [tab, setTab] = useState<Tab>('overview')
   const [showApplyProfile, setShowApplyProfile] = useState(false)
+  const [showEditDevice, setShowEditDevice] = useState(false)
   const { hasRole } = useAuth()
 
   const { data: device, isLoading, error: deviceError } = useDevice(deviceId)
@@ -218,6 +219,14 @@ export function DeviceDetailPage() {
               <AlertTriangle className="h-4 w-4" /> Factory Reset
             </button>
           )}
+          {hasRole('ADMIN', 'NOC') && (
+            <button
+              onClick={() => setShowEditDevice(true)}
+              className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              <Pencil className="h-4 w-4" /> Edit
+            </button>
+          )}
           {hasRole('ADMIN') && (
             <button
               onClick={handleDeleteDevice}
@@ -256,6 +265,7 @@ export function DeviceDetailPage() {
       {showApplyProfile && (
         <ApplyProfileModal deviceId={deviceId} vendorId={device.vendor_id} onClose={() => setShowApplyProfile(false)} />
       )}
+      {showEditDevice && <DeviceFormModal mode="edit" device={device} onClose={() => setShowEditDevice(false)} />}
 
       <div className="mb-4 flex gap-1 border-b border-slate-200">
         {TABS.map((t) => (
@@ -275,7 +285,7 @@ export function DeviceDetailPage() {
       </div>
 
       <div className="mt-6">
-        {tab === 'overview' && <OverviewTab device={device} />}
+        {tab === 'overview' && <OverviewTab device={device} canEdit={hasRole('ADMIN', 'NOC')} onEdit={() => setShowEditDevice(true)} />}
         {tab === 'parameters' && <ParametersTab deviceId={deviceId} />}
         {tab === 'optical' && <OpticalMetricsTab deviceId={deviceId} />}
         {tab === 'events' && <EventsTab deviceId={deviceId} />}
@@ -300,50 +310,6 @@ function InfoItem({ label, value, mono }: { label: string; value: string; mono?:
 
 function Card({ children }: { children: ReactNode }) {
   return <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">{children}</div>
-}
-
-function EditDeviceModal({ device, onClose }: { device: NonNullable<ReturnType<typeof useDevice>['data']>; onClose: () => void }) {
-  const updateMutation = useUpdateDevice()
-  const [notes, setNotes] = useState(device.notes ?? '')
-  const [latitude, setLatitude] = useState(device.latitude?.toString() ?? '')
-  const [longitude, setLongitude] = useState(device.longitude?.toString() ?? '')
-
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault()
-    await updateMutation.mutateAsync({
-      id: device.id,
-      notes: notes || undefined,
-      latitude: latitude ? parseFloat(latitude) : undefined,
-      longitude: longitude ? parseFloat(longitude) : undefined,
-    })
-    onClose()
-  }
-
-  return (
-    <Modal title="Edit Device" onClose={onClose}>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Catatan</label>
-          <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder="mis. ONT lantai 2 ruang server, pelanggan korporat" className={inputCls} />
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Latitude</label>
-            <input type="number" step="any" value={latitude} onChange={e => setLatitude(e.target.value)} placeholder="derajat desimal, mis. -6.200000" className={inputCls} />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Longitude</label>
-            <input type="number" step="any" value={longitude} onChange={e => setLongitude(e.target.value)} placeholder="derajat desimal, mis. 106.816666" className={inputCls} />
-          </div>
-        </div>
-        <div className="pt-2">
-          <button type="submit" disabled={updateMutation.isPending} className={`${primaryBtnCls} w-full`}>
-            Simpan Perubahan
-          </button>
-        </div>
-      </form>
-    </Modal>
-  )
 }
 
 function DeviceTagsBar({ deviceId, canManage }: { deviceId: number; canManage: boolean }) {
@@ -417,8 +383,7 @@ function DeviceTagsBar({ deviceId, canManage }: { deviceId: number; canManage: b
   )
 }
 
-function OverviewTab({ device }: { device: NonNullable<ReturnType<typeof useDevice>['data']> }) {
-  const [showEdit, setShowEdit] = useState(false)
+function OverviewTab({ device, canEdit, onEdit }: { device: NonNullable<ReturnType<typeof useDevice>['data']>; canEdit: boolean; onEdit: () => void }) {
   const rows: [string, string][] = [
     ['Device UUID', device.device_uuid],
     ['OUI', device.oui ?? '-'],
@@ -436,9 +401,11 @@ function OverviewTab({ device }: { device: NonNullable<ReturnType<typeof useDevi
     <Card>
       <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 px-5 py-3">
         <h3 className="font-medium text-sm text-slate-900 dark:text-slate-100">Detail Perangkat</h3>
-        <button onClick={() => setShowEdit(true)} className="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400">
-          Edit
-        </button>
+        {canEdit && (
+          <button onClick={onEdit} className="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400">
+            Edit
+          </button>
+        )}
       </div>
       <dl className="divide-y divide-slate-100 dark:divide-slate-800">
         {rows.map(([label, value]) => (
@@ -448,7 +415,6 @@ function OverviewTab({ device }: { device: NonNullable<ReturnType<typeof useDevi
           </div>
         ))}
       </dl>
-      {showEdit && <EditDeviceModal device={device} onClose={() => setShowEdit(false)} />}
     </Card>
   )
 }

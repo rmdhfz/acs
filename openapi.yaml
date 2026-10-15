@@ -443,8 +443,9 @@ paths:
         Nama tabel divalidasi lewat whitelist tetap di server
         (`repository/mysql/ref_repository.go`). Nama di luar whitelist ditolak
         `400` (`domain.ErrInvalidInput`), TIDAK diteruskan mentah ke SQL.
-        Catatan: konstanta `ref_webhook_event_types` ada di `domain` tapi
-        SENGAJA belum masuk whitelist endpoint ini — memintanya tetap `400`.
+        `ref_webhook_event_types` termasuk whitelist (dipakai membuat langganan
+        webhook dan dispatch event). Catatan: `ref_parameter_types` hanya punya `code`;
+        `name` diisi sama dengan `code`.
         Semua role terautentikasi boleh membaca (data referensi bukan data
         sensitif per-tenant), tidak ada `RequireRoles` di router.
       security: [{ bearerAuth: [] }]
@@ -1144,6 +1145,88 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '403':
           description: "Actor non-superadmin tanpa `tenant_id` (akun salah konfigurasi)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+    post:
+      operationId: createDevice
+      tags: [Devices]
+      summary: Pra-registrasi perangkat (sebelum CPE pertama kali Inform)
+      description: |
+        ADMIN+ (ADMIN dikunci ke tenant sendiri; SUPERADMIN WAJIB menyebut
+        `tenant_id`). Membuat baris inventory bertatus `UNREGISTERED`; saat CPE
+        dengan OUI+serial yang sama mengirim Inform memakai kredensial tenant
+        tersebut, perangkat langsung terhubung (tenant sudah terkunci, tenant lain
+        tidak bisa mengklaimnya). Vendor/model diisi otomatis dari katalog OUI bila
+        tidak diberikan. Perangkat berstatus terhapus milik tenant yang sama dihidupkan
+        kembali; milik tenant lain ditolak 409. Password connection request
+        dienkripsi, tidak pernah dikembalikan.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateDeviceRequest' }
+      responses:
+        '201':
+          description: Perangkat terdaftar.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Device' }
+        '400':
+          description: Input tidak valid (OUI bukan 6 karakter alfanumerik, serial kosong, MAC/koordinat/URL salah, vendor/model/tenant tidak ada).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Bukan ADMIN+, atau ADMIN menarget tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: OUI+serial sudah terdaftar (atau tidak dapat didaftarkan).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /devices/import:
+    post:
+      operationId: importDevices
+      tags: [Devices]
+      summary: Impor massal perangkat (pra-registrasi) dengan dry-run
+      description: |
+        ADMIN+. Maks. 1.000 baris per permintaan (klien memecah file besar).
+        `?dry_run=true` hanya MENGKLASIFIKASI baris tanpa menulis apa pun —
+        dipakai pratinjau: tiap baris menjadi `create` (baru), `update` (ada & berbeda,
+        `changes` memuat nama field), `unchanged`, `skip` (ada & mode `skip`), atau
+        `error` (alasan di `error`). Tanpa dry_run, baris dieksekusi dengan klasifikasi
+        yang sama; baris diproses mandiri (bukan satu transaksi) sehingga baris gagal
+        tidak menggagalkan yang lain. Kunci pencocokan: (OUI, serial). Sel kosong pada mode
+        `update` = biarkan nilai lama. Perangkat milik tenant lain atau tanpa tenant
+        (untuk ADMIN) dijawab error generik tanpa membocorkan pemilik. Satu entri audit
+        `IMPORT_DEVICES` dicatat per eksekusi.
+      parameters:
+        - name: dry_run
+          in: query
+          schema: { type: boolean, default: false }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ImportDevicesRequest' }
+      responses:
+        '200':
+          description: Hasil klasifikasi/eksekusi per baris.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportDevicesResult' }
+        '400':
+          description: Mode salah, rows kosong, atau lebih dari 1.000 baris.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Bukan ADMIN+.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -5335,11 +5418,76 @@ components:
               vendor_id: { type: integer, format: int64, nullable: true, description: "NULL berarti device yang belum ter-resolve vendor-nya." }
               count: { type: integer }
 
+    CreateDeviceRequest:
+      type: object
+      properties:
+        tenant_id: { type: integer, format: int64, description: "WAJIB untuk SUPERADMIN; ADMIN: kosong atau tenant sendiri." }
+        oui: { type: string, pattern: '^[0-9A-Za-z]{6}$', example: 00D0D0, description: "6 karakter alfanumerik (umumnya heksadesimal); disimpan huruf besar." }
+        serial_number: { type: string, maxLength: 128 }
+        product_class: { type: string, maxLength: 128 }
+        mac_address: { type: string }
+        notes: { type: string, maxLength: 255 }
+        vendor_id: { type: integer, format: int64 }
+        device_model_id: { type: integer, format: int64 }
+        latitude: { type: number, format: double, minimum: -90, maximum: 90 }
+        longitude: { type: number, format: double, minimum: -180, maximum: 180 }
+        connection_request_url: { type: string, maxLength: 255 }
+        connection_request_username: { type: string, maxLength: 128 }
+        connection_request_password: { type: string, format: password, maxLength: 128 }
+      required: [oui, serial_number]
+
+    ImportDevicesRequest:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum: [skip, update]
+          description: "skip = lewati yang sudah ada; update = ubah yang berbeda."
+        rows:
+          type: array
+          maxItems: 1000
+          items: { $ref: '#/components/schemas/CreateDeviceRequest' }
+      required: [mode, rows]
+
+    ImportDeviceRowResult:
+      type: object
+      properties:
+        index: { type: integer, description: "Posisi baris pada permintaan (0-based)." }
+        action: { type: string, enum: [create, update, unchanged, skip, error] }
+        oui: { type: string }
+        serial_number: { type: string }
+        changes: { type: array, items: { type: string }, description: "Field yang berubah (action=update)." }
+        error: { type: string }
+      required: [index, action, oui, serial_number]
+
+    ImportDevicesResult:
+      type: object
+      properties:
+        dry_run: { type: boolean }
+        created: { type: integer }
+        updated: { type: integer }
+        unchanged: { type: integer }
+        skipped: { type: integer }
+        failed: { type: integer }
+        results:
+          type: array
+          items: { $ref: '#/components/schemas/ImportDeviceRowResult' }
+      required: [dry_run, created, updated, unchanged, skipped, failed, results]
+
     UpdateDeviceRequest:
       type: object
-      description: Partial update — field yang tidak dikirim/`null` tidak diubah.
+      description: |
+        Partial update — field yang tidak dikirim/`null` tidak diubah. String kosong
+        mengosongkan `notes`, `product_class`, `mac_address`, `connection_request_url`.
+        `vendor_id`/`device_model_id` hanya dapat diisi/diganti (model harus milik vendor).
+        `latitude` dan `longitude` harus berpasangan (−90..90 / −180..180); koordinat tidak
+        dapat dikosongkan. OUI dan serial tidak dapat diubah.
       properties:
-        notes: { type: string, nullable: true }
+        product_class: { type: string, nullable: true, maxLength: 128 }
+        mac_address: { type: string, nullable: true, description: "Format bebas; disimpan AA:BB:CC:DD:EE:FF." }
+        vendor_id: { type: integer, format: int64, nullable: true }
+        device_model_id: { type: integer, format: int64, nullable: true }
+        notes: { type: string, nullable: true, maxLength: 255 }
         connection_request_url: { type: string, nullable: true }
         connection_request_username: { type: string, nullable: true }
         connection_request_password:

@@ -1,9 +1,14 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Building2, Gauge, KeyRound, Pencil, Palette, Plus, Shield, Trash2, Users as UsersIcon, Wand2 } from 'lucide-react'
+import { Building2, Gauge, KeyRound, Pencil, Palette, Plus, Shield, Trash2, Upload, Users as UsersIcon, Wand2 } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
 import { EmptyState } from '../components/EmptyState'
 import { StatusBadge } from '../components/StatusBadge'
 import { Modal } from '../components/Modal'
+import { ExportMenu } from '../components/ExportMenu'
+import { ImportWizard } from '../components/ImportWizard'
+import { loadUserExportRows, userAdapter, userExportColumns } from '../imports/users'
+import { loadTenantExportRows, tenantAdapter, tenantExportColumns } from '../imports/tenants'
 import { PageSpinner } from '../components/Spinner'
 import { useAuth } from '../lib/auth'
 import { ApiError } from '../lib/api'
@@ -47,6 +52,9 @@ const primaryBtnCls =
 
 const secondaryBtnCls =
   'flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
+
+const outlineBtnCls =
+  'flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
 
 type Tab = 'users' | 'tenants' | 'branding' | 'tokens'
 
@@ -97,9 +105,16 @@ function TabButton({ active, onClick, icon: Icon, label }: { active: boolean; on
 // ---- Users ----
 
 function UsersTab({ isSuperadmin }: { isSuperadmin: boolean }) {
-  const { user: currentUser } = useAuth()
+  const { user: currentUser, hasRole } = useAuth()
+  const canManage = hasRole('ADMIN')
+  const queryClient = useQueryClient()
   const { data: tenantsResp } = useTenants()
   const tenants = isSuperadmin ? tenantsResp?.data ?? [] : []
+  // ADMIN hanya melihat tenant sendiri; dipakai memetakan tenant_id <-> kode pada impor/ekspor.
+  const { data: ownTenant } = useTenant(isSuperadmin ? undefined : (currentUser?.tenant_id ?? undefined))
+  const ioTenants = isSuperadmin ? tenants : ownTenant ? [ownTenant] : []
+  const { data: roleRefs } = useRefs('ref_roles')
+  const [showImport, setShowImport] = useState(false)
   const [tenantFilter, setTenantFilter] = useState('')
   const [showCreate, setShowCreate] = useState(false)
   const [editTarget, setEditTarget] = useState<User | null>(null)
@@ -146,9 +161,24 @@ function UsersTab({ isSuperadmin }: { isSuperadmin: boolean }) {
         ) : (
           <span />
         )}
-        <button onClick={() => setShowCreate(true)} className={primaryBtnCls}>
-          <Plus className="h-4 w-4" /> User Baru
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {canManage && (
+            <>
+              <ExportMenu
+                filename="user"
+                columns={userExportColumns(ioTenants)}
+                hint={tenantFilter ? 'Mengekspor semua user pada tenant yang dipilih. Password tidak pernah diekspor.' : 'Mengekspor semua user (bukan hanya yang tampil). Password tidak pernah diekspor.'}
+                getRows={(ctx) => loadUserExportRows({ tenant_id: tenantFilter ? Number(tenantFilter) : undefined }, ctx)}
+              />
+              <button type="button" onClick={() => setShowImport(true)} className={outlineBtnCls}>
+                <Upload className="h-4 w-4" /> Impor
+              </button>
+            </>
+          )}
+          <button onClick={() => setShowCreate(true)} className={primaryBtnCls}>
+            <Plus className="h-4 w-4" /> User Baru
+          </button>
+        </div>
       </div>
 
       {deleteError && (
@@ -235,6 +265,20 @@ function UsersTab({ isSuperadmin }: { isSuperadmin: boolean }) {
         )}
       </div>
 
+      {showImport && currentUser && (
+        <ImportWizard
+          title="Impor User"
+          adapter={userAdapter({
+            isSuperadmin,
+            actorId: currentUser.id,
+            actorTenantId: currentUser.tenant_id,
+            tenants: ioTenants,
+            roles: roleRefs ?? [],
+          })}
+          onClose={() => setShowImport(false)}
+          onChanged={() => queryClient.invalidateQueries({ queryKey: ['users'] })}
+        />
+      )}
       {showCreate && <CreateUserModal isSuperadmin={isSuperadmin} tenants={tenants} onClose={() => setShowCreate(false)} />}
       {editTarget && <EditUserModal user={editTarget} isSelf={currentUser?.id === editTarget.id} onClose={() => setEditTarget(null)} />}
       {passwordTarget && <ResetPasswordModal user={passwordTarget} onClose={() => setPasswordTarget(null)} />}
@@ -677,6 +721,9 @@ function IssueApiTokenModal({ onClose }: { onClose: () => void }) {
 
 function TenantsTab() {
   const navigate = useNavigate()
+  const { user: currentUser } = useAuth()
+  const queryClient = useQueryClient()
+  const [showImport, setShowImport] = useState(false)
   const { data, isLoading } = useTenants()
   const tenants = data?.data ?? []
   const [showCreate, setShowCreate] = useState(false)
@@ -712,7 +759,16 @@ function TenantsTab() {
 
   return (
     <div>
-      <div className="mb-4 flex justify-end gap-2">
+      <div className="mb-4 flex flex-wrap justify-end gap-2">
+        <ExportMenu
+          filename="tenant"
+          columns={tenantExportColumns()}
+          hint="Mengekspor semua tenant. Kredensial CWMP tidak diekspor."
+          getRows={(ctx) => loadTenantExportRows(ctx)}
+        />
+        <button type="button" onClick={() => setShowImport(true)} className={outlineBtnCls}>
+          <Upload className="h-4 w-4" /> Impor
+        </button>
         <button onClick={() => navigate('/administration/onboarding')} className={primaryBtnCls}>
           <Wand2 className="h-4 w-4" /> Onboarding Tenant Baru
         </button>
@@ -806,6 +862,17 @@ function TenantsTab() {
         )}
       </div>
 
+      {showImport && (
+        <ImportWizard
+          title="Impor Tenant"
+          adapter={tenantAdapter({ actorTenantId: currentUser?.tenant_id ?? null })}
+          onClose={() => setShowImport(false)}
+          onChanged={() => {
+            queryClient.invalidateQueries({ queryKey: ['tenants'] })
+            queryClient.invalidateQueries({ queryKey: ['tenant'] })
+          }}
+        />
+      )}
       {showCreate && <CreateTenantModal onClose={() => setShowCreate(false)} />}
       {rotateTarget && <RotateCWMPCredentialsModal tenant={rotateTarget} onClose={() => setRotateTarget(null)} />}
       {brandingTarget && <EditBrandingModal tenant={brandingTarget} onClose={() => setBrandingTarget(null)} />}

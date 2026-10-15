@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Cable, Cpu, Plus, Route, X } from 'lucide-react'
 import { DeleteButton, DetailButton, DetailModal, EditButton } from '../components/RecordActions'
 import { EmptyState } from '../components/EmptyState'
+import { CatalogDataTools } from '../components/CatalogDataTools'
 import { StatusBadge } from '../components/StatusBadge'
 import { Modal } from '../components/Modal'
 import { PageSpinner } from '../components/Spinner'
@@ -51,11 +52,14 @@ export function CatalogPage() {
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Catalog Vendor</h1>
-        <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
-          Menambah vendor/model baru adalah operasi data, bukan kode (TECH.md §5.1) — kelola di sini
-        </p>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Catalog Vendor</h1>
+          <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
+            Menambah vendor/model baru adalah operasi data, bukan kode (TECH.md §5.1) — kelola di sini
+          </p>
+        </div>
+        <CatalogDataTools tab={tab} />
       </div>
 
       <div className="mb-4 flex gap-1 border-b border-slate-200">

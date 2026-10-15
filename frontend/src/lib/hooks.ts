@@ -105,11 +105,25 @@ export function useDevice(id: number) {
   })
 }
 
+export interface UpdateDevicePayload {
+  id: number
+  /** String kosong mengosongkan nilai (notes/product_class/mac_address/connection_request_url). */
+  notes?: string
+  product_class?: string
+  mac_address?: string
+  vendor_id?: number
+  device_model_id?: number
+  connection_request_url?: string
+  connection_request_username?: string
+  connection_request_password?: string
+  latitude?: number
+  longitude?: number
+}
+
 export function useUpdateDevice() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, ...payload }: { id: number; notes?: string; connection_request_url?: string; connection_request_username?: string; connection_request_password?: string; latitude?: number; longitude?: number }) =>
-      api.patch<Device>(`/devices/${id}`, payload),
+    mutationFn: ({ id, ...payload }: UpdateDevicePayload) => api.patch<Device>(`/devices/${id}`, payload),
     onSuccess: (updatedDevice) => {
       queryClient.setQueryData(['device', updatedDevice.id], updatedDevice)
       queryClient.invalidateQueries({ queryKey: ['devices'] })
@@ -294,7 +308,8 @@ export function useAddVendorOUI() {
 export function useDeviceModels(vendorId: number | undefined) {
   return useQuery({
     queryKey: ['device-models', vendorId],
-    queryFn: () => api.get<DeviceModel[]>(`/device-models?vendor_id=${vendorId}`),
+    // Backend membalas null (bukan []) untuk vendor tanpa model — normalkan agar komponen tak crash.
+    queryFn: async () => (await api.get<DeviceModel[] | null>(`/device-models?vendor_id=${vendorId}`)) ?? [],
     enabled: vendorId !== undefined,
   })
 }
@@ -649,10 +664,12 @@ export function useRevokeApiToken() {
 
 // ---- Administration: Tenants & Users ----
 
-export function useTenants() {
+// enabled=false untuk non-superadmin (GET /tenants khusus superadmin → 403).
+export function useTenants(enabled = true) {
   return useQuery({
     queryKey: ['tenants'],
     queryFn: () => api.get<ListResponse<Tenant>>('/tenants?page_size=200'),
+    enabled,
   })
 }
 
@@ -1329,6 +1346,34 @@ export function useDeleteDevice() {
     mutationFn: (id: number) => api.del<void>(`/devices/${id}`),
     onSuccess: (_r, id) => {
       qc.removeQueries({ queryKey: ['device', id] })
+      qc.invalidateQueries({ queryKey: ['devices'] })
+      qc.invalidateQueries({ queryKey: ['device-stats'] })
+    },
+  })
+}
+
+// Pra-registrasi perangkat (sebelum CPE pertama kali Inform) — POST /devices.
+export interface CreateDevicePayload {
+  tenant_id?: number
+  oui: string
+  serial_number: string
+  product_class?: string
+  mac_address?: string
+  notes?: string
+  vendor_id?: number
+  device_model_id?: number
+  latitude?: number
+  longitude?: number
+  connection_request_url?: string
+  connection_request_username?: string
+  connection_request_password?: string
+}
+
+export function useCreateDevice() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: CreateDevicePayload) => api.post<Device>('/devices', payload),
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['devices'] })
       qc.invalidateQueries({ queryKey: ['device-stats'] })
     },

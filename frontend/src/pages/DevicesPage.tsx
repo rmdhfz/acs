@@ -8,12 +8,16 @@ import {
   HardDrive,
   List,
   MapPin,
+  Pencil,
+  Plus,
   Power,
   Radio,
   RefreshCw,
   Router,
   Search,
   Sparkles,
+  Trash2,
+  Upload,
   Wifi,
   WifiOff,
   X,
@@ -24,12 +28,21 @@ import { StatusBadge } from '../components/StatusBadge'
 import { EmptyState } from '../components/EmptyState'
 import { Modal } from '../components/Modal'
 import { DeviceMap } from '../components/DeviceMap'
+import { DeviceFormModal } from '../components/DeviceFormModal'
+import { ExportMenu } from '../components/ExportMenu'
+import { ImportWizard } from '../components/ImportWizard'
+import { deviceAdapter, deviceExportColumns, loadDeviceExportRows } from '../imports/devices'
+import { useQueryClient } from '@tanstack/react-query'
+import { useConfirm } from '../lib/confirm'
+import { useToast } from '../lib/toast'
 import { useAuth } from '../lib/auth'
 import {
   findRefById,
   findRefIdByCode,
   useApplyProfile,
   useCreateTask,
+  useCurrentTenant,
+  useDeleteDevice,
   useDevices,
   useFirmwareList,
   usePendingTaskCount,
@@ -37,6 +50,7 @@ import {
   useRefs,
   useScheduleFirmwareUpgrade,
   useTags,
+  useTenants,
   useVendors,
 } from '../lib/hooks'
 import { formatRelativeTime } from '../lib/format'
@@ -53,6 +67,15 @@ export function DevicesPage() {
   const navigate = useNavigate()
   const { hasRole } = useAuth()
   const canBulkAct = hasRole('ADMIN', 'NOC')
+  const isAdmin = hasRole('ADMIN')
+  const isSuper = hasRole('SUPERADMIN')
+  const confirm = useConfirm()
+  const toast = useToast()
+  const queryClient = useQueryClient()
+  const deleteMut = useDeleteDevice()
+  const [showCreate, setShowCreate] = useState(false)
+  const [showImport, setShowImport] = useState(false)
+  const [editDevice, setEditDevice] = useState<Device | null>(null)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [vendorFilter, setVendorFilter] = useState<string>('')
@@ -68,6 +91,9 @@ export function DevicesPage() {
   const vendors = vendorsResp?.data ?? []
   const { data: tagsResp } = useTags({ pageSize: 100 })
   const tags = tagsResp?.data ?? []
+  const { data: tenantsResp } = useTenants(isSuper)
+  const tenants = isSuper ? (tenantsResp?.data ?? []) : []
+  const { data: currentTenant } = useCurrentTenant()
 
   const onlineStatusId = findRefIdByCode(statusRefs, 'ONLINE')
   const offlineStatusId = findRefIdByCode(statusRefs, 'OFFLINE')
@@ -104,6 +130,51 @@ export function DevicesPage() {
     setSelected(new Set())
   }, [search, statusFilter, vendorFilter, tagFilter, page])
 
+  async function handleDelete(d: Device) {
+    const ok = await confirm({
+      title: 'Hapus perangkat',
+      message: (
+        <>
+          Perangkat <span className="font-mono">{d.serial_number}</span> akan dihapus dari daftar (soft delete) dan task yang masih antre dibatalkan.
+          Bila CPE ini mengirim Inform lagi, ia didaftarkan ulang sebagai perangkat baru.
+        </>
+      ),
+      confirmLabel: 'Hapus perangkat',
+      tone: 'danger',
+    })
+    if (!ok) return
+    try {
+      await deleteMut.mutateAsync(d.id)
+      toast.success(`Perangkat ${d.serial_number} dihapus.`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Gagal menghapus perangkat')
+    }
+  }
+
+  async function handleBulkDelete() {
+    const targets = selectedDevices
+    const ok = await confirm({
+      title: `Hapus ${targets.length} perangkat`,
+      message: 'Perangkat terpilih akan dihapus dari daftar dan task antreannya dibatalkan. Perangkat yang Inform lagi didaftarkan ulang sebagai baru.',
+      confirmLabel: 'Hapus semua',
+      tone: 'danger',
+    })
+    if (!ok) return
+    let okCount = 0
+    let fail = 0
+    for (const d of targets) {
+      try {
+        await deleteMut.mutateAsync(d.id)
+        okCount++
+      } catch {
+        fail++
+      }
+    }
+    setSelected(new Set())
+    if (fail === 0) toast.success(`${okCount} perangkat dihapus.`)
+    else toast.warning(`${okCount} dihapus, ${fail} gagal (cek hak akses/koneksi).`, 'Hapus massal selesai sebagian')
+  }
+
   function vendorName(vendorId: number | null) {
     if (vendorId == null) return '-'
     return vendors.find((v) => v.id === vendorId)?.name ?? `#${vendorId}`
@@ -133,7 +204,46 @@ export function DevicesPage() {
           <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Devices</h1>
           <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Monitor status koneksi perangkat CPE secara real-time</p>
         </div>
-        <div className="flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
+        <div className="flex flex-wrap items-center gap-2">
+          <ExportMenu
+            filename="perangkat"
+            columns={deviceExportColumns()}
+            hint="Mengekspor semua perangkat sesuai filter yang aktif (bukan hanya halaman ini)."
+            getRows={(ctx) =>
+              loadDeviceExportRows(
+                {
+                  search: search.trim() || undefined,
+                  device_status_id: statusFilter ? Number(statusFilter) : undefined,
+                  vendor_id: vendorFilter ? Number(vendorFilter) : undefined,
+                  tag_id: tagFilter ? Number(tagFilter) : undefined,
+                },
+                { vendors, tenants, tenantName: currentTenant?.name, statuses: statusRefs ?? [] },
+                ctx,
+              )
+            }
+          />
+          {isAdmin && (
+            <>
+              <button
+                type="button"
+                onClick={() => setShowImport(true)}
+                className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                <Upload className="h-4 w-4" /> Impor
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowCreate(true)}
+                className="flex items-center gap-2 rounded-lg bg-indigo-600 px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-500"
+              >
+                <Plus className="h-4 w-4" /> Tambah Perangkat
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+      <div className="-mt-4 mb-6 flex items-center justify-end gap-2 text-xs text-slate-400 dark:text-slate-500">
+        <div className="flex items-center gap-2">
           <span className="relative flex h-2 w-2">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
@@ -242,6 +352,15 @@ export function DevicesPage() {
             >
               <Power className="h-3.5 w-3.5" /> Reboot
             </button>
+            {isAdmin && (
+              <button
+                onClick={() => void handleBulkDelete()}
+                disabled={deleteMut.isPending}
+                className="flex items-center gap-1.5 rounded-lg bg-red-500/90 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-red-500 disabled:opacity-60"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Hapus
+              </button>
+            )}
             <button
               onClick={() => setSelected(new Set())}
               className="flex h-7 w-7 items-center justify-center rounded-md text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
@@ -293,10 +412,22 @@ export function DevicesPage() {
           <EmptyState
             icon={Radio}
             title="Belum ada device yang terhubung"
-            description="Device akan otomatis muncul di sini begitu CPE mengirim Inform pertama ke endpoint CWMP ACS."
-          />
+            description="Device muncul otomatis begitu CPE mengirim Inform pertama ke endpoint CWMP ACS. Anda juga bisa mendaftarkannya lebih dulu (pra-registrasi) atau mengimpor daftar perangkat."
+          >
+            {isAdmin && (
+              <div className="mt-5 flex flex-wrap justify-center gap-2.5">
+                <button type="button" onClick={() => setShowCreate(true)} className="flex items-center gap-2 rounded-lg bg-indigo-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+                  <Plus className="h-4 w-4" /> Tambah Perangkat
+                </button>
+                <button type="button" onClick={() => setShowImport(true)} className="flex items-center gap-2 rounded-lg border border-slate-300 px-3.5 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
+                  <Upload className="h-4 w-4" /> Impor dari file
+                </button>
+              </div>
+            )}
+          </EmptyState>
         ) : (
           <>
+            <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
@@ -318,6 +449,7 @@ export function DevicesPage() {
                   <th className="px-5 py-3">IP Address</th>
                   <th className="px-5 py-3">Firmware</th>
                   <th className="px-5 py-3">Terakhir Terhubung</th>
+                  {canBulkAct && <th className="w-24 px-5 py-3 text-right">Aksi</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -343,16 +475,43 @@ export function DevicesPage() {
                         <StatusBadge code={status?.code} label={status?.name ?? '-'} pulse={status?.code === 'ONLINE'} />
                       </td>
                       <td className="px-5 py-3.5 text-slate-600 dark:text-slate-400">{vendorName(d.vendor_id)}</td>
-                      <td className="px-5 py-3.5 font-mono text-xs text-slate-900 dark:text-slate-100">{d.serial_number}</td>
+                      <td className="whitespace-nowrap px-5 py-3.5 font-mono text-xs text-slate-900 dark:text-slate-100">{d.serial_number}</td>
                       <td className="px-5 py-3.5 font-mono text-xs text-slate-500 dark:text-slate-400">{d.mac_address ?? '-'}</td>
                       <td className="px-5 py-3.5 font-mono text-xs text-slate-500 dark:text-slate-400">{d.ip_address ?? '-'}</td>
                       <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{d.software_version ?? '-'}</td>
                       <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{formatRelativeTime(d.last_inform_at)}</td>
+                      {canBulkAct && (
+                        <td className="px-5 py-3.5" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              type="button"
+                              onClick={() => setEditDevice(d)}
+                              title="Edit perangkat"
+                              aria-label={`Edit ${d.serial_number}`}
+                              className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            {isAdmin && (
+                              <button
+                                type="button"
+                                onClick={() => void handleDelete(d)}
+                                title="Hapus perangkat"
+                                aria-label={`Hapus ${d.serial_number}`}
+                                className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-400"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   )
                 })}
               </tbody>
             </table>
+            </div>
 
             <div className="flex items-center justify-between border-t border-slate-200 px-5 py-3 text-sm text-slate-500 dark:text-slate-400">
               <span>
@@ -382,6 +541,19 @@ export function DevicesPage() {
         )}
       </div>
 
+      {showCreate && <DeviceFormModal mode="create" onClose={() => setShowCreate(false)} />}
+      {editDevice && <DeviceFormModal mode="edit" device={editDevice} onClose={() => setEditDevice(null)} />}
+      {showImport && (
+        <ImportWizard
+          title="Impor Perangkat"
+          adapter={deviceAdapter({ isSuperadmin: isSuper, vendors, tenants })}
+          onClose={() => setShowImport(false)}
+          onChanged={() => {
+            queryClient.invalidateQueries({ queryKey: ['devices'] })
+            queryClient.invalidateQueries({ queryKey: ['device-stats'] })
+          }}
+        />
+      )}
       {bulkAction === 'profile' && (
         <BulkApplyProfileModal devices={selectedDevices} onClose={() => setBulkAction(null)} onDone={() => setSelected(new Set())} />
       )}
