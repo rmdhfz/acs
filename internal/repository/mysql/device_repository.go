@@ -37,6 +37,7 @@ func (r *deviceRepository) Create(ctx context.Context, d *domain.Device) error {
 		connection_request_url = :connection_request_url, connection_request_username = NULL,
 		connection_request_password_enc = NULL, inform_username = NULL, inform_password_enc = NULL,
 		last_inform_at = :last_inform_at, last_boot_event_at = NULL, notes = NULL,
+		latitude = :latitude, longitude = :longitude,
 		updated_at = :updated_at, updated_by = :created_by
 		WHERE oui = :oui AND serial_number = :serial_number AND is_deleted = 1
 		  AND (tenant_id IS NULL OR tenant_id <=> :tenant_id)`
@@ -69,12 +70,12 @@ func (r *deviceRepository) Create(ctx context.Context, d *domain.Device) error {
 		(device_uuid, tenant_id, vendor_id, device_model_id, device_status_id, provisioning_profile_id,
 		 oui, serial_number, product_class, mac_address, software_version, hardware_version, ip_address,
 		 connection_request_url, connection_request_username, connection_request_password_enc,
-		 inform_username, inform_password_enc, last_inform_at, last_boot_event_at, notes, created_at, updated_at, created_by)
+		 inform_username, inform_password_enc, last_inform_at, last_boot_event_at, notes, latitude, longitude, created_at, updated_at, created_by)
 		VALUES
 		(:device_uuid, :tenant_id, :vendor_id, :device_model_id, :device_status_id, :provisioning_profile_id,
 		 :oui, :serial_number, :product_class, :mac_address, :software_version, :hardware_version, :ip_address,
 		 :connection_request_url, :connection_request_username, :connection_request_password_enc,
-		 :inform_username, :inform_password_enc, :last_inform_at, :last_boot_event_at, :notes, :created_at, :updated_at, :created_by)`
+		 :inform_username, :inform_password_enc, :last_inform_at, :last_boot_event_at, :notes, :latitude, :longitude, :created_at, :updated_at, :created_by)`
 	res, err := r.db.NamedExecContext(ctx, q, d)
 	if err != nil {
 		return translateErr(err)
@@ -198,6 +199,7 @@ func (r *deviceRepository) Update(ctx context.Context, d *domain.Device) error {
 		connection_request_password_enc = :connection_request_password_enc,
 		inform_username = :inform_username, inform_password_enc = :inform_password_enc,
 		last_inform_at = :last_inform_at, last_boot_event_at = :last_boot_event_at, notes = :notes,
+		latitude = :latitude, longitude = :longitude,
 		updated_by = :updated_by
 		WHERE id = :id AND is_deleted = 0`
 	_, err := r.db.NamedExecContext(ctx, q, d)

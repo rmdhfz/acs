@@ -120,6 +120,7 @@ func main() {
 		{"S10-security-guards", scenarioSecurityGuards},
 		{"S11-crud-lengkap", scenarioCRUDLengkap},
 		{"S12-auth-email-reset", scenarioAuthEmailReset},
+		{"S13-device-provision-import", scenarioDeviceProvision},
 	}
 
 	var results []result

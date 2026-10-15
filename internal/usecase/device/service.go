@@ -68,6 +68,10 @@ type Service struct {
 	fileRepo       domain.FileRepository
 	storage        domain.ObjectStorage
 	taskCanceller  domain.OpenTaskCanceller
+	// Opsional (WithCatalog): validasi vendor_id/device_model_id/tenant_id pada
+	// pra-registrasi, impor, dan edit.
+	vendors domain.VendorRepository
+	tenants domain.TenantRepository
 }
 
 func NewService(
@@ -235,6 +239,13 @@ type UpdateDeviceInput struct {
 	ConnectionRequestPassword *string
 	Latitude                  *float64
 	Longitude                 *float64
+	// Field berikut dapat diubah operator (string kosong mengosongkan nilai).
+	// VendorID/DeviceModelID hanya bisa DIISI/diganti (bukan dikosongkan) —
+	// mengosongkan membiarkan self-heal Inform mengisinya lagi dari katalog.
+	ProductClass  *string
+	MACAddress    *string
+	VendorID      *uint64
+	DeviceModelID *uint64
 }
 
 func (s *Service) Update(ctx context.Context, actor domain.Actor, id uint64, in UpdateDeviceInput) (*domain.Device, error) {
@@ -242,22 +253,80 @@ func (s *Service) Update(ctx context.Context, actor domain.Actor, id uint64, in 
 	if err != nil {
 		return nil, err
 	}
+	// Latitude & longitude harus berpasangan dan dalam rentang (sebelumnya
+	// tidak divalidasi sama sekali).
+	if (in.Latitude == nil) != (in.Longitude == nil) {
+		return nil, invalid("latitude dan longitude harus diisi berpasangan")
+	}
+	if in.Latitude != nil && (*in.Latitude < -90 || *in.Latitude > 90 || *in.Longitude < -180 || *in.Longitude > 180) {
+		return nil, invalid("latitude harus -90..90 dan longitude -180..180")
+	}
+	if in.ConnectionRequestURL != nil && strings.TrimSpace(*in.ConnectionRequestURL) != "" {
+		if err := validateCRURL(strings.TrimSpace(*in.ConnectionRequestURL)); err != nil {
+			return nil, err
+		}
+	}
 	if in.Notes != nil {
+		if len(*in.Notes) > maxNotesLen {
+			return nil, invalid("notes maks. %d karakter", maxNotesLen)
+		}
 		d.Notes = in.Notes
 	}
 	if in.Latitude != nil {
 		d.Latitude = in.Latitude
-	}
-	if in.Longitude != nil {
 		d.Longitude = in.Longitude
 	}
+	if in.ProductClass != nil {
+		pc := strings.TrimSpace(*in.ProductClass)
+		if len(pc) > maxProductLen || hasControl(pc) {
+			return nil, invalid("product_class maks. %d karakter", maxProductLen)
+		}
+		if pc == "" {
+			d.ProductClass = nil
+		} else {
+			d.ProductClass = &pc
+		}
+	}
+	if in.MACAddress != nil {
+		if m := strings.TrimSpace(*in.MACAddress); m == "" {
+			d.MACAddress = nil
+		} else {
+			cm, err := canonicalMAC(m)
+			if err != nil {
+				return nil, err
+			}
+			d.MACAddress = &cm
+		}
+	}
+	if in.VendorID != nil || in.DeviceModelID != nil {
+		ref := CreateDeviceInput{VendorID: in.VendorID, DeviceModelID: in.DeviceModelID}
+		if err := s.validateRefs(ctx, newRefCache(), actor, 0, &ref); err != nil {
+			return nil, err
+		}
+		if ref.VendorID != nil {
+			d.VendorID = ref.VendorID
+		}
+		if ref.DeviceModelID != nil {
+			d.DeviceModelID = ref.DeviceModelID
+		}
+	}
 	if in.ConnectionRequestURL != nil {
-		d.ConnectionRequestURL = in.ConnectionRequestURL
+		if u := strings.TrimSpace(*in.ConnectionRequestURL); u == "" {
+			d.ConnectionRequestURL = nil
+		} else {
+			d.ConnectionRequestURL = &u
+		}
 	}
 	if in.ConnectionRequestUsername != nil {
+		if len(*in.ConnectionRequestUsername) > maxCRUserLen {
+			return nil, invalid("connection_request_username maks. %d karakter", maxCRUserLen)
+		}
 		d.ConnectionRequestUsername = in.ConnectionRequestUsername
 	}
 	if in.ConnectionRequestPassword != nil {
+		if len(*in.ConnectionRequestPassword) > maxCRPassLen {
+			return nil, invalid("connection_request_password maks. %d karakter", maxCRPassLen)
+		}
 		enc, err := s.enc.Encrypt(*in.ConnectionRequestPassword)
 		if err != nil {
 			return nil, err

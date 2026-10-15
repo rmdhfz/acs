@@ -157,6 +157,9 @@ func (r *Router) Register(e *echo.Echo) {
 	authed.GET("/devices", r.listDevices)
 	authed.GET("/devices/stats", r.deviceStats)
 	authed.GET("/devices/:id", r.getDevice)
+	// Pra-registrasi perangkat (sebelum CPE pertama kali Inform) & impor massal.
+	authed.POST("/devices", r.createDevice, RequireRoles(admin...))
+	authed.POST("/devices/import", r.importDevices, RequireRoles(admin...))
 	authed.PATCH("/devices/:id", r.updateDevice, RequireRoles(adminOrNOC...))
 	// Soft delete device (dekomisioning): ADMIN+ pada tenant sendiri. Task terbuka
 	// dibatalkan; CPE yang masih menyala dan Inform lagi di-revive sebagai

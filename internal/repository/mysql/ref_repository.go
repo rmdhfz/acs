@@ -23,6 +23,10 @@ var refTableWhitelist = map[string]bool{
 	domain.RefTableRoles:                 true,
 	domain.RefTableZtpTriggerEvent:       true,
 	domain.RefTableFirmwareRolloutStatus: true,
+	// Dipakai usecase/webhook (GetByCode) dan UI Webhook. Sebelumnya TIDAK ada di
+	// whitelist -> membuat langganan webhook selalu gagal 400 dan event tak pernah
+	// terkirim (GetByCode di jalur dispatch ikut ditolak).
+	domain.RefTableWebhookEventTypes: true,
 }
 
 type refRepository struct {
@@ -44,10 +48,12 @@ func (r *refRepository) validate(table string) error {
 	return nil
 }
 
-// nameColumn: ref_parameter_types tidak punya kolom name (hanya code).
+// nameColumn: ref_parameter_types tidak punya kolom name (hanya code) — dipakai sebagai
+// name. Hanya ekspresi kolom: pemanggil sudah menambahkan "AS name" (versi lama
+// mengembalikan "code AS name" sehingga SQL menjadi "code AS name AS name" -> 500).
 func nameColumn(table string) string {
 	if table == domain.RefTableParameterTypes {
-		return "code AS name"
+		return "code"
 	}
 	return "name"
 }

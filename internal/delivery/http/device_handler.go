@@ -59,6 +59,10 @@ func (r *Router) getDevice(c *echo.Context) error {
 }
 
 type updateDeviceRequest struct {
+	ProductClass              *string  `json:"product_class"`
+	MACAddress                *string  `json:"mac_address"`
+	VendorID                  *uint64  `json:"vendor_id"`
+	DeviceModelID             *uint64  `json:"device_model_id"`
 	Notes                     *string  `json:"notes"`
 	ConnectionRequestURL      *string  `json:"connection_request_url"`
 	ConnectionRequestUsername *string  `json:"connection_request_username"`
@@ -78,6 +82,10 @@ func (r *Router) updateDevice(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "payload tidak valid")
 	}
 	d, err := r.Devices.Update(c.Request().Context(), actor, id, device.UpdateDeviceInput{
+		ProductClass:              req.ProductClass,
+		MACAddress:                req.MACAddress,
+		VendorID:                  req.VendorID,
+		DeviceModelID:             req.DeviceModelID,
 		Notes:                     req.Notes,
 		ConnectionRequestURL:      req.ConnectionRequestURL,
 		ConnectionRequestUsername: req.ConnectionRequestUsername,
