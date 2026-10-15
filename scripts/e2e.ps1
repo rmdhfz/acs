@@ -39,8 +39,8 @@ try {
   docker compose exec -T acsd /app/seed-admin -username $SuperUser -password $SuperPass -email "$SuperUser@acs.local" 2>&1 | Out-Host
 } catch { Write-Host "   (superadmin kemungkinan sudah ada)" -ForegroundColor DarkGray }
 
-Write-Host "==> build binary e2e + cpesim (via golang:1.26)" -ForegroundColor Cyan
-docker run --rm -v "${srcMount}:/src" -w /src -e CGO_ENABLED=0 golang:1.26 `
+Write-Host "==> build binary e2e + cpesim (via golang:1.26.9)" -ForegroundColor Cyan
+docker run --rm -v "${srcMount}:/src" -w /src -e CGO_ENABLED=0 golang:1.26.9 `
   sh -c 'go build -o /src/bin/e2e ./cmd/e2e && go build -o /src/bin/cpesim ./cmd/cpesim && echo built'
 
 Write-Host "==> jalankan e2e" -ForegroundColor Cyan
