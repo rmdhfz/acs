@@ -189,6 +189,7 @@ func main() {
 			return c.Request().Method == http.MethodPost && c.Request().URL.Path == "/api/v1/firmware"
 		},
 	}))
+	restEcho.Use(deliveryhttp.SecurityHeaders())
 	restEcho.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: cfg.CORSAllowOrigins,
 		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodPut, http.MethodDelete, http.MethodOptions},

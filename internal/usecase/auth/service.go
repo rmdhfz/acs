@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -282,6 +283,28 @@ func (s *Service) ResolveActor(ctx context.Context, tokenStr string) (*domain.Ac
 
 // ---- API Token ----
 
+// MaxAPITokenTTL — umur maksimum (dan default) API token. Token tanpa batas
+// waktu adalah kredensial permanen yang bocor sekali = akses selamanya; dengan
+// batas ini rotasi minimal tahunan dipaksa. Integrasi yang butuh lebih lama
+// harus menerbitkan ulang token, bukan memegang token abadi.
+const MaxAPITokenTTL = 365 * 24 * time.Hour
+
+// resolveAPITokenExpiry menegakkan kebijakan umur token: tidak diisi = default
+// MaxAPITokenTTL; diisi harus di masa depan dan tidak melebihi MaxAPITokenTTL.
+func resolveAPITokenExpiry(now time.Time, requested *time.Time) (*time.Time, error) {
+	if requested == nil {
+		d := now.Add(MaxAPITokenTTL)
+		return &d, nil
+	}
+	if !requested.After(now) {
+		return nil, fmt.Errorf("%w: expires_at harus di masa depan", domain.ErrInvalidInput)
+	}
+	if requested.After(now.Add(MaxAPITokenTTL)) {
+		return nil, fmt.Errorf("%w: expires_at maksimal %d hari dari sekarang", domain.ErrInvalidInput, int(MaxAPITokenTTL.Hours()/24))
+	}
+	return requested, nil
+}
+
 // IssueAPIToken — non-superadmin hanya boleh menerbitkan token utk tenant-nya
 // sendiri (RBAC scope tenant, CLAUDE.md). Tanpa cek ini, ADMIN tenant A bisa
 // minta token dgn tenant_id tenant B lalu dapat akses tulis penuh permanen
@@ -291,6 +314,10 @@ func (s *Service) IssueAPIToken(ctx context.Context, actor domain.Actor, name st
 		if tenantID == nil || actor.TenantID == nil || *tenantID != *actor.TenantID {
 			return "", nil, domain.ErrForbidden
 		}
+	}
+	expiresAt, err := resolveAPITokenExpiry(time.Now(), expiresAt)
+	if err != nil {
+		return "", nil, err
 	}
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
@@ -418,14 +445,43 @@ func (s *Service) HasOIDC() bool {
 	return s.oidcProvider != nil && s.oauth2Config != nil
 }
 
-func (s *Service) GetOIDCAuthURL(state string) (string, error) {
+// ErrOIDCNonceMismatch — nonce di id_token tidak sama dengan yang diikat ke
+// browser yang memulai login (cookie). Menandakan id_token hasil replay/
+// injeksi, bukan hasil alur yang dimulai browser ini.
+var ErrOIDCNonceMismatch = errors.New("auth: nonce OIDC tidak cocok")
+
+// GetOIDCAuthURL membangun URL otorisasi IdP. state (anti-CSRF login) dan
+// nonce (mengikat id_token ke sesi browser) HARUS acak per-permintaan dan
+// diikat ke browser pemanggil oleh delivery (cookie) — lihat
+// internal/delivery/http/oidc_flow.go.
+func (s *Service) GetOIDCAuthURL(state, nonce string) (string, error) {
 	if !s.HasOIDC() {
 		return "", errors.New("auth: OIDC tidak dikonfigurasi")
 	}
-	return s.oauth2Config.AuthCodeURL(state), nil
+	return s.oauth2Config.AuthCodeURL(state, oidc.Nonce(nonce)), nil
 }
 
-func (s *Service) OIDCLogin(ctx context.Context, code string) (*domain.User, string, error) {
+// validateOIDCIdentity memeriksa klaim id_token yang sudah lolos verifikasi
+// tanda tangan: nonce wajib cocok (konstan-waktu) dan email tidak boleh
+// dinyatakan belum terverifikasi. email_verified yang TIDAK ada di klaim
+// diterima (Azure AD dan beberapa IdP tidak mengirimnya); yang eksplisit
+// false ditolak — tanpa ini seorang pengguna IdP dengan email belum
+// terverifikasi milik admin bisa masuk sebagai admin itu (akun dipetakan
+// lewat email).
+func validateOIDCIdentity(tokenNonce, expectedNonce string, emailVerified *bool, email string) error {
+	if expectedNonce == "" || subtle.ConstantTimeCompare([]byte(tokenNonce), []byte(expectedNonce)) != 1 {
+		return ErrOIDCNonceMismatch
+	}
+	if email == "" {
+		return errors.New("auth: email tidak ditemukan dalam klaim OIDC")
+	}
+	if emailVerified != nil && !*emailVerified {
+		return errors.New("auth: email OIDC belum terverifikasi di Identity Provider")
+	}
+	return nil
+}
+
+func (s *Service) OIDCLogin(ctx context.Context, code, expectedNonce string) (*domain.User, string, error) {
 	if !s.HasOIDC() {
 		return nil, "", errors.New("auth: OIDC tidak dikonfigurasi")
 	}
@@ -447,16 +503,17 @@ func (s *Service) OIDCLogin(ctx context.Context, code string) (*domain.User, str
 	}
 
 	var claims struct {
-		Email  string   `json:"email"`
-		Name   string   `json:"name"`
-		Groups []string `json:"groups"` // Bisa didapat dari Azure AD / Okta claims
+		Email         string   `json:"email"`
+		EmailVerified *bool    `json:"email_verified"`
+		Name          string   `json:"name"`
+		Groups        []string `json:"groups"` // Bisa didapat dari Azure AD / Okta claims
 	}
 	if err := idToken.Claims(&claims); err != nil {
 		return nil, "", fmt.Errorf("auth: gagal mengekstrak claims: %w", err)
 	}
 
-	if claims.Email == "" {
-		return nil, "", errors.New("auth: email tidak ditemukan dalam claims OIDC")
+	if err := validateOIDCIdentity(idToken.Nonce, expectedNonce, claims.EmailVerified, claims.Email); err != nil {
+		return nil, "", err
 	}
 
 	// Cek apakah user ada berdasarkan email

@@ -1,6 +1,7 @@
 package http
 
 import (
+	"log"
 	"net/http"
 	"time"
 
@@ -118,8 +119,15 @@ func (r *Router) revokeAPIToken(c *echo.Context) error {
 }
 
 func (r *Router) oidcLogin(c *echo.Context) error {
-	state := "random-state" // TODO: use secure state generation
-	url, err := r.Auth.GetOIDCAuthURL(state)
+	// Cek konfigurasi SEBELUM menyentuh cookie: OIDC mati = tidak ada efek samping.
+	if !r.Auth.HasOIDC() {
+		return echo.NewHTTPError(http.StatusInternalServerError, "auth: OIDC tidak dikonfigurasi")
+	}
+	state, nonce, err := startOIDCFlow(c)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "gagal memulai login OIDC")
+	}
+	url, err := r.Auth.GetOIDCAuthURL(state, nonce)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
@@ -127,14 +135,23 @@ func (r *Router) oidcLogin(c *echo.Context) error {
 }
 
 func (r *Router) oidcCallback(c *echo.Context) error {
+	// state dicek lebih dulu dari apa pun: tanpa cookie yang cocok, kode
+	// otorisasi ini bukan hasil alur yang dimulai browser ini (login-CSRF).
+	nonce, err := finishOIDCFlow(c)
+	if err != nil {
+		return handleErr(c, err)
+	}
 	code := c.QueryParam("code")
 	if code == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "kode OIDC tidak ditemukan")
 	}
 
-	u, token, err := r.Auth.OIDCLogin(c.Request().Context(), code)
+	u, token, err := r.Auth.OIDCLogin(c.Request().Context(), code, nonce)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
+		// Pesan asli bisa memuat respons IdP, atau membedakan "akun belum
+		// terdaftar" (enumerasi email) — detail hanya ke log, klien dapat pesan generik.
+		log.Printf("oidc callback: login gagal: %v", err)
+		return echo.NewHTTPError(http.StatusUnauthorized, "login OIDC gagal")
 	}
 
 	// Sebagai POC, kembalikan JSON sama seperti normal login.
