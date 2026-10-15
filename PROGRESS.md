@@ -103,6 +103,30 @@ Dua reviewer independen (arsitektur + keamanan) membaca diff 68 file. Tidak ada 
 5. `devices.Update` full-row tiap Inform (sudah ada sebelumnya, melawan optimasi dfbdbfe) dan `resolveVendorModel` query tiap Inform bila model tak ada di katalog — belum diukur.
 6. 403 vs 404 pada ID lintas tenant membocorkan keberadaan resource (ID berurutan; dampak kecil).
 
+### LANJUTAN 4: UI untuk seluruh API (frontend)
+
+API parity backend↔frontend: **95/114 → 114/114 (100%)**, 0 panggilan yatim. Dikerjakan: hook baru (`useVendor/useUpdateVendor/useDeleteVendor`, OUI, model, mapping, firmware, tenant, user, tag, preset, ZT rule, `useDeleteDevice`), komponen bersama `RecordActions` (EditButton/DeleteButton/DetailButton/DetailModal), dan:
+
+| Halaman | Ditambah |
+|---|---|
+| Katalog Vendor | Edit & Hapus vendor (code read-only); hapus OUI; Edit & Hapus model; **Detail** & Hapus mapping |
+| Firmware | Edit metadata (versi, catatan rilis, aktif) & Hapus; kolom status |
+| Tag | Edit (nama/warna); tag global hanya superadmin |
+| Administrasi | Detail user; Detail & Hapus tenant |
+| Detail Device | Hapus Device (konfirmasi menjelaskan revive/task/pemetaan) |
+| Preset / Provisioning | Detail preset (JSON terformat), Detail zero-touch rule (nama terjemahan); preset global hanya superadmin |
+
+Semua modal edit memuat data segar lewat `GET by id`. Pesan 409 guard hapus tampil apa adanya di toast (backend: `usageConflictError` — pesannya kini "vendor X masih dipakai oleh 2 device, …", bukan "data sudah ada / konflik unique"; frontend membuang awalan teknis `domain:`).
+Mapping sengaja TANPA tombol Edit: mapping generik (model & pattern NULL) tidak memicu ON DUPLICATE sehingga "edit lewat upsert" membuat baris ganda.
+
+**Diuji sungguhan di browser** (agent-browser, stack nyata, superadmin DAN ADMIN tenant): siklus vendor buat→edit→hapus, guard 409 vendor ZTE & tenant pilot, modal OUI + pencarian, edit tag, edit firmware, hapus device (+redirect), detail user/tenant/preset/ZT rule, RBAC (ADMIN tidak melihat aksi superadmin-only). Temuan yang HANYA terlihat di browser dan sudah diperbaiki:
+1. **Seed OUI merusak tabel Vendor**: sel "OUI Terdaftar" merender semua OUI sebagai chip (ZTE 502, Huawei 2.088). Kini ringkas (jumlah + 4 pertama) + modal "Kelola" dengan pencarian dan batas 200 chip.
+2. **Bug logika `tenant_id === null`**: backend menghilangkan `tenant_id` untuk item global (`omitempty`) sehingga nilainya `undefined`; badge "Global" tak muncul dan ADMIN tenant akan melihat Edit/Hapus yang pasti 403. Kini `== null` (dibuktikan sebagai ADMIN tenant).
+3. **Spinner tanpa akhir** di detail device yang tidak ada/terhapus (mis. tombol Back setelah hapus). Kini state "Device tidak ditemukan" + tombol kembali; query berhenti retry untuk 4xx.
+4. Toolbar detail device (5 tombol) dan baris aksi tabel Tenants/Users terpotong/terbelah → membungkus.
+
+**Belum / dicatat:** nama jenis di pesan 409 masih snake_case internal (`parameter_mapping`, `rollout_batch`); `created_at` pada respons create tag = 0001-01-01 (Create tidak mengisi timestamp, sudah ada sebelumnya); `frontend/devmock` (mock API) belum mengimplementasikan endpoint baru; tidak ada test otomatis frontend (belum ada test runner) — verifikasi lewat browser manual + parity script.
+
 ### BELUM
 
 - Gladi jaringan ANTAR-MESIN sungguhan (§3a) — hanya bisa dari segmen jaringan CPE.
