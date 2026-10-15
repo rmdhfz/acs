@@ -174,7 +174,7 @@ index), session state di `device_sessions`+Redis (bukan in-memory),
 
 1. **Uji CPE fisik** — `PENGUJIAN_LAPANGAN.md` siap. Minimal 1–2 unit per vendor.
    Satu Inform nyata > sebulan simulasi. **Penahan #1.**
-2. **`vendor_ouis` kosong** — isi dari IEEE OUI registry sebelum uji lapangan.
+2. ~~`vendor_ouis` kosong~~ — **teratasi 2026-10-15** (migrasi `0022`, 3.176 blok dari registry IEEE; plus device tanpa vendor kini sembuh sendiri di Inform berikutnya). Sisa: cocokkan OUI dengan Inform nyata pertama.
 3. **Retensi tabel log (B1)** — kebijakan pruning sebelum rollout lebar.
 4. **Rate limiter terdistribusi (B4)** — bila deploy multi-instance atau ada CPE di CGNAT.
 5. **Load test kapasitas** — butuh rig multi-IP; validasi B3/B5/C7 dengan angka nyata.

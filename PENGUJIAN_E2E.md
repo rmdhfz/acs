@@ -20,7 +20,7 @@ nyata dan tidak punya kuirk per-firmware. Gunanya:
 
 ---
 
-## 1. Yang Diuji (9 skenario)
+## 1. Yang Diuji (11 skenario)
 
 | # | Skenario | Yang dibuktikan |
 |---|---|---|
@@ -33,8 +33,10 @@ nyata dan tidak punya kuirk per-firmware. Gunanya:
 | S7 | Connection Request | ACS men-trigger CR ke `ConnectionRequestURL` (di-capture otomatis dari Inform) → CPE membuka sesi baru dengan event `6 CONNECTION REQUEST` |
 | S8 | Firmware canary rollout | Upload file → buat rollout batch wave 100% → CPE menerima `Download` + mengirim `TransferComplete` → batch `COMPLETED` tanpa kegagalan |
 | S9 | Preset drift-heal | Preset `enforce=1`, device menyimpang → ACS otomatis mengantre `SetParameterValues` → CPE konvergen |
+| S10 | Regresi keamanan | Role ENDUSER dikurung ke `/self-service` (403 di API staf); Connection Request ke alamat metadata-cloud ditolak (SSRF guard) |
+| S11 | CRUD lengkap | Katalog (vendor/OUI/model/mapping) get·patch·delete + **guard 409** bila masih dipakai (vendor ZTE nyata), **revive OUI** yang pernah dihapus, device delete → task terbuka **CANCELLED** → Inform berikutnya **revive** (id sama, task lama tidak jalan), tenant get/delete (guard user/device) + scope, GET user by id + scope, firmware get/patch/delete (identitas isi file tak berubah), tag patch (+ tag global hanya superadmin), preset get (scope), ZTP get 404 |
 
-Status terakhir: **9/9 PASS**, stabil pada 3 run berturut-turut.
+Status terakhir: **11/11 PASS**, stabil pada 3 run berturut-turut (2026-10-15).
 
 ---
 
@@ -45,7 +47,7 @@ Status terakhir: **9/9 PASS**, stabil pada 3 run berturut-turut.
 - Satu user `SUPERADMIN` sudah di-seed.
 - Node 20+ opsional (hanya untuk gerbang frontend, tidak dipakai harness ini).
 
-Host **tidak** perlu Go toolchain — semua build lewat image `golang:1.26`.
+Host **tidak** perlu Go toolchain — semua build lewat image `golang:1.26.9`.
 
 ---
 
@@ -74,7 +76,7 @@ MSYS_NO_PATHCONV=1 docker compose exec -T acsd \
 
 # 3. Build harness (linux static, via Docker)
 MSYS_NO_PATHCONV=1 docker run --rm -v "/d/Project/acs":/src -w /src -e CGO_ENABLED=0 \
-  golang:1.26 sh -c 'go build -o /src/bin/e2e ./cmd/e2e && go build -o /src/bin/cpesim ./cmd/cpesim'
+  golang:1.26.9 sh -c 'go build -o /src/bin/e2e ./cmd/e2e && go build -o /src/bin/cpesim ./cmd/cpesim'
 
 # 4. Jalankan di jaringan compose (nama container = -cr-host, dipakai ACS untuk Connection Request balik)
 MSYS_NO_PATHCONV=1 docker run --rm --network acs_default --name e2e-runner \
@@ -126,7 +128,7 @@ Profil vendor (`internal/simcpe/vendor.go`):
 | `cdata` | TR-098 | `cwmp-1-0` | |
 
 OUI di profil adalah **placeholder** (mengandung huruf, bukan format IEEE) —
-konsisten dengan `migrations/0004` yang sengaja mengosongkan `vendor_ouis`.
+dan sengaja non-hex supaya tidak pernah bentrok dengan seed OUI IEEE asli di `migrations/0022` (sebelumnya `0004` mengosongkan `vendor_ouis`).
 `cmd/e2e` menyuntik OUI ini ke katalog saat setup supaya `vendor_id`
 ter-resolve; di luar itu device muncul "vendor belum diketahui" (memang
 ekspektasi).

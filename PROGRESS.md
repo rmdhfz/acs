@@ -2,6 +2,116 @@
 
 ---
 
+## SESI 2026-10-15 (persiapan uji lapangan: OUI seed, self-heal vendor, gladi jaringan)
+
+Pertanyaan pembuka: apa yang bisa dikerjakan menuju uji lapangan? Cek status: `dev` lebih maju 32 commit dari `main` (fast-forward bersih); sesi dimulai di `dev` `332f5a3`, working tree bersih. Host kini punya Go 1.27 (tanpa cgo → `-race` tidak bisa lokal) dan Docker Desktop (dinyalakan sesi ini).
+
+### DIKERJAKAN
+
+1. **Migrasi `0022_seed_vendor_ouis`** — `vendor_ouis` diisi 3.176 blok MA-L: ZTE 502, Huawei 2.088, FiberHome 220, Nokia 358, Cdata 8. Sumber: Wireshark `manuf` (turunan registry IEEE; situs IEEE menolak unduhan otomatis, HTTP 418), **disilangkan dengan nmap-mac-prefixes**: 0 nama registrant tak cocok dari 3.005 OUI yang ada di kedua sumber (171 sisanya alokasi baru). Pemetaan per NAMA REGISTRANT PERSIS (bukan substring); pengecualian & alasannya ada di header migrasi. `INSERT ... ON DUPLICATE KEY UPDATE id = id` (bukan `IGNORE`, supaya vendor hilang = gagal keras). `schema.sql` disinkronkan.
+2. **Self-heal vendor/model saat Inform** — `FindOrCreateFromInform` sebelumnya hanya me-resolve vendor saat device DIBUAT; device yang terlanjur dibuat tanpa vendor tidak pernah sembuh meski OUI didaftarkan belakangan. Kini helper `resolveVendorModel` dipakai jalur create & jalur existing: hanya mengisi yang masih NULL (assign manual tak ditimpa), nol query tambahan untuk device yang sudah lengkap. 6 unit test baru (`resolve_vendor_test.go`).
+3. **`PENGUJIAN_LAPANGAN.md` diperbarui** — status validasi, OUI seeded, batasan baru (rate limiter 5 req/s per IP, CWMP tanpa TLS, 401/204), prasyarat baru (HTTP vs HTTPS, urutan nyala CPE), **§3a Gladi Jaringan**, template lembar hasil (§6), **§8 tabel gejala→penyebab**. Nomor bagian lama dipertahankan (skill `/diagnose` merujuk §2/§6). Dokumen lain yang menyebut OUI kosong (ROADMAP, LAPORAN_KESIAPAN, PENGUJIAN_E2E) diberi keterangan.
+
+### DIVERIFIKASI (hasil nyata, bukan baca sintaks)
+
+| Gerbang | Hasil |
+|---|---|
+| `go build ./...` · `go vet ./...` · `go test ./...` | ✅ hijau (**tanpa `-race`**: host tanpa cgo; `-race` tetap di CI) |
+| Migrasi `0→22` ke MariaDB 10.11 nyata (container sekali-pakai) | ✅ `version=22 dirty=false` |
+| Seed: jumlah per vendor, semua 6-hex, lookup case-insensitive | ✅ |
+| Idempoten (up dua kali), OUI manual tidak ditimpa, `down` hanya hapus baris ber-marker, up ulang | ✅ |
+| Vendor hilang → migrasi gagal keras (`ERROR 1048`) | ✅ |
+| `schema.sql` dimuat di DB kosong | ✅ 42 tabel = hasil migrasi, seed identik |
+| e2e penuh pada stack compose nyata (MariaDB+MinIO+Redis+acsd) | ✅ **10/10 PASS** |
+| Gladi pilot dari host via port 17547 + **self-heal di DB nyata** | ✅ device `vendor_id NULL` → `ZTE` di Inform berikutnya |
+
+### TEMUAN (belum diperbaiki — butuh keputusan Anda)
+
+- **Image `minio/minio:latest` di `docker-compose.yml` TIDAK BISA di-pull** (Docker Hub: `pull access denied`; quay.io juga 401, termasuk tag rilis). **Deploy ke server baru akan gagal** di langkah ini. Validasi lokal memakai override sementara ke `cgr.dev/chainguard/minio` (di luar repo; e2e S8 lulus dengannya). `docker-compose.yml` TIDAK diubah — memilih pengganti storage firmware = keputusan Anda (opsi: mirror Chainguard, build MinIO dari source/pin image internal, atau storage S3-compatible lain). Healthcheck `mc ready local` juga tidak ada di image pengganti.
+- **OUI yang di-soft-delete memblokir pendaftaran ulang** (unique key `uq_vendor_ouis_oui` tidak melihat `is_deleted`) — dari skema; belum dicoba lewat UI.
+
+### LANJUTAN: kelengkapan CRUD API (permintaan: "CRUD harus lengkap dulu")
+
+Audit awal: dari ~25 resource, hanya provisioning-profiles dan webhooks yang CRUD-nya penuh. Ditutup **19 endpoint** (kontrak 103 → **122 operation**):
+
+| Area | Ditambah |
+|---|---|
+| Katalog | `GET·PATCH·DELETE /vendors/{id}`, `DELETE /vendors/{id}/ouis/{ouiId}`, `GET·PATCH·DELETE /device-models/{id}`, `GET·DELETE /vendor-parameter-mappings/{id}` |
+| Device | `DELETE /devices/{id}` |
+| IAM | `GET·DELETE /tenants/{id}`, `GET /users/{id}` |
+| Firmware | `GET·PATCH·DELETE /firmware/{id}` |
+| Lain | `PATCH /tags/{id}`, `GET /presets/{id}`, `GET /zero-touch-rules/{id}` |
+
+Desain (keputusan yang saya ambil, perlu Anda tahu):
+- **Delete = soft delete + guard 409** bila masih dipakai (`domain.UsageRepository`, query COUNT; pesan menyebut jumlah per jenis dan menunjuk `is_active=false`). Vendor/model/firmware/tenant. Usecase baru `usecase/catalog` (sebelumnya handler katalog memanggil repository langsung).
+- **Device delete**: task PENDING/QUEUED/SENT dibatalkan dulu (`domain.OpenTaskCanceller`), lalu soft delete. **Revive saat Inform**: unique key `(oui, serial)` mencakup baris terhapus, jadi tanpa ini CPE yang pernah dihapus lalu Inform lagi kena duplicate key dan terputus dari ACS. Baris lama dihidupkan (id/uuid/riwayat tetap; kredensial per-device, profil, catatan direset).
+- **Revive OUI** (jebakan yang saya temukan tadi): OUI yang dihapus kini bisa didaftarkan ulang.
+- PATCH vendor/model/firmware: partial; `code` vendor, `vendor_id` model, serta isi file/checksum/targeting firmware **tidak bisa diubah**. Objek MinIO tidak dihapus saat firmware di-soft-delete (kebijakan retensi terpisah).
+- Tenant delete ditolak bila masih punya user/device aktif, atau tenant milik akun sendiri.
+- Mutasi katalog/firmware superadmin saja; device delete ADMIN+ scope tenant.
+
+**Celah keamanan yang ditemukan dan ditutup di tengah jalan:**
+1. **Tag global** (tenant_id NULL) bisa diubah/dihapus ADMIN tenant mana pun — kini superadmin saja.
+2. **Preset global** (menegakkan konfigurasi ke device SEMUA tenant) bisa diubah/dihapus ADMIN satu tenant — kini superadmin saja.
+3. **Nil-deref** (`*actor.TenantID` tanpa cek) di `Tag.Delete` dan `Preset.Get` untuk akun non-superadmin tanpa tenant — kini ErrForbidden.
+4. `POST /vendor-parameter-mappings` mengembalikan **`id: 0`** (Upsert tak mengisi ID) — mapping tak bisa direferensikan per id; diperbaiki (`LAST_INSERT_ID`).
+
+Verifikasi: 7 file test baru (catalog, iam, device, tag, preset, firmware, provisioning; semua jalur RBAC/scope/guard) — `go build/vet/test` hijau (tanpa `-race`, host tanpa cgo); **e2e S11 baru, 11/11 PASS stabil 3×** di stack nyata — ini yang membuktikan SQL guard, revive, dan pembatalan task (tidak bisa dibuktikan test berfake). `openapi.yaml`: diff dua arah 0, redocly valid (6 warning pre-existing/by-design), Postman diregen 103 → 122 request. Parity UI: 19 endpoint baru **belum dipakai frontend**, 0 panggilan yatim.
+
+**Belum:** UI untuk 19 endpoint baru (frontend tidak disentuh); `-race` lokal; delete tenant/vendor yang recreate dengan `code` sama masih 409 (unique key code mencakup baris terhapus — tidak ada revive, hanya OUI/device/mapping).
+
+### LANJUTAN 2: gap UAT (setelah keputusan "UAT dulu, OLT Controller sesudahnya")
+
+Konteks: user meminta spesifikasi besar "ACS + OLT Controller multi-vendor" (SNMP/SSH/NETCONF, driver ZTE/Huawei/Fiberhome/Nokia/C-Data/VSOL, router MikroTik/Huawei/Nokia/Junos, topology UI, coverage >=85%). Dijawab jujur: repo nol kode OLT, coverage 10%, CLI vendor tak bisa diverifikasi tanpa perangkat. Keputusan user: **UAT dulu; OLT Controller sesudahnya (irisan ZTE read-only, Go native)** — tersimpan di memori proyek.
+
+**Keamanan (dari audit sebelumnya):**
+- Dependensi: `x/net` v0.60.0, `go-jose` v4.1.4, `go-redis` v9.7.3. Dockerfile dipin `golang:1.26.9` (dulu `:latest`) + `toolchain go1.26.9` di go.mod; **govulncheck: 0 kerentanan terpanggil**. Runtime image kini non-root.
+- OIDC: state+nonce acak (256 bit) diikat ke browser lewat cookie HttpOnly/SameSite=Lax/sekali-pakai, nonce diverifikasi, `email_verified=false` ditolak (dulu `state="random-state"`).
+- Header keamanan REST (nosniff, DENY, CSP default-src 'none', no-store, HSTS bila https). API token: default & maksimum 365 hari (dulu boleh abadi).
+
+**Bug interoperabilitas nyata yang ditemukan lewat test parser/handler (dua di antaranya akan membuat uji lapangan gagal diam-diam):**
+1. **Cookie sesi CWMP selalu `Secure`** padahal ACS melayani HTTP: CPE libcurl tidak mengirim cookie Secure lewat http → POST kosong tanpa cookie → sesi ditutup → **tak ada RPC yang pernah terkirim**. Simulator e2e tidak menangkapnya (mengabaikan atribut Secure). Kini Secure hanya bila https/X-Forwarded-Proto. Terbukti dengan mutasi: test gagal bila `Secure: true` dikembalikan. Simulator CPE (`internal/simcpe`) kini juga setia: cookie Secure TIDAK dikirim lewat http, sehingga e2e akan gagal bila bug ini kembali (dulu simulator mengirim cookie apa pun dan menyembunyikannya).
+2. **Deklarasi `encoding="ISO-8859-1"`/windows-1252** membuat seluruh Inform ditolak (Go hanya paham UTF-8) → CPE lama tak bisa terhubung. Kini `CharsetReader` (label tak dikenal tetap error).
+3. **Spasi/newline di `DeviceId`** ikut jadi identitas device (kunci unik OUI+serial) → kini di-trim (nilai parameter tidak disentuh).
+4. List SOAP keluar tanpa `soap-enc:arrayType` (TR-069 mewajibkan; firmware ketat menolak) dan urutan SetParameterValues acak → kini arrayType ada dan urutan deterministik.
+
+**Test:** `pkg/cwmpxml` 22% → **98,9%** (fixture bergaya ZTE/Huawei/FiberHome, kuirk encoding, round-trip semua RPC outbound, fuzz seed); `delivery/cwmp` (handler HTTP) 3,8% → **97,7%** dengan mock CPE ber-cookie-jar ala libcurl (handler kini menerima interface `SessionService`); `usecase/session` 12% → 42,5% (NextRequest, HandleRPCResponse, fault 9005 permanen, retry → FAILED di max_retries, TransferComplete); auth/OIDC/token/header. **Total proyek 10,0% → 11,8%** — jujur: target >=85% TIDAK tercapai; repository MySQL/usecase besar dicakup e2e, bukan unit.
+
+**Belum / menunggu keputusan:** image MinIO (tak bisa di-pull), HTTP vs HTTPS untuk CWMP (kini cookie aman untuk keduanya, tapi tanpa TLS kredensial Inform tetap polos); tipe parameter per-nilai di SetParameterValues (semua `xsd:string`); UI untuk 19 endpoint CRUD baru; `-race` lokal; coverage sisa.
+
+### LANJUTAN 3: pipeline /siap-commit (review independen) — temuan & perbaikan
+
+Dua reviewer independen (arsitektur + keamanan) membaca diff 68 file. Tidak ada BLOCKER, tetapi **1 HIGH dan beberapa MAJOR yang lolos dari build/test/e2e** — semuanya akibat fitur delete/revive buatan sesi ini:
+
+| Temuan | Tingkat | Tindakan |
+|---|---|---|
+| **Revive device lintas tenant**: tenant B (secret CWMP sendiri) bisa me-revive baris device yang dihapus tenant A dgn OUI+serial sama → id/uuid/riwayat parameter-event-task pindah ke B | **HIGH** | **Diperbaiki**: `UPDATE revive` kini ber-klausa tenant (`tenant_id IS NULL OR tenant_id <=> :tenant_id`); lintas tenant → duplicate key → `ErrConflict` → Inform **409**. Dibuktikan e2e S11 (Inform tenant lain ditolak 409, device tetap terhapus, tenant lain tak melihatnya) |
+| Pemetaan ENDUSER (`user_devices`) dan `device_tags` tidak dibersihkan saat soft delete (FK CASCADE tidak jalan) → pelanggan lama tetap bisa mengganti SSID/PSK CPE yang di-revive untuk orang lain | MEDIUM | **Diperbaiki**: `SoftDelete` kini transaksi (hapus relasi + tandai terhapus); `requireOwnership` juga mewajibkan tenant device = tenant akun (test baru, paket sebelumnya 0%) |
+| OUI/model/mapping bisa dibuat untuk vendor yang sudah di-soft-delete (handler lama memanggil repository langsung; FK tak melihat is_deleted); vendor tak ada → 500 | MAJOR | **Diperbaiki**: ketiganya dipindah ke `usecase/catalog` dgn cek vendor aktif (404), model harus milik vendor yang sama, `device_type_id/data_model_version_id` wajib. Spec +404/409 |
+| Ubah `data_model_version_id` model yang sudah dipakai device merusak `Resolve()` | MAJOR | **Diperbaiki**: 409 bila masih ada device |
+| `err.Error()` OIDC (respons IdP, enumerasi email) ke klien | LOW | Diperbaiki: pesan generik, detail ke log |
+| `session_token` utuh di log (satu-satunya bukti auth POST lanjutan) | LOW | Diperbaiki: `session.RedactToken` (8 karakter) |
+| Migrasi 0022 gagal-dirty bila vendor baseline sudah dihapus; OUI ada dilewati | MINOR | Didokumentasikan di header migrasi |
+
+**Ditemukan sampingan (bukan dari reviewer):** boot pertama volume kosong → `migrate` gagal `connection refused` (healthcheck MariaDB `ping` lewat socket lolos terhadap server SEMENTARA init yang tanpa TCP). Terjadi 2× di sesi ini; akan terjadi di deploy pertama server pilot. **Diperbaiki** di `docker-compose.yml` (ping `-h 127.0.0.1`), terbukti: volume kosong → migrate lolos percobaan pertama.
+
+**Belum diputuskan / dicatat (butuh keputusan user, tidak diubah):**
+1. **Unique key "kuburan"** (`uq_ref_vendors_code`, `uq_tenants_code`, `uq_tenants_cwmp_inform_username`, `uq_device_models_vendor_model` tak melihat `is_deleted`): setelah DELETE, membuat ulang dgn code/model_name yang sama = 409 selamanya; utk tenant, `cwmp_inform_username` ikut terkunci. Revive hanya ada utk device/OUI/mapping. Opsi: revive per-repo, atau ubah unique key.
+2. **Rate limiter per `RemoteAddr`** tanpa `IPExtractor` trusted-proxy: di belakang reverse proxy semua CPE berbagi satu bucket 5 rps (CWMP) dan semua klien REST 30 rps; `RemoteIP` yang tersimpan = IP proxy. Perlu daftar proxy tepercaya.
+3. **OIDC `email_verified` absen diterima** (Azure AD tak mengirimnya) + akun dipetakan lewat email → risiko nOAuth bila SSO dipakai. OIDC mati secara default.
+4. Guard "masih dipakai → 409" = cek lalu hapus tanpa transaksi (TOCTOU); `DeleteVendor` menghapus OUI satu per satu tanpa transaksi. Hanya superadmin; dampak konsistensi data.
+5. `devices.Update` full-row tiap Inform (sudah ada sebelumnya, melawan optimasi dfbdbfe) dan `resolveVendorModel` query tiap Inform bila model tak ada di katalog — belum diukur.
+6. 403 vs 404 pada ID lintas tenant membocorkan keberadaan resource (ID berurutan; dampak kecil).
+
+### BELUM
+
+- Gladi jaringan ANTAR-MESIN sungguhan (§3a) — hanya bisa dari segmen jaringan CPE.
+- Putusan HTTP vs HTTPS untuk ACS URL; unit CPE per vendor; keputusan MinIO di atas.
+- `-race` lokal (butuh cgo/Docker build); gerbang frontend tidak disentuh sesi ini (tidak ada perubahan frontend).
+- Semua perubahan **belum di-commit** (menunggu perintah).
+
+---
+
 ## SESI 2026-09-08 (2) (`/goal`: harness uji e2e + audit keamanan + kesiapan go-live)
 
 Lanjutan sesi yang sama. Setelah commit batch validasi input (`ac7209a`), user

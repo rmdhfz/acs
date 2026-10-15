@@ -22,8 +22,19 @@ info:
     - **JWT sesi user** — didapat dari `POST /auth/login`, berlaku sesuai masa
       berlaku yang dikonfigurasi (`ACS_JWT_EXPIRY`, default 8 jam di `.env.example`).
     - **API token** — string berawalan `acs_...`, diterbitkan lewat
-      `POST /auth/tokens` (ADMIN/SUPERADMIN), tidak pernah kedaluwarsa kecuali
-      `expires_at` diisi.
+      `POST /auth/tokens` (ADMIN/SUPERADMIN). Umur maksimum **365 hari**:
+      `expires_at` yang tidak diisi default ke 365 hari, yang lebih jauh dari itu
+      atau sudah lewat ditolak `400`. Token abadi sengaja tidak ada (rotasi
+      tahunan dipaksa).
+
+    ## Header keamanan respons
+
+    Setiap respons REST membawa `X-Content-Type-Options: nosniff`,
+    `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`,
+    `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`, dan
+    `Cache-Control: no-store`. `Strict-Transport-Security` dikirim hanya bila
+    request datang lewat https (langsung atau lewat proxy dengan
+    `X-Forwarded-Proto: https`).
 
     Empat endpoint publik tanpa autentikasi, semuanya READ-ONLY atau titik masuk
     login (tidak ada endpoint MUTASI tanpa autentikasi): `POST /auth/login`
@@ -185,7 +196,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/IssueAPITokenResponse'
         '400':
-          description: Payload tidak valid atau `name` kosong.
+          description: Payload tidak valid, `name` kosong, atau `expires_at` di masa lalu / lebih dari 365 hari dari sekarang.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -467,6 +478,78 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   /tenants/{id}:
+    get:
+      operationId: getTenant
+      tags: [Tenants]
+      summary: Detail satu tenant
+      description: |
+        ADMIN/SUPERADMIN. Superadmin ke tenant manapun; ADMIN hanya tenant-nya sendiri (tenant lain → `403`). Memuat `cwmp_inform_username` (itu sebabnya role di bawah ADMIN ditolak); password CWMP tidak pernah diekspos.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/tenantIdPath'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tenant' }
+        '400':
+          description: "`id` path tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: "Tidak terautentikasi."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Role di bawah ADMIN, atau ADMIN meminta tenant lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: "Tenant tidak ditemukan."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    delete:
+      operationId: deleteTenant
+      tags: [Tenants]
+      summary: Hapus (soft-delete) tenant
+      description: |
+        Superadmin only. Ditolak `409` selama tenant masih punya **user atau device aktif** (pesan menyebut jumlahnya) — menghapusnya akan membuat data itu yatim. Untuk menghentikan akses tanpa menghapus data, pakai `PATCH /tenants/{id}` dengan `is_active=false` (token yang sudah terbit pun langsung ditolak). Tenant milik akun yang sedang dipakai tidak boleh dihapus.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/tenantIdPath'
+      responses:
+        '204':
+          description: Berhasil dihapus (soft delete).
+        '400':
+          description: "`id` path tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: "Tidak terautentikasi."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Bukan superadmin, atau mencoba menghapus tenant milik akun sendiri."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: "Tenant tidak ditemukan."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: "Tenant masih punya user/device aktif."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
     patch:
       operationId: updateTenant
       tags: [Tenants]
@@ -709,6 +792,41 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   /users/{id}:
+    get:
+      operationId: getUser
+      tags: [Users]
+      summary: Detail satu user
+      description: |
+        ADMIN/SUPERADMIN. Superadmin ke user manapun; ADMIN dibatasi ke user satu tenant dengannya (scope sama dengan mutasi user). `password_hash` tidak pernah diekspos.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/userIdPath'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400':
+          description: "`id` path tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: "Tidak terautentikasi."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Role di bawah ADMIN, atau ADMIN meminta user tenant lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: "User tidak ditemukan."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
     patch:
       operationId: updateUser
       tags: [Users]
@@ -952,6 +1070,38 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   /devices/{id}:
+    delete:
+      operationId: deleteDevice
+      tags: [Devices]
+      summary: Hapus (soft-delete) device
+      description: |
+        ADMIN/SUPERADMIN, dibatasi ke device milik tenant sendiri untuk non-superadmin. Task yang belum terminal (PENDING/QUEUED/SENT) dibatalkan lebih dulu (jumlahnya dicatat di audit trail). CPE yang masih menyala dan mengirim Inform lagi TIDAK ditolak: baris device dihidupkan kembali sebagai registrasi baru (id, uuid, dan riwayat dipertahankan; kredensial per-device, profil provisioning, dan catatan direset; task lama tidak dieksekusi).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/deviceIdPath'
+      responses:
+        '204':
+          description: Berhasil dihapus (soft delete).
+        '400':
+          description: "`id` path tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: "Tidak terautentikasi."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Role di bawah ADMIN, atau device milik tenant lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: "Device tidak ditemukan."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
     get:
       operationId: getDevice
       tags: [Devices]
@@ -2104,6 +2254,41 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   /zero-touch-rules/{id}:
+    get:
+      operationId: getZTRule
+      tags: [ZeroTouch]
+      summary: Detail satu aturan Zero-Touch
+      description: |
+        Semua role terautentikasi. Rule milik tenant sendiri atau rule global (tanpa tenant, ikut tampil di list) boleh dibaca; rule tenant lain → `403`.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ztRuleIdPath'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ZeroTouchRule' }
+        '400':
+          description: "`id` path tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: "Tidak terautentikasi."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Rule milik tenant lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: "Rule tidak ditemukan."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
     put:
       operationId: updateZTRule
       tags: [ZeroTouch]
@@ -2240,6 +2425,117 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  /vendors/{id}:
+    get:
+      operationId: getVendor
+      tags: [Catalog]
+      summary: Detail satu vendor
+      description: |
+        Semua role terautentikasi. Data referensi global lintas tenant.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/vendorIdPath'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Vendor' }
+        '400':
+          description: "`id` path tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: "Tidak terautentikasi."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: "Vendor tidak ditemukan."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    patch:
+      operationId: updateVendor
+      tags: [Catalog]
+      summary: Ubah vendor (nama, deskripsi, aktif)
+      description: |
+        Superadmin only. Partial update — field yang tidak dikirim tidak diubah; `description` berisi string kosong = dikosongkan.
+        `code` TIDAK bisa diubah (identitas stabil). Minimal satu field harus diisi.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/vendorIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateVendorRequest' }
+      responses:
+        '200':
+          description: Data setelah diperbarui.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Vendor' }
+        '400':
+          description: "`id`/payload tidak valid, tidak ada field yang diisi, atau panjang melebihi batas kolom."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: "Tidak terautentikasi."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Bukan superadmin."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: "Vendor tidak ditemukan."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    delete:
+      operationId: deleteVendor
+      tags: [Catalog]
+      summary: Hapus (soft-delete) vendor
+      description: |
+        Superadmin only. OUI milik vendor ikut di-soft-delete. Ditolak `409` selama masih ada data aktif yang merujuk (pesan menyebut jumlah per jenis); jalan keluarnya menonaktifkan (`is_active=false`) alih-alih menghapus.
+        Penghalang: device, device model, parameter mapping, firmware, profil provisioning, zero-touch rule, atau rollout batch aktif yang masih merujuk vendor ini.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/vendorIdPath'
+      responses:
+        '204':
+          description: Berhasil dihapus (soft delete).
+        '400':
+          description: "`id` path tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: "Tidak terautentikasi."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Bukan superadmin."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: "Vendor tidak ditemukan."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: "Vendor masih dipakai data aktif."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   /vendors/{id}/ouis:
     get:
       operationId: listVendorOUIs
@@ -2273,8 +2569,12 @@ paths:
       tags: [Catalog]
       summary: Mendaftarkan OUI baru milik vendor
       description: |
-        Superadmin only. OUI dipakai me-resolve vendor device baru saat Inform
-        pertama kali (lihat `FindOrCreateFromInform`).
+        Superadmin only. OUI dipakai me-resolve vendor device saat Inform (lihat
+        `FindOrCreateFromInform`): device baru langsung di-resolve; device yang
+        sudah ada tetapi `vendor_id`-nya masih kosong ter-resolve pada Inform
+        berikutnya. OUI yang sebelumnya dihapus (`DELETE /vendors/{id}/ouis/{ouiId}`)
+        bisa didaftarkan ulang — baris lama dihidupkan kembali (id dipertahankan).
+        OUI yang masih aktif didaftarkan dua kali → `409`.
       security: [{ bearerAuth: [] }]
       parameters:
         - $ref: '#/components/parameters/vendorIdPath'
@@ -2299,6 +2599,11 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: "Vendor tidak ditemukan atau sudah dihapus."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
         '403':
           description: Bukan superadmin.
           content:
@@ -2306,6 +2611,42 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '409':
           description: OUI sudah terdaftar.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /vendors/{id}/ouis/{ouiId}:
+    delete:
+      operationId: deleteVendorOUI
+      tags: [Catalog]
+      summary: Hapus (soft-delete) satu OUI milik vendor
+      description: |
+        Superadmin only. OUI milik vendor lain atau yang sudah terhapus dijawab `404`. OUI yang sudah dihapus BISA didaftarkan ulang lewat `POST /vendors/{id}/ouis` (baris lama dihidupkan kembali).
+        Catatan: device yang sudah ter-resolve ke vendor tidak berubah; hanya Inform baru yang terpengaruh.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/vendorIdPath'
+        - $ref: '#/components/parameters/ouiIdPath'
+      responses:
+        '204':
+          description: Berhasil dihapus (soft delete).
+        '400':
+          description: "`id` atau `ouiId` tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: "Tidak terautentikasi."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Bukan superadmin."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: "Vendor atau OUI tidak ditemukan (OUI milik vendor lain juga dijawab 404)."
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -2368,8 +2709,133 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: "Vendor tidak ditemukan atau sudah dihapus."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: "Model dengan `model_name` yang sama sudah ada untuk vendor ini."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
         '403':
           description: Bukan superadmin.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /device-models/{id}:
+    get:
+      operationId: getDeviceModel
+      tags: [Catalog]
+      summary: Detail satu device model
+      description: |
+        Semua role terautentikasi. Data referensi global lintas tenant.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/deviceModelIdPath'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceModel' }
+        '400':
+          description: "`id` path tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: "Tidak terautentikasi."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: "Model tidak ditemukan."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    patch:
+      operationId: updateDeviceModel
+      tags: [Catalog]
+      summary: Ubah device model
+      description: |
+        Superadmin only. Partial update; `product_class`/`description` berisi string kosong = dikosongkan. `vendor_id` TIDAK bisa diubah (memindahkan model ke vendor lain = hapus + buat baru). Minimal satu field harus diisi.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/deviceModelIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateDeviceModelRequest' }
+      responses:
+        '200':
+          description: Data setelah diperbarui.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceModel' }
+        '400':
+          description: "`id`/payload tidak valid, tidak ada field yang diisi, atau panjang melebihi batas kolom."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: "Tidak terautentikasi."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Bukan superadmin."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: "Model tidak ditemukan."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: "`product_class` bentrok dengan model lain milik vendor yang sama."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    delete:
+      operationId: deleteDeviceModel
+      tags: [Catalog]
+      summary: Hapus (soft-delete) device model
+      description: |
+        Superadmin only. Ditolak `409` selama masih ada data aktif yang merujuk (pesan menyebut jumlah per jenis); jalan keluarnya menonaktifkan (`is_active=false`) alih-alih menghapus.
+        Penghalang: device, parameter mapping, firmware, profil provisioning, zero-touch rule, atau rollout batch yang masih merujuk model ini.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/deviceModelIdPath'
+      responses:
+        '204':
+          description: Berhasil dihapus (soft delete).
+        '400':
+          description: "`id` path tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: "Tidak terautentikasi."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Bukan superadmin."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: "Model tidak ditemukan."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: "Model masih dipakai data aktif."
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -2416,7 +2882,10 @@ paths:
         parameter antar vendor — jangan hardcode percabangan vendor di kode Go.
         Upsert: mengirim `vendor_id`+`data_model_version_id`+`device_model_id`+
         `logical_key` yang sama akan mengganti mapping yang sudah ada
-        (bukan menambah duplikat).
+        (bukan menambah duplikat). Respons selalu memuat `id` mapping yang benar
+        (baik baru maupun yang diganti), dipakai untuk
+        `GET|DELETE /vendor-parameter-mappings/{id}`. Mapping yang pernah dihapus
+        dihidupkan kembali.
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true
@@ -2439,6 +2908,11 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: "Vendor atau `device_model_id` tidak ditemukan / vendor sudah dihapus."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
         '403':
           description: Bukan superadmin.
           content:
@@ -2446,6 +2920,70 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   # ============================== FIRMWARE ==============================
+  /vendor-parameter-mappings/{id}:
+    get:
+      operationId: getParameterMapping
+      tags: [Catalog]
+      summary: Detail satu vendor parameter mapping
+      description: |
+        Semua role terautentikasi. Data referensi global lintas tenant.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/mappingIdPath'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VendorParameterMapping' }
+        '400':
+          description: "`id` path tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: "Tidak terautentikasi."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: "Mapping tidak ditemukan."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    delete:
+      operationId: deleteParameterMapping
+      tags: [Catalog]
+      summary: Hapus (soft-delete) satu parameter mapping
+      description: |
+        Superadmin only. Tidak ada guard "masih dipakai": setelah dihapus, resolusi logical key jatuh ke mapping yang lebih generik bila ada; bila tidak ada, logical key itu tidak ter-resolve (path TR-069 mentah tetap bisa dipakai). Mapping yang sama bisa dibuat lagi lewat `POST /vendor-parameter-mappings` (baris lama dihidupkan kembali).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/mappingIdPath'
+      responses:
+        '204':
+          description: Berhasil dihapus (soft delete).
+        '400':
+          description: "`id` path tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: "Tidak terautentikasi."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Bukan superadmin."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: "Mapping tidak ditemukan."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   /firmware:
     post:
       operationId: uploadFirmware
@@ -2611,6 +3149,121 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '404':
           description: Device tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /firmware/{id}:
+    get:
+      operationId: getFirmware
+      tags: [Firmware]
+      summary: Detail satu file firmware
+      description: |
+        Semua role terautentikasi. Katalog firmware global lintas tenant.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/firmwareIdPath'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FirmwareFile' }
+        '400':
+          description: "`id` path tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: "Tidak terautentikasi."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: "Firmware tidak ditemukan."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    patch:
+      operationId: updateFirmware
+      tags: [Firmware]
+      summary: Ubah metadata firmware (version, release_notes, is_active)
+      description: |
+        Superadmin only. HANYA metadata: `version`, `release_notes` (string kosong = dikosongkan), `is_active`. Identitas isi file (`file_name`, `storage_key`, ukuran, `checksum_sha256`) dan targeting (`vendor_id`/`device_model_id`) tidak bisa diubah — unggah firmware baru bila isinya berbeda. Minimal satu field harus diisi.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/firmwareIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateFirmwareRequest' }
+      responses:
+        '200':
+          description: Data setelah diperbarui.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FirmwareFile' }
+        '400':
+          description: "`id`/payload tidak valid, tidak ada field yang diisi, atau panjang melebihi batas kolom."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: "Tidak terautentikasi."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Bukan superadmin."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: "Firmware tidak ditemukan."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: "Kombinasi versi bentrok dengan firmware lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    delete:
+      operationId: deleteFirmware
+      tags: [Firmware]
+      summary: Hapus (soft-delete) firmware
+      description: |
+        Superadmin only. Ditolak `409` selama masih ada data aktif yang merujuk (pesan menyebut jumlah per jenis); jalan keluarnya menonaktifkan (`is_active=false`) alih-alih menghapus.
+        Penghalang: zero-touch rule yang menunjuknya, rollout batch yang belum selesai/dibatalkan, atau job upgrade yang task-nya masih PENDING/QUEUED/SENT. Objek di object storage SENGAJA dipertahankan (soft delete; pembersihan objek yatim adalah kebijakan retensi terpisah).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/firmwareIdPath'
+      responses:
+        '204':
+          description: Berhasil dihapus (soft delete).
+        '400':
+          description: "`id` path tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: "Tidak terautentikasi."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Bukan superadmin."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: "Firmware tidak ditemukan."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: "Firmware masih dipakai rule/rollout/job aktif."
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -2878,9 +3531,11 @@ paths:
         redirect — BUKAN JSON. Mengembalikan `302` (`http.StatusFound`) ke
         authorization endpoint IdP. Tanpa autentikasi (titik masuk login).
 
-        **Catatan implementasi (bukan spec):** parameter `state` saat ini masih
-        nilai statis di handler (`oidcLogin`, ada `TODO` untuk generator state
-        acak) — jangan diandalkan sebagai proteksi CSRF sampai TODO itu selesai.
+        Proteksi login-CSRF/replay: server membuat `state` dan `nonce` acak
+        (256 bit) per permintaan, menyisipkannya ke URL otorisasi, dan mengikatnya
+        ke browser lewat cookie `acs_oidc_state` / `acs_oidc_nonce` (HttpOnly,
+        SameSite=Lax, Secure bila https, path `/api/v1/auth/oidc`, berlaku 10 menit,
+        sekali pakai). Browser WAJIB menerima cookie ini agar callback berhasil.
       security: []
       responses:
         '302':
@@ -2904,13 +3559,15 @@ paths:
         handler mengembalikan **`200` JSON dengan bentuk yang SAMA PERSIS
         seperti `POST /auth/login`** (`access_token` + `user`), BUKAN redirect
         `302` — frontend menyimpan token lalu berpindah halaman sendiri.
-        Handler hanya membaca query `code`; parameter `state` TIDAK dibaca
-        sama sekali (belum divalidasi — lihat catatan CSRF di
-        `GET /auth/oidc/login`), jadi sengaja tidak didokumentasikan sebagai
-        parameter kontrak.
+        Parameter `state` WAJIB cocok (perbandingan konstan-waktu) dengan cookie
+        `acs_oidc_state` yang dipasang `GET /auth/oidc/login`, dan `nonce` di
+        ID token wajib cocok dengan cookie `acs_oidc_nonce`; cookie dihapus di
+        callback (berhasil maupun gagal). Klaim `email_verified` yang eksplisit
+        `false` ditolak (klaim yang tidak dikirim IdP diterima).
       security: []
       parameters:
         - { name: code, in: query, required: true, description: "Authorization code dari IdP.", schema: { type: string } }
+        - { name: state, in: query, required: true, description: "Nilai `state` yang dikembalikan IdP; harus sama dengan cookie `acs_oidc_state`.", schema: { type: string } }
       responses:
         '200':
           description: Login OIDC berhasil — bentuk response identik `POST /auth/login`.
@@ -2918,12 +3575,12 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/LoginResponse' }
         '400':
-          description: "Query `code` kosong/tidak ada."
+          description: "Query `code` kosong/tidak ada, atau `state` tidak valid/kedaluwarsa/cookie hilang (pesan sengaja tidak membedakan penyebabnya)."
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '401':
-          description: "`code` invalid, ID token gagal diverifikasi, atau user tidak bisa ditautkan."
+          description: "`code` invalid, ID token gagal diverifikasi, nonce tidak cocok, email IdP belum terverifikasi, atau user tidak bisa ditautkan."
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -3547,11 +4204,56 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   /tags/{id}:
+    patch:
+      operationId: updateTag
+      tags: [Tags]
+      summary: Ubah tag (nama, warna)
+      description: |
+        ADMIN/SUPERADMIN. Partial update; `color` berisi string kosong = dikosongkan. Tag milik tenant lain → `403`. Tag **global** (tanpa tenant) hanya boleh diubah superadmin. Minimal satu field harus diisi.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/tagIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateTagRequest' }
+      responses:
+        '200':
+          description: Data setelah diperbarui.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tag' }
+        '400':
+          description: "`id`/payload tidak valid, tidak ada field yang diisi, atau panjang melebihi batas kolom."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: "Tidak terautentikasi."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Role di bawah ADMIN, tag milik tenant lain, atau tag global dimutasi non-superadmin."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: "Tag tidak ditemukan."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: "Nama bentrok dengan tag lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
     delete:
       operationId: deleteTag
       tags: [Tags]
       summary: Hapus tag
-      description: ADMIN/SUPERADMIN. Tag tenant lain → `403`. Penghapusan juga melepas semua penempelan `device_tags`-nya.
+      description: ADMIN/SUPERADMIN. Tag tenant lain → `403`. Tag **global** (tanpa tenant) hanya boleh dihapus superadmin. Penghapusan juga melepas semua penempelan `device_tags`-nya.
       security: [{ bearerAuth: [] }]
       parameters:
         - $ref: '#/components/parameters/tagIdPath'
@@ -3752,11 +4454,46 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   /presets/{id}:
+    get:
+      operationId: getPreset
+      tags: [Presets]
+      summary: Detail satu preset
+      description: |
+        Semua role terautentikasi. Preset milik tenant sendiri atau preset global (tanpa tenant) boleh dibaca; preset tenant lain → `403`.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/presetIdPath'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Preset' }
+        '400':
+          description: "`id` path tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: "Tidak terautentikasi."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Preset milik tenant lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: "Preset tidak ditemukan."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
     patch:
       operationId: updatePreset
       tags: [Presets]
       summary: Ubah preset
-      description: ADMIN/SUPERADMIN, tenant-scoped. FULL replace field skalar (kirim seluruh state).
+      description: ADMIN/SUPERADMIN, tenant-scoped. FULL replace field skalar (kirim seluruh state). Preset **global** (tanpa tenant, berlaku untuk device semua tenant) hanya boleh diubah superadmin.
       security: [{ bearerAuth: [] }]
       parameters:
         - $ref: '#/components/parameters/presetIdPath'
@@ -3795,7 +4532,7 @@ paths:
       operationId: deletePreset
       tags: [Presets]
       summary: Hapus preset
-      description: ADMIN/SUPERADMIN, tenant-scoped.
+      description: ADMIN/SUPERADMIN, tenant-scoped. Preset **global** (tanpa tenant) hanya boleh dihapus superadmin.
       security: [{ bearerAuth: [] }]
       parameters:
         - $ref: '#/components/parameters/presetIdPath'
@@ -4053,6 +4790,30 @@ components:
       required: true
       description: ID numerik internal vendor.
       schema: { type: integer, format: int64 }
+    ouiIdPath:
+      name: ouiId
+      in: path
+      required: true
+      description: ID numerik internal OUI (`vendor_ouis.id`, dari `GET /vendors/{id}/ouis`).
+      schema: { type: integer, format: int64 }
+    deviceModelIdPath:
+      name: id
+      in: path
+      required: true
+      description: ID numerik internal device model.
+      schema: { type: integer, format: int64 }
+    mappingIdPath:
+      name: id
+      in: path
+      required: true
+      description: ID numerik internal vendor parameter mapping.
+      schema: { type: integer, format: int64 }
+    firmwareIdPath:
+      name: id
+      in: path
+      required: true
+      description: ID numerik internal file firmware.
+      schema: { type: integer, format: int64 }
     rolloutBatchIdPath:
       name: id
       in: path
@@ -4165,7 +4926,7 @@ components:
           format: int64
           nullable: true
           description: "Non-superadmin: harus sama dengan tenant milik actor sendiri (atau dikosongkan agar default ke tenant actor)."
-        expires_at: { type: string, format: date-time, nullable: true, description: "Kosongkan agar token tidak pernah kedaluwarsa." }
+        expires_at: { type: string, format: date-time, nullable: true, description: "Kosongkan = default 365 hari. Harus di masa depan dan paling jauh 365 hari dari sekarang; di luar itu ditolak 400." }
       required: [name]
 
     IssueAPITokenResponse:
@@ -4802,6 +5563,14 @@ components:
         total: { type: integer }
       required: [data, total]
 
+    UpdateVendorRequest:
+      type: object
+      description: Partial update — field yang tidak dikirim tidak diubah. Minimal satu field. `code` tidak bisa diubah.
+      properties:
+        name: { type: string, maxLength: 128 }
+        description: { type: string, maxLength: 255, description: "String kosong = dikosongkan." }
+        is_active: { type: boolean }
+
     CreateVendorRequest:
       type: object
       properties:
@@ -4850,6 +5619,17 @@ components:
       allOf:
         - $ref: '#/components/schemas/Audit'
       required: [id, vendor_id, device_type_id, data_model_version_id, model_name, is_active]
+
+    UpdateDeviceModelRequest:
+      type: object
+      description: Partial update — field yang tidak dikirim tidak diubah. Minimal satu field. `vendor_id` tidak bisa diubah.
+      properties:
+        device_type_id: { type: integer, format: int64 }
+        data_model_version_id: { type: integer, format: int64 }
+        product_class: { type: string, maxLength: 128, description: "String kosong = dikosongkan." }
+        model_name: { type: string, maxLength: 128 }
+        description: { type: string, maxLength: 255, description: "String kosong = dikosongkan." }
+        is_active: { type: boolean }
 
     CreateDeviceModelRequest:
       type: object
@@ -4921,6 +5701,14 @@ components:
           items: { $ref: '#/components/schemas/FirmwareFile' }
         total: { type: integer }
       required: [data, total]
+
+    UpdateFirmwareRequest:
+      type: object
+      description: Partial update metadata — field yang tidak dikirim tidak diubah. Minimal satu field. Isi file, checksum, dan targeting vendor/model tidak bisa diubah.
+      properties:
+        version: { type: string, maxLength: 64 }
+        release_notes: { type: string, description: "String kosong = dikosongkan." }
+        is_active: { type: boolean }
 
     UploadFirmwareRequest:
       type: object
@@ -5296,6 +6084,13 @@ components:
           items: { $ref: '#/components/schemas/Tag' }
         meta: { $ref: '#/components/schemas/PageMeta' }
       required: [data, meta]
+
+    UpdateTagRequest:
+      type: object
+      description: Partial update — field yang tidak dikirim tidak diubah. Minimal satu field.
+      properties:
+        name: { type: string, maxLength: 255 }
+        color: { type: string, maxLength: 7, description: "Hex #RRGGBB. String kosong = dikosongkan." }
 
     CreateTagRequest:
       type: object
