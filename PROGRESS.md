@@ -138,6 +138,24 @@ Temuan saat memetakan protokol: ACS mengirim Connection Request dengan **Basic p
 
 Catatan: password Connection Request tidak dilaporkan CPE lewat Inform — operator mengisinya per device (PATCH/UI). Belum diuji dengan CPE fisik; Digest dengan `algorithm=SHA-256` hanya teruji lewat verifier sendiri (vektor RFC 7616 belum dipakai).
 
+### LANJUTAN 6: Login email, Argon2id, lupa password lewat email, notifikasi email, UI/UX baru
+
+**UI/UX** — halaman Login (layout dua panel, Caps Lock, ingat email, SSO), Lupa/Reset password, Profil (identitas, sesi & hitung mundur, hak akses per role, preferensi) dan Dashboard (sapaan, peringatan, KPI drill-down, kesehatan armada, device perlu perhatian, task terbaru, rollout firmware, aktivitas, aksi cepat) dirombak; deep-link `/devices?status=OFFLINE` dan `/tasks?status=FAILED`. Footer kredit pembuat (nama → LinkedIn, tab baru, noopener) di app dan halaman auth. Diuji di browser nyata (light/dark, desktop/mobile, role SUPERADMIN & VIEWER). Dua bug lama yang hanya tampak di browser: 401 pada login/ganti-password diperlakukan "sesi berakhir" (pesan salah-password tak pernah tampil, dan salah password-lama di "Ganti password" **mengeluarkan user**); endpoint `/ws` mewajibkan header Bearer padahal browser hanya bisa kirim query → **WebSocket realtime tidak pernah tersambung** (BELUM diperbaiki, lihat bawah).
+
+**Login email + Argon2id** — `POST /auth/login` menerima `email` (tak peka huruf besar) atau `username` (kompat.). `pkg/passwordhash`: Argon2id (64 MiB/t=3/p=2, PHC string), verifikasi bcrypt lama + **upgrade otomatis** saat login (compare-and-swap, tidak menimpa reset paralel), `DummyVerify` meratakan timing user tak dikenal, semaphore 4 slot dengan timeout → `ErrBusy` → 503 (BUKAN dihitung password salah).
+
+**Lupa password lewat email** — migrasi 0023 `password_reset_tokens` (hash SHA-256 saja, sekali pakai, 30 mnt; pengecualian audit 7-kolom didokumentasikan di SQL), `POST /auth/forgot-password` (publik, respons seragam 202, 3/jam/akun, rate limit per-IP, diproses di goroutine terbatas+recover) dan `POST /auth/reset-password` (Peek murah sebelum Argon2, cek akun aktif sebelum Consume atomik, validasi password sebelum token dihanguskan). Tautan memakai fragment (`#token=`). `pkg/mailer`: SMTP **STARTTLS wajib** (kredensial tak pernah lewat plaintext), anti header-injection, MIME base64, antrean asinkron + retry, domain reserved (`.local .test example.*`) dibuang (hindari bounce dari akun uji/e2e).
+
+**Notifikasi email** — reset password, password diganti, password direset admin, akun terkunci (sekali per penguncian), akun baru. Tidak pernah memuat password.
+
+**Pencabutan sesi** — migrasi 0024 `users.password_changed_at`; `ResolveActor` menolak JWT yang terbit sebelum password diganti, atau milik akun nonaktif/terhapus (1 query PK per request). `PATCH /auth/password` kini 200 + JWT baru (sebelumnya 204).
+
+**Temuan test integrasi MariaDB**: SQL penguncian akun salah urutan assignment (MariaDB mengevaluasi SET kiri→kanan) → akun terkunci pada percobaan ke-4, bukan ke-5. Diperbaiki.
+
+**Review independen (agent) → diperbaiki**: DoS Argon2 sebelum cek token, race rehash vs reset, JWT hidup setelah reset, token hangus sebelum password tersimpan, banjir email kunci, 401 membocorkan error DB di login, goroutine tanpa recover & Close vs Notify, DeleteExpired tiap request, token reset tak dicabut saat email diganti/akun nonaktif, validasi format email user. **Tidak diperbaiki / dicatat**: (a) rate limit per-IP memakai alamat socket — di belakang reverse proxy semua klien berbagi satu bucket (butuh keputusan IPExtractor/trusted proxy); (b) `UpdatePassword` + Consume tidak satu transaksi (kegagalan DB sesaat setelah Consume = minta tautan baru); (c) antrean email bersama untuk reset & notifikasi (4 worker, buffer 256, drop saat penuh); (d) timing login user bcrypt-lama vs Argon2 masih berbeda tipis sampai di-upgrade.
+
+**Pengujian**: unit (passwordhash, mailer + SMTP palsu, notify, auth), integrasi MariaDB nyata (`ACS_TEST_DSN` — termasuk 8 Consume paralel = 1 pemenang), e2e **S12** (12/12 lulus), `go test -race ./...` (Docker 1.26.9), spec 124 operation (redocly valid), parity 116/116. **Dibuktikan manual**: login email di browser, alur reset di UI dengan token tersisip DB (password baru berlaku, lama ditolak, token tak bisa dipakai ulang), ganti password → JWT lama 401 / baru 200, email reset nyata terkirim lewat Gmail SMTP.
+
 ### BELUM
 
 - Gladi jaringan ANTAR-MESIN sungguhan (§3a) — hanya bisa dari segmen jaringan CPE.

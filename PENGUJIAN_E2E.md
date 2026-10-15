@@ -20,7 +20,7 @@ nyata dan tidak punya kuirk per-firmware. Gunanya:
 
 ---
 
-## 1. Yang Diuji (11 skenario)
+## 1. Yang Diuji (12 skenario)
 
 | # | Skenario | Yang dibuktikan |
 |---|---|---|
@@ -35,6 +35,7 @@ nyata dan tidak punya kuirk per-firmware. Gunanya:
 | S9 | Preset drift-heal | Preset `enforce=1`, device menyimpang → ACS otomatis mengantre `SetParameterValues` → CPE konvergen |
 | S10 | Regresi keamanan | Role ENDUSER dikurung ke `/self-service` (403 di API staf); Connection Request ke alamat metadata-cloud ditolak (SSRF guard) |
 | S11 | CRUD lengkap | Katalog (vendor/OUI/model/mapping) get·patch·delete + **guard 409** bila masih dipakai (vendor ZTE nyata), **revive OUI** yang pernah dihapus, device delete → task terbuka **CANCELLED** → Inform berikutnya **revive** (id sama, task lama tidak jalan), tenant get/delete (guard user/device) + scope, GET user by id + scope, firmware get/patch/delete (identitas isi file tak berubah), tag patch (+ tag global hanya superadmin), preset get (scope), ZTP get 404 |
+| S12 | Auth email & reset | Login dengan **email** (tak peka huruf besar, spasi dipangkas) + kompatibilitas username; pesan 401 **seragam** (salah password vs email tak dikenal); `forgot-password` 202 generik untuk email tak terdaftar + **429** rate limit; `reset-password` token ngawur → 400; **admin reset** → password baru berlaku, lama ditolak, dan **JWT lama dicabut (401)**. Tidak mengirim email ke alamat nyata (domain `@e2e.local` dibuang mailer). Alur token email→tautan→password baru dibuktikan di test unit + integrasi MariaDB (`ACS_TEST_DSN`) + uji manual |
 
 Status terakhir: **11/11 PASS**, stabil pada 3 run berturut-turut (2026-10-15).
 

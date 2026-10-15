@@ -1,29 +1,58 @@
 # LOGIN.md — Cara Masuk ke ACS
 
-Panduan singkat login untuk Tim Operations dan developer. Versi ringkas ada di `LOGIN_INSTRUCTION.md`; versi lengkap bergambar di `PANDUAN_LOGIN_ACS.pdf`.
+Panduan login untuk Tim Operations dan developer. Ringkasan ada di `LOGIN_INSTRUCTION.md`; versi bergambar di `PANDUAN_LOGIN_ACS.pdf`.
 
-> **Tidak ada akun bawaan (default account).** Akun pertama harus dibuat lewat `seed-admin` (lihat §2). Jangan menulis password di file ini, di commit, atau di chat tim.
+> **Tidak ada akun bawaan (default account).** Akun pertama dibuat lewat `seed-admin` (§2). Jangan menulis password di file ini, di commit, atau di chat tim.
 
 ## 1. Alamat
 
 | Lingkungan | UI | REST API |
 |---|---|---|
 | Dev lokal (Vite) | http://localhost:5173/login | http://localhost:18080/api/v1 |
-| Docker compose | sesuai reverse proxy / port yang dipublish | port `ACS_HTTP_ADDR` (default `:8080` di dalam container) |
+| Docker compose | sesuai reverse proxy / port yang dipublish | port `ACS_HTTP_ADDR` (default `:8080` di container) |
 
-Endpoint CPE (TR-069) **terpisah** dari UI: `http://<host>:7547/cwmp` (`ACS_CWMP_ADDR`). Login UI/API tidak berlaku di sana — CPE memakai kredensial CWMP per-tenant (Basic Auth).
+Endpoint CPE (TR-069) **terpisah** dari UI: `http://<host>:7547/cwmp`. Login UI/API tidak berlaku di sana — CPE memakai kredensial CWMP per-tenant (Basic Auth).
 
 ## 2. Membuat akun SUPERADMIN pertama
 
 ```bash
-docker compose exec acsd /app/seed-admin -username <USERNAME> -password <PASSWORD> -email <EMAIL>
+docker compose exec acsd /app/seed-admin -username <USERNAME> -password <PASSWORD> -email <EMAIL> -fullname "<NAMA>"
 ```
 
-- Pakai password kuat dan unik; ganti segera setelah login pertama (§5).
-- Perintah ini hanya untuk bootstrap. Akun berikutnya dibuat dari menu **Administrasi → Users** oleh SUPERADMIN/ADMIN.
-- Di stack dev lokal saat ini ada akun uji sementara (`e2e-super`, `demo-admin`). Itu **khusus dev**: hapus atau ganti passwordnya sebelum UAT, jangan pernah dibawa ke lingkungan bersama/produksi.
+- Di Git Bash Windows awali dengan `MSYS_NO_PATHCONV=1` (kalau tidak, path `/app/...` diterjemahkan keliru).
+- Login selanjutnya memakai **email** + password. Password disimpan sebagai hash **Argon2id** (64 MiB, t=3, p=2); hash bcrypt lama otomatis di-upgrade saat login berhasil.
+- Gunakan password kuat dan unik (≥ 12 karakter, campuran). Batas server: 8–128 karakter.
+- Akun berikutnya dibuat dari **Administrasi → Users** oleh SUPERADMIN/ADMIN. Email wajib valid & unik; akun baru menerima email selamat datang (tanpa password).
+- Akun uji lokal (`e2e-super`, `demo-admin`) hanya untuk dev — hapus/ganti sebelum UAT.
 
-## 3. Role (RBAC)
+## 3. Masuk (email + password)
+
+Halaman login meminta **email** dan password (email tak peka huruf besar/kecil). Tambahan UX: tampilkan/sembunyikan password, peringatan Caps Lock, opsi "Ingat email di perangkat ini" (hanya email yang disimpan, tidak pernah password).
+Untuk skrip lama, API masih menerima field `username` sebagai pengganti `email`.
+
+## 4. Lupa password (lewat email)
+
+1. Di halaman login klik **Lupa password?**, isi email akun.
+2. Jika email terdaftar, sistem mengirim tautan `…/reset-password#token=…` (berlaku **30 menit**, **sekali pakai**). Respons layar selalu sama — baik email terdaftar atau tidak (anti enumerasi akun).
+3. Buka tautan, buat password baru → sistem mengirim email konfirmasi dan lockout akun dibersihkan.
+
+Batas: 3 permintaan per akun per jam, dan rate limit per-IP. Token hanya disimpan sebagai hash (SHA-256); tautan memakai *fragment* sehingga token tidak masuk log server maupun header Referer.
+
+**Konfigurasi email** (di `.env`, lihat `.env.example`): `ACS_SMTP_HOST`, `ACS_SMTP_PORT` (587 = STARTTLS, 465 = TLS implisit), `ACS_SMTP_USERNAME`, `ACS_SMTP_PASSWORD`, `ACS_SMTP_FROM`, `ACS_PUBLIC_URL` (origin frontend untuk tautan). Untuk Gmail pakai **App Password** (butuh 2-Step Verification), bukan password akun Google. STARTTLS wajib — kredensial tidak pernah dikirim lewat koneksi polos. Tanpa SMTP, "lupa password" menjawab 503 dan reset dilakukan Admin lewat *Administrasi → Users → Reset password*.
+
+## 5. Email notifikasi yang dikirim
+
+| Peristiwa | Penerima |
+|---|---|
+| Permintaan reset password | pemilik akun (tautan) |
+| Password berhasil diganti (reset email / ganti sendiri) | pemilik akun |
+| Password direset oleh admin | pemilik akun |
+| Akun terkunci (5× salah password) | pemilik akun |
+| Akun baru dibuat admin | pemilik akun baru |
+
+Email **tidak pernah memuat password**. Alamat berdomain khusus-uji (`*.local`, `*.test`, `example.*`, …) dilewati agar akun uji/e2e tidak menghasilkan bounce.
+
+## 6. Role (RBAC)
 
 | Role | Cakupan | Ringkasan hak |
 |---|---|---|
@@ -35,24 +64,26 @@ docker compose exec acsd /app/seed-admin -username <USERNAME> -password <PASSWOR
 
 Item global (`tenant_id` kosong) hanya bisa diubah/dihapus SUPERADMIN; ADMIN tenant akan menerima 403.
 
-## 4. Keamanan login
+## 7. Keamanan sesi & login
 
-- **Lockout:** 5 kali password salah → akun terkunci 15 menit.
-- **SSO (OIDC):** bila dikonfigurasi, tombol SSO muncul di halaman login. Akun SSO tidak punya password lokal.
-- **API token:** untuk integrasi/BSS, buat lewat menu token; punya umur (TTL) dan scope tenant. Kirim sebagai `Authorization: Bearer <token>`.
-- Semua endpoint mutasi wajib terautentikasi; tidak ada jalur tanpa login.
+- **Lockout:** 5 kali password salah → akun terkunci 15 menit (pemilik menerima email). Pesan error disamarkan seragam: "email atau password salah".
+- **Pencabutan sesi:** JWT yang terbit sebelum password diganti (reset email, ganti sendiri, reset admin) ditolak; akun yang dinonaktifkan/dihapus juga langsung kehilangan akses. Ganti password dari Profil menerbitkan token baru, jadi Anda tidak terlempar.
+- **SSO (OIDC):** bila dikonfigurasi, tombol SSO aktif. Akun SSO tidak punya password lokal.
+- **API token:** untuk integrasi/BSS, buat di Administrasi; punya umur (TTL) dan scope tenant. Kirim sebagai `Authorization: Bearer <token>`.
+- Endpoint mutasi wajib terautentikasi, kecuali yang setara login (`/auth/login`, `/auth/forgot-password`, `/auth/reset-password`) yang dijaga rate limit, token sekali pakai, dan respons seragam.
 
-## 5. Ganti password
+## 8. Ganti password sendiri
 
-- UI: ikon kunci di pojok atas.
-- API: `PATCH /api/v1/auth/password`.
+Profil → Keamanan → **Ganti**, atau `PATCH /api/v1/auth/password` (wajib `current_password`).
 
-## 6. Troubleshooting
+## 9. Troubleshooting
 
 | Gejala | Penyebab umum | Tindakan |
 |---|---|---|
-| "Akun terkunci" | 5 percobaan salah | Tunggu 15 menit atau minta ADMIN/SUPERADMIN mereset |
+| "Email atau password salah" berulang | Salah ketik / akun terkunci | Tunggu 15 menit atau **Lupa password?** |
+| Email reset tidak datang | Folder spam, SMTP belum dikonfigurasi, atau domain email reserved | Cek spam; pastikan `ACS_SMTP_*` terisi; lihat log `acsd` (`mailer:`) |
+| "Tautan tidak valid" saat reset | Sudah dipakai / lewat 30 menit / password diganti sejak itu | Minta tautan baru |
 | Login berhasil tapi menu kosong / 403 | Role tidak punya hak | Cek role di Administrasi → Users |
-| UI tidak bisa menjangkau API | Proxy Vite/port salah | Pastikan stack `docker compose ps` sehat dan API di `:18080` |
-| `seed-admin` gagal | Migrasi belum jalan / DB belum siap | `docker compose logs migrate mariadb`, ulangi setelah DB healthy |
-| Sudah login di tab lain lalu dipaksa keluar | Token kedaluwarsa | Login ulang |
+| "Server sedang sibuk" saat login | Antrean hashing Argon2 penuh (beban/serangan) | Coba lagi beberapa detik |
+| UI tidak bisa menjangkau API | Proxy Vite/port salah | `docker compose ps`, pastikan API di `:18080` |
+| `seed-admin` gagal | Migrasi belum jalan / DB belum siap / email sudah dipakai | `docker compose logs migrate mariadb`, ulangi setelah DB healthy |

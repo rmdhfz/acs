@@ -136,15 +136,24 @@ paths:
     post:
       operationId: login
       tags: [Auth]
-      summary: Login dan menerbitkan JWT sesi user
+      summary: Login (email + password) dan menerbitkan JWT sesi user
       description: |
         Endpoint publik (tanpa autentikasi) — titik masuk satu-satunya untuk
-        mendapatkan JWT. Proteksi brute-force: akun dikunci 15 menit setelah 5
-        kali percobaan password salah berturut-turut; pesan error kunci akun
-        SENGAJA disamarkan sama persis dengan "username/password salah" (tidak
-        membocorkan apakah akun terkunci atau memang salah password). Login ke
-        akun milik tenant yang sudah dinonaktifkan ditolak dengan pesan
-        terpisah (tenant tidak aktif) — SETELAH kredensial terbukti benar.
+        mendapatkan JWT. Login memakai EMAIL + password; field `username` tetap
+        diterima untuk kompatibilitas skrip lama (bila `email` dan `username`
+        sama-sama ada, `email` yang dipakai; email dicocokkan tanpa peka
+        huruf besar/kecil). Password disimpan sebagai hash Argon2id; hash bcrypt
+        lama otomatis di-upgrade saat login berhasil. Proteksi brute-force:
+        akun dikunci 15 menit setelah 5 kali percobaan password salah
+        berturut-turut (pemilik akun menerima email pemberitahuan); pesan error
+        kunci akun SENGAJA disamarkan sama persis dengan "email atau password
+        salah" (tidak membocorkan apakah akun terkunci atau memang salah
+        password). Login ke akun milik tenant yang sudah dinonaktifkan ditolak
+        dengan pesan terpisah (tenant tidak aktif) — SETELAH kredensial terbukti
+        benar. JWT sesi dicabut otomatis bila password akun berubah setelah token
+        terbit, atau akun dinonaktifkan/dihapus. Saat server sedang padat
+        (antrean hashing Argon2 penuh) login menjawab 503 — bukan kredensial salah
+        dan TIDAK dihitung sebagai percobaan gagal.
       security: []
       requestBody:
         required: true
@@ -160,12 +169,100 @@ paths:
               schema:
                 $ref: '#/components/schemas/LoginResponse'
         '400':
-          description: username/password kosong.
+          description: Email (atau username) / password kosong.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '401':
           description: Kredensial salah, akun terkunci (brute-force), akun nonaktif, atau tenant pemilik akun nonaktif.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '503':
+          description: Server sibuk (antrean hashing penuh); coba lagi sebentar.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /auth/forgot-password:
+    post:
+      operationId: forgotPassword
+      tags: [Auth]
+      summary: Minta tautan reset password lewat email
+      description: |
+        Endpoint publik (tanpa autentikasi) — pemanggilnya justru user yang
+        tidak bisa login. Kontrol: rate limit per-IP ketat, batas 3 permintaan
+        per akun per jam, token sekali pakai berumur pendek (default 30 menit,
+        hanya hash SHA-256 yang disimpan), dan respons SERAGAM (202) terlepas
+        dari apakah email terdaftar/aktif atau terkena batas — supaya endpoint
+        tidak bisa dipakai menebak email terdaftar. Email dikirim asinkron;
+        tautan memakai fragment (`/reset-password#token=…`) agar token tidak
+        masuk log server maupun header Referer. Bila SMTP belum dikonfigurasi,
+        endpoint menjawab 503.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgotPasswordRequest'
+      responses:
+        '202':
+          description: Permintaan diterima (jika email terdaftar, tautan dikirim).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageResponse' }
+        '400':
+          description: Email kosong / payload tidak valid.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Rate limit per-IP terlampaui.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '503':
+          description: Reset lewat email belum diaktifkan (SMTP belum dikonfigurasi).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /auth/reset-password:
+    post:
+      operationId: resetPassword
+      tags: [Auth]
+      summary: Tetapkan password baru dengan token dari email
+      description: |
+        Endpoint publik, tetapi hanya berhasil dengan token sekali-pakai dari
+        email. Token dikonsumsi secara atomik (satu dari sekian request paralel
+        yang menang); password baru divalidasi SEBELUM token dihanguskan agar
+        salah ketik tidak menghilangkan tautan. Setelah berhasil: lockout akun
+        dibersihkan, semua token reset lain milik akun dimatikan, dan pemilik
+        akun menerima email konfirmasi. Token tidak valid / terpakai /
+        kedaluwarsa dijawab dengan satu pesan yang sama (400).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+      responses:
+        '204':
+          description: Password berhasil diubah.
+        '400':
+          description: Token tidak valid/kedaluwarsa, atau password baru tidak memenuhi syarat.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Rate limit per-IP terlampaui.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '503':
+          description: Reset lewat email belum diaktifkan.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -307,7 +404,10 @@ paths:
         `PATCH /users/:id/password` yang itu admin mereset password user
         LAIN). Wajib menyertakan `current_password` yang benar; tanpa verifikasi
         ini siapa pun yang membajak bearer token bisa mengunci pemilik akun asli
-        secara permanen.
+        secara permanen. Pergantian password MENCABUT semua sesi JWT lama
+        (termasuk milik pemanggil); respons berisi JWT baru agar pemanggil tetap
+        login — simpan menggantikan token sebelumnya. Pemilik akun menerima
+        email pemberitahuan.
       security:
         - bearerAuth: []
       requestBody:
@@ -317,10 +417,13 @@ paths:
             schema:
               $ref: '#/components/schemas/ChangeOwnPasswordRequest'
       responses:
-        '204':
-          description: Password berhasil diganti.
+        '200':
+          description: Password berhasil diganti; JWT baru menggantikan token lama.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenResponse' }
         '400':
-          description: Payload tidak valid, field kosong, atau `new_password` kurang dari 8 karakter.
+          description: Payload tidak valid, field kosong, atau `new_password` kurang dari 8 karakter / lebih dari 128 karakter.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -4890,10 +4993,25 @@ components:
     # ---------- Auth ----------
     LoginRequest:
       type: object
+      description: Isi `email` (disarankan) ATAU `username` (kompatibilitas lama), plus `password`.
       properties:
-        username: { type: string }
+        email: { type: string, format: email, example: nama@perusahaan.com }
+        username: { type: string, description: "Kompatibilitas lama; gunakan email." }
         password: { type: string, format: password }
-      required: [username, password]
+      required: [password]
+
+    ForgotPasswordRequest:
+      type: object
+      properties:
+        email: { type: string, format: email }
+      required: [email]
+
+    ResetPasswordRequest:
+      type: object
+      properties:
+        token: { type: string, description: "Token dari tautan email (fragment #token=…)." }
+        new_password: { type: string, format: password, minLength: 8, maxLength: 128 }
+      required: [token, new_password]
 
     LoginResponse:
       type: object
@@ -4909,6 +5027,13 @@ components:
             roles: { type: array, items: { type: string } }
             tenant_id: { type: integer, format: int64, nullable: true }
       required: [access_token, token_type, user]
+
+    TokenResponse:
+      type: object
+      properties:
+        access_token: { type: string }
+        token_type: { type: string, example: Bearer }
+      required: [access_token, token_type]
 
     ChangeOwnPasswordRequest:
       type: object
