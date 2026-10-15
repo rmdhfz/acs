@@ -263,10 +263,15 @@ func doPost(ctx context.Context, hc *http.Client, o SessionOpts, cookies []*http
 		if body != nil {
 			req.Header.Set("Content-Type", "text/xml; charset=utf-8")
 		}
-		// Cookie sesi acs_session diteruskan manual: server men-set-nya dengan
-		// Secure=true sehingga cookie jar standar tidak mengirimnya balik lewat
-		// http:// (dev). CPE nyata di belakang TLS terminator tidak kena ini.
+		// Cookie sesi acs_session diteruskan manual, TETAPI mengikuti aturan
+		// klien nyata (libcurl dan kebanyakan stack CPE): cookie ber-flag Secure
+		// TIDAK dikirim lewat http://. Sebelumnya simulator mengirim cookie apa
+		// pun, sehingga bug server "cookie sesi selalu Secure" (yang membuat CPE
+		// nyata di http tak pernah menerima RPC) lolos e2e. Jangan dilonggarkan.
 		for _, ck := range cookies {
+			if ck.Secure && req.URL.Scheme != "https" {
+				continue
+			}
 			req.AddCookie(ck)
 		}
 		resp, err := hc.Do(req)

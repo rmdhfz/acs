@@ -83,6 +83,18 @@ func NewService(
 	}
 }
 
+// RedactToken menyingkat token sesi untuk log. Token sesi (cookie acs_session)
+// adalah satu-satunya bukti autentikasi untuk POST lanjutan dalam sesi CWMP;
+// siapa pun yang bisa membaca log selama sesi terbuka bisa menyuntik respons
+// RPC atau menarik task bila token tampil utuh. 8 karakter cukup untuk
+// mengorelasikan baris log.
+func RedactToken(t string) string {
+	if len(t) <= 8 {
+		return "***"
+	}
+	return t[:8] + "…"
+}
+
 // notifyWebhook mem-fan-out event webhook TANPA menggagalkan alur sesi CWMP
 // (error di-log saja) dan nil-safe bila webhook tidak dikonfigurasi.
 func (s *Service) notifyWebhook(ctx context.Context, eventCode string, tenantID *uint64, payload any) {
@@ -473,7 +485,7 @@ func (s *Service) NextRequest(ctx context.Context, token string) (*OutboundRPC, 
 			// duplikat lagi di delivery/cwmp/handler.go, supaya satu event
 			// cuma menghasilkan satu baris log (CLAUDE.md: jaga volume log).
 			s.log().Info("cwmp: sesi ditutup (tidak ada task tersisa)",
-				"device_id", sess.DeviceID, "session_token", token)
+				"device_id", sess.DeviceID, "session_token", RedactToken(token))
 			return nil, true, nil
 		}
 		return nil, true, err
@@ -487,7 +499,7 @@ func (s *Service) NextRequest(ctx context.Context, token string) (*OutboundRPC, 
 		return nil, true, err
 	}
 	s.log().Debug("cwmp: task ditandai SENT, siap dikirim ke CPE",
-		"device_id", sess.DeviceID, "session_token", token, "task_id", t.ID, "task_type", typeRef.Code)
+		"device_id", sess.DeviceID, "session_token", RedactToken(token), "task_id", t.ID, "task_type", typeRef.Code)
 
 	var ns string
 	if sess.CWMPNamespace != nil {

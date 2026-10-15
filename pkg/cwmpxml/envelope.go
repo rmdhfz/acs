@@ -12,6 +12,9 @@ import (
 	"bytes"
 	"encoding/xml"
 	"fmt"
+	"strings"
+
+	"golang.org/x/net/html/charset"
 )
 
 const (
@@ -114,10 +117,33 @@ func Unmarshal(data []byte) (*Envelope, error) {
 		return &Envelope{}, nil
 	}
 	var env Envelope
-	if err := xml.Unmarshal(data, &env); err != nil {
+	// CharsetReader: encoding/xml hanya paham UTF-8 dan MENOLAK dokumen yang
+	// mendeklarasikan encoding lain ("declared but Decoder.CharsetReader is
+	// nil"). Sebagian CPE (firmware lama) mengirim encoding="ISO-8859-1" /
+	// windows-1252; tanpa ini seluruh Inform ditolak dan CPE tak pernah bisa
+	// terhubung. Label tak dikenal tetap error (bukan diam-diam salah baca).
+	dec := xml.NewDecoder(bytes.NewReader(data))
+	dec.CharsetReader = charset.NewReaderLabel
+	if err := dec.Decode(&env); err != nil {
 		return nil, fmt.Errorf("cwmpxml: gagal unmarshal envelope: %w", err)
 	}
+	env.normalize()
 	return &env, nil
+}
+
+// normalize merapikan spasi di sekitar field IDENTITAS device pada Inform.
+// OUI + SerialNumber adalah kunci unik device (devices.uq_devices_oui_serial)
+// — XML yang di-pretty-print dengan spasi/newline di sekitar nilai tidak boleh
+// menghasilkan identitas "baru" untuk CPE yang sama. Nilai PARAMETER sengaja
+// TIDAK disentuh: spasi di sana bisa bermakna (mis. SSID).
+func (e *Envelope) normalize() {
+	if inf := e.Body.Inform; inf != nil {
+		d := &inf.DeviceId
+		d.Manufacturer = strings.TrimSpace(d.Manufacturer)
+		d.OUI = strings.TrimSpace(d.OUI)
+		d.ProductClass = strings.TrimSpace(d.ProductClass)
+		d.SerialNumber = strings.TrimSpace(d.SerialNumber)
+	}
 }
 
 // Marshal menghasilkan XML lengkap dengan deklarasi <?xml?> di depan.

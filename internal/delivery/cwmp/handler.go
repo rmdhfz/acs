@@ -6,11 +6,13 @@
 package cwmp
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/labstack/echo/v5"
@@ -23,15 +25,25 @@ import (
 
 const sessionCookieName = "acs_session"
 
+// SessionService adalah bagian usecase/session yang dibutuhkan handler ini.
+// Dipakai sebagai interface (bukan *session.Service) supaya alur HTTP CWMP
+// bisa diuji penuh dengan mock CPE tanpa merakit seluruh usecase + repository.
+// *session.Service memenuhinya apa adanya.
+type SessionService interface {
+	HandleInform(ctx context.Context, in session.InformInput) (*session.InformResult, error)
+	HandleRPCResponse(ctx context.Context, resp session.RPCResponse) error
+	NextRequest(ctx context.Context, token string) (*session.OutboundRPC, bool, error)
+}
+
 type Handler struct {
-	sessions *session.Service
+	sessions SessionService
 	log      *slog.Logger
 }
 
 // NewHandler — logger nil diperbolehkan (fallback slog.Default()), supaya
 // pemanggil yang belum siap sedia logger khusus (mis. test) tidak wajib
 // menyediakannya.
-func NewHandler(sessions *session.Service, logger *slog.Logger) *Handler {
+func NewHandler(sessions SessionService, logger *slog.Logger) *Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -79,7 +91,7 @@ func (h *Handler) handle(c *echo.Context) error {
 	rpcResp := buildRPCResponse(token, env)
 	h.logRPCResponse(token, rpcResp)
 	if err := h.sessions.HandleRPCResponse(c.Request().Context(), rpcResp); err != nil {
-		h.log.Error("cwmp: HandleRPCResponse gagal", "session_token", token, "error", err)
+		h.log.Error("cwmp: HandleRPCResponse gagal", "session_token", session.RedactToken(token), "error", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 	return h.next(c, token)
@@ -116,7 +128,7 @@ func (h *Handler) handleInform(c *echo.Context, token string, env *cwmpxml.Envel
 	username, password, _ := c.Request().BasicAuth()
 
 	h.log.Debug("cwmp: Inform diterima",
-		"session_token", token, "oui", inf.DeviceId.OUI, "serial_number", inf.DeviceId.SerialNumber,
+		"session_token", session.RedactToken(token), "oui", inf.DeviceId.OUI, "serial_number", inf.DeviceId.SerialNumber,
 		"cwmp_namespace", ns, "event_count", len(events))
 
 	result, err := h.sessions.HandleInform(c.Request().Context(), session.InformInput{
@@ -145,13 +157,19 @@ func (h *Handler) handleInform(c *echo.Context, token string, env *cwmpxml.Envel
 			c.Response().Header().Set("WWW-Authenticate", `Basic realm="ACS"`)
 			return c.NoContent(http.StatusUnauthorized)
 		}
+		if errors.Is(err, domain.ErrConflict) {
+			// Mis. device dengan OUI+serial ini dulu dihapus oleh tenant LAIN: revive
+			// lintas tenant sengaja tidak dilakukan (lihat deviceRepository.Create).
+			h.log.Warn("cwmp: Inform ditolak (konflik kepemilikan device)", "oui", inf.DeviceId.OUI, "serial_number", inf.DeviceId.SerialNumber)
+			return c.NoContent(http.StatusConflict)
+		}
 		h.log.Error("cwmp: HandleInform gagal", "oui", inf.DeviceId.OUI, "serial_number", inf.DeviceId.SerialNumber, "error", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 	setSessionCookie(c, result.SessionToken)
 
 	h.log.Info("cwmp: sesi dibuka/dilanjutkan dari Inform",
-		"device_id", result.DeviceID, "session_token", result.SessionToken)
+		"device_id", result.DeviceID, "session_token", session.RedactToken(result.SessionToken))
 
 	respEnv := cwmpxml.NewEnvelope(headerIDFrom(env), ns, cwmpxml.Body{
 		InformResponse: &cwmpxml.InformResponse{XMLName: cwmpxml.RPCName(ns, "InformResponse"), MaxEnvelopes: 1},
@@ -169,7 +187,7 @@ func (h *Handler) next(c *echo.Context, token string) error {
 	}
 	rpc, closeSession, err := h.sessions.NextRequest(c.Request().Context(), token)
 	if err != nil {
-		h.log.Error("cwmp: NextRequest gagal", "session_token", token, "error", err)
+		h.log.Error("cwmp: NextRequest gagal", "session_token", session.RedactToken(token), "error", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 	if closeSession {
@@ -194,10 +212,10 @@ func (h *Handler) next(c *echo.Context, token string) error {
 
 	body, err := BuildRequestBody(rpc.TaskType, rpc.TaskUUID, rpc.Parameters, ns)
 	if err != nil {
-		h.log.Error("cwmp: BuildRequestBody gagal", "session_token", token, "task_type", rpc.TaskType, "error", err)
+		h.log.Error("cwmp: BuildRequestBody gagal", "session_token", session.RedactToken(token), "task_type", rpc.TaskType, "error", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
-	h.log.Debug("cwmp: mengirim RPC ke CPE", "session_token", token, "task_uuid", rpc.TaskUUID, "task_type", rpc.TaskType, "cwmp_namespace", ns)
+	h.log.Debug("cwmp: mengirim RPC ke CPE", "session_token", session.RedactToken(token), "task_uuid", rpc.TaskUUID, "task_type", rpc.TaskType, "cwmp_namespace", ns)
 	return writeEnvelope(c, cwmpxml.NewEnvelope(rpc.TaskUUID, ns, body))
 }
 
@@ -209,12 +227,12 @@ func (h *Handler) logRPCResponse(token string, resp session.RPCResponse) {
 	switch {
 	case resp.Fault != nil:
 		h.log.Error("cwmp: menerima cwmp:Fault dari CPE",
-			"session_token", token, "fault_code", resp.Fault.Code, "fault_string", resp.Fault.Message)
+			"session_token", session.RedactToken(token), "fault_code", resp.Fault.Code, "fault_string", resp.Fault.Message)
 	case resp.TransferComplete != nil:
 		h.log.Debug("cwmp: menerima TransferComplete dari CPE",
-			"session_token", token, "command_key", resp.TransferComplete.CommandKey, "success", resp.TransferComplete.Success)
+			"session_token", session.RedactToken(token), "command_key", resp.TransferComplete.CommandKey, "success", resp.TransferComplete.Success)
 	default:
-		h.log.Debug("cwmp: menerima respons RPC dari CPE", "session_token", token)
+		h.log.Debug("cwmp: menerima respons RPC dari CPE", "session_token", session.RedactToken(token))
 	}
 }
 
@@ -286,19 +304,31 @@ func readSessionToken(c *echo.Context) string {
 	return ""
 }
 
+// requestIsSecure — true bila request datang lewat TLS langsung atau lewat
+// reverse proxy yang menandainya https.
+func requestIsSecure(r *http.Request) bool {
+	return r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+}
+
 func setSessionCookie(c *echo.Context, token string) {
-	// Secure=true: hanya dikirim via HTTPS (TECH.md §8: endpoint CWMP wajib TLS)
-	// HttpOnly=true: tidak bisa dibaca JavaScript (XSS protection)
-	// SameSite=Strict: mencegah CSRF — request cross-site tidak membawa cookie
-	// MaxAge=3600: 1 jam, sejalan dengan umur sesi CWMP tipikal (device
-	// periodic inform interval biasanya 15-60 menit; sesi yang lebih panjang
-	// dari ini sangat tidak umum). Cookie kedaluwarsa = CPE harus Inform ulang.
+	// Secure HANYA bila request memang https. Sebelumnya selalu true padahal
+	// acsd melayani HTTP polos: CPE berbasis libcurl TIDAK mengirim cookie
+	// Secure lewat http://, sehingga POST kosong sesudah InformResponse tiba
+	// tanpa cookie -> token kosong -> sesi ditutup (204) dan TIDAK ADA RPC
+	// (provisioning/reboot/dst.) yang pernah terkirim di deployment http.
+	// Simulator CPE tidak menangkap ini karena mengabaikan atribut Secure.
+	// TECH.md §8 tetap mewajibkan TLS di produksi; di sana (TLS langsung atau
+	// X-Forwarded-Proto: https dari terminator) flag Secure menyala sendiri.
+	// HttpOnly=true: tidak bisa dibaca JavaScript.
+	// SameSite=Strict: request cross-site tidak membawa cookie.
+	// MaxAge=3600: 1 jam, sejalan dengan umur sesi CWMP tipikal (periodic inform
+	// interval biasanya 15-60 menit). Cookie kedaluwarsa = CPE harus Inform ulang.
 	c.SetCookie(&http.Cookie{
 		Name:     sessionCookieName,
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   true,
+		Secure:   requestIsSecure(c.Request()),
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   3600,
 	})

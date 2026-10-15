@@ -3,6 +3,7 @@ package cwmp
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	"acs/internal/domain"
 	"acs/pkg/cwmpxml"
@@ -28,8 +29,10 @@ func BuildRequestBody(taskTypeCode, taskUUID string, parameters []byte, ns strin
 			return cwmpxml.Body{}, err
 		}
 		return cwmpxml.Body{GetParameterValues: &cwmpxml.GetParameterValues{
-			XMLName:        cwmpxml.RPCName(ns, "GetParameterValues"),
-			ParameterNames: cwmpxml.StringList{Items: p.Names},
+			XMLName: cwmpxml.RPCName(ns, "GetParameterValues"),
+			// soap-enc:arrayType WAJIB menurut TR-069 (array SOAP); firmware yang
+			// ketat menolak list tanpanya.
+			ParameterNames: cwmpxml.StringList{ArrayType: fmt.Sprintf("xsd:string[%d]", len(p.Names)), Items: p.Names},
 		}}, nil
 
 	case domain.TaskTypeSetParameterValues:
@@ -40,13 +43,21 @@ func BuildRequestBody(taskTypeCode, taskUUID string, parameters []byte, ns strin
 		if err := json.Unmarshal(parameters, &p); err != nil {
 			return cwmpxml.Body{}, err
 		}
+		// Urutan nama diurutkan: iterasi map Go acak, dan RPC yang tidak
+		// deterministik menyulitkan debugging (log/capture berbeda tiap kirim).
+		names := make([]string, 0, len(p.Values))
+		for name := range p.Values {
+			names = append(names, name)
+		}
+		sort.Strings(names)
 		var pl cwmpxml.ParameterValueList
-		for name, val := range p.Values {
+		for _, name := range names {
 			pl.Values = append(pl.Values, cwmpxml.ParameterValue{
 				Name:  name,
-				Value: cwmpxml.ValueType{Type: "xsd:string", Value: val},
+				Value: cwmpxml.ValueType{Type: "xsd:string", Value: p.Values[name]},
 			})
 		}
+		pl.ArrayType = fmt.Sprintf("cwmp:ParameterValueStruct[%d]", len(pl.Values))
 		key := p.ParameterKey
 		if key == "" {
 			key = taskUUID
