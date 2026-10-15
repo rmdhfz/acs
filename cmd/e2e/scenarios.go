@@ -262,6 +262,8 @@ func scenarioTenantIsolation(ctx context.Context, w *World) result {
 
 // S7 — Connection Request: ACS memaksa CPE Inform segera lewat
 // ConnectionRequestURL, CPE membuka sesi baru dengan event "6 CONNECTION REQUEST".
+// CPE simulasi MEWAJIBKAN HTTP Digest (TR-069 §3.2.2): ACS harus menjawab
+// tantangan 401; password salah harus ditolak tanpa memicu Inform.
 func scenarioConnectionRequest(ctx context.Context, w *World) result {
 	// Vendor "cdata" sengaja: BUKAN "zte" (dipakai rollout firmware S8) —
 	// device CR ekstra ini tak boleh ikut tersapu wave rollout S8.
@@ -281,6 +283,8 @@ func scenarioConnectionRequest(ctx context.Context, w *World) result {
 		got = append(got, r)
 		mu.Unlock()
 	})
+	const crUser, crPass = "acs-e2e", "cr-digest-secret"
+	crl.RequireDigest(crUser, crPass)
 	crURL, err := crl.Start(w.crHost)
 	if err != nil {
 		return failr("start listener: %v", err)
@@ -297,9 +301,16 @@ func scenarioConnectionRequest(ctx context.Context, w *World) result {
 		return failr("%v", err)
 	}
 
+	// Kredensial Connection Request diisi operator (CPE tidak melaporkan password).
+	if st, body := w.pilotAdmin.status(http.MethodPatch, fmt.Sprintf("/api/v1/devices/%d", d.ID), map[string]any{
+		"connection_request_username": crUser, "connection_request_password": crPass,
+	}); st >= 400 {
+		return failr("PATCH kredensial connection request: HTTP %d %s", st, body)
+	}
+
 	st, body := w.pilotAdmin.status(http.MethodPost, fmt.Sprintf("/api/v1/devices/%d/connection-request", d.ID), map[string]any{})
 	if st >= 400 {
-		return failr("POST connection-request: HTTP %d %s", st, body)
+		return failr("POST connection-request (Digest benar): HTTP %d %s", st, body)
 	}
 
 	gotOK := func() (int, bool) {
@@ -327,7 +338,25 @@ func scenarioConnectionRequest(ctx context.Context, w *World) result {
 	if !w.eventsContain(evs, "6 CONNECTION REQUEST") {
 		return failr("event '6 CONNECTION REQUEST' tidak tercatat (dapat: %s)", w.eventCodes(evs))
 	}
-	return pass("ACS trigger CR (%dx), CPE Inform balik dgn '6 CONNECTION REQUEST', event tercatat", crl.Fired())
+	if crl.Rejected() == 0 {
+		return failr("CPE tidak pernah menantang Digest (ACS mengirim kredensial tanpa ditantang?)")
+	}
+
+	// Negatif: password salah → CPE menolak (401), tidak ada Inform baru.
+	firedBefore, informsBefore := crl.Fired(), func() int { mu.Lock(); defer mu.Unlock(); return len(got) }()
+	if st, body := w.pilotAdmin.status(http.MethodPatch, fmt.Sprintf("/api/v1/devices/%d", d.ID), map[string]any{
+		"connection_request_password": "salah-total",
+	}); st >= 400 {
+		return failr("PATCH password salah: HTTP %d %s", st, body)
+	}
+	if st, _ := w.pilotAdmin.status(http.MethodPost, fmt.Sprintf("/api/v1/devices/%d/connection-request", d.ID), map[string]any{}); st < 400 {
+		return failr("Connection Request dengan password salah seharusnya GAGAL, dapat HTTP %d", st)
+	}
+	time.Sleep(1500 * time.Millisecond)
+	if crl.Fired() != firedBefore || func() int { mu.Lock(); defer mu.Unlock(); return len(got) }() != informsBefore {
+		return failr("password Digest salah tetap memicu Inform")
+	}
+	return pass("ACS menjawab tantangan Digest (CR %dx diterima, %d ditantang), Inform balik '6 CONNECTION REQUEST'; password salah ditolak tanpa Inform", crl.Fired(), crl.Rejected())
 }
 
 // S8 — firmware canary rollout: upload file, buat batch wave 100%, tiap CPE

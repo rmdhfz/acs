@@ -49,6 +49,8 @@ func main() {
 		connReq    = flag.Bool("conn-req", false, "aktifkan listener Connection Request (single device)")
 		crHost     = flag.String("cr-host", "host.docker.internal", "host Connection Request yang dilaporkan ke ACS")
 		crPort     = flag.Int("cr-port", 0, "port listener Connection Request (0 = acak)")
+		crUser     = flag.String("cr-user", "", "wajibkan HTTP Digest pada listener Connection Request dengan username ini (kosong = tanpa auth)")
+		crPass     = flag.String("cr-pass", "", "password Digest Connection Request (pasangan -cr-user)")
 		timeout    = flag.Duration("timeout", 30*time.Second, "timeout per request HTTP")
 		insecure   = flag.Bool("insecure", true, "abaikan verifikasi TLS ACS (dev)")
 		jsonOut    = flag.Bool("json", false, "keluarkan report JSON")
@@ -96,6 +98,9 @@ func main() {
 		crl = simcpe.NewConnReqListener(fmt.Sprintf(":%d", *crPort), dev, base, hc, func(r simcpe.SessionReport) {
 			fmt.Println("  [conn-req -> Inform]", r.String())
 		})
+		if *crUser != "" {
+			crl.RequireDigest(*crUser, *crPass)
+		}
 		url, err := crl.Start(*crHost)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "cpesim: listener Connection Request:", err)

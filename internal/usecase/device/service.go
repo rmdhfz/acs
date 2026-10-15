@@ -527,12 +527,8 @@ func (s *Service) TriggerConnectionRequest(ctx context.Context, actor domain.Act
 		return fmt.Errorf("%w: connection_request_url device menunjuk alamat yang tidak diizinkan", domain.ErrInvalidInput)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, *d.ConnectionRequestURL, nil)
-	if err != nil {
+	if _, err := http.NewRequestWithContext(ctx, http.MethodGet, *d.ConnectionRequestURL, nil); err != nil {
 		return fmt.Errorf("%w: URL connection request tidak valid", domain.ErrInvalidInput)
-	}
-	if username != "" {
-		req.SetBasicAuth(username, password)
 	}
 
 	// Timeout singkat: respons connection request seharusnya sangat cepat
@@ -545,7 +541,8 @@ func (s *Service) TriggerConnectionRequest(ctx context.Context, actor domain.Act
 			return http.ErrUseLastResponse
 		},
 	}
-	resp, err := client.Do(req)
+	// Digest (TR-069 §3.2.2) atau Basic — dipilih sesuai tantangan CPE.
+	resp, err := doConnectionRequest(ctx, client, *d.ConnectionRequestURL, username, password)
 
 	// Jika gagal via TCP (mis. timeout karena NAT), fallback ke STUN UDP (TR-111).
 	if err != nil || resp.StatusCode < 200 || resp.StatusCode >= 300 {

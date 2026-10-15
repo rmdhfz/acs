@@ -127,6 +127,17 @@ Mapping sengaja TANPA tombol Edit: mapping generik (model & pattern NULL) tidak 
 
 **Belum / dicatat:** nama jenis di pesan 409 masih snake_case internal (`parameter_mapping`, `rollout_batch`); `created_at` pada respons create tag = 0001-01-01 (Create tidak mengisi timestamp, sudah ada sebelumnya); `frontend/devmock` (mock API) belum mengimplementasikan endpoint baru; tidak ada test otomatis frontend (belum ada test runner) — verifikasi lewat browser manual + parity script.
 
+### LANJUTAN 5: Connection Request mendukung HTTP Digest
+
+Temuan saat memetakan protokol: ACS mengirim Connection Request dengan **Basic preemptive** saja, padahal TR-069 §3.2.2 mewajibkan Digest di endpoint CPE; simulator menerima request apa pun sehingga e2e S7 tidak bisa mendeteksinya. Risiko lapangan: tombol Connection Request gagal (401) pada CPE yang hanya menerima Digest.
+
+- `pkg/digestauth` (baru): Digest klien + verifier (MD5, MD5-sess, SHA-256, SHA-256-sess; qop auth atau tanpa qop; auth-int sengaja tidak didukung). Terbukti dengan **vektor resmi RFC 2617** + round-trip semua algoritma.
+- `usecase/device/connreq_http.go`: request pertama TANPA kredensial; jawab tantangan Digest (prioritas) atau Basic (hanya bila CPE menawarkan), retry sekali untuk `stale=true`, skema tak dikenal dikembalikan sebagai 401. Efek samping baik: password tidak lagi terkirim sebelum CPE memilih skema.
+- Simulator: `ConnReqListener.RequireDigest` dan flag `cpesim -cr-user/-cr-pass` (CPE sungguhan menantang Digest; tanpa jawaban benar tidak ada Inform).
+- e2e S7 diperluas: kredensial diset via `PATCH /devices/:id`, ACS menjawab tantangan, **password salah → 502 dan tidak ada Inform**. 11/11 lulus pada stack hidup; `go test -race` lulus di Docker.
+
+Catatan: password Connection Request tidak dilaporkan CPE lewat Inform — operator mengisinya per device (PATCH/UI). Belum diuji dengan CPE fisik; Digest dengan `algorithm=SHA-256` hanya teruji lewat verifier sendiri (vektor RFC 7616 belum dipakai).
+
 ### BELUM
 
 - Gladi jaringan ANTAR-MESIN sungguhan (§3a) — hanya bisa dari segmen jaringan CPE.
