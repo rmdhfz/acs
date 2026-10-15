@@ -13,7 +13,8 @@ interface AuthContextValue {
   isAuthenticated: boolean
   isLoading: boolean
   hasRole: (...roles: string[]) => boolean
-  login: (username: string, password: string) => Promise<void>
+  /** identifier = email (berisi "@") atau username lama. */
+  login: (identifier: string, password: string) => Promise<void>
   logout: () => void
 }
 
@@ -43,8 +44,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => setUnauthorizedHandler(null)
   }, [])
 
-  async function login(username: string, password: string) {
-    const resp = await api.post<LoginResponse>('/auth/login', { username, password })
+  async function login(identifier: string, password: string) {
+    const body = identifier.includes('@') ? { email: identifier, password } : { username: identifier, password }
+    const resp = await api.post<LoginResponse>('/auth/login', body)
     setAuthToken(resp.access_token)
     localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(resp.user))
     setUser(resp.user)

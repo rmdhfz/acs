@@ -55,3 +55,15 @@ html.dark ::-webkit-scrollbar-thumb:hover {
     transform: translateY(0) scale(1);
   }
 }
+
+/* Kartu halaman auth masuk dengan fade+slide halus (motion-safe di markup). */
+@keyframes authIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

@@ -84,12 +84,13 @@ export interface DeviceFilters {
 
 const LIVE_REFRESH_MS = 60000 // Diperpanjang karena sudah menggunakan WebSockets
 
-export function useDevices(filters: DeviceFilters) {
+export function useDevices(filters: DeviceFilters, enabled = true) {
   return useQuery({
     queryKey: ['devices', filters],
     queryFn: () => api.get<ListResponse<Device>>(`/devices${buildQuery(filters)}`),
     refetchInterval: LIVE_REFRESH_MS,
     placeholderData: (prev) => prev,
+    enabled,
   })
 }
 
@@ -149,11 +150,15 @@ export function useDeviceActivity(id: number) {
 }
 
 // useActivityLog — audit trail global tenant-scoped (GET /activity, ADMIN+).
-export function useActivityLog(params: { action?: string; entity_type?: string; page?: number; page_size?: number } = {}) {
+export function useActivityLog(
+  params: { action?: string; entity_type?: string; page?: number; page_size?: number } = {},
+  enabled = true,
+) {
   return useQuery({
     queryKey: ['activity', params],
     queryFn: () => api.get<ListResponse<ActivityLog>>('/activity' + buildQuery({ page_size: 100, ...params })),
     refetchInterval: LIVE_REFRESH_MS,
+    enabled,
   })
 }
 
@@ -175,19 +180,22 @@ export function useDeviceStats() {
   })
 }
 
-export function useCwmpSessionsCount() {
+// enabled=false untuk role di luar ADMIN/NOC (endpoint ini 403 bagi mereka).
+export function useCwmpSessionsCount(enabled = true) {
   return useQuery({
     queryKey: ['cwmp', 'sessions', 'count'],
     queryFn: () => api.get<{ count: number }>('/cwmp/sessions/count'),
     refetchInterval: LIVE_REFRESH_MS,
+    enabled,
   })
 }
 
-export function useWebhookFailedCount() {
+export function useWebhookFailedCount(enabled = true) {
   return useQuery({
     queryKey: ['webhooks', 'deliveries', 'failed-count'],
     queryFn: () => api.get<{ count: number }>('/webhooks/deliveries/failed-count'),
     refetchInterval: LIVE_REFRESH_MS,
+    enabled,
   })
 }
 
@@ -605,10 +613,12 @@ export function useTriggerDiagnostic() {
 
 // ---- Administration: API Token (integrasi BSS/OSS) ----
 
-export function useApiTokens(tenantId?: number) {
+// enabled=false untuk pemanggil non-ADMIN (endpoint ini 403 bagi mereka).
+export function useApiTokens(tenantId?: number, enabled = true) {
   return useQuery({
     queryKey: ['api-tokens', tenantId],
     queryFn: () => api.get<ListResponse<ApiToken>>(`/auth/tokens${buildQuery({ tenant_id: tenantId, page_size: 200 })}`),
+    enabled,
   })
 }
 
@@ -784,10 +794,24 @@ export function useResetUserPassword() {
 
 // useChangeOwnPassword — user ganti password SENDIRI (PATCH /auth/password),
 // wajib password lama. Semua role. Tidak menyentuh query cache.
+// Lupa password lewat email — endpoint PUBLIK (tanpa token); respons seragam.
+export function useForgotPassword() {
+  return useMutation({
+    mutationFn: (email: string) => api.post<{ message: string }>('/auth/forgot-password', { email }),
+  })
+}
+
+export function useResetPassword() {
+  return useMutation({
+    mutationFn: (input: { token: string; new_password: string }) => api.post<void>('/auth/reset-password', input),
+  })
+}
+
 export function useChangeOwnPassword() {
   return useMutation({
     mutationFn: (body: { current_password: string; new_password: string }) =>
-      api.patch<void>('/auth/password', body),
+      // Backend mencabut semua sesi lama saat password berubah dan membalas JWT baru.
+      api.patch<{ access_token: string; token_type: string }>('/auth/password', body),
   })
 }
 

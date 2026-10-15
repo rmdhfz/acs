@@ -30,6 +30,8 @@ export function setUnauthorizedHandler(fn: (() => void) | null) {
   onUnauthorized = fn
 }
 
+const CREDENTIAL_CHECK_PATHS = ['/auth/login', '/auth/password']
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers)
   // FormData body: JANGAN set Content-Type manual — browser mengisi
@@ -39,7 +41,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers })
 
-  if (res.status === 401) {
+  // 401 dari endpoint yang memverifikasi kredensial (login, ganti password:
+  // password lama salah) BUKAN sesi berakhir — jangan logout paksa, tampilkan
+  // pesan asli backend lewat jalur error biasa di bawah.
+  if (res.status === 401 && !CREDENTIAL_CHECK_PATHS.some((p) => path.startsWith(p))) {
     onUnauthorized?.()
     throw new ApiError(401, 'Sesi berakhir, silakan login kembali')
   }
@@ -48,8 +53,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     let message = res.statusText
     try {
       const body = (await res.json()) as { message?: string }
-      // Awalan teknis "domain: " dari error backend tidak berguna bagi operator.
-      if (body.message) message = body.message.replace(/^domain:\s*/, '')
+      // Awalan teknis "domain: " / "auth: " dari error backend tidak berguna bagi operator.
+      if (body.message) message = body.message.replace(/^(domain|auth):\s*/, '')
     } catch {
       // body bukan JSON, pakai statusText
     }

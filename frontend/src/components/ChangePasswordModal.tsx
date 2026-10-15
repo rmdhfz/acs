@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Modal } from './Modal'
 import { PasswordStrengthBar } from './PasswordStrengthBar'
 import { scorePassword } from '../lib/password'
-import { ApiError } from '../lib/api'
+import { ApiError, setAuthToken } from '../lib/api'
 import { useToast } from '../lib/toast'
 import { useChangeOwnPassword } from '../lib/hooks'
 
@@ -27,11 +27,15 @@ export function ChangePasswordModal({ onClose }: { onClose: () => void }) {
     if (next === current) return setError('Password baru harus berbeda dari yang lama.')
     if (scorePassword(next).score < 2) return setError('Password terlalu lemah — gunakan kombinasi yang lebih kuat.')
     try {
-      await mut.mutateAsync({ current_password: current, new_password: next })
+      const res = await mut.mutateAsync({ current_password: current, new_password: next })
+      // Sesi lama dicabut server; pakai JWT baru supaya user tidak terlempar keluar.
+      setAuthToken(res.access_token)
       toast.success('Password berhasil diganti. Gunakan password baru saat login berikutnya.')
       onClose()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Gagal mengganti password')
+      // 401 di sini = password saat ini salah (bukan sesi berakhir; lihat lib/api.ts).
+      if (err instanceof ApiError && err.status === 401) setError('Password saat ini salah.')
+      else setError(err instanceof ApiError ? err.message : 'Gagal mengganti password')
     }
   }
 

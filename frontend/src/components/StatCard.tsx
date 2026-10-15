@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import type { LucideIcon } from 'lucide-react'
 
 interface StatCardProps {
@@ -6,6 +7,10 @@ interface StatCardProps {
   icon: LucideIcon
   tone?: 'default' | 'emerald' | 'amber' | 'red' | 'blue'
   loading?: boolean
+  /** Teks kecil di bawah angka (mis. "92% dari total"). */
+  hint?: string
+  /** Bila diisi, kartu menjadi tautan (drill-down). */
+  to?: string
 }
 
 const TONE_STYLES: Record<NonNullable<StatCardProps['tone']>, string> = {
@@ -16,20 +21,31 @@ const TONE_STYLES: Record<NonNullable<StatCardProps['tone']>, string> = {
   blue: 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400',
 }
 
-export function StatCard({ label, value, icon: Icon, tone = 'default', loading }: StatCardProps) {
-  return (
-    <div className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${TONE_STYLES[tone]}`}>
+export function StatCard({ label, value, icon: Icon, tone = 'default', loading, hint, to }: StatCardProps) {
+  const cls =
+    'flex items-center gap-3.5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900' +
+    (to ? ' transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md dark:hover:border-slate-700' : '')
+  const body = (
+    <>
+      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${TONE_STYLES[tone]}`}>
         <Icon className="h-5 w-5" strokeWidth={2} />
       </div>
       <div className="min-w-0">
-        <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</p>
+        <p className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">{label}</p>
         {loading ? (
           <div className="mt-1 h-6 w-12 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
         ) : (
           <p className="text-2xl font-semibold tabular-nums text-slate-900 dark:text-slate-100">{value}</p>
         )}
+        {hint && !loading && <p className="mt-0.5 truncate text-[11px] text-slate-400 dark:text-slate-500">{hint}</p>}
       </div>
-    </div>
+    </>
+  )
+  return to ? (
+    <Link to={to} className={cls}>
+      {body}
+    </Link>
+  ) : (
+    <div className={cls}>{body}</div>
   )
 }

@@ -40,6 +40,7 @@ import {
   useVendors,
 } from '../lib/hooks'
 import { formatRelativeTime } from '../lib/format'
+import { useStatusParam } from '../lib/useStatusParam'
 import type { Device } from '../lib/types'
 
 const PAGE_SIZE = 20
@@ -62,6 +63,7 @@ export function DevicesPage() {
   const [viewMode, setViewMode] = useState<'table' | 'map'>('table')
 
   const { data: statusRefs } = useRefs('ref_device_status')
+  useStatusParam(statusRefs, setStatusFilter)
   const { data: vendorsResp } = useVendors()
   const vendors = vendorsResp?.data ?? []
   const { data: tagsResp } = useTags({ pageSize: 100 })

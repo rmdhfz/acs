@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
+import { EN_EXTRA, ID_EXTRA } from './i18n.extra'
 
 // i18n ringan tanpa dependency. `t(key)` mencari di kamus bahasa aktif, jatuh
 // ke bahasa 'id' bila key belum diterjemahkan, lalu ke key mentah. Cakupan awal:
@@ -185,7 +186,7 @@ const EN: Dict = {
   'audit.filterEntity': 'All objects',
 }
 
-const DICTS: Record<Lang, Dict> = { id: ID, en: EN }
+const DICTS: Record<Lang, Dict> = { id: { ...ID, ...ID_EXTRA }, en: { ...EN, ...EN_EXTRA } }
 
 interface I18nValue {
   lang: Lang

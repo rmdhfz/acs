@@ -34,6 +34,7 @@ import { NotificationBell } from './NotificationBell'
 import { NavClock } from './NavClock'
 import { ChangePasswordModal } from './ChangePasswordModal'
 import { NotificationProvider } from '../lib/notifications'
+import { CreditFooter } from './CreditFooter'
 
 const NAV_ITEMS: { to: string; key: string; icon: typeof LayoutGrid; requireRole?: string }[] = [
   { to: '/self-service', key: 'nav.myWifi', icon: Radio, requireRole: 'ENDUSER' },
@@ -276,6 +277,7 @@ export function Layout() {
             </div>
           </div>
           <Outlet />
+          <CreditFooter className="px-6 pb-6 pt-2 text-center" />
         </main>
 
         <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />

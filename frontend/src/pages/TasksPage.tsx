@@ -9,6 +9,7 @@ import { useToast } from '../lib/toast'
 import { useConfirm } from '../lib/confirm'
 import { findRefById, useCancelTask, useCreateTask, useRefs, useTasks, type TaskFilters } from '../lib/hooks'
 import { formatJSONField, formatDateTime, formatRelativeTime } from '../lib/format'
+import { useStatusParam } from '../lib/useStatusParam'
 
 const PAGE_SIZE = 25
 const inputCls =
@@ -28,6 +29,7 @@ export function TasksPage() {
   const [expanded, setExpanded] = useState<number | null>(null)
 
   const { data: statusRefs } = useRefs('ref_task_status')
+  useStatusParam(statusRefs, setStatusFilter)
   const { data: typeRefs } = useRefs('ref_task_types')
 
   const filters: TaskFilters = useMemo(
