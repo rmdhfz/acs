@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api } from './api'
+import { api, ApiError } from './api'
 import type {
   ActivityLog,
   ApiToken,
@@ -98,6 +98,9 @@ export function useDevice(id: number) {
     queryKey: ['device', id],
     queryFn: () => api.get<Device>(`/devices/${id}`),
     refetchInterval: LIVE_REFRESH_MS,
+    // 4xx (device dihapus / tidak ada / bukan milik tenant) tidak akan berubah
+    // dengan mengulang — jangan menahan user di spinner sambil retry.
+    retry: (count, err) => !(err instanceof ApiError && err.status >= 400 && err.status < 500) && count < 2,
   })
 }
 
@@ -1141,3 +1144,231 @@ export function useRebootMyDevice() {
   })
 }
 
+// =====================================================================
+// CRUD lengkap (get / update / delete) — melengkapi hook create & list di atas.
+// Semua DELETE adalah soft delete di backend; vendor/model/firmware/tenant
+// ditolak 409 bila masih dipakai data aktif — pesan 409 sudah menjelaskan apa
+// yang memakainya, jadi cukup ditampilkan apa adanya (jangan ditulis ulang di UI).
+// =====================================================================
+
+// ---- Katalog: Vendor ----
+
+export interface UpdateVendorInput {
+  name?: string
+  description?: string // '' = kosongkan
+  is_active?: boolean
+}
+
+export function useVendor(id: number | undefined) {
+  return useQuery({
+    queryKey: ['vendor', id],
+    queryFn: () => api.get<Vendor>(`/vendors/${id}`),
+    enabled: id !== undefined,
+  })
+}
+
+export function useUpdateVendor() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, input }: { id: number; input: UpdateVendorInput }) => api.patch<Vendor>(`/vendors/${id}`, input),
+    onSuccess: (_v, vars) => {
+      qc.invalidateQueries({ queryKey: ['vendors'] })
+      qc.invalidateQueries({ queryKey: ['vendor', vars.id] })
+    },
+  })
+}
+
+// useDeleteVendor — OUI vendor ikut terhapus di backend.
+export function useDeleteVendor() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api.del<void>(`/vendors/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['vendors'] })
+      qc.invalidateQueries({ queryKey: ['vendor-ouis'] })
+    },
+  })
+}
+
+export function useDeleteVendorOUI() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ vendorId, ouiId }: { vendorId: number; ouiId: number }) =>
+      api.del<void>(`/vendors/${vendorId}/ouis/${ouiId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['vendor-ouis'] }),
+  })
+}
+
+// ---- Katalog: Device Model ----
+
+export interface UpdateDeviceModelInput {
+  device_type_id?: number
+  data_model_version_id?: number
+  product_class?: string // '' = kosongkan
+  model_name?: string
+  description?: string // '' = kosongkan
+  is_active?: boolean
+}
+
+export function useDeviceModel(id: number | undefined) {
+  return useQuery({
+    queryKey: ['device-model', id],
+    queryFn: () => api.get<DeviceModel>(`/device-models/${id}`),
+    enabled: id !== undefined,
+  })
+}
+
+export function useUpdateDeviceModel() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, input }: { id: number; input: UpdateDeviceModelInput }) =>
+      api.patch<DeviceModel>(`/device-models/${id}`, input),
+    onSuccess: (_m, vars) => {
+      qc.invalidateQueries({ queryKey: ['device-models'] })
+      qc.invalidateQueries({ queryKey: ['device-model', vars.id] })
+    },
+  })
+}
+
+export function useDeleteDeviceModel() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api.del<void>(`/device-models/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['device-models'] }),
+  })
+}
+
+// ---- Katalog: Parameter Mapping ----
+
+export function useParameterMapping(id: number | undefined) {
+  return useQuery({
+    queryKey: ['parameter-mapping', id],
+    queryFn: () => api.get<VendorParameterMapping>(`/vendor-parameter-mappings/${id}`),
+    enabled: id !== undefined,
+  })
+}
+
+export function useDeleteParameterMapping() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api.del<void>(`/vendor-parameter-mappings/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['parameter-mappings'] }),
+  })
+}
+
+// ---- Firmware ----
+
+export interface UpdateFirmwareInput {
+  version?: string
+  release_notes?: string // '' = kosongkan
+  is_active?: boolean
+}
+
+export function useFirmware(id: number | undefined) {
+  return useQuery({
+    queryKey: ['firmware-file', id],
+    queryFn: () => api.get<FirmwareFile>(`/firmware/${id}`),
+    enabled: id !== undefined,
+  })
+}
+
+// useUpdateFirmware — hanya metadata (versi, catatan rilis, aktif). Isi file,
+// checksum, dan targeting vendor/model tidak bisa diubah (unggah ulang bila beda).
+export function useUpdateFirmware() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, input }: { id: number; input: UpdateFirmwareInput }) =>
+      api.patch<FirmwareFile>(`/firmware/${id}`, input),
+    onSuccess: (_f, vars) => {
+      qc.invalidateQueries({ queryKey: ['firmware'] })
+      qc.invalidateQueries({ queryKey: ['firmware-file', vars.id] })
+    },
+  })
+}
+
+export function useDeleteFirmware() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api.del<void>(`/firmware/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['firmware'] }),
+  })
+}
+
+// ---- Device ----
+
+// useDeleteDevice — soft delete. Task yang belum selesai dibatalkan backend.
+// CPE yang masih menyala dan Inform lagi akan didaftarkan ulang sebagai
+// registrasi baru (bukan ditolak).
+export function useDeleteDevice() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api.del<void>(`/devices/${id}`),
+    onSuccess: (_r, id) => {
+      qc.removeQueries({ queryKey: ['device', id] })
+      qc.invalidateQueries({ queryKey: ['devices'] })
+      qc.invalidateQueries({ queryKey: ['device-stats'] })
+    },
+  })
+}
+
+// ---- Tenant & User ----
+
+export function useTenant(id: number | undefined) {
+  return useQuery({
+    queryKey: ['tenant', id],
+    queryFn: () => api.get<Tenant>(`/tenants/${id}`),
+    enabled: id !== undefined,
+  })
+}
+
+// useDeleteTenant — ditolak 409 selama tenant masih punya user/device aktif.
+// Untuk menghentikan akses tanpa menghapus data, nonaktifkan tenant (useUpdateTenant).
+export function useDeleteTenant() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api.del<void>(`/tenants/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tenants'] }),
+  })
+}
+
+export function useUser(id: number | undefined) {
+  return useQuery({
+    queryKey: ['user', id],
+    queryFn: () => api.get<User>(`/users/${id}`),
+    enabled: id !== undefined,
+  })
+}
+
+// ---- Tag, Preset, Zero-Touch Rule ----
+
+export interface UpdateTagInput {
+  name?: string
+  color?: string // '' = kosongkan
+}
+
+export function useUpdateTag() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, input }: { id: number; input: UpdateTagInput }) => api.patch<Tag>(`/tags/${id}`, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tags'] })
+      qc.invalidateQueries({ queryKey: ['device-tags'] })
+    },
+  })
+}
+
+export function usePreset(id: number | undefined) {
+  return useQuery({
+    queryKey: ['preset', id],
+    queryFn: () => api.get<Preset>(`/presets/${id}`),
+    enabled: id !== undefined,
+  })
+}
+
+export function useZeroTouchRule(id: number | undefined) {
+  return useQuery({
+    queryKey: ['zero-touch-rule', id],
+    queryFn: () => api.get<ZeroTouchRule>(`/zero-touch-rules/${id}`),
+    enabled: id !== undefined,
+  })
+}

@@ -4,6 +4,7 @@ import { EmptyState } from '../components/EmptyState'
 import { StatusBadge } from '../components/StatusBadge'
 import { Modal } from '../components/Modal'
 import { PageSpinner } from '../components/Spinner'
+import { DetailButton, DetailModal } from '../components/RecordActions'
 import { useAuth } from '../lib/auth'
 import { ApiError } from '../lib/api'
 import { useToast } from '../lib/toast'
@@ -22,6 +23,7 @@ import {
   useUpdateProfile,
   useUpdateZTRule,
   useVendors,
+  useZeroTouchRule,
   useZeroTouchRules,
   type ProfileFormInput,
   type ZTRuleFormInput,
@@ -365,6 +367,7 @@ function ZTRulesTab({ canManage }: { canManage: boolean }) {
   const vendors = vendorsResp?.data ?? []
   const profiles = profilesResp?.data ?? []
   const [modalId, setModalId] = useState<number | 'new' | null>(null)
+  const [detailId, setDetailId] = useState<number | null>(null)
   const deleteMutation = useDeleteZTRule()
   const toast = useToast()
   const confirm = useConfirm()
@@ -443,17 +446,23 @@ function ZTRulesTab({ canManage }: { canManage: boolean }) {
                       <StatusBadge code={r.is_active ? 'ONLINE' : 'OFFLINE'} label={r.is_active ? 'Aktif' : 'Nonaktif'} />
                     </td>
                     <td className="px-5 py-3.5 text-right">
-                      {canManage && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            void handleDelete(r.id)
-                          }}
-                          className="rounded-md p-1.5 text-slate-400 dark:text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      )}
+                      <div className="flex items-center justify-end gap-2">
+                        <span onClick={(e) => e.stopPropagation()}>
+                          <DetailButton onClick={() => setDetailId(r.id)} title={`Detail rule #${r.id}`} />
+                        </span>
+                        {canManage && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              void handleDelete(r.id)
+                            }}
+                            aria-label={`Hapus rule #${r.id}`}
+                            className="rounded-md p-1.5 text-slate-400 dark:text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -463,7 +472,45 @@ function ZTRulesTab({ canManage }: { canManage: boolean }) {
       </div>
 
       {modalId !== null && <ZTRuleModal id={modalId === 'new' ? undefined : modalId} onClose={() => setModalId(null)} />}
+      {detailId !== null && <ZTRuleDetailModal id={detailId} onClose={() => setDetailId(null)} />}
     </div>
+  )
+}
+
+// ZTRuleDetailModal memuat satu rule lewat GET /zero-touch-rules/:id dan
+// menerjemahkan id (vendor, profil, trigger) menjadi nama yang terbaca.
+function ZTRuleDetailModal({ id, onClose }: { id: number; onClose: () => void }) {
+  const { data: rule, isLoading, error } = useZeroTouchRule(id)
+  const { data: vendorsResp } = useVendors()
+  const { data: profilesResp } = useProvisioningProfiles()
+  const { data: triggerRefs } = useRefs('ref_ztp_trigger_event')
+  const mono = (v: string | null) => (v ? <span className="font-mono text-xs">{v}</span> : null)
+  return (
+    <DetailModal
+      title={`Detail Zero-Touch Rule #${id}`}
+      onClose={onClose}
+      isLoading={isLoading}
+      error={error ? (error instanceof ApiError ? error.message : 'Rule tidak ditemukan') : null}
+      wide
+      rows={
+        rule
+          ? [
+              ['Prioritas', String(rule.priority)],
+              ['Status', rule.is_active ? 'Aktif' : 'Nonaktif'],
+              ['Cakupan', rule.tenant_id == null ? 'Global (semua tenant)' : 'Tenant sendiri'],
+              ['Trigger', triggerRefs?.find((t) => t.id === rule.trigger_event_id)?.code ?? `#${rule.trigger_event_id}`],
+              ['Vendor', rule.vendor_id ? vendorsResp?.data?.find((v) => v.id === rule.vendor_id)?.name ?? `#${rule.vendor_id}` : null],
+              ['OUI', mono(rule.oui)],
+              ['Pola serial', mono(rule.serial_pattern)],
+              ['Pola versi sw', mono(rule.software_version_pattern)],
+              ['Parameter cocok', rule.match_parameter_name ? mono(`${rule.match_parameter_name} LIKE ${rule.match_parameter_value_pattern ?? ''}`) : null],
+              ['Profil', rule.provisioning_profile_id ? profilesResp?.data?.find((p) => p.id === rule.provisioning_profile_id)?.name ?? `#${rule.provisioning_profile_id}` : null],
+              ['Firmware', rule.firmware_file_id ? `#${rule.firmware_file_id}` : null],
+              ['Reboot setelah apply', rule.post_apply_reboot ? 'Ya' : 'Tidak'],
+            ]
+          : []
+      }
+    />
   )
 }
 

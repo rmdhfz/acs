@@ -3,10 +3,11 @@ import { SlidersHorizontal, Plus, AlertCircle, AlertTriangle, ShieldCheck } from
 import { EmptyState } from '../components/EmptyState'
 import { PageSpinner } from '../components/Spinner'
 import { Modal } from '../components/Modal'
+import { DetailButton, DetailModal } from '../components/RecordActions'
 import { useAuth } from '../lib/auth'
 import { ApiError } from '../lib/api'
 import { useToast } from '../lib/toast'
-import { usePresets, useCreatePreset, useUpdatePreset, useDeletePreset } from '../lib/hooks'
+import { usePresets, usePreset, useCreatePreset, useUpdatePreset, useDeletePreset } from '../lib/hooks'
 import { formatDateTime } from '../lib/format'
 import { LIMITS } from '../lib/limits'
 import type { Preset } from '../lib/types'
@@ -28,6 +29,11 @@ const CONFIG_PLACEHOLDER = `[
 export default function PresetsPage() {
   const { hasRole } = useAuth()
   const canManage = hasRole('ADMIN')
+  const isSuperadmin = hasRole('SUPERADMIN')
+  // Preset GLOBAL (tanpa tenant) berlaku untuk device semua tenant: hanya
+  // superadmin yang boleh mengubah/menghapusnya (ADMIN tenant -> 403 di backend).
+  const canMutate = (p: Preset) => canManage && (p.tenant_id != null || isSuperadmin)
+  const [detailId, setDetailId] = useState<number | null>(null)
   const { data, isLoading } = usePresets({ pageSize: 100 })
   const presets = data?.data ?? []
 
@@ -83,7 +89,14 @@ export default function PresetsPage() {
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {presets.map((p) => (
                   <tr key={p.id}>
-                    <td className="px-5 py-3.5 font-medium text-slate-900 dark:text-slate-100">{p.name}</td>
+                    <td className="px-5 py-3.5 font-medium text-slate-900 dark:text-slate-100">
+                      {p.name}
+                      {p.tenant_id == null && (
+                        <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-400" title="Preset global — berlaku untuk semua tenant">
+                          Global
+                        </span>
+                      )}
+                    </td>
                     <td className="px-5 py-3.5 tabular-nums text-slate-600 dark:text-slate-300">{p.weight}</td>
                     <td className="px-5 py-3.5">
                       {p.enforce ? (
@@ -97,16 +110,19 @@ export default function PresetsPage() {
                     <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{p.channel ?? '—'}</td>
                     <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{formatDateTime(p.updated_at)}</td>
                     <td className="px-5 py-3.5 text-right">
-                      {canManage && (
-                        <div className="flex justify-end gap-3 text-xs font-medium">
-                          <button onClick={() => setEditing(p)} className="text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200">
-                            Edit
-                          </button>
-                          <button onClick={() => setToDelete(p)} className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300">
-                            Hapus
-                          </button>
-                        </div>
-                      )}
+                      <div className="flex items-center justify-end gap-3 text-xs font-medium">
+                        <DetailButton onClick={() => setDetailId(p.id)} title={`Detail preset ${p.name}`} />
+                        {canMutate(p) && (
+                          <>
+                            <button onClick={() => setEditing(p)} className="text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200">
+                              Edit
+                            </button>
+                            <button onClick={() => setToDelete(p)} className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300">
+                              Hapus
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -115,6 +131,8 @@ export default function PresetsPage() {
           </div>
         )}
       </div>
+
+      {detailId !== null && <PresetDetailModal id={detailId} onClose={() => setDetailId(null)} />}
 
       {(creating || editing) && (
         <PresetModal preset={editing} onClose={() => { setCreating(false); setEditing(null) }} />
@@ -149,6 +167,45 @@ export default function PresetsPage() {
         </Modal>
       )}
     </div>
+  )
+}
+
+// prettyJson merapikan string JSON dari backend untuk ditampilkan; bila bukan JSON
+// valid, tampilkan apa adanya (jangan pernah melempar saat render).
+function prettyJson(raw: string | null | undefined) {
+  if (!raw) return null
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 2)
+  } catch {
+    return raw
+  }
+}
+
+function PresetDetailModal({ id, onClose }: { id: number; onClose: () => void }) {
+  const { data, isLoading, error } = usePreset(id)
+  const pre = (v: string | null) => (v ? <pre className="max-h-48 overflow-auto rounded-lg bg-slate-50 p-2 font-mono text-xs dark:bg-slate-800/60">{v}</pre> : null)
+  return (
+    <DetailModal
+      title={data ? `Detail Preset — ${data.name}` : 'Detail Preset'}
+      onClose={onClose}
+      isLoading={isLoading}
+      error={error ? (error instanceof ApiError ? error.message : 'Preset tidak ditemukan') : null}
+      wide
+      rows={
+        data
+          ? [
+              ['Nama', data.name],
+              ['Cakupan', data.tenant_id == null ? 'Global (semua tenant)' : 'Tenant sendiri'],
+              ['Weight', String(data.weight)],
+              ['Enforcement', data.enforce ? 'Aktif — dijaga tiap sesi CWMP' : 'Nonaktif'],
+              ['Status', data.is_active ? 'Aktif' : 'Nonaktif'],
+              ['Channel', data.channel],
+              ['Precondition', pre(prettyJson(data.precondition))],
+              ['Konfigurasi', pre(prettyJson(data.configurations))],
+            ]
+          : []
+      }
+    />
   )
 }
 

@@ -48,7 +48,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     let message = res.statusText
     try {
       const body = (await res.json()) as { message?: string }
-      if (body.message) message = body.message
+      // Awalan teknis "domain: " dari error backend tidak berguna bagi operator.
+      if (body.message) message = body.message.replace(/^domain:\s*/, '')
     } catch {
       // body bukan JSON, pakai statusText
     }

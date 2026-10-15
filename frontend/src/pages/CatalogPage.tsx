@@ -1,24 +1,38 @@
 import { useState, type FormEvent } from 'react'
-import { Cable, Cpu, Plus, Route } from 'lucide-react'
+import { Cable, Cpu, Plus, Route, X } from 'lucide-react'
+import { DeleteButton, DetailButton, DetailModal, EditButton } from '../components/RecordActions'
 import { EmptyState } from '../components/EmptyState'
 import { StatusBadge } from '../components/StatusBadge'
 import { Modal } from '../components/Modal'
 import { PageSpinner } from '../components/Spinner'
 import { ApiError } from '../lib/api'
+import { useAuth } from '../lib/auth'
+import { useConfirm } from '../lib/confirm'
+import { useToast } from '../lib/toast'
 import { LIMITS } from '../lib/limits'
 import {
   useAddVendorOUI,
   useCreateDeviceModel,
   useCreateVendor,
+  useDeleteDeviceModel,
+  useDeleteParameterMapping,
+  useDeleteVendor,
+  useDeleteVendorOUI,
+  useDeviceModel,
   useDeviceModels,
+  useParameterMapping,
   useParameterMappings,
   useRefs,
+  useUpdateDeviceModel,
+  useUpdateVendor,
   useUpsertParameterMapping,
+  useVendor,
   useVendorOUIs,
   useVendors,
   type CreateDeviceModelInput,
   type UpsertMappingInput,
 } from '../lib/hooks'
+import type { DeviceModel, Vendor, VendorOUI } from '../lib/types'
 
 const inputCls =
   'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
@@ -26,6 +40,11 @@ const primaryBtnCls =
   'flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white'
 
 type Tab = 'vendors' | 'models' | 'mappings'
+
+const errMsg = (err: unknown, fallback: string) => (err instanceof ApiError ? err.message : fallback)
+
+const secondaryBtnCls =
+  'rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
 
 export function CatalogPage() {
   const [tab, setTab] = useState<Tab>('vendors')
@@ -71,8 +90,35 @@ function TabButton({ active, onClick, icon: Icon, label }: { active: boolean; on
 function VendorsTab() {
   const { data, isLoading } = useVendors()
   const vendors = data?.data ?? []
+  const { hasRole } = useAuth()
+  const canManage = hasRole('SUPERADMIN')
   const [showCreate, setShowCreate] = useState(false)
   const [ouiTargetId, setOuiTargetId] = useState<number | null>(null)
+  const [editId, setEditId] = useState<number | null>(null)
+  const deleteMutation = useDeleteVendor()
+  const toast = useToast()
+  const confirm = useConfirm()
+
+  async function handleDelete(v: Vendor) {
+    const ok = await confirm({
+      title: 'Hapus vendor',
+      message: (
+        <>
+          Vendor <strong>{v.name}</strong> ({v.code}) beserta OUI-nya akan dihapus. Ditolak bila masih dipakai device, model, mapping,
+          firmware, profil, atau rule — untuk menghentikannya tanpa menghapus, nonaktifkan lewat <em>Edit</em>.
+        </>
+      ),
+      confirmLabel: 'Hapus vendor',
+      tone: 'danger',
+    })
+    if (!ok) return
+    try {
+      await deleteMutation.mutateAsync(v.id)
+      toast.success(`Vendor "${v.name}" dihapus.`)
+    } catch (err) {
+      toast.error(errMsg(err, 'Gagal menghapus vendor'))
+    }
+  }
 
   return (
     <div>
@@ -104,15 +150,19 @@ function VendorsTab() {
                   <td className="px-5 py-3.5 font-mono text-xs text-slate-700 dark:text-slate-300">{v.code}</td>
                   <td className="px-5 py-3.5 font-medium text-slate-900 dark:text-slate-100">{v.name}</td>
                   <td className="px-5 py-3.5">
-                    <VendorOUICell vendorId={v.id} />
+                    <VendorOUICell vendorId={v.id} vendorName={v.name} canManage={canManage} />
                   </td>
                   <td className="px-5 py-3.5">
                     <StatusBadge code={v.is_active ? 'ONLINE' : 'OFFLINE'} label={v.is_active ? 'Aktif' : 'Nonaktif'} />
                   </td>
                   <td className="px-5 py-3.5 text-right">
-                    <button onClick={() => setOuiTargetId(v.id)} className="text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100">
-                      + OUI
-                    </button>
+                    <div className="flex items-center justify-end gap-3">
+                      <button onClick={() => setOuiTargetId(v.id)} className="whitespace-nowrap text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100">
+                        + OUI
+                      </button>
+                      {canManage && <EditButton onClick={() => setEditId(v.id)} title={`Edit vendor ${v.code}`} />}
+                      {canManage && <DeleteButton onClick={() => handleDelete(v)} title={`Hapus vendor ${v.code}`} disabled={deleteMutation.isPending} />}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -123,29 +173,145 @@ function VendorsTab() {
 
       {showCreate && <CreateVendorModal onClose={() => setShowCreate(false)} />}
       {ouiTargetId !== null && <AddOUIModal vendorId={ouiTargetId} onClose={() => setOuiTargetId(null)} />}
+      {editId !== null && <EditVendorModal id={editId} onClose={() => setEditId(null)} />}
     </div>
   )
 }
 
-function VendorOUICell({ vendorId }: { vendorId: number }) {
+// Seed OUI IEEE (migrasi 0022) membuat satu vendor bisa punya ribuan OUI
+// (ZTE ~500, Huawei ~2.000): menampilkan semuanya sebagai chip di sel tabel
+// membuat halaman tak terpakai. Sel hanya meringkas (jumlah + beberapa pertama);
+// daftar lengkap, pencarian, dan hapus ada di modal.
+const OUI_PREVIEW = 4
+const OUI_LIST_LIMIT = 200
+
+function OUIChip({ oui, notes, onDelete, disabled }: { oui: string; notes: string | null; onDelete?: () => void; disabled?: boolean }) {
+  return (
+    <span
+      title={notes ?? undefined}
+      className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+    >
+      {oui}
+      {onDelete && (
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={disabled}
+          aria-label={`Hapus OUI ${oui}`}
+          title={`Hapus OUI ${oui}`}
+          className="rounded text-slate-400 transition-colors hover:text-red-600 disabled:opacity-50 dark:hover:text-red-400"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
+    </span>
+  )
+}
+
+function VendorOUICell({ vendorId, vendorName, canManage }: { vendorId: number; vendorName: string; canManage: boolean }) {
   const { data, isLoading } = useVendorOUIs(vendorId)
   const ouis = data ?? []
+  const [open, setOpen] = useState(false)
 
   if (isLoading) return <span className="text-xs text-slate-400 dark:text-slate-500">…</span>
   if (ouis.length === 0) return <span className="text-xs text-slate-400 dark:text-slate-500">Belum ada</span>
 
   return (
-    <div className="flex flex-wrap gap-1">
-      {ouis.map((o) => (
-        <span
-          key={o.id}
-          title={o.notes ?? undefined}
-          className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-600 dark:bg-slate-800 dark:text-slate-400"
-        >
-          {o.oui}
-        </span>
+    <div className="flex flex-wrap items-center gap-1">
+      <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+        {ouis.length} OUI
+      </span>
+      {ouis.slice(0, OUI_PREVIEW).map((o) => (
+        <OUIChip key={o.id} oui={o.oui} notes={o.notes} />
       ))}
+      {ouis.length > OUI_PREVIEW && <span className="text-[11px] text-slate-400 dark:text-slate-500">+{ouis.length - OUI_PREVIEW}</span>}
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="ml-1 text-xs font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
+      >
+        {canManage ? 'Kelola' : 'Lihat semua'}
+      </button>
+      {open && <VendorOUIsModal vendorId={vendorId} vendorName={vendorName} ouis={ouis} canManage={canManage} onClose={() => setOpen(false)} />}
     </div>
+  )
+}
+
+function VendorOUIsModal({
+  vendorId,
+  vendorName,
+  ouis,
+  canManage,
+  onClose,
+}: {
+  vendorId: number
+  vendorName: string
+  ouis: VendorOUI[]
+  canManage: boolean
+  onClose: () => void
+}) {
+  const [query, setQuery] = useState('')
+  const deleteMutation = useDeleteVendorOUI()
+  const toast = useToast()
+  const confirm = useConfirm()
+
+  const q = query.trim().toLowerCase()
+  const filtered = q ? ouis.filter((o) => o.oui.toLowerCase().includes(q) || (o.notes ?? '').toLowerCase().includes(q)) : ouis
+  const shown = filtered.slice(0, OUI_LIST_LIMIT)
+
+  async function handleDelete(ouiId: number, oui: string) {
+    const ok = await confirm({
+      title: 'Hapus OUI',
+      message: (
+        <>
+          OUI <strong className="font-mono">{oui}</strong> dihapus dari vendor ini. Device yang sudah ter-resolve tidak berubah; Inform
+          baru dari OUI ini tidak lagi dikenali sampai didaftarkan ulang.
+        </>
+      ),
+      confirmLabel: 'Hapus OUI',
+      tone: 'danger',
+    })
+    if (!ok) return
+    try {
+      await deleteMutation.mutateAsync({ vendorId, ouiId })
+      toast.success(`OUI ${oui} dihapus.`)
+    } catch (err) {
+      toast.error(errMsg(err, 'Gagal menghapus OUI'))
+    }
+  }
+
+  return (
+    <Modal title={`OUI — ${vendorName}`} onClose={onClose} wide>
+      <div className="space-y-3">
+        <input
+          autoFocus
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Cari OUI atau catatan…"
+          aria-label="Cari OUI"
+          className={inputCls}
+        />
+        <p className="text-xs text-slate-500 dark:text-slate-400" aria-live="polite">
+          {filtered.length === ouis.length ? `${ouis.length} OUI terdaftar` : `${filtered.length} cocok dari ${ouis.length} OUI`}
+          {filtered.length > OUI_LIST_LIMIT && ` — menampilkan ${OUI_LIST_LIMIT} pertama, persempit pencarian untuk melihat sisanya`}
+        </p>
+        {shown.length === 0 ? (
+          <p className="py-6 text-center text-sm text-slate-500 dark:text-slate-400">Tidak ada OUI yang cocok.</p>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {shown.map((o) => (
+              <OUIChip
+                key={o.id}
+                oui={o.oui}
+                notes={o.notes}
+                onDelete={canManage ? () => handleDelete(o.id, o.oui) : undefined}
+                disabled={deleteMutation.isPending}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </Modal>
   )
 }
 
@@ -186,6 +352,83 @@ function CreateVendorModal({ onClose }: { onClose: () => void }) {
         <button type="submit" disabled={createMutation.isPending} className={`${primaryBtnCls} w-full`}>
           Buat Vendor
         </button>
+      </form>
+    </Modal>
+  )
+}
+
+// EditVendorModal memuat vendor segar lewat GET /vendors/:id (bukan dari baris
+// tabel yang bisa basi) lalu menampilkan form. Code tidak bisa diubah.
+function EditVendorModal({ id, onClose }: { id: number; onClose: () => void }) {
+  const { data, isLoading, error } = useVendor(id)
+  if (isLoading) {
+    return (
+      <Modal title="Edit Vendor" onClose={onClose}>
+        <PageSpinner />
+      </Modal>
+    )
+  }
+  if (error || !data) {
+    return (
+      <Modal title="Edit Vendor" onClose={onClose}>
+        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+          {errMsg(error, 'Vendor tidak ditemukan')}
+        </p>
+      </Modal>
+    )
+  }
+  return <EditVendorForm vendor={data} onClose={onClose} />
+}
+
+function EditVendorForm({ vendor, onClose }: { vendor: Vendor; onClose: () => void }) {
+  const [name, setName] = useState(vendor.name)
+  const [description, setDescription] = useState(vendor.description ?? '')
+  const [isActive, setIsActive] = useState(vendor.is_active)
+  const [error, setError] = useState<string | null>(null)
+  const mutation = useUpdateVendor()
+  const toast = useToast()
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setError(null)
+    try {
+      await mutation.mutateAsync({ id: vendor.id, input: { name, description, is_active: isActive } })
+      toast.success(`Vendor "${name}" diperbarui.`)
+      onClose()
+    } catch (err) {
+      setError(errMsg(err, 'Gagal memperbarui vendor'))
+    }
+  }
+
+  return (
+    <Modal title={`Edit Vendor — ${vendor.code}`} onClose={onClose}>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Code</label>
+          <input disabled value={vendor.code} className={`${inputCls} font-mono opacity-60`} />
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Code tidak bisa diubah (dipakai sebagai identitas stabil).</p>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama</label>
+          <input required maxLength={LIMITS.vendor.name} value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Deskripsi</label>
+          <input value={description} onChange={(e) => setDescription(e.target.value)} maxLength={LIMITS.description} className={inputCls} />
+        </div>
+        <label className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-300">
+          <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} className="mt-0.5" />
+          <span>Vendor aktif</span>
+        </label>
+        {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+        <div className="flex justify-end gap-2 pt-2">
+          <button type="button" onClick={onClose} className={secondaryBtnCls}>
+            Batal
+          </button>
+          <button type="submit" disabled={mutation.isPending} className={primaryBtnCls}>
+            {mutation.isPending ? 'Menyimpan…' : 'Simpan'}
+          </button>
+        </div>
       </form>
     </Modal>
   )
@@ -234,8 +477,35 @@ function DeviceModelsTab() {
   const { data: vendorsResp } = useVendors()
   const vendors = vendorsResp?.data ?? []
   const [vendorId, setVendorId] = useState('')
+  const { hasRole } = useAuth()
+  const canManage = hasRole('SUPERADMIN')
   const [showCreate, setShowCreate] = useState(false)
+  const [editId, setEditId] = useState<number | null>(null)
   const { data: models, isLoading } = useDeviceModels(vendorId ? Number(vendorId) : undefined)
+  const deleteMutation = useDeleteDeviceModel()
+  const toast = useToast()
+  const confirm = useConfirm()
+
+  async function handleDelete(m: DeviceModel) {
+    const ok = await confirm({
+      title: 'Hapus device model',
+      message: (
+        <>
+          Model <strong>{m.model_name}</strong> akan dihapus. Ditolak bila masih dipakai device, mapping, firmware, profil, atau rule —
+          nonaktifkan lewat <em>Edit</em> bila hanya ingin menghentikannya.
+        </>
+      ),
+      confirmLabel: 'Hapus model',
+      tone: 'danger',
+    })
+    if (!ok) return
+    try {
+      await deleteMutation.mutateAsync(m.id)
+      toast.success(`Model "${m.model_name}" dihapus.`)
+    } catch (err) {
+      toast.error(errMsg(err, 'Gagal menghapus model'))
+    }
+  }
 
   return (
     <div>
@@ -269,6 +539,7 @@ function DeviceModelsTab() {
                 <th className="px-5 py-3">Model</th>
                 <th className="px-5 py-3">Product Class</th>
                 <th className="px-5 py-3">Status</th>
+                <th className="px-5 py-3"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -279,6 +550,14 @@ function DeviceModelsTab() {
                   <td className="px-5 py-3.5">
                     <StatusBadge code={m.is_active ? 'ONLINE' : 'OFFLINE'} label={m.is_active ? 'Aktif' : 'Nonaktif'} />
                   </td>
+                  <td className="px-5 py-3.5 text-right">
+                    {canManage && (
+                      <div className="flex items-center justify-end gap-3">
+                        <EditButton onClick={() => setEditId(m.id)} title={`Edit model ${m.model_name}`} />
+                        <DeleteButton onClick={() => handleDelete(m)} title={`Hapus model ${m.model_name}`} disabled={deleteMutation.isPending} />
+                      </div>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -287,7 +566,122 @@ function DeviceModelsTab() {
       </div>
 
       {showCreate && <CreateDeviceModelModal vendorId={Number(vendorId)} onClose={() => setShowCreate(false)} />}
+      {editId !== null && <EditDeviceModelModal id={editId} onClose={() => setEditId(null)} />}
     </div>
+  )
+}
+
+function EditDeviceModelModal({ id, onClose }: { id: number; onClose: () => void }) {
+  const { data, isLoading, error } = useDeviceModel(id)
+  if (isLoading) {
+    return (
+      <Modal title="Edit Device Model" onClose={onClose}>
+        <PageSpinner />
+      </Modal>
+    )
+  }
+  if (error || !data) {
+    return (
+      <Modal title="Edit Device Model" onClose={onClose}>
+        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+          {errMsg(error, 'Model tidak ditemukan')}
+        </p>
+      </Modal>
+    )
+  }
+  return <EditDeviceModelForm model={data} onClose={onClose} />
+}
+
+function EditDeviceModelForm({ model, onClose }: { model: DeviceModel; onClose: () => void }) {
+  const { data: deviceTypes } = useRefs('ref_device_types')
+  const { data: dmVersions } = useRefs('ref_data_model_versions')
+  const [deviceTypeId, setDeviceTypeId] = useState(String(model.device_type_id))
+  const [dmVersionId, setDmVersionId] = useState(String(model.data_model_version_id))
+  const [productClass, setProductClass] = useState(model.product_class ?? '')
+  const [modelName, setModelName] = useState(model.model_name)
+  const [description, setDescription] = useState(model.description ?? '')
+  const [isActive, setIsActive] = useState(model.is_active)
+  const [error, setError] = useState<string | null>(null)
+  const mutation = useUpdateDeviceModel()
+  const toast = useToast()
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setError(null)
+    try {
+      await mutation.mutateAsync({
+        id: model.id,
+        input: {
+          model_name: modelName,
+          product_class: productClass,
+          description,
+          is_active: isActive,
+          device_type_id: Number(deviceTypeId),
+          data_model_version_id: Number(dmVersionId),
+        },
+      })
+      toast.success(`Model "${modelName}" diperbarui.`)
+      onClose()
+    } catch (err) {
+      setError(errMsg(err, 'Gagal memperbarui model'))
+    }
+  }
+
+  return (
+    <Modal title={`Edit Model — ${model.model_name}`} onClose={onClose}>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama Model</label>
+          <input required maxLength={LIMITS.deviceModel.modelName} value={modelName} onChange={(e) => setModelName(e.target.value)} className={inputCls} />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Product Class</label>
+          <input value={productClass} onChange={(e) => setProductClass(e.target.value)} maxLength={LIMITS.deviceModel.productClass} placeholder="Kosong = tidak dipakai untuk pencocokan" className={`${inputCls} font-mono text-xs`} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Device Type</label>
+            <select required value={deviceTypeId} onChange={(e) => setDeviceTypeId(e.target.value)} className={inputCls}>
+              {deviceTypes?.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Data Model Version</label>
+            <select required value={dmVersionId} onChange={(e) => setDmVersionId(e.target.value)} className={inputCls}>
+              {dmVersions?.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          Device Type dan Data Model Version tidak bisa diubah selama model dipakai device (resolusi path parameter akan rusak) — buat model baru.
+        </p>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Deskripsi</label>
+          <input value={description} onChange={(e) => setDescription(e.target.value)} maxLength={LIMITS.description} className={inputCls} />
+        </div>
+        <label className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-300">
+          <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} className="mt-0.5" />
+          <span>Model aktif</span>
+        </label>
+        {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+        <div className="flex justify-end gap-2 pt-2">
+          <button type="button" onClick={onClose} className={secondaryBtnCls}>
+            Batal
+          </button>
+          <button type="submit" disabled={mutation.isPending} className={primaryBtnCls}>
+            {mutation.isPending ? 'Menyimpan…' : 'Simpan'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   )
 }
 
@@ -375,8 +769,35 @@ function MappingsTab() {
   const { data: vendorsResp } = useVendors()
   const vendors = vendorsResp?.data ?? []
   const [vendorId, setVendorId] = useState('')
+  const { hasRole } = useAuth()
+  const canManage = hasRole('SUPERADMIN')
   const [showCreate, setShowCreate] = useState(false)
+  const [detailId, setDetailId] = useState<number | null>(null)
   const { data: mappings, isLoading } = useParameterMappings(vendorId ? Number(vendorId) : undefined)
+  const deleteMutation = useDeleteParameterMapping()
+  const toast = useToast()
+  const confirm = useConfirm()
+
+  async function handleDelete(id: number, key: string) {
+    const ok = await confirm({
+      title: 'Hapus parameter mapping',
+      message: (
+        <>
+          Mapping <strong className="font-mono">{key}</strong> dihapus. Resolusi logical key ini jatuh ke mapping yang lebih generik bila
+          ada; bila tidak ada, key ini tidak ter-resolve (path TR-069 mentah tetap bisa dipakai).
+        </>
+      ),
+      confirmLabel: 'Hapus mapping',
+      tone: 'danger',
+    })
+    if (!ok) return
+    try {
+      await deleteMutation.mutateAsync(id)
+      toast.success(`Mapping "${key}" dihapus.`)
+    } catch (err) {
+      toast.error(errMsg(err, 'Gagal menghapus mapping'))
+    }
+  }
 
   return (
     <div>
@@ -410,6 +831,7 @@ function MappingsTab() {
                 <th className="px-5 py-3">Logical Key</th>
                 <th className="px-5 py-3">TR-069 Path</th>
                 <th className="px-5 py-3">Scope</th>
+                <th className="px-5 py-3"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -425,6 +847,14 @@ function MappingsTab() {
                       .filter(Boolean)
                       .join(' · ')}
                   </td>
+                  <td className="px-5 py-3.5 text-right">
+                    <div className="flex items-center justify-end gap-3">
+                      <DetailButton onClick={() => setDetailId(m.id)} title={`Detail mapping ${m.logical_key}`} />
+                      {canManage && (
+                        <DeleteButton onClick={() => handleDelete(m.id, m.logical_key)} title={`Hapus mapping ${m.logical_key}`} disabled={deleteMutation.isPending} />
+                      )}
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -433,7 +863,37 @@ function MappingsTab() {
       </div>
 
       {showCreate && <CreateMappingModal vendorId={Number(vendorId)} onClose={() => setShowCreate(false)} />}
+      {detailId !== null && <MappingDetailModal id={detailId} onClose={() => setDetailId(null)} />}
     </div>
+  )
+}
+
+function MappingDetailModal({ id, onClose }: { id: number; onClose: () => void }) {
+  const { data, isLoading, error } = useParameterMapping(id)
+  const { data: dmVersions } = useRefs('ref_data_model_versions')
+  const { data: paramTypes } = useRefs('ref_parameter_types')
+  const mono = (v: string) => <span className="font-mono text-xs">{v}</span>
+  return (
+    <DetailModal
+      title="Detail Parameter Mapping"
+      onClose={onClose}
+      isLoading={isLoading}
+      error={error ? errMsg(error, 'Mapping tidak ditemukan') : null}
+      wide
+      rows={
+        data
+          ? [
+              ['Logical key', mono(data.logical_key)],
+              ['TR-069 path', mono(data.tr069_path)],
+              ['Data model', dmVersions?.find((d) => d.id === data.data_model_version_id)?.name ?? `#${data.data_model_version_id}`],
+              ['Model', data.device_model_id ? `#${data.device_model_id}` : 'Semua model vendor'],
+              ['Pola versi sw', data.software_version_pattern ? mono(data.software_version_pattern) : null],
+              ['Tipe parameter', paramTypes?.find((p) => p.id === data.parameter_type_id)?.name ?? null],
+              ['Deskripsi', data.description],
+            ]
+          : []
+      }
+    />
   )
 }
 

@@ -1,12 +1,13 @@
 import { useState, type FormEvent } from 'react'
 import { Tag as TagIcon, Plus, AlertCircle } from 'lucide-react'
+import { EditButton } from '../components/RecordActions'
 import { EmptyState } from '../components/EmptyState'
 import { PageSpinner } from '../components/Spinner'
 import { Modal } from '../components/Modal'
 import { useAuth } from '../lib/auth'
 import { ApiError } from '../lib/api'
 import { useToast } from '../lib/toast'
-import { useTags, useCreateTag, useDeleteTag } from '../lib/hooks'
+import { useTags, useCreateTag, useDeleteTag, useUpdateTag } from '../lib/hooks'
 import { formatDateTime } from '../lib/format'
 import { LIMITS } from '../lib/limits'
 import type { Tag } from '../lib/types'
@@ -19,11 +20,16 @@ const primaryBtnCls =
 export default function TagsPage() {
   const { hasRole } = useAuth()
   const canManage = hasRole('ADMIN')
+  const isSuperadmin = hasRole('SUPERADMIN')
+  // Tag GLOBAL (tanpa tenant) dipakai semua tenant: hanya superadmin yang boleh
+  // mengubah/menghapusnya (backend menolak ADMIN tenant dengan 403).
+  const canMutate = (t: Tag) => canManage && (t.tenant_id != null || isSuperadmin)
   const { data, isLoading } = useTags({ pageSize: 50 })
   const tags = data?.data ?? []
 
   const [showCreate, setShowCreate] = useState(false)
   const [tagToDelete, setTagToDelete] = useState<Tag | null>(null)
+  const [tagToEdit, setTagToEdit] = useState<Tag | null>(null)
   const deleteMutation = useDeleteTag()
   const toast = useToast()
 
@@ -75,7 +81,14 @@ export default function TagsPage() {
                 {tags.map((t) => (
                   <tr key={t.id}>
                     <td className="px-5 py-3.5 font-medium text-slate-900 dark:text-slate-100">#{t.id}</td>
-                    <td className="px-5 py-3.5 font-medium text-slate-900 dark:text-slate-100">{t.name}</td>
+                    <td className="px-5 py-3.5 font-medium text-slate-900 dark:text-slate-100">
+                      {t.name}
+                      {t.tenant_id == null && (
+                        <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-400" title="Tag global — dipakai semua tenant">
+                          Global
+                        </span>
+                      )}
+                    </td>
                     <td className="px-5 py-3.5">
                       {t.color ? (
                         <div className="flex items-center gap-2">
@@ -88,13 +101,16 @@ export default function TagsPage() {
                     </td>
                     <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{formatDateTime(t.created_at)}</td>
                     <td className="px-5 py-3.5 text-right">
-                      {canManage && (
-                        <button
-                          onClick={() => setTagToDelete(t)}
-                          className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 font-medium text-xs"
-                        >
-                          Hapus
-                        </button>
+                      {canMutate(t) && (
+                        <div className="flex items-center justify-end gap-3">
+                          <EditButton onClick={() => setTagToEdit(t)} title={`Edit tag ${t.name}`} />
+                          <button
+                            onClick={() => setTagToDelete(t)}
+                            className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 font-medium text-xs"
+                          >
+                            Hapus
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -106,6 +122,7 @@ export default function TagsPage() {
       </div>
 
       {showCreate && <CreateTagModal onClose={() => setShowCreate(false)} />}
+      {tagToEdit && <EditTagModal tag={tagToEdit} onClose={() => setTagToEdit(null)} />}
       
       {tagToDelete && (
         <Modal onClose={() => setTagToDelete(null)} title="Hapus Tag">
@@ -136,6 +153,61 @@ export default function TagsPage() {
         </Modal>
       )}
     </div>
+  )
+}
+
+function EditTagModal({ tag, onClose }: { tag: Tag; onClose: () => void }) {
+  const [name, setName] = useState(tag.name)
+  const [color, setColor] = useState(tag.color ?? '')
+  const [error, setError] = useState<string | null>(null)
+  const mutation = useUpdateTag()
+  const toast = useToast()
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setError(null)
+    if (!name.trim()) {
+      setError('Nama tag wajib diisi.')
+      return
+    }
+    try {
+      // color '' = kosongkan warna (backend: string kosong menghapus).
+      await mutation.mutateAsync({ id: tag.id, input: { name, color } })
+      toast.success(`Tag "${name}" diperbarui.`)
+      onClose()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Gagal memperbarui tag')
+    }
+  }
+
+  return (
+    <Modal title={`Edit Tag — ${tag.name}`} onClose={onClose}>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="mb-1 block text-sm font-medium text-slate-600 dark:text-slate-400">Nama Tag</label>
+          <input required maxLength={LIMITS.tag.name} value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium text-slate-600 dark:text-slate-400">Warna (kosongkan untuk menghapus)</label>
+          <div className="flex items-center gap-3">
+            <input
+              type="color"
+              value={/^#[0-9a-fA-F]{6}$/.test(color) ? color : '#3b82f6'}
+              onChange={(e) => setColor(e.target.value)}
+              aria-label="Pilih warna"
+              className="h-10 w-10 cursor-pointer rounded border border-slate-300 p-1"
+            />
+            <input type="text" maxLength={LIMITS.tag.color} value={color} onChange={(e) => setColor(e.target.value)} placeholder="#RRGGBB" className={inputCls} />
+          </div>
+        </div>
+        {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+        <div className="pt-2">
+          <button type="submit" disabled={mutation.isPending} className={`${primaryBtnCls} w-full`}>
+            {mutation.isPending ? 'Menyimpan...' : 'Simpan Perubahan'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   )
 }
 

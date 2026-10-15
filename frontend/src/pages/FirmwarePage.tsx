@@ -4,6 +4,7 @@ import { EmptyState } from '../components/EmptyState'
 import { Modal } from '../components/Modal'
 import { PageSpinner } from '../components/Spinner'
 import { StatusBadge } from '../components/StatusBadge'
+import { DeleteButton, EditButton } from '../components/RecordActions'
 import { useAuth } from '../lib/auth'
 import { ApiError } from '../lib/api'
 import { useToast } from '../lib/toast'
@@ -12,16 +13,20 @@ import {
   useAdvanceRolloutBatch,
   useCancelRolloutBatch,
   useCreateRolloutBatch,
+  useDeleteFirmware,
   useDeviceModels,
+  useFirmware,
   useFirmwareList,
   useFirmwareRolloutBatches,
   useRefs,
+  useUpdateFirmware,
   useUploadFirmware,
   useVendors,
   type CreateRolloutBatchInput,
   type UploadFirmwareInput,
 } from '../lib/hooks'
 import { formatDateTime } from '../lib/format'
+import type { FirmwareFile } from '../lib/types'
 
 const inputCls =
   'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
@@ -75,9 +80,38 @@ function CatalogTab({ canManage }: { canManage: boolean }) {
   const vendors = vendorsResp?.data ?? []
   const [vendorId, setVendorId] = useState<string>('')
   const [showUpload, setShowUpload] = useState(false)
+  const [editId, setEditId] = useState<number | null>(null)
+  // Edit/hapus firmware = superadmin saja di backend (katalog global lintas tenant).
+  const { hasRole } = useAuth()
+  const isSuperadmin = hasRole('SUPERADMIN')
+  const deleteMutation = useDeleteFirmware()
+  const toast = useToast()
+  const confirm = useConfirm()
 
   const { data, isLoading } = useFirmwareList(vendorId ? Number(vendorId) : undefined)
   const files = data?.data ?? []
+
+  async function handleDelete(file: FirmwareFile) {
+    const ok = await confirm({
+      title: 'Hapus firmware',
+      message: (
+        <>
+          Firmware <strong>{file.version}</strong> ({file.file_name}) dihapus dari katalog. Ditolak bila masih dipakai zero-touch rule,
+          rollout yang belum selesai, atau upgrade yang sedang berjalan. Objek di storage tetap disimpan. Untuk menahannya agar tidak
+          dipilih lagi tanpa menghapus, nonaktifkan lewat <em>Edit</em>.
+        </>
+      ),
+      confirmLabel: 'Hapus firmware',
+      tone: 'danger',
+    })
+    if (!ok) return
+    try {
+      await deleteMutation.mutateAsync(file.id)
+      toast.success(`Firmware "${file.version}" dihapus.`)
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Gagal menghapus firmware')
+    }
+  }
 
   return (
     <div>
@@ -113,7 +147,9 @@ function CatalogTab({ canManage }: { canManage: boolean }) {
                   <th className="px-5 py-3">File</th>
                   <th className="px-5 py-3">Checksum</th>
                   <th className="px-5 py-3">Ukuran</th>
+                  <th className="px-5 py-3">Status</th>
                   <th className="px-5 py-3">Didaftarkan</th>
+                  <th className="px-5 py-3"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -125,7 +161,18 @@ function CatalogTab({ canManage }: { canManage: boolean }) {
                       {f.checksum_sha256 ?? '-'}
                     </td>
                     <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{f.file_size_bytes ? `${(f.file_size_bytes / 1_000_000).toFixed(1)} MB` : '-'}</td>
+                    <td className="px-5 py-3.5">
+                      <StatusBadge code={f.is_active ? 'ONLINE' : 'OFFLINE'} label={f.is_active ? 'Aktif' : 'Nonaktif'} />
+                    </td>
                     <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{formatDateTime(f.created_at)}</td>
+                    <td className="px-5 py-3.5 text-right">
+                      {isSuperadmin && (
+                        <div className="flex items-center justify-end gap-3">
+                          <EditButton onClick={() => setEditId(f.id)} title={`Edit firmware ${f.version}`} />
+                          <DeleteButton onClick={() => handleDelete(f)} title={`Hapus firmware ${f.version}`} disabled={deleteMutation.isPending} />
+                        </div>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -135,7 +182,94 @@ function CatalogTab({ canManage }: { canManage: boolean }) {
       </div>
 
       {showUpload && <UploadFirmwareModal defaultVendorId={vendorId} onClose={() => setShowUpload(false)} />}
+      {editId !== null && <EditFirmwareModal id={editId} onClose={() => setEditId(null)} />}
     </div>
+  )
+}
+
+// EditFirmwareModal memuat firmware segar lewat GET /firmware/:id. Hanya
+// metadata yang bisa diubah; isi file, checksum, dan targeting vendor/model
+// tidak bisa (unggah ulang bila berbeda).
+function EditFirmwareModal({ id, onClose }: { id: number; onClose: () => void }) {
+  const { data, isLoading, error } = useFirmware(id)
+  if (isLoading) {
+    return (
+      <Modal title="Edit Firmware" onClose={onClose}>
+        <PageSpinner />
+      </Modal>
+    )
+  }
+  if (error || !data) {
+    return (
+      <Modal title="Edit Firmware" onClose={onClose}>
+        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+          {error instanceof ApiError ? error.message : 'Firmware tidak ditemukan'}
+        </p>
+      </Modal>
+    )
+  }
+  return <EditFirmwareForm file={data} onClose={onClose} />
+}
+
+function EditFirmwareForm({ file, onClose }: { file: FirmwareFile; onClose: () => void }) {
+  const [version, setVersion] = useState(file.version)
+  const [notes, setNotes] = useState(file.release_notes ?? '')
+  const [isActive, setIsActive] = useState(file.is_active)
+  const [error, setError] = useState<string | null>(null)
+  const mutation = useUpdateFirmware()
+  const toast = useToast()
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setError(null)
+    try {
+      await mutation.mutateAsync({ id: file.id, input: { version, release_notes: notes, is_active: isActive } })
+      toast.success(`Firmware "${version}" diperbarui.`)
+      onClose()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Gagal memperbarui firmware')
+    }
+  }
+
+  return (
+    <Modal title={`Edit Firmware — ${file.version}`} onClose={onClose}>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:bg-slate-800/50 dark:text-slate-400">
+          <div>
+            File: <span className="font-mono">{file.file_name}</span>
+          </div>
+          <div className="truncate" title={file.checksum_sha256 ?? undefined}>
+            SHA-256: <span className="font-mono">{file.checksum_sha256 ?? '-'}</span>
+          </div>
+          <div className="mt-1">Isi file, checksum, vendor, dan model tidak bisa diubah — unggah firmware baru bila berbeda.</div>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Versi</label>
+          <input required maxLength={64} value={version} onChange={(e) => setVersion(e.target.value)} className={inputCls} />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Catatan rilis</label>
+          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} className={inputCls} />
+        </div>
+        <label className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-300">
+          <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} className="mt-0.5" />
+          <span>Firmware aktif</span>
+        </label>
+        {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+        <div className="flex justify-end gap-2 pt-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            Batal
+          </button>
+          <button type="submit" disabled={mutation.isPending} className={primaryBtnCls}>
+            {mutation.isPending ? 'Menyimpan…' : 'Simpan'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   )
 }
 

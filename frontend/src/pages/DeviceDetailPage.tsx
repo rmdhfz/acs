@@ -1,7 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Line, LineChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { Activity, ArrowLeft, Cpu, Gauge, HardDrive, History, ListChecks, Radio, ScrollText, Sparkles, SlidersHorizontal, RefreshCcw, AlertTriangle, FileUp } from 'lucide-react'
+import { Activity, ArrowLeft, Cpu, Gauge, HardDrive, History, ListChecks, Radio, ScrollText, Sparkles, SlidersHorizontal, RefreshCcw, AlertTriangle, FileUp, Trash2 } from 'lucide-react'
 import { StatusBadge } from '../components/StatusBadge'
 import { EmptyState } from '../components/EmptyState'
 import { PageSpinner } from '../components/Spinner'
@@ -34,6 +34,7 @@ import {
   useVendors,
   useRebootDevice,
   useFactoryResetDevice,
+  useDeleteDevice,
   usePushFileToDevice,
   useFiles,
   useTags,
@@ -76,18 +77,39 @@ export function DeviceDetailPage() {
   const [showApplyProfile, setShowApplyProfile] = useState(false)
   const { hasRole } = useAuth()
 
-  const { data: device, isLoading } = useDevice(deviceId)
+  const { data: device, isLoading, error: deviceError } = useDevice(deviceId)
   const { data: statusRefs } = useRefs('ref_device_status')
   const { data: vendorsResp } = useVendors()
   
   const triggerConnReq = useTriggerConnectionRequest()
   const rebootMutation = useRebootDevice()
   const factoryResetMutation = useFactoryResetDevice()
+  const deleteDeviceMutation = useDeleteDevice()
   const [connReqError, setConnReqError] = useState<string | null>(null)
   const toast = useToast()
   const confirm = useConfirm()
 
-  if (isLoading || !device) return <PageSpinner />
+  if (isLoading) return <PageSpinner />
+  if (!device) {
+    // Dulu: spinner tanpa akhir untuk ID yang tidak ada/terhapus (mis. tombol Back
+    // setelah "Hapus Device"). Sekarang jelas dan ada jalan kembali.
+    return (
+      <div className="mx-auto max-w-xl px-6 py-16 text-center">
+        <p className="text-base font-semibold text-slate-900 dark:text-slate-100">Device tidak ditemukan</p>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          {deviceError instanceof ApiError && deviceError.status === 403
+            ? 'Anda tidak punya akses ke device ini.'
+            : 'Device mungkin sudah dihapus atau ID-nya salah.'}
+        </p>
+        <button
+          onClick={() => navigate('/devices')}
+          className="mt-5 inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          <ArrowLeft className="h-4 w-4" /> Kembali ke daftar device
+        </button>
+      </div>
+    )
+  }
 
   const status = findRefById(statusRefs, device.device_status_id)
   const vendor = vendorsResp?.data?.find((v) => v.id === device.vendor_id)
@@ -127,22 +149,45 @@ export function DeviceDetailPage() {
     }
   }
 
+  const handleDeleteDevice = async () => {
+    const ok = await confirm({
+      title: 'Hapus device',
+      message: (
+        <>
+          Device <strong>{device.serial_number}</strong> dihapus dari daftar dan task yang belum selesai dibatalkan. Riwayat disimpan.
+          Bila CPE ini masih menyala, ia akan terdaftar kembali sebagai registrasi baru pada Inform berikutnya (kredensial per-device,
+          profil, dan catatan direset). Pemetaan pelanggan dan tag device ini dilepas.
+        </>
+      ),
+      confirmLabel: 'Hapus device',
+      tone: 'danger',
+    })
+    if (!ok) return
+    try {
+      await deleteDeviceMutation.mutateAsync(deviceId)
+      toast.success(`Device ${device.serial_number} dihapus.`, 'Berhasil')
+      navigate('/devices')
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : 'Gagal menghapus device')
+    }
+  }
+
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <button
           onClick={() => navigate('/devices')}
-          className="flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400 transition-colors hover:text-slate-900 dark:hover:text-slate-100"
+          className="flex items-center gap-1.5 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400 transition-colors hover:text-slate-900 dark:hover:text-slate-100"
         >
           <ArrowLeft className="h-4 w-4" /> Kembali ke daftar device
         </button>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {hasRole('ADMIN', 'NOC') && (
             <button
               onClick={handleConnReq}
               disabled={triggerConnReq.isPending || !device.connection_request_url}
               title={!device.connection_request_url ? 'Device tidak memiliki connection request URL' : ''}
-              className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-300 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50 disabled:opacity-50"
+              className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-300 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50 disabled:opacity-50"
             >
               <Radio className="h-4 w-4" /> Connection Req
             </button>
@@ -150,7 +195,7 @@ export function DeviceDetailPage() {
           {hasRole('ADMIN') && (
             <button
               onClick={() => setShowApplyProfile(true)}
-              className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-300 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50"
+              className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-300 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50"
             >
               <Sparkles className="h-4 w-4" /> Terapkan Provisioning Profile
             </button>
@@ -159,7 +204,7 @@ export function DeviceDetailPage() {
             <button
               onClick={handleReboot}
               disabled={rebootMutation.isPending}
-              className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-300 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50"
+              className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-300 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50"
             >
               <RefreshCcw className="h-4 w-4" /> Reboot
             </button>
@@ -168,9 +213,19 @@ export function DeviceDetailPage() {
             <button
               onClick={handleFactoryReset}
               disabled={factoryResetMutation.isPending}
-              className="flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 dark:bg-red-900/30 dark:border-red-800 dark:text-red-400 transition-colors hover:bg-red-100 dark:hover:bg-red-900/50"
+              className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 dark:bg-red-900/30 dark:border-red-800 dark:text-red-400 transition-colors hover:bg-red-100 dark:hover:bg-red-900/50"
             >
               <AlertTriangle className="h-4 w-4" /> Factory Reset
+            </button>
+          )}
+          {hasRole('ADMIN') && (
+            <button
+              onClick={handleDeleteDevice}
+              disabled={deleteDeviceMutation.isPending}
+              title="Hapus device dari daftar (soft delete)"
+              className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-red-400 dark:hover:bg-red-900/20"
+            >
+              <Trash2 className="h-4 w-4" /> Hapus Device
             </button>
           )}
         </div>

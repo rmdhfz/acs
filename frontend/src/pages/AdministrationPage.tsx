@@ -26,6 +26,9 @@ import {
   useUpdateTenant,
   useUpdateTenantBranding,
   useUpdateUser,
+  useDeleteTenant,
+  useTenant,
+  useUser,
   useUsers,
   type CreateTenantInput,
   type CreateUserInput,
@@ -34,6 +37,7 @@ import {
 } from '../lib/hooks'
 import { formatDateTime } from '../lib/format'
 import { LIMITS } from '../lib/limits'
+import { DeleteButton, DetailButton, DetailModal } from '../components/RecordActions'
 import type { ApiToken, Tenant, User } from '../lib/types'
 
 const inputCls =
@@ -101,6 +105,7 @@ function UsersTab({ isSuperadmin }: { isSuperadmin: boolean }) {
   const [editTarget, setEditTarget] = useState<User | null>(null)
   const [passwordTarget, setPasswordTarget] = useState<User | null>(null)
   const [rolesTarget, setRolesTarget] = useState<User | null>(null)
+  const [detailUserId, setDetailUserId] = useState<number | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const { data, isLoading } = useUsers(tenantFilter ? Number(tenantFilter) : undefined)
@@ -188,24 +193,25 @@ function UsersTab({ isSuperadmin }: { isSuperadmin: boolean }) {
                     </td>
                     <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{formatDateTime(u.last_login_at)}</td>
                     <td className="px-5 py-3.5 text-right">
-                      <div className="flex items-center justify-end gap-3">
+                      <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5">
+                        <DetailButton onClick={() => setDetailUserId(u.id)} title={`Detail user ${u.username}`} />
                         <button
                           onClick={() => setEditTarget(u)}
-                          className="flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
+                          className="flex items-center gap-1 whitespace-nowrap text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
                           title="Edit nama/email/status aktif"
                         >
                           <Pencil className="h-3.5 w-3.5" /> Edit
                         </button>
                         <button
                           onClick={() => setPasswordTarget(u)}
-                          className="flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
+                          className="flex items-center gap-1 whitespace-nowrap text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
                           title="Reset password user ini"
                         >
                           <KeyRound className="h-3.5 w-3.5" /> Reset Password
                         </button>
                         <button
                           onClick={() => setRolesTarget(u)}
-                          className="flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
+                          className="flex items-center gap-1 whitespace-nowrap text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
                           title="Kelola role user ini"
                         >
                           <Shield className="h-3.5 w-3.5" /> Kelola Role
@@ -233,7 +239,37 @@ function UsersTab({ isSuperadmin }: { isSuperadmin: boolean }) {
       {editTarget && <EditUserModal user={editTarget} isSelf={currentUser?.id === editTarget.id} onClose={() => setEditTarget(null)} />}
       {passwordTarget && <ResetPasswordModal user={passwordTarget} onClose={() => setPasswordTarget(null)} />}
       {rolesTarget && <ManageRolesModal user={rolesTarget} onClose={() => setRolesTarget(null)} />}
+      {detailUserId !== null && <UserDetailModal id={detailUserId} onClose={() => setDetailUserId(null)} />}
     </div>
+  )
+}
+
+// UserDetailModal memuat user segar lewat GET /users/:id (ADMIN hanya user
+// tenant sendiri; superadmin ke user manapun — dicek backend).
+function UserDetailModal({ id, onClose }: { id: number; onClose: () => void }) {
+  const { data, isLoading, error } = useUser(id)
+  const mono = (v: string) => <span className="font-mono text-xs">{v}</span>
+  return (
+    <DetailModal
+      title={data ? `Detail User — ${data.username}` : 'Detail User'}
+      onClose={onClose}
+      isLoading={isLoading}
+      error={error ? (error instanceof ApiError ? error.message : 'User tidak ditemukan') : null}
+      rows={
+        data
+          ? [
+              ['Username', mono(data.username)],
+              ['Nama', data.full_name],
+              ['Email', data.email],
+              ['Role', data.roles.length ? data.roles.join(', ') : null],
+              ['Status', data.is_active ? 'Aktif' : 'Nonaktif'],
+              ['Tenant', data.tenant_id == null ? 'Platform (tanpa tenant)' : `#${data.tenant_id}`],
+              ['Login terakhir', data.last_login_at ? formatDateTime(data.last_login_at) : null],
+              ['Dibuat', formatDateTime(data.created_at)],
+            ]
+          : []
+      }
+    />
   )
 }
 
@@ -648,6 +684,31 @@ function TenantsTab() {
   const [brandingTarget, setBrandingTarget] = useState<Tenant | null>(null)
   const [quotaTarget, setQuotaTarget] = useState<Tenant | null>(null)
   const [editTarget, setEditTarget] = useState<Tenant | null>(null)
+  const [detailTenantId, setDetailTenantId] = useState<number | null>(null)
+  const deleteTenantMutation = useDeleteTenant()
+  const toast = useToast()
+  const confirm = useConfirm()
+
+  async function handleDeleteTenant(t: Tenant) {
+    const ok = await confirm({
+      title: 'Hapus tenant',
+      message: (
+        <>
+          Tenant <strong>{t.name}</strong> ({t.code}) dihapus. Ditolak bila masih punya user atau device aktif — pindahkan/hapus dulu
+          isinya. Untuk menghentikan akses tanpa menghapus data, nonaktifkan lewat <em>Edit</em> (semua token langsung ditolak).
+        </>
+      ),
+      confirmLabel: 'Hapus tenant',
+      tone: 'danger',
+    })
+    if (!ok) return
+    try {
+      await deleteTenantMutation.mutateAsync(t.id)
+      toast.success(`Tenant "${t.name}" dihapus.`)
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Gagal menghapus tenant')
+    }
+  }
 
   return (
     <div>
@@ -705,35 +766,37 @@ function TenantsTab() {
                   </td>
                   <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{formatDateTime(t.created_at)}</td>
                   <td className="px-5 py-3.5 text-right">
-                    <div className="flex items-center justify-end gap-3">
+                    <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5">
+                      <DetailButton onClick={() => setDetailTenantId(t.id)} title={`Detail tenant ${t.code}`} />
                       <button
                         onClick={() => setEditTarget(t)}
-                        className="flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
+                        className="flex items-center gap-1 whitespace-nowrap text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
                         title="Ubah code/nama tenant, atau aktif/nonaktifkan"
                       >
                         <Pencil className="h-3.5 w-3.5" /> Edit
                       </button>
                       <button
                         onClick={() => setBrandingTarget(t)}
-                        className="flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
+                        className="flex items-center gap-1 whitespace-nowrap text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
                         title="Edit branding (nama, logo, warna aksen)"
                       >
                         <Palette className="h-3.5 w-3.5" /> Branding
                       </button>
                       <button
                         onClick={() => setRotateTarget(t)}
-                        className="flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
+                        className="flex items-center gap-1 whitespace-nowrap text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
                         title="Set/rotate shared secret Inform CWMP"
                       >
                         <KeyRound className="h-3.5 w-3.5" /> Kredensial CWMP
                       </button>
                       <button
                         onClick={() => setQuotaTarget(t)}
-                        className="flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
+                        className="flex items-center gap-1 whitespace-nowrap text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
                         title="Atur kuota task queue tenant (superadmin only)"
                       >
                         <Gauge className="h-3.5 w-3.5" /> Kuota Task
                       </button>
+                      <DeleteButton onClick={() => handleDeleteTenant(t)} title={`Hapus tenant ${t.code}`} disabled={deleteTenantMutation.isPending} />
                     </div>
                   </td>
                 </tr>
@@ -748,7 +811,38 @@ function TenantsTab() {
       {brandingTarget && <EditBrandingModal tenant={brandingTarget} onClose={() => setBrandingTarget(null)} />}
       {quotaTarget && <EditTaskQuotaModal tenant={quotaTarget} onClose={() => setQuotaTarget(null)} />}
       {editTarget && <EditTenantModal tenant={editTarget} onClose={() => setEditTarget(null)} />}
+      {detailTenantId !== null && <TenantDetailModal id={detailTenantId} onClose={() => setDetailTenantId(null)} />}
     </div>
+  )
+}
+
+// TenantDetailModal memuat tenant segar lewat GET /tenants/:id. Password CWMP
+// tidak pernah dikirim backend; hanya username shared secret yang tampil.
+function TenantDetailModal({ id, onClose }: { id: number; onClose: () => void }) {
+  const { data, isLoading, error } = useTenant(id)
+  const mono = (v: string) => <span className="font-mono text-xs">{v}</span>
+  return (
+    <DetailModal
+      title={data ? `Detail Tenant — ${data.code}` : 'Detail Tenant'}
+      onClose={onClose}
+      isLoading={isLoading}
+      error={error ? (error instanceof ApiError ? error.message : 'Tenant tidak ditemukan') : null}
+      rows={
+        data
+          ? [
+              ['Code', mono(data.code)],
+              ['Nama', data.name],
+              ['Status', data.is_active ? 'Aktif' : 'Nonaktif'],
+              ['UUID', mono(data.tenant_uuid)],
+              ['Username CWMP', data.cwmp_inform_username ? mono(data.cwmp_inform_username) : 'Belum diset'],
+              ['Kuota task', data.max_pending_tasks == null ? 'Tidak dibatasi' : `${data.max_pending_tasks} pending`],
+              ['Nama brand', data.brand_name],
+              ['Warna aksen', data.primary_color],
+              ['Dibuat', formatDateTime(data.created_at)],
+            ]
+          : []
+      }
+    />
   )
 }
 
