@@ -30,6 +30,7 @@ import (
 	"acs/internal/repository/mysql"
 	"acs/internal/repository/redisrepo"
 	"acs/internal/usecase/auth"
+	"acs/internal/usecase/catalog"
 	"acs/internal/usecase/device"
 	"acs/internal/usecase/diagnostics"
 	"acs/internal/usecase/file"
@@ -122,6 +123,7 @@ func main() {
 	presetRepo := mysql.NewPresetRepository(db)
 	presetAppRepo := mysql.NewPresetApplicationRepository(db)
 	userDeviceRepo := mysql.NewUserDeviceRepository(db)
+	usageRepo := mysql.NewUsageRepository(db)
 
 	redisClient, err := redisutil.NewClient(cfg.RedisAddr, logger)
 	if err != nil {
@@ -133,7 +135,8 @@ func main() {
 	}
 
 	authSvc := auth.NewService(userRepo, apiTokenRepo, tenantRepo, activityLogRepo, cfg.JWTSecret, cfg.JWTExpiry, cfg.OIDCIssuer, cfg.OIDCClientID, cfg.OIDCClientSecret, cfg.OIDCRedirectURL)
-	iamSvc := iam.NewService(tenantRepo, userRepo, refRepo, activityLogRepo, enc)
+	iamSvc := iam.NewService(tenantRepo, userRepo, refRepo, activityLogRepo, enc, usageRepo)
+	catalogSvc := catalog.NewService(vendorRepo, vendorOUIRepo, deviceModelRepo, paramMappingRepo, usageRepo, activityLogRepo)
 	// webhookSvc dikonstruksi lebih dulu -- session & task memakainya lewat
 	// domain.WebhookEnqueuer (interface sempit, tanpa import cycle), worker
 	// dispatch-nya dijalankan runSweepers.
@@ -147,9 +150,9 @@ func main() {
 	// (ZTP aksi FirmwareFileID, migrations/0009) bergantung pada firmwareSvc
 	// lewat domain.FirmwareScheduler (interface sempit, menghindari import
 	// cycle usecase/provisioning <-> usecase/firmware).
-	firmwareSvc := firmware.NewService(firmwareFileRepo, firmwareJobRepo, firmwareRolloutRepo, deviceRepo, taskSvc, refRepo, activityLogRepo, objStorage)
+	firmwareSvc := firmware.NewService(firmwareFileRepo, firmwareJobRepo, firmwareRolloutRepo, deviceRepo, taskSvc, refRepo, activityLogRepo, objStorage, usageRepo)
 	provisioningSvc := provisioning.NewService(profileRepo, profileParamRepo, ztRuleRepo, deviceRepo, deviceParamRepo, refRepo, taskSvc, firmwareSvc, activityLogRepo, presetRepo, presetAppRepo)
-	deviceSvc := device.NewService(deviceRepo, vendorOUIRepo, deviceModelRepo, refRepo, deviceParamRepo, deviceEventRepo, opticalMetricRepo, configSnapshotRepo, enc, activityLogRepo, taskSvc, fileRepo, objStorage)
+	deviceSvc := device.NewService(deviceRepo, vendorOUIRepo, deviceModelRepo, refRepo, deviceParamRepo, deviceEventRepo, opticalMetricRepo, configSnapshotRepo, enc, activityLogRepo, taskSvc, fileRepo, objStorage, mysql.NewOpenTaskCanceller(db))
 	diagnosticsSvc := diagnostics.NewService(diagnosticRepo, deviceRepo, taskSvc, activityLogRepo)
 	sessionSvc := session.NewService(deviceSessionRepo, deviceEventRepo, deviceParamRepo, deviceRepo, tenantRepo, refRepo, deviceSvc, taskSvc, provisioningSvc, firmwareSvc, diagnosticsSvc, enc, activityLogRepo, logger, webhookSvc, wsHub)
 	fileSvc := file.NewService(fileRepo, objStorage, activityLogRepo)
@@ -204,6 +207,7 @@ func main() {
 	router := &deliveryhttp.Router{
 		Auth: authSvc, IAM: iamSvc, Devices: deviceSvc, Tasks: taskSvc, Provisioning: provisioningSvc,
 		Firmware: firmwareSvc, Diagnostics: diagnosticsSvc, Webhooks: webhookSvc, Sessions: sessionSvc,
+		Catalog: catalogSvc,
 		Vendors: vendorRepo, VendorOUIs: vendorOUIRepo, DeviceModels: deviceModelRepo, ParamMappings: paramMappingRepo,
 		Refs: refRepo, Activity: activityLogRepo,
 		MetricsHandler: metricsHandler,

@@ -19,6 +19,7 @@ import (
 	"github.com/google/uuid"
 
 	"acs/internal/domain"
+	"acs/internal/usecase/auth"
 )
 
 // presignedDownloadExpiry — masa berlaku URL presigned MinIO yang dikirim
@@ -37,6 +38,7 @@ type Service struct {
 	refs     domain.RefRepository
 	activity domain.ActivityLogRepository
 	storage  domain.ObjectStorage
+	usage    domain.UsageRepository
 }
 
 func NewService(
@@ -48,8 +50,9 @@ func NewService(
 	refs domain.RefRepository,
 	activity domain.ActivityLogRepository,
 	storage domain.ObjectStorage,
+	usage domain.UsageRepository,
 ) *Service {
-	return &Service{files: files, jobs: jobs, rollouts: rollouts, devices: devices, tasks: tasks, refs: refs, activity: activity, storage: storage}
+	return &Service{files: files, jobs: jobs, rollouts: rollouts, devices: devices, tasks: tasks, refs: refs, activity: activity, storage: storage, usage: usage}
 }
 
 // requireDeviceTenantScope — RBAC scope tenant (CLAUDE.md), dipakai tiap kali
@@ -186,6 +189,84 @@ func (s *Service) Get(ctx context.Context, id uint64) (*domain.FirmwareFile, err
 
 func (s *Service) ListByVendor(ctx context.Context, vendorID uint64, p domain.Pagination) ([]domain.FirmwareFile, int, error) {
 	return s.files.ListByVendor(ctx, vendorID, p)
+}
+
+// UpdateFirmwareInput — partial update; field nil = tidak diubah. HANYA metadata
+// yang aman: version (label), release_notes ("" = kosongkan), is_active.
+// Sengaja TIDAK bisa diubah: vendor_id/device_model_id (targeting), file_name,
+// storage_key, ukuran, dan checksum — itu identitas isi file yang diunggah;
+// mengubahnya = unggah firmware baru (FR-19: checksum dihitung server).
+type UpdateFirmwareInput struct {
+	Version      *string
+	ReleaseNotes *string
+	IsActive     *bool
+}
+
+// UpdateFirmware — superadmin only (katalog firmware global lintas tenant,
+// sama seperti UploadFirmware).
+func (s *Service) UpdateFirmware(ctx context.Context, actor domain.Actor, id uint64, in UpdateFirmwareInput) (*domain.FirmwareFile, error) {
+	if err := auth.RequireRole(actor, domain.RoleSuperadmin); err != nil {
+		return nil, err
+	}
+	f, err := s.files.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if in.Version != nil {
+		if strings.TrimSpace(*in.Version) == "" {
+			return nil, fmt.Errorf("%w: version tidak boleh kosong", domain.ErrInvalidInput)
+		}
+		f.Version = *in.Version
+	}
+	if in.ReleaseNotes != nil {
+		if *in.ReleaseNotes == "" {
+			f.ReleaseNotes = nil
+		} else {
+			f.ReleaseNotes = in.ReleaseNotes
+		}
+	}
+	if in.IsActive != nil {
+		f.IsActive = *in.IsActive
+	}
+	f.UpdatedBy = actor.UserIDPtr()
+	if err := s.files.Update(ctx, f); err != nil {
+		return nil, err
+	}
+	_ = s.activity.Record(ctx, &domain.ActivityLog{
+		UserID: actor.UserIDPtr(), Action: "UPDATE_FIRMWARE", EntityType: "firmware", EntityID: &f.ID,
+	})
+	return f, nil
+}
+
+// DeleteFirmware — soft delete, superadmin only. Ditolak (409) selama masih ada
+// zero-touch rule yang menunjuknya, rollout batch yang belum selesai, atau job
+// upgrade yang task-nya masih berjalan — menghapusnya di tengah jalan akan
+// mematahkan Download yang sedang/akan dikirim ke CPE. Objek di object storage
+// SENGAJA dipertahankan (soft delete = bisa diaudit/dipulihkan; pembersihan
+// objek yatim adalah urusan kebijakan retensi terpisah, bukan efek samping API ini).
+func (s *Service) DeleteFirmware(ctx context.Context, actor domain.Actor, id uint64) error {
+	if err := auth.RequireRole(actor, domain.RoleSuperadmin); err != nil {
+		return err
+	}
+	f, err := s.files.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	usage, err := s.usage.FirmwareUsage(ctx, id)
+	if err != nil {
+		return err
+	}
+	if len(usage) > 0 {
+		return fmt.Errorf("%w — selesaikan/batalkan dulu, atau nonaktifkan firmware (is_active=false)",
+			domain.NewUsageConflict(fmt.Sprintf("firmware %q", f.Version), usage))
+	}
+	if err := s.files.SoftDelete(ctx, id, actor.UserID); err != nil {
+		return err
+	}
+	_ = s.activity.Record(ctx, &domain.ActivityLog{
+		UserID: actor.UserIDPtr(), Action: "DELETE_FIRMWARE", EntityType: "firmware", EntityID: &id,
+	})
+	return nil
 }
 
 // ScheduleUpgrade membuat firmware_upgrade_jobs + task Download (RPC CWMP

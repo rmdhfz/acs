@@ -37,13 +37,62 @@ func (s *Service) List(ctx context.Context, actor domain.Actor, p domain.Paginat
 	return s.tags.List(ctx, actor.TenantID, p)
 }
 
-func (s *Service) Delete(ctx context.Context, actor domain.Actor, id uint64) error {
+// requireTagMutationScope — scope untuk MENGUBAH/MENGHAPUS tag (lebih ketat
+// dari requireTagInTenantScope yang untuk memakai tag): tag milik tenant hanya
+// boleh dimutasi actor tenant itu; tag GLOBAL (tenant_id NULL, dipakai semua
+// tenant) hanya superadmin — kalau tidak, ADMIN satu tenant bisa mengubah atau
+// menghapus tag yang dipakai tenant lain. Actor non-superadmin tanpa tenant
+// ditolak (bukan nil-deref).
+func (s *Service) requireTagMutationScope(ctx context.Context, actor domain.Actor, id uint64) (*domain.Tag, error) {
 	tag, err := s.tags.GetByID(ctx, id)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if tag.TenantID != nil && !actor.IsSuperadmin() && (*actor.TenantID != *tag.TenantID) {
-		return domain.ErrForbidden
+	if actor.IsSuperadmin() {
+		return tag, nil
+	}
+	if tag.TenantID == nil || actor.TenantID == nil || *tag.TenantID != *actor.TenantID {
+		return nil, domain.ErrForbidden
+	}
+	return tag, nil
+}
+
+// UpdateInput — partial update; field nil = tidak diubah. Color "" = kosongkan.
+type UpdateInput struct {
+	Name  *string
+	Color *string
+}
+
+func (s *Service) Update(ctx context.Context, actor domain.Actor, id uint64, in UpdateInput) (*domain.Tag, error) {
+	tag, err := s.requireTagMutationScope(ctx, actor, id)
+	if err != nil {
+		return nil, err
+	}
+	if in.Name != nil {
+		if *in.Name == "" {
+			return nil, fmt.Errorf("%w: nama tag tidak boleh kosong", domain.ErrInvalidInput)
+		}
+		tag.Name = *in.Name
+	}
+	if in.Color != nil {
+		if *in.Color == "" {
+			tag.Color = nil
+		} else {
+			tag.Color = in.Color
+		}
+	}
+	if err := s.tags.Update(ctx, tag); err != nil {
+		return nil, err
+	}
+	_ = s.activity.Record(ctx, &domain.ActivityLog{
+		UserID: actor.UserIDPtr(), TenantID: actor.TenantID, Action: "UPDATE_TAG", EntityType: "tag", EntityID: &id,
+	})
+	return tag, nil
+}
+
+func (s *Service) Delete(ctx context.Context, actor domain.Actor, id uint64) error {
+	if _, err := s.requireTagMutationScope(ctx, actor, id); err != nil {
+		return err
 	}
 	if err := s.tags.Delete(ctx, id); err != nil {
 		return err

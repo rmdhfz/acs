@@ -19,6 +19,52 @@ func NewDeviceRepository(db *sqlx.DB) domain.DeviceRepository { return &deviceRe
 func (r *deviceRepository) Create(ctx context.Context, d *domain.Device) error {
 	now := time.Now()
 	d.CreatedAt, d.UpdatedAt = now, now
+
+	// Revive: uq_devices_oui_serial mencakup baris yang sudah di-soft-delete,
+	// sedangkan GetByOUISerial menyaring is_deleted -> CPE yang pernah dihapus
+	// lalu Inform lagi dianggap baru dan INSERT di bawah akan kena duplicate
+	// key (Inform gagal, CPE tak bisa terhubung). Maka baris terhapus dengan
+	// (oui, serial) yang sama dihidupkan lagi sebagai registrasi baru: id &
+	// uuid & riwayat (event/parameter) dipertahankan, tetapi kredensial
+	// per-device, profil provisioning, dan catatan di-RESET karena itu milik
+	// registrasi sebelumnya. Baris AKTIF tidak tersentuh (is_deleted = 1).
+	const revive = `UPDATE devices SET
+		is_deleted = 0, deleted_at = NULL, deleted_by = NULL,
+		tenant_id = :tenant_id, vendor_id = :vendor_id, device_model_id = :device_model_id,
+		device_status_id = :device_status_id, provisioning_profile_id = NULL,
+		product_class = :product_class, mac_address = :mac_address,
+		software_version = :software_version, hardware_version = :hardware_version, ip_address = :ip_address,
+		connection_request_url = :connection_request_url, connection_request_username = NULL,
+		connection_request_password_enc = NULL, inform_username = NULL, inform_password_enc = NULL,
+		last_inform_at = :last_inform_at, last_boot_event_at = NULL, notes = NULL,
+		updated_at = :updated_at, updated_by = :created_by
+		WHERE oui = :oui AND serial_number = :serial_number AND is_deleted = 1
+		  AND (tenant_id IS NULL OR tenant_id <=> :tenant_id)`
+	// Klausa tenant di atas MENCEGAH pengambilalihan lintas tenant: tanpanya,
+	// tenant B (yang punya shared secret CWMP-nya sendiri) bisa me-revive baris
+	// device yang dihapus tenant A hanya dengan mengirim Inform memakai OUI+serial
+	// yang sama — baris (id, uuid, riwayat parameter/event/task) berpindah ke B.
+	// Revive lintas tenant TIDAK terjadi; INSERT di bawah lalu kena duplicate key
+	// -> ErrConflict (Inform ditolak 409), dan baris tetap milik tenant asalnya
+	// sampai superadmin menanganinya secara sadar.
+	rres, rerr := r.db.NamedExecContext(ctx, revive, d)
+	if rerr != nil {
+		return translateErr(rerr)
+	}
+	if n, _ := rres.RowsAffected(); n > 0 {
+		var row struct {
+			ID   uint64 `db:"id"`
+			UUID string `db:"device_uuid"`
+		}
+		if err := r.db.GetContext(ctx, &row,
+			`SELECT id, device_uuid FROM devices WHERE oui = ? AND serial_number = ? AND is_deleted = 0`,
+			d.OUI, d.SerialNumber); err != nil {
+			return translateErr(err)
+		}
+		d.ID, d.DeviceUUID = row.ID, row.UUID
+		return nil
+	}
+
 	const q = `INSERT INTO devices
 		(device_uuid, tenant_id, vendor_id, device_model_id, device_status_id, provisioning_profile_id,
 		 oui, serial_number, product_class, mac_address, software_version, hardware_version, ip_address,
@@ -179,11 +225,32 @@ func (r *deviceRepository) MarkStaleOffline(ctx context.Context, offlineStatusID
 	return res.RowsAffected()
 }
 
+// SoftDelete menandai device terhapus DAN melepas relasi aksesnya
+// (user_devices: pemetaan pelanggan ENDUSER; device_tags). Soft delete tidak
+// memicu FK ON DELETE CASCADE, padahal pemetaan itu bukan data historis yang
+// perlu dipertahankan — kalau tersisa, pelanggan lama tetap punya akses ke CPE
+// yang kelak di-revive untuk pelanggan lain (bisa mengganti SSID/PSK-nya).
+// Dalam satu transaksi supaya tidak ada keadaan setengah jalan.
 func (r *deviceRepository) SoftDelete(ctx context.Context, id, deletedBy uint64) error {
-	_, err := r.db.ExecContext(ctx,
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return translateErr(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, q := range []string{
+		`DELETE FROM user_devices WHERE device_id = ?`,
+		`DELETE FROM device_tags WHERE device_id = ?`,
+	} {
+		if _, err := tx.ExecContext(ctx, q, id); err != nil {
+			return translateErr(err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx,
 		`UPDATE devices SET is_deleted = 1, deleted_at = ?, deleted_by = ? WHERE id = ?`,
-		time.Now(), deletedBy, id)
-	return translateErr(err)
+		time.Now(), deletedBy, id); err != nil {
+		return translateErr(err)
+	}
+	return translateErr(tx.Commit())
 }
 
 // ---- DeviceParameter ----

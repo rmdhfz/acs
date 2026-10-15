@@ -17,9 +17,11 @@ import (
 // ---- fakes (pola sama seperti internal/usecase/task/service_test.go) ----
 
 type fakeFirmwareFileRepo struct {
-	created *domain.FirmwareFile
-	getErr  error
-	byID    map[uint64]*domain.FirmwareFile
+	created    *domain.FirmwareFile
+	updated    *domain.FirmwareFile
+	deletedIDs []uint64
+	getErr     error
+	byID       map[uint64]*domain.FirmwareFile
 }
 
 func (f *fakeFirmwareFileRepo) Create(_ context.Context, file *domain.FirmwareFile) error {
@@ -44,7 +46,24 @@ func (f *fakeFirmwareFileRepo) GetByUUID(context.Context, string) (*domain.Firmw
 func (f *fakeFirmwareFileRepo) ListByVendor(context.Context, uint64, domain.Pagination) ([]domain.FirmwareFile, int, error) {
 	return nil, 0, nil
 }
-func (f *fakeFirmwareFileRepo) SoftDelete(context.Context, uint64, uint64) error { return nil }
+func (f *fakeFirmwareFileRepo) Update(_ context.Context, file *domain.FirmwareFile) error {
+	f.updated = file
+	return nil
+}
+func (f *fakeFirmwareFileRepo) SoftDelete(_ context.Context, id, _ uint64) error {
+	f.deletedIDs = append(f.deletedIDs, id)
+	return nil
+}
+
+// fakeUsageFW — domain.UsageRepository; hanya FirmwareUsage yang relevan.
+type fakeUsageFW struct {
+	domain.UsageRepository
+	firmware []domain.UsageCount
+}
+
+func (u *fakeUsageFW) FirmwareUsage(context.Context, uint64) ([]domain.UsageCount, error) {
+	return u.firmware, nil
+}
 
 // createErrFirmwareFileRepo — variant yang selalu gagal saat Create, untuk
 // menguji jalur cleanup (storage.Delete dipanggil saat insert metadata gagal).
@@ -315,7 +334,7 @@ func newTestService(files domain.FirmwareFileRepository, storage domain.ObjectSt
 	refs := &fakeRefRepoFW{ids: map[string]map[string]uint64{
 		domain.RefTableTaskStatus: {domain.TaskStatusPending: 1, domain.TaskStatusCompleted: 2, domain.TaskStatusFailed: 3},
 	}}
-	svc := NewService(files, jobs, &fakeFirmwareRolloutRepo{}, devices, tasks, refs, &fakeActivityLogFW{}, storage)
+	svc := NewService(files, jobs, &fakeFirmwareRolloutRepo{}, devices, tasks, refs, &fakeActivityLogFW{}, storage, &fakeUsageFW{})
 	return svc, jobs, devices, tasks, refs
 }
 
@@ -534,7 +553,7 @@ func newRolloutTestService() (*Service, *fakeFirmwareRolloutRepo, *fakeFirmwareJ
 			domain.FirmwareRolloutStatusCompleted:              rtStatusCompleted, domain.FirmwareRolloutStatusCancelled: rtStatusCancelled,
 		},
 	}}
-	svc := NewService(files, jobs, rollouts, devices, tasks, refs, &fakeActivityLogFW{}, storage)
+	svc := NewService(files, jobs, rollouts, devices, tasks, refs, &fakeActivityLogFW{}, storage, &fakeUsageFW{})
 	return svc, rollouts, jobs, devices
 }
 

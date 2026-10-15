@@ -85,9 +85,32 @@ func NewVendorOUIRepository(db *sqlx.DB) domain.VendorOUIRepository {
 func (r *vendorOUIRepository) Create(ctx context.Context, o *domain.VendorOUI) error {
 	now := time.Now()
 	o.CreatedAt, o.UpdatedAt = now, now
+
+	// Unique key uq_vendor_ouis_oui TIDAK melihat is_deleted, jadi OUI yang
+	// pernah dihapus (soft delete) selamanya menolak INSERT ulang. Sebelum
+	// INSERT, hidupkan kembali baris terhapus dengan OUI yang sama (id lama
+	// dipertahankan; vendor & notes mengikuti permintaan baru). Baris AKTIF
+	// tidak tersentuh (is_deleted = 1 di WHERE) -> duplikat aktif tetap 409.
+	const revive = `UPDATE vendor_ouis
+		SET is_deleted = 0, deleted_at = NULL, deleted_by = NULL,
+		    vendor_id = ?, notes = ?, created_by = ?, created_at = ?, updated_at = ?
+		WHERE oui = ? AND is_deleted = 1`
+	res, err := r.db.ExecContext(ctx, revive, o.VendorID, o.Notes, o.CreatedBy, now, now, o.OUI)
+	if err != nil {
+		return translateErr(err)
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		var id uint64
+		if err := r.db.GetContext(ctx, &id, `SELECT id FROM vendor_ouis WHERE oui = ? AND is_deleted = 0`, o.OUI); err != nil {
+			return translateErr(err)
+		}
+		o.ID = id
+		return nil
+	}
+
 	const q = `INSERT INTO vendor_ouis (vendor_id, oui, notes, created_at, updated_at, created_by)
 		VALUES (:vendor_id, :oui, :notes, :created_at, :updated_at, :created_by)`
-	res, err := r.db.NamedExecContext(ctx, q, o)
+	res, err = r.db.NamedExecContext(ctx, q, o)
 	if err != nil {
 		return translateErr(err)
 	}
@@ -221,10 +244,20 @@ func (r *vendorParameterMappingRepository) Upsert(ctx context.Context, m *domain
 	const q = `INSERT INTO vendor_parameter_mappings
 		(vendor_id, data_model_version_id, device_model_id, software_version_pattern, logical_key, tr069_path, parameter_type_id, description, created_at, updated_at, created_by)
 		VALUES (:vendor_id, :data_model_version_id, :device_model_id, :software_version_pattern, :logical_key, :tr069_path, :parameter_type_id, :description, :created_at, :updated_at, :created_by)
-		ON DUPLICATE KEY UPDATE tr069_path = VALUES(tr069_path), parameter_type_id = VALUES(parameter_type_id),
+		ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id), tr069_path = VALUES(tr069_path), parameter_type_id = VALUES(parameter_type_id),
 			description = VALUES(description), updated_at = VALUES(updated_at), is_deleted = 0, deleted_at = NULL, deleted_by = NULL`
-	_, err := r.db.NamedExecContext(ctx, q, m)
-	return translateErr(err)
+	// `id = LAST_INSERT_ID(id)` membuat LastInsertId() mengembalikan id baris
+	// yang BENAR baik saat INSERT baru maupun saat meng-update baris yang sudah
+	// ada — tanpanya respons POST /vendor-parameter-mappings membawa id 0 dan
+	// klien tak bisa mereferensikan mapping (GET/DELETE by id).
+	res, err := r.db.NamedExecContext(ctx, q, m)
+	if err != nil {
+		return translateErr(err)
+	}
+	if id, ierr := res.LastInsertId(); ierr == nil && id > 0 {
+		m.ID = uint64(id)
+	}
+	return nil
 }
 
 // Resolve mencari mapping paling spesifik utk (vendor, data model version,
@@ -293,6 +326,14 @@ func (r *vendorParameterMappingRepository) Resolve(ctx context.Context, vendorID
 		}
 	}
 	return lookup(nil, false)
+}
+
+func (r *vendorParameterMappingRepository) GetByID(ctx context.Context, id uint64) (*domain.VendorParameterMapping, error) {
+	var m domain.VendorParameterMapping
+	if err := r.db.GetContext(ctx, &m, `SELECT * FROM vendor_parameter_mappings WHERE id = ? AND is_deleted = 0`, id); err != nil {
+		return nil, translateErr(err)
+	}
+	return &m, nil
 }
 
 func (r *vendorParameterMappingRepository) ListByVendor(ctx context.Context, vendorID uint64) ([]domain.VendorParameterMapping, error) {

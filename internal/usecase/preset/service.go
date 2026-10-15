@@ -46,14 +46,32 @@ func (s *Service) Get(ctx context.Context, actor domain.Actor, id uint64) (*doma
 	if err != nil {
 		return nil, err
 	}
-	if preset.TenantID != nil && !actor.IsSuperadmin() && (*actor.TenantID != *preset.TenantID) {
+	// Baca: preset milik tenant sendiri atau preset global (tenant_id NULL).
+	// Actor non-superadmin tanpa tenant ditolak (bukan nil-deref).
+	if preset.TenantID != nil && !actor.IsSuperadmin() &&
+		(actor.TenantID == nil || *actor.TenantID != *preset.TenantID) {
+		return nil, domain.ErrForbidden
+	}
+	return preset, nil
+}
+
+// getForMutation — scope untuk MENGUBAH/MENGHAPUS, lebih ketat dari Get:
+// preset GLOBAL (tenant_id NULL) berlaku untuk device semua tenant, jadi
+// hanya superadmin yang boleh memutasinya. Tanpa ini ADMIN satu tenant bisa
+// mengubah/menghapus konfigurasi yang ditegakkan ke device tenant lain.
+func (s *Service) getForMutation(ctx context.Context, actor domain.Actor, id uint64) (*domain.Preset, error) {
+	preset, err := s.Get(ctx, actor, id)
+	if err != nil {
+		return nil, err
+	}
+	if preset.TenantID == nil && !actor.IsSuperadmin() {
 		return nil, domain.ErrForbidden
 	}
 	return preset, nil
 }
 
 func (s *Service) Update(ctx context.Context, actor domain.Actor, id uint64, in domain.Preset) error {
-	preset, err := s.Get(ctx, actor, id)
+	preset, err := s.getForMutation(ctx, actor, id)
 	if err != nil {
 		return err
 	}
@@ -78,7 +96,7 @@ func (s *Service) Update(ctx context.Context, actor domain.Actor, id uint64, in 
 }
 
 func (s *Service) Delete(ctx context.Context, actor domain.Actor, id uint64) error {
-	preset, err := s.Get(ctx, actor, id)
+	preset, err := s.getForMutation(ctx, actor, id)
 	if err != nil {
 		return err
 	}

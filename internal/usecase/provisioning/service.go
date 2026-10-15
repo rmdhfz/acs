@@ -590,6 +590,22 @@ func validateMatchParameterPair(r *domain.ZeroTouchRule) error {
 	return nil
 }
 
+// GetZeroTouchRule — baca satu rule. Rule milik tenant sendiri atau rule
+// global (tenant_id NULL, ikut tampil di ListZeroTouchRules) boleh dibaca;
+// rule tenant lain ditolak. Mutasi tetap pakai scope tenant ketat.
+func (s *Service) GetZeroTouchRule(ctx context.Context, actor domain.Actor, id uint64) (*domain.ZeroTouchRule, error) {
+	r, err := s.rules.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if r.TenantID != nil {
+		if err := auth.RequireTenantScope(actor, r.TenantID); err != nil {
+			return nil, err
+		}
+	}
+	return r, nil
+}
+
 func (s *Service) CreateZeroTouchRule(ctx context.Context, actor domain.Actor, r *domain.ZeroTouchRule) error {
 	if err := validateMatchParameterPair(r); err != nil {
 		return err

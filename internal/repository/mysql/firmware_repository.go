@@ -68,6 +68,13 @@ func (r *firmwareFileRepository) ListByVendor(ctx context.Context, vendorID uint
 	return rows, total, nil
 }
 
+func (r *firmwareFileRepository) Update(ctx context.Context, f *domain.FirmwareFile) error {
+	const q = `UPDATE firmware_files SET version = :version, release_notes = :release_notes,
+		is_active = :is_active, updated_by = :updated_by WHERE id = :id AND is_deleted = 0`
+	_, err := r.db.NamedExecContext(ctx, q, f)
+	return translateErr(err)
+}
+
 func (r *firmwareFileRepository) SoftDelete(ctx context.Context, id, deletedBy uint64) error {
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE firmware_files SET is_deleted = 1, deleted_at = ?, deleted_by = ? WHERE id = ?`,

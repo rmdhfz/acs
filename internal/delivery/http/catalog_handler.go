@@ -75,15 +75,10 @@ func (r *Router) addVendorOUI(c *echo.Context) error {
 	); err != nil {
 		return err
 	}
-	o := &domain.VendorOUI{
-		VendorID: vendorID, OUI: req.OUI, Notes: req.Notes, Audit: domain.Audit{CreatedBy: actor.UserIDPtr()},
-	}
-	if err := r.VendorOUIs.Create(c.Request().Context(), o); err != nil {
+	o, err := r.Catalog.AddVendorOUI(c.Request().Context(), actor, vendorID, req.OUI, req.Notes)
+	if err != nil {
 		return handleErr(c, err)
 	}
-	_ = r.Activity.Record(c.Request().Context(), &domain.ActivityLog{
-		UserID: actor.UserIDPtr(), Action: "ADD_VENDOR_OUI", EntityType: "vendor", EntityID: &vendorID,
-	})
 	return c.JSON(http.StatusCreated, o)
 }
 
@@ -138,15 +133,11 @@ func (r *Router) createDeviceModel(c *echo.Context) error {
 	}
 	m := &domain.DeviceModel{
 		VendorID: req.VendorID, DeviceTypeID: req.DeviceTypeID, DataModelVersionID: req.DataModelVersionID,
-		ProductClass: req.ProductClass, ModelName: req.ModelName, Description: req.Description, IsActive: true,
-		Audit: domain.Audit{CreatedBy: actor.UserIDPtr()},
+		ProductClass: req.ProductClass, ModelName: req.ModelName, Description: req.Description,
 	}
-	if err := r.DeviceModels.Create(c.Request().Context(), m); err != nil {
+	if err := r.Catalog.CreateDeviceModel(c.Request().Context(), actor, m); err != nil {
 		return handleErr(c, err)
 	}
-	_ = r.Activity.Record(c.Request().Context(), &domain.ActivityLog{
-		UserID: actor.UserIDPtr(), Action: "CREATE_DEVICE_MODEL", EntityType: "device_model", EntityID: &m.ID,
-	})
 	return c.JSON(http.StatusCreated, m)
 }
 
@@ -205,13 +196,9 @@ func (r *Router) upsertParameterMapping(c *echo.Context) error {
 		VendorID: req.VendorID, DataModelVersionID: req.DataModelVersionID, DeviceModelID: req.DeviceModelID,
 		SoftwareVersionPattern: req.SoftwareVersionPattern,
 		LogicalKey:             req.LogicalKey, TR069Path: req.TR069Path, ParameterTypeID: req.ParameterTypeID, Description: req.Description,
-		Audit: domain.Audit{CreatedBy: actor.UserIDPtr()},
 	}
-	if err := r.ParamMappings.Upsert(c.Request().Context(), m); err != nil {
+	if err := r.Catalog.UpsertParameterMapping(c.Request().Context(), actor, m); err != nil {
 		return handleErr(c, err)
 	}
-	_ = r.Activity.Record(c.Request().Context(), &domain.ActivityLog{
-		UserID: actor.UserIDPtr(), Action: "UPSERT_VENDOR_PARAMETER_MAPPING", EntityType: "vendor_parameter_mapping", EntityID: &m.ID,
-	})
 	return c.JSON(http.StatusOK, m)
 }

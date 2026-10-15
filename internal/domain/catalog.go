@@ -99,6 +99,7 @@ type VendorParameterMappingRepository interface {
 	// softwareVersion boleh nil/kosong (mis. device belum pernah Inform
 	// lengkap) -- langkah 1 & 3 dilewati pada kasus itu.
 	Resolve(ctx context.Context, vendorID, dataModelVersionID uint64, deviceModelID *uint64, logicalKey string, softwareVersion *string) (*VendorParameterMapping, error)
+	GetByID(ctx context.Context, id uint64) (*VendorParameterMapping, error)
 	ListByVendor(ctx context.Context, vendorID uint64) ([]VendorParameterMapping, error)
 	Delete(ctx context.Context, id, deletedBy uint64) error
 }

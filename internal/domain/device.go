@@ -78,7 +78,18 @@ type DeviceRepository interface {
 	Update(ctx context.Context, d *Device) error
 	UpdateStatus(ctx context.Context, id, statusID uint64, updatedBy *uint64) error
 	MarkStaleOffline(ctx context.Context, offlineStatusID uint64, staleBefore time.Time) (int64, error)
+	// SoftDelete menandai device terhapus. Create() meng-"revive" baris terhapus
+	// dengan (oui, serial) yang sama bila CPE itu Inform lagi (unique key
+	// uq_devices_oui_serial mencakup baris terhapus) — lihat implementasinya.
 	SoftDelete(ctx context.Context, id, deletedBy uint64) error
+}
+
+// OpenTaskCanceller membatalkan task yang belum terminal (PENDING/QUEUED/SENT)
+// milik satu device. Dipakai saat device dihapus supaya task lama tidak
+// "bangkit" menyerang device yang kelak di-revive. Interface terpisah (bukan
+// method TaskRepository) agar kontrak TaskRepository tidak melebar.
+type OpenTaskCanceller interface {
+	CancelOpenForDevice(ctx context.Context, deviceID uint64, updatedBy *uint64) (int64, error)
 }
 
 // DeviceParameter — EAV nilai parameter TR-069 terkini per device (hasil sync).

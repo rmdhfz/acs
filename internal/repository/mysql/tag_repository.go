@@ -52,6 +52,11 @@ func (r *tagRepository) List(ctx context.Context, tenantID *uint64, p domain.Pag
 	return tags, total, nil
 }
 
+func (r *tagRepository) Update(ctx context.Context, tag *domain.Tag) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE tags SET name = ?, color = ? WHERE id = ?`, tag.Name, tag.Color, tag.ID)
+	return translateErr(err)
+}
+
 func (r *tagRepository) Delete(ctx context.Context, id uint64) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM tags WHERE id = ?`, id)
 	return translateErr(err)

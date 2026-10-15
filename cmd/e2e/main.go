@@ -42,6 +42,8 @@ type World struct {
 	pilot2TenantID uint64
 	cwmpUser       string
 	cwmpPass       string
+	cwmpUser2      string // shared secret tenant pilot2 (uji pengambilalihan lintas tenant)
+	cwmpPass2      string
 
 	vendorIDByKey map[string]uint64 // simcpe profile key -> ref_vendors.id
 	taskStatus    map[string]uint64 // code -> id
@@ -116,6 +118,7 @@ func main() {
 		{"S8-firmware-rollout", scenarioFirmwareRollout},
 		{"S9-preset-drift-heal", scenarioPresetDriftHeal},
 		{"S10-security-guards", scenarioSecurityGuards},
+		{"S11-crud-lengkap", scenarioCRUDLengkap},
 	}
 
 	var results []result
@@ -238,8 +241,10 @@ func setup(ctx context.Context, w *World, superUser, superPass string) error {
 	w.pilotTenantID = tid
 
 	// Tenant kedua utk uji isolasi.
+	w.cwmpUser2 = "pilot2-" + w.runID
+	w.cwmpPass2 = "cwmp-secret-" + randHex(12)
 	t2id, err := createTenant(w.super, "PI2"+strings.ToUpper(w.runID), "Pilot2 E2E "+w.runID,
-		"pilot2-"+w.runID, "cwmp-secret-"+randHex(12))
+		w.cwmpUser2, w.cwmpPass2)
 	if err != nil {
 		return fmt.Errorf("buat tenant pilot2: %w", err)
 	}

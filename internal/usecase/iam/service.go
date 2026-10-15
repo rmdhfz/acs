@@ -30,10 +30,11 @@ type Service struct {
 	refs     domain.RefRepository
 	activity domain.ActivityLogRepository
 	enc      *cryptoutil.Encryptor
+	usage    domain.UsageRepository
 }
 
-func NewService(tenants domain.TenantRepository, users domain.UserRepository, refs domain.RefRepository, activity domain.ActivityLogRepository, enc *cryptoutil.Encryptor) *Service {
-	return &Service{tenants: tenants, users: users, refs: refs, activity: activity, enc: enc}
+func NewService(tenants domain.TenantRepository, users domain.UserRepository, refs domain.RefRepository, activity domain.ActivityLogRepository, enc *cryptoutil.Encryptor, usage domain.UsageRepository) *Service {
+	return &Service{tenants: tenants, users: users, refs: refs, activity: activity, enc: enc, usage: usage}
 }
 
 type CreateTenantInput struct {
@@ -98,6 +99,48 @@ func (s *Service) ListTenants(ctx context.Context, actor domain.Actor, p domain.
 		return nil, 0, err
 	}
 	return s.tenants.List(ctx, p)
+}
+
+// GetTenant — superadmin boleh tenant manapun; role lain hanya tenant-nya
+// sendiri (RBAC scope tenant, CLAUDE.md). Kredensial CWMP tidak ikut
+// terserialisasi (Tenant.CWMPInformPasswordEnc ber-tag json:"-").
+func (s *Service) GetTenant(ctx context.Context, actor domain.Actor, tenantID uint64) (*domain.Tenant, error) {
+	if err := auth.RequireTenantScope(actor, &tenantID); err != nil {
+		return nil, err
+	}
+	return s.tenants.GetByID(ctx, tenantID)
+}
+
+// DeleteTenant — soft delete, superadmin only. Ditolak (409) selama tenant
+// masih punya user atau device aktif: menghapusnya akan membuat data itu
+// yatim dan tak terjangkau siapa pun. Untuk menghentikan akses tenant tanpa
+// menghapus data, pakai UpdateTenant{IsActive:false} (token yang sudah
+// terbit pun langsung ditolak, lihat UpdateTenant). Tenant milik actor
+// sendiri tidak boleh dihapus (self-lockout).
+func (s *Service) DeleteTenant(ctx context.Context, actor domain.Actor, tenantID uint64) error {
+	if err := auth.RequireRole(actor, domain.RoleSuperadmin); err != nil {
+		return err
+	}
+	t, err := s.tenants.GetByID(ctx, tenantID)
+	if err != nil {
+		return err
+	}
+	if actor.TenantID != nil && *actor.TenantID == tenantID {
+		return fmt.Errorf("%w: tidak bisa menghapus tenant milik akun sendiri", domain.ErrForbidden)
+	}
+	usage, err := s.usage.TenantUsage(ctx, tenantID)
+	if err != nil {
+		return err
+	}
+	if len(usage) > 0 {
+		return fmt.Errorf("%w — hapus/pindahkan dulu, atau nonaktifkan tenant (is_active=false)",
+			domain.NewUsageConflict(fmt.Sprintf("tenant %q", t.Code), usage))
+	}
+	if err := s.tenants.SoftDelete(ctx, tenantID, actor.UserID); err != nil {
+		return err
+	}
+	_ = s.activity.Record(ctx, &domain.ActivityLog{UserID: actor.UserIDPtr(), TenantID: &tenantID, Action: "DELETE_TENANT", EntityType: "tenant", EntityID: &tenantID})
+	return nil
 }
 
 // UpdateTenantInput -- partial update (field nil = tidak diubah), pola sama
@@ -321,6 +364,14 @@ func (s *Service) ListUsers(ctx context.Context, actor domain.Actor, tenantID *u
 		tenantID = tid
 	}
 	return s.users.List(ctx, tenantID, p)
+}
+
+// GetUser — superadmin boleh user manapun; ADMIN hanya user satu tenant dengan
+// dirinya. Scope yang sama dgn mutasi (requireUserMutationScope) sengaja
+// dipakai untuk baca: ADMIN tidak boleh melihat profil user tenant lain.
+// password_hash tidak terserialisasi (User.PasswordHash ber-tag json:"-").
+func (s *Service) GetUser(ctx context.Context, actor domain.Actor, targetID uint64) (*domain.User, error) {
+	return s.requireUserMutationScope(ctx, actor, targetID)
 }
 
 // requireUserMutationScope resolve user target lalu memastikan actor boleh

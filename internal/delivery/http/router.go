@@ -12,6 +12,7 @@ import (
 	"acs/internal/delivery/ws"
 	"acs/internal/domain"
 	"acs/internal/usecase/auth"
+	"acs/internal/usecase/catalog"
 	"acs/internal/usecase/device"
 	"acs/internal/usecase/diagnostics"
 	"acs/internal/usecase/file"
@@ -36,6 +37,7 @@ type Router struct {
 	Diagnostics   *diagnostics.Service
 	Webhooks      *webhook.Service
 	Sessions      *session.Service
+	Catalog       *catalog.Service
 	Vendors       domain.VendorRepository
 	VendorOUIs    domain.VendorOUIRepository
 	DeviceModels  domain.DeviceModelRepository
@@ -119,6 +121,11 @@ func (r *Router) Register(e *echo.Echo) {
 	authed.POST("/tenants", r.createTenant, RequireRoles(superadminOnly...))
 	authed.GET("/tenants", r.listTenants, RequireRoles(superadminOnly...))
 	authed.GET("/tenants/current", r.getCurrentTenant)
+	// GET by id memuat cwmp_inform_username, jadi dibatasi ADMIN+ (scope: ADMIN
+	// hanya tenant sendiri, dicek di usecase/iam). DELETE = soft delete, superadmin
+	// saja, ditolak 409 bila tenant masih punya user/device aktif.
+	authed.GET("/tenants/:id", r.getTenant, RequireRoles(admin...))
+	authed.DELETE("/tenants/:id", r.deleteTenant, RequireRoles(superadminOnly...))
 	// Activate/deactivate tenant (ROADMAP.md gap lama) -- superadmin only,
 	// sama seperti create tenant. Dampak IsActive=false ke Login/ResolveActor
 	// didokumentasikan di usecase/iam.UpdateTenant.
@@ -135,6 +142,7 @@ func (r *Router) Register(e *echo.Echo) {
 	// Self-service tenant admin (ROADMAP.md Fase 2): superadmin bisa ke user
 	// manapun, ADMIN dibatasi ke user satu tenant + guard self-lockout —
 	// keduanya dicek di usecase/iam, role gate di sini cuma menyaring NOC/VIEWER.
+	authed.GET("/users/:id", r.getUser, RequireRoles(admin...))
 	authed.PATCH("/users/:id", r.updateUser, RequireRoles(admin...))
 	authed.PATCH("/users/:id/password", r.resetUserPassword, RequireRoles(admin...))
 	authed.PATCH("/users/:id/roles", r.replaceUserRoles, RequireRoles(admin...))
@@ -144,6 +152,10 @@ func (r *Router) Register(e *echo.Echo) {
 	authed.GET("/devices/stats", r.deviceStats)
 	authed.GET("/devices/:id", r.getDevice)
 	authed.PATCH("/devices/:id", r.updateDevice, RequireRoles(adminOrNOC...))
+	// Soft delete device (dekomisioning): ADMIN+ pada tenant sendiri. Task terbuka
+	// dibatalkan; CPE yang masih menyala dan Inform lagi di-revive sebagai
+	// registrasi baru (usecase/device.Delete, repository Create).
+	authed.DELETE("/devices/:id", r.deleteDevice, RequireRoles(admin...))
 	authed.GET("/devices/:id/parameters", r.listDeviceParameters)
 	authed.GET("/devices/:id/events", r.listDeviceEvents)
 	authed.GET("/devices/:id/optical-metrics", r.listOpticalMetrics)
@@ -183,18 +195,31 @@ func (r *Router) Register(e *echo.Echo) {
 	authed.POST("/devices/:id/apply-profile/:profileId", r.applyProfile, RequireRoles(admin...))
 
 	authed.GET("/zero-touch-rules", r.listZTRules)
+	authed.GET("/zero-touch-rules/:id", r.getZTRule)
 	authed.POST("/zero-touch-rules", r.createZTRule, RequireRoles(admin...))
 	authed.PUT("/zero-touch-rules/:id", r.updateZTRule, RequireRoles(admin...))
 	authed.DELETE("/zero-touch-rules/:id", r.deleteZTRule, RequireRoles(admin...))
 
+	// Katalog vendor — data referensi GLOBAL: baca untuk semua role terautentikasi,
+	// mutasi (create/update/delete) superadmin saja. Delete = soft delete dan
+	// ditolak 409 selama masih ada data aktif yang merujuk (usecase/catalog).
 	authed.GET("/vendors", r.listVendors)
 	authed.POST("/vendors", r.createVendor, RequireRoles(superadminOnly...))
+	authed.GET("/vendors/:id", r.getVendor)
+	authed.PATCH("/vendors/:id", r.updateVendor, RequireRoles(superadminOnly...))
+	authed.DELETE("/vendors/:id", r.deleteVendor, RequireRoles(superadminOnly...))
 	authed.GET("/vendors/:id/ouis", r.listVendorOUIs)
 	authed.POST("/vendors/:id/ouis", r.addVendorOUI, RequireRoles(superadminOnly...))
+	authed.DELETE("/vendors/:id/ouis/:ouiId", r.deleteVendorOUI, RequireRoles(superadminOnly...))
 	authed.GET("/device-models", r.listDeviceModels)
 	authed.POST("/device-models", r.createDeviceModel, RequireRoles(superadminOnly...))
+	authed.GET("/device-models/:id", r.getDeviceModel)
+	authed.PATCH("/device-models/:id", r.updateDeviceModel, RequireRoles(superadminOnly...))
+	authed.DELETE("/device-models/:id", r.deleteDeviceModel, RequireRoles(superadminOnly...))
 	authed.GET("/vendor-parameter-mappings", r.listParameterMappings)
 	authed.POST("/vendor-parameter-mappings", r.upsertParameterMapping, RequireRoles(superadminOnly...))
+	authed.GET("/vendor-parameter-mappings/:id", r.getParameterMapping)
+	authed.DELETE("/vendor-parameter-mappings/:id", r.deleteParameterMapping, RequireRoles(superadminOnly...))
 
 	// firmware_files adalah katalog global lintas tenant (tidak py tenant_id,
 	// sama seperti vendors/device-models/vendor-parameter-mappings) — upload
@@ -204,6 +229,11 @@ func (r *Router) Register(e *echo.Echo) {
 	// yang sama, celah supply-chain/integrity lintas tenant).
 	authed.POST("/firmware", r.uploadFirmware, RequireRoles(superadminOnly...))
 	authed.GET("/firmware", r.listFirmware)
+	// get/update/delete firmware: katalog global, mutasi superadmin saja. Delete =
+	// soft delete, ditolak 409 selama rule ZTP/rollout/job upgrade masih memakainya.
+	authed.GET("/firmware/:id", r.getFirmware)
+	authed.PATCH("/firmware/:id", r.updateFirmware, RequireRoles(superadminOnly...))
+	authed.DELETE("/firmware/:id", r.deleteFirmware, RequireRoles(superadminOnly...))
 	authed.POST("/devices/:id/firmware-upgrade", r.scheduleFirmwareUpgrade, RequireRoles(admin...))
 	authed.GET("/devices/:id/firmware-jobs", r.listFirmwareJobs)
 
@@ -240,6 +270,7 @@ func (r *Router) Register(e *echo.Echo) {
 
 	authed.POST("/tags", r.createTag, RequireRoles(admin...))
 	authed.GET("/tags", r.listTags)
+	authed.PATCH("/tags/:id", r.updateTag, RequireRoles(admin...))
 	authed.DELETE("/tags/:id", r.deleteTag, RequireRoles(admin...))
 	// Device <-> tag (segmentasi gaya GenieACS). GET terbuka utk semua role
 	// terautentikasi (spt GET /devices); assign/remove adminOrNOC (aksi
@@ -250,6 +281,7 @@ func (r *Router) Register(e *echo.Echo) {
 
 	authed.POST("/presets", r.createPreset, RequireRoles(admin...))
 	authed.GET("/presets", r.listPresets)
+	authed.GET("/presets/:id", r.getPreset)
 	authed.PATCH("/presets/:id", r.updatePreset, RequireRoles(admin...))
 	authed.DELETE("/presets/:id", r.deletePreset, RequireRoles(admin...))
 

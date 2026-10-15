@@ -67,6 +67,7 @@ type Service struct {
 	tasks          domain.TaskCreator
 	fileRepo       domain.FileRepository
 	storage        domain.ObjectStorage
+	taskCanceller  domain.OpenTaskCanceller
 }
 
 func NewService(
@@ -83,12 +84,13 @@ func NewService(
 	tasks domain.TaskCreator,
 	fileRepo domain.FileRepository,
 	storage domain.ObjectStorage,
+	taskCanceller domain.OpenTaskCanceller,
 ) *Service {
 	return &Service{
 		devices: devices, vendorOUIs: vendorOUIs, deviceModels: deviceModels, refs: refs,
 		deviceParams: deviceParams, deviceEvents: deviceEvents, opticalMetrics: opticalMetrics,
 		configSnaps: configSnaps, enc: enc, activity: activity, tasks: tasks,
-		fileRepo: fileRepo, storage: storage,
+		fileRepo: fileRepo, storage: storage, taskCanceller: taskCanceller,
 	}
 }
 
@@ -106,6 +108,34 @@ func (s *Service) Get(ctx context.Context, actor domain.Actor, id uint64) (*doma
 		return nil, err
 	}
 	return d, nil
+}
+
+// Delete — soft delete device (dekomisioning/salah daftar). ADMIN+ pada tenant
+// sendiri; superadmin lintas tenant. Task yang belum terminal dibatalkan lebih
+// dulu supaya tidak dieksekusi bila CPE itu kelak Inform lagi: device terhapus
+// yang Inform kembali di-revive sebagai registrasi baru (lihat
+// deviceRepository.Create), bukan ditolak — CPE yang masih menyala tidak boleh
+// kehilangan koneksi ke ACS hanya karena catatannya pernah dihapus.
+func (s *Service) Delete(ctx context.Context, actor domain.Actor, id uint64) error {
+	if err := auth.RequireRole(actor, domain.RoleAdmin); err != nil {
+		return err
+	}
+	d, err := s.Get(ctx, actor, id)
+	if err != nil {
+		return err
+	}
+	cancelled, err := s.taskCanceller.CancelOpenForDevice(ctx, d.ID, actor.UserIDPtr())
+	if err != nil {
+		return err
+	}
+	if err := s.devices.SoftDelete(ctx, d.ID, actor.UserID); err != nil {
+		return err
+	}
+	_ = s.activity.Record(ctx, &domain.ActivityLog{
+		UserID: actor.UserIDPtr(), TenantID: d.TenantID, Action: "DELETE_DEVICE", EntityType: "device", EntityID: &d.ID,
+		Details: map[string]any{"serial_number": d.SerialNumber, "cancelled_tasks": cancelled},
+	})
+	return nil
 }
 
 func (s *Service) CreateConfigSnapshot(ctx context.Context, deviceID uint64) error {
@@ -302,6 +332,12 @@ func (s *Service) FindOrCreateFromInform(ctx context.Context, info InformDeviceI
 			(existing.ConnectionRequestURL == nil || *existing.ConnectionRequestURL != crURL) {
 			existing.ConnectionRequestURL = &crURL
 		}
+		// Self-heal: device yang dibuat sebelum OUI/model-nya terdaftar di
+		// katalog (mis. uji lapangan pertama, atau vendor baru di-onboard
+		// belakangan) memperoleh vendor_id/device_model_id di Inform
+		// berikutnya, tanpa assign manual. Hanya mengisi yang masih NULL --
+		// pilihan manual operator tidak pernah ditimpa.
+		s.resolveVendorModel(ctx, existing, info.OUI, info.ProductClass)
 		if err := s.devices.Update(ctx, existing); err != nil {
 			return nil, false, err
 		}
@@ -329,17 +365,46 @@ func (s *Service) FindOrCreateFromInform(ctx context.Context, info InformDeviceI
 		d.ConnectionRequestURL = &crURL
 	}
 
-	if vOUI, err := s.vendorOUIs.GetByOUI(ctx, info.OUI); err == nil {
-		d.VendorID = &vOUI.VendorID
-		if dm, err := s.deviceModels.FindByVendorAndProductClass(ctx, vOUI.VendorID, info.ProductClass); err == nil {
-			d.DeviceModelID = &dm.ID
-		}
-	}
+	s.resolveVendorModel(ctx, d, info.OUI, info.ProductClass)
 
 	if err := s.devices.Create(ctx, d); err != nil {
 		return nil, false, err
 	}
 	return d, true, nil
+}
+
+// resolveVendorModel mengisi d.VendorID (dari vendor_ouis) dan d.DeviceModelID
+// (dari device_models by vendor + ProductClass) HANYA bila masih nil -- nilai
+// yang sudah ada (termasuk hasil assign manual operator) tidak pernah ditimpa.
+// Kegagalan lookup tidak menggagalkan Inform (inventory tetap tercatat, FR-15):
+// ErrNotFound berarti katalog belum punya data; error lain di-log.
+//
+// Biaya jalur panas: device yang sudah ter-resolve penuh tidak menambah query;
+// device tak dikenal menambah 1 query terindeks (uq_vendor_ouis_oui) per Inform.
+func (s *Service) resolveVendorModel(ctx context.Context, d *domain.Device, oui, productClass string) {
+	if d.VendorID != nil && d.DeviceModelID != nil {
+		return
+	}
+	if d.VendorID == nil {
+		vOUI, err := s.vendorOUIs.GetByOUI(ctx, oui)
+		if err != nil {
+			if !errors.Is(err, domain.ErrNotFound) {
+				s.log().Warn("device: lookup vendor_ouis gagal", "oui", oui, "error", err)
+			}
+			return
+		}
+		d.VendorID = &vOUI.VendorID
+	}
+	if d.DeviceModelID == nil {
+		dm, err := s.deviceModels.FindByVendorAndProductClass(ctx, *d.VendorID, productClass)
+		if err != nil {
+			if !errors.Is(err, domain.ErrNotFound) {
+				s.log().Warn("device: lookup device_models gagal", "vendor_id", *d.VendorID, "product_class", productClass, "error", err)
+			}
+			return
+		}
+		d.DeviceModelID = &dm.ID
+	}
 }
 
 // MarkOnline menandai device ONLINE. dev adalah state device SAAT INI (dari

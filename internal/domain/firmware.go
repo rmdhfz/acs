@@ -36,6 +36,10 @@ type FirmwareFileRepository interface {
 	GetByID(ctx context.Context, id uint64) (*FirmwareFile, error)
 	GetByUUID(ctx context.Context, uuid string) (*FirmwareFile, error)
 	ListByVendor(ctx context.Context, vendorID uint64, p Pagination) ([]FirmwareFile, int, error)
+	// Update menyimpan HANYA metadata yang boleh berubah: version, release_notes,
+	// is_active. Identitas isi file (storage_key, checksum, ukuran) dan targeting
+	// (vendor_id/device_model_id) tidak pernah diubah lewat sini.
+	Update(ctx context.Context, f *FirmwareFile) error
 	SoftDelete(ctx context.Context, id, deletedBy uint64) error
 }
 

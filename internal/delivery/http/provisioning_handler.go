@@ -200,6 +200,18 @@ func (r *Router) listZTRules(c *echo.Context) error {
 	return c.JSON(http.StatusOK, rules)
 }
 
+func (r *Router) getZTRule(c *echo.Context) error {
+	id, err := parseUint64Param(c, "id")
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "id tidak valid")
+	}
+	rule, err := r.Provisioning.GetZeroTouchRule(c.Request().Context(), ActorFrom(c), id)
+	if err != nil {
+		return handleErr(c, err)
+	}
+	return c.JSON(http.StatusOK, rule)
+}
+
 func (r *Router) createZTRule(c *echo.Context) error {
 	actor := ActorFrom(c)
 	var req ztRuleRequest

@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"acs/internal/domain"
+	"acs/internal/usecase/tag"
 
 	"github.com/labstack/echo/v5"
 )
@@ -45,6 +46,37 @@ func (r *Router) listTags(c *echo.Context) error {
 			"limit": p.PageSize,
 		},
 	})
+}
+
+type updateTagRequest struct {
+	Name  *string `json:"name"`
+	Color *string `json:"color"`
+}
+
+func (r *Router) updateTag(c *echo.Context) error {
+	actor := ActorFrom(c)
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
+	}
+	var req updateTagRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "payload tidak valid")
+	}
+	if req.Name == nil && req.Color == nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "minimal satu field (name, color) harus diisi")
+	}
+	if err := checkMaxLen(
+		lenRule{"name", optStr(req.Name), maxTagName},
+		lenRule{"color", optStr(req.Color), maxTagColor},
+	); err != nil {
+		return err
+	}
+	res, err := r.Tags.Update(c.Request().Context(), actor, id, tag.UpdateInput(req))
+	if err != nil {
+		return handleErr(c, err)
+	}
+	return c.JSON(http.StatusOK, res)
 }
 
 func (r *Router) deleteTag(c *echo.Context) error {
@@ -160,6 +192,19 @@ func (r *Router) listPresets(c *echo.Context) error {
 			"limit": p.PageSize,
 		},
 	})
+}
+
+func (r *Router) getPreset(c *echo.Context) error {
+	actor := ActorFrom(c)
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
+	}
+	res, err := r.Presets.Get(c.Request().Context(), actor, id)
+	if err != nil {
+		return handleErr(c, err)
+	}
+	return c.JSON(http.StatusOK, res)
 }
 
 func (r *Router) updatePreset(c *echo.Context) error {

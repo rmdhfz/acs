@@ -6,6 +6,8 @@ type TagRepository interface {
 	Create(ctx context.Context, tag *Tag) error
 	GetByID(ctx context.Context, id uint64) (*Tag, error)
 	List(ctx context.Context, tenantID *uint64, p Pagination) ([]Tag, int, error)
+	// Update mengubah name & color tag (tenant_id tidak pernah berubah).
+	Update(ctx context.Context, tag *Tag) error
 	Delete(ctx context.Context, id uint64) error
 	AssignToDevice(ctx context.Context, deviceID, tagID uint64) error
 	RemoveFromDevice(ctx context.Context, deviceID, tagID uint64) error

@@ -46,7 +46,18 @@ func (s *Service) requireOwnership(ctx context.Context, actor domain.Actor, devi
 		// 404, bukan 403 — jangan bocorkan keberadaan device milik orang lain.
 		return nil, domain.ErrNotFound
 	}
-	return s.devices.GetByID(ctx, deviceID)
+	d, err := s.devices.GetByID(ctx, deviceID)
+	if err != nil {
+		return nil, err
+	}
+	// Defense-in-depth: pemetaan user_devices saja tidak cukup. Bila device
+	// berpindah tenant (mis. dihapus lalu di-revive di tenant lain) atau
+	// pemetaan lama tersisa, akun harus tetap berada di tenant yang sama
+	// dengan device. Beda tenant -> 404 (jangan bocorkan keberadaan).
+	if actor.TenantID == nil || d.TenantID == nil || *actor.TenantID != *d.TenantID {
+		return nil, domain.ErrNotFound
+	}
+	return d, nil
 }
 
 // SelfServiceDevice adalah tampilan device yang aman untuk pelanggan akhir —

@@ -13,6 +13,8 @@ import (
 type fakeTagRepo struct {
 	byID     map[uint64]*domain.Tag
 	assigned map[[2]uint64]bool // {deviceID, tagID}
+	updated  []uint64
+	deleted  []uint64
 }
 
 func newFakeTagRepo() *fakeTagRepo {
@@ -29,7 +31,15 @@ func (r *fakeTagRepo) GetByID(_ context.Context, id uint64) (*domain.Tag, error)
 func (r *fakeTagRepo) List(context.Context, *uint64, domain.Pagination) ([]domain.Tag, int, error) {
 	return nil, 0, nil
 }
-func (r *fakeTagRepo) Delete(context.Context, uint64) error { return nil }
+func (r *fakeTagRepo) Update(_ context.Context, t *domain.Tag) error {
+	r.byID[t.ID] = t
+	r.updated = append(r.updated, t.ID)
+	return nil
+}
+func (r *fakeTagRepo) Delete(_ context.Context, id uint64) error {
+	r.deleted = append(r.deleted, id)
+	return nil
+}
 func (r *fakeTagRepo) AssignToDevice(_ context.Context, deviceID, tagID uint64) error {
 	r.assigned[[2]uint64{deviceID, tagID}] = true
 	return nil
