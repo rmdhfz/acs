@@ -15,15 +15,25 @@ type UsageCount struct {
 	Count int
 }
 
+// usageConflictError adalah ErrConflict (errors.Is) dengan pesan sendiri.
+// ErrConflict polos berbunyi "data sudah ada / konflik unique" — benar untuk
+// duplicate key, tetapi MENYESATKAN untuk guard hapus; pesan guard harus
+// langsung menjelaskan apa yang masih memakai entitas itu.
+type usageConflictError struct{ msg string }
+
+func (e *usageConflictError) Error() string        { return e.msg }
+func (e *usageConflictError) Is(target error) bool { return target == ErrConflict }
+
 // NewUsageConflict menyusun ErrConflict (HTTP 409) yang menuntun operator:
-// apa yang masih memakai entitas itu dan jalan keluarnya. Dipakai bersama oleh
-// semua usecase yang punya guard hapus supaya pesannya seragam.
+// apa yang masih memakai entitas itu. Dipakai bersama oleh semua usecase yang
+// punya guard hapus supaya pesannya seragam. Pemanggil boleh menambah saran
+// jalan keluar lewat fmt.Errorf("%w — ...", err).
 func NewUsageConflict(what string, usage []UsageCount) error {
 	parts := make([]string, 0, len(usage))
 	for _, u := range usage {
 		parts = append(parts, fmt.Sprintf("%d %s", u.Count, u.Kind))
 	}
-	return fmt.Errorf("%w: %s masih dipakai oleh %s", ErrConflict, what, strings.Join(parts, ", "))
+	return &usageConflictError{msg: fmt.Sprintf("%s masih dipakai oleh %s", what, strings.Join(parts, ", "))}
 }
 
 // UsageRepository menghitung referensi aktif ke entitas master. Hanya query
