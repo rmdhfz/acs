@@ -4,6 +4,7 @@ package config
 import (
 	"encoding/base64"
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -37,6 +38,19 @@ type Config struct {
 	// investigasi tanpa redeploy kode.
 	LogLevel  string
 	RedisAddr string
+	// RedisPassword — kosong = Redis tanpa auth (hanya untuk jaringan tertutup).
+	RedisPassword string
+
+	// TrustedProxies — CIDR/IP reverse proxy/LB yang boleh menentukan IP klien lewat
+	// X-Forwarded-For. Kosong (default) = IP klien = alamat socket (header
+	// X-Forwarded-For diabaikan, tidak bisa dipalsukan). WAJIB diisi bila ACS di
+	// belakang proxy: tanpa itu semua klien terlihat satu IP (rate limit bersama,
+	// ip_address device salah, Connection Request URL tak tertangkap).
+	TrustedProxies []*net.IPNet
+
+	// USPEnabled — mengaktifkan endpoint WebSocket /usp (TR-369) yang masih
+	// kerangka & tanpa autentikasi. Default MATI.
+	USPEnabled bool
 
 	OIDCIssuer       string
 	OIDCClientID     string
@@ -139,6 +153,33 @@ func Load() (*Config, error) {
 	cfg.MinIOUseSSL = useSSL
 
 	cfg.RedisAddr = getEnv("ACS_REDIS_ADDR", "localhost:6379")
+	cfg.RedisPassword = os.Getenv("ACS_REDIS_PASSWORD")
+
+	for _, p := range strings.Split(os.Getenv("ACS_TRUSTED_PROXIES"), ",") {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if !strings.Contains(p, "/") {
+			if ip := net.ParseIP(p); ip != nil {
+				if ip.To4() != nil {
+					p += "/32"
+				} else {
+					p += "/128"
+				}
+			}
+		}
+		_, n, perr := net.ParseCIDR(p)
+		if perr != nil {
+			return nil, fmt.Errorf("config: ACS_TRUSTED_PROXIES tidak valid (%q): harus IP atau CIDR", p)
+		}
+		cfg.TrustedProxies = append(cfg.TrustedProxies, n)
+	}
+	uspEnabled, err := strconv.ParseBool(getEnv("ACS_USP_ENABLED", "false"))
+	if err != nil {
+		return nil, fmt.Errorf("config: ACS_USP_ENABLED tidak valid: %w", err)
+	}
+	cfg.USPEnabled = uspEnabled
 
 	cfg.OIDCIssuer = os.Getenv("ACS_OIDC_ISSUER")
 	cfg.OIDCClientID = os.Getenv("ACS_OIDC_CLIENT_ID")

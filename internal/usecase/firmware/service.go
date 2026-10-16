@@ -293,6 +293,9 @@ func (s *Service) scheduleUpgradeJob(ctx context.Context, actor domain.Actor, de
 	if err != nil {
 		return nil, err
 	}
+	if err := checkFirmwareCompatible(fw, dev); err != nil {
+		return nil, err
+	}
 
 	// Presigned URL MinIO LANGSUNG (bukan proxy lewat ACS) — keputusan
 	// produk yang sudah disepakati, lihat domain.ObjectStorage. URL dibuat
@@ -342,6 +345,24 @@ func (s *Service) scheduleUpgradeJob(ctx context.Context, actor domain.Actor, de
 		Action: "SCHEDULE_FIRMWARE_UPGRADE", EntityType: "firmware_upgrade_job", EntityID: &job.ID,
 	})
 	return job, nil
+}
+
+// checkFirmwareCompatible menolak mengirim firmware ke perangkat yang tak cocok:
+// image salah vendor/model dapat mem-brick ONT. Firmware nonaktif juga ditolak.
+func checkFirmwareCompatible(fw *domain.FirmwareFile, dev *domain.Device) error {
+	if !fw.IsActive {
+		return fmt.Errorf("%w: firmware %q nonaktif", domain.ErrInvalidInput, fw.Version)
+	}
+	if dev.VendorID == nil {
+		return fmt.Errorf("%w: vendor perangkat belum diketahui — firmware tidak dapat dicocokkan (daftarkan OUI/vendor dulu)", domain.ErrInvalidInput)
+	}
+	if *dev.VendorID != fw.VendorID {
+		return fmt.Errorf("%w: firmware ini untuk vendor lain (id %d), perangkat vendor id %d", domain.ErrInvalidInput, fw.VendorID, *dev.VendorID)
+	}
+	if fw.DeviceModelID != nil && (dev.DeviceModelID == nil || *dev.DeviceModelID != *fw.DeviceModelID) {
+		return fmt.Errorf("%w: firmware ini khusus model perangkat tertentu yang tidak cocok dengan perangkat", domain.ErrInvalidInput)
+	}
+	return nil
 }
 
 func (s *Service) ListJobsByDevice(ctx context.Context, actor domain.Actor, deviceID uint64, p domain.Pagination) ([]domain.FirmwareUpgradeJob, int, error) {
@@ -437,8 +458,25 @@ func (s *Service) CreateRolloutBatch(ctx context.Context, actor domain.Actor, in
 	} else if err := requireRolloutTenantScope(actor, in.TenantID); err != nil {
 		return nil, err
 	}
-	if _, err := s.files.GetByID(ctx, in.FirmwareFileID); err != nil {
+	fwFile, err := s.files.GetByID(ctx, in.FirmwareFileID)
+	if err != nil {
 		return nil, err
+	}
+	// Populasi rollout WAJIB dibatasi ke vendor (dan model) firmware: tanpa filter
+	// batch menarget SEMUA perangkat tenant, apa pun vendornya.
+	if in.VendorID == nil {
+		v := fwFile.VendorID
+		in.VendorID = &v
+	} else if *in.VendorID != fwFile.VendorID {
+		return nil, fmt.Errorf("%w: vendor_id batch tidak sama dengan vendor firmware", domain.ErrInvalidInput)
+	}
+	if fwFile.DeviceModelID != nil {
+		if in.DeviceModelID == nil {
+			m := *fwFile.DeviceModelID
+			in.DeviceModelID = &m
+		} else if *in.DeviceModelID != *fwFile.DeviceModelID {
+			return nil, fmt.Errorf("%w: device_model_id batch tidak sama dengan model firmware", domain.ErrInvalidInput)
+		}
 	}
 	if in.WavePercentage == 0 || in.WavePercentage > 100 {
 		return nil, fmt.Errorf("%w: wave_percentage harus 1-100", domain.ErrInvalidInput)
@@ -534,10 +572,26 @@ func (s *Service) CancelRolloutBatch(ctx context.Context, actor domain.Actor, id
 	if err != nil {
 		return err
 	}
+	if b.StatusID == cancelledStatus.ID {
+		return fmt.Errorf("%w: batch sudah dibatalkan", domain.ErrConflict)
+	}
+	if completed, cerr := s.refs.GetByCode(ctx, domain.RefTableFirmwareRolloutStatus, domain.FirmwareRolloutStatusCompleted); cerr == nil && b.StatusID == completed.ID {
+		return fmt.Errorf("%w: batch sudah selesai dan tidak dapat dibatalkan", domain.ErrConflict)
+	}
 	b.StatusID = cancelledStatus.ID
 	b.UpdatedBy = actor.UserIDPtr()
 	if err := s.rollouts.Update(ctx, b); err != nil {
 		return err
+	}
+	// Task Download wave yang belum terkirim ikut dibatalkan; tanpa ini firmware
+	// tetap dikirim ke CPE yang kembali online padahal batch sudah dibatalkan.
+	if n, cerr := s.jobs.CancelPendingTasksByBatch(ctx, b.ID, actor.UserIDPtr()); cerr != nil {
+		return cerr
+	} else if n > 0 {
+		_ = s.activity.Record(ctx, &domain.ActivityLog{
+			UserID: actor.UserIDPtr(), TenantID: actor.TenantID,
+			Action: "CANCEL_FIRMWARE_ROLLOUT_TASKS", EntityType: "firmware_rollout_batch", EntityID: &b.ID,
+		})
 	}
 	_ = s.activity.Record(ctx, &domain.ActivityLog{
 		UserID: actor.UserIDPtr(), TenantID: actor.TenantID,

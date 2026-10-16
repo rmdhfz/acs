@@ -97,6 +97,10 @@ type UserRepository interface {
 	// ber-JWT: akun masih aktif & kapan password terakhir diganti. ErrNotFound
 	// bila user sudah dihapus.
 	AuthState(ctx context.Context, id uint64) (*UserAuthState, error)
+	// RevokeSessions mencabut semua JWT yang terbit sebelum sekarang (menaikkan
+	// password_changed_at) — dipakai saat role berubah agar peran lama tidak
+	// berlaku sampai token kedaluwarsa.
+	RevokeSessions(ctx context.Context, id uint64) error
 	SoftDelete(ctx context.Context, id, deletedBy uint64) error
 	TouchLastLogin(ctx context.Context, id uint64, at time.Time) error
 	RolesByUserID(ctx context.Context, userID uint64) ([]string, error)

@@ -74,6 +74,7 @@ func (f *createErrFirmwareFileRepo) Create(context.Context, *domain.FirmwareFile
 }
 
 type fakeFirmwareJobRepo struct {
+	cancelledBatches []uint64 // batch yang task PENDING-nya dibatalkan
 	created *domain.FirmwareUpgradeJob
 	// jobs -- seluruh job "tersimpan" (baik pre-seeded test maupun hasil
 	// Create), dipakai ListByRolloutBatch/CountByRolloutWave sungguhan alih-
@@ -118,6 +119,10 @@ func (f *fakeFirmwareJobRepo) ListByRolloutBatch(_ context.Context, batchID uint
 		limit = len(matched)
 	}
 	return matched[:limit], len(matched), nil
+}
+func (f *fakeFirmwareJobRepo) CancelPendingTasksByBatch(_ context.Context, batchID uint64, _ *uint64) (int, error) {
+	f.cancelledBatches = append(f.cancelledBatches, batchID)
+	return 0, nil
 }
 func (f *fakeFirmwareJobRepo) CountByRolloutWave(_ context.Context, batchID uint64, waveNumber *uint32, _ time.Time, _ uint64) ([]domain.FirmwareRolloutWaveStatusCount, error) {
 	if f.waveStatusCounts != nil {
@@ -465,14 +470,14 @@ func TestUploadFirmware_PropagatesStorageUploadError(t *testing.T) {
 // error presign tidak boleh menggagalkan penjadwalan, dan task hanya membawa object key.
 func TestScheduleUpgrade_TidakMemanggilPresignSaatEnqueue(t *testing.T) {
 	tenantID := uint64(5)
-	firmware := &domain.FirmwareFile{ID: 2, StorageKey: "firmware/1/abc_image.bin", Version: "2.0.0", FileName: "image.bin"}
+	firmware := &domain.FirmwareFile{VendorID: 1, IsActive: true, ID: 2, StorageKey: "firmware/1/abc_image.bin", Version: "2.0.0", FileName: "image.bin"}
 	files := &fakeFirmwareFileRepo{byID: map[uint64]*domain.FirmwareFile{2: firmware}}
 	storage := newFakeObjectStorage()
 	storage.objects[firmware.StorageKey] = []byte("content")
 	storage.presignErr = errors.New("minio: tidak dipanggil saat enqueue")
 
 	svc, jobs, devices, tasks, _ := newTestService(files, storage)
-	devices.dev = &domain.Device{ID: 7, TenantID: &tenantID}
+	devices.dev = &domain.Device{VendorID: uint64Ptr(1), ID: 7, TenantID: &tenantID}
 
 	actor := domain.Actor{UserID: 1, TenantID: &tenantID, Roles: []string{domain.RoleAdmin}}
 	if _, err := svc.ScheduleUpgrade(context.Background(), actor, 7, 2, nil); err != nil {
@@ -485,13 +490,13 @@ func TestScheduleUpgrade_TidakMemanggilPresignSaatEnqueue(t *testing.T) {
 
 func TestScheduleUpgrade_UsesPresignedURLFromObjectStorage(t *testing.T) {
 	tenantID := uint64(5)
-	firmware := &domain.FirmwareFile{ID: 2, StorageKey: "firmware/1/abc_image.bin", Version: "2.0.0", FileName: "image.bin"}
+	firmware := &domain.FirmwareFile{VendorID: 1, IsActive: true, ID: 2, StorageKey: "firmware/1/abc_image.bin", Version: "2.0.0", FileName: "image.bin"}
 	files := &fakeFirmwareFileRepo{byID: map[uint64]*domain.FirmwareFile{2: firmware}}
 	storage := newFakeObjectStorage()
 	storage.objects[firmware.StorageKey] = []byte("content")
 
 	svc, jobs, devices, tasks, _ := newTestService(files, storage)
-	devices.dev = &domain.Device{ID: 7, TenantID: &tenantID}
+	devices.dev = &domain.Device{VendorID: uint64Ptr(1), ID: 7, TenantID: &tenantID}
 
 	actor := domain.Actor{UserID: 1, TenantID: &tenantID, Roles: []string{domain.RoleAdmin}}
 	job, err := svc.ScheduleUpgrade(context.Background(), actor, 7, 2, nil)
@@ -535,7 +540,7 @@ const (
 // status sekaligus, dgn ID terpisah krn beberapa kode bertabrakan string,
 // lihat komentar fakeRefRepoFW), dipakai KHUSUS test AdvanceRollout.
 func newRolloutTestService() (*Service, *fakeFirmwareRolloutRepo, *fakeFirmwareJobRepo, *fakeDeviceRepoFW) {
-	files := &fakeFirmwareFileRepo{byID: map[uint64]*domain.FirmwareFile{1: {ID: 1, Version: "2.0.0", StorageKey: "fw/1.bin"}}}
+	files := &fakeFirmwareFileRepo{byID: map[uint64]*domain.FirmwareFile{1: {VendorID: 1, IsActive: true, ID: 1, Version: "2.0.0", StorageKey: "fw/1.bin"}}}
 	storage := newFakeObjectStorage()
 	storage.objects["fw/1.bin"] = []byte("content")
 	jobs := &fakeFirmwareJobRepo{}
@@ -594,7 +599,7 @@ func TestAdvanceRollout_WaveComplete_AdvancesToNextWave(t *testing.T) {
 	// fakeDeviceRepoFW.GetByID (dipakai scheduleUpgradeJob) mengembalikan
 	// SATU dev statis ini apa pun ID yang diminta -- cukup utk test ini
 	// krn tidak menguji per-device tenant-scope, cuma jumlah/wave job baru.
-	devices.dev = &domain.Device{ID: 0}
+	devices.dev = &domain.Device{VendorID: uint64Ptr(1), ID: 0}
 
 	got, err := svc.AdvanceRollout(context.Background(), 1)
 	if err != nil {
@@ -677,7 +682,7 @@ func TestAdvanceRollout_ZeroScheduled_Pauses(t *testing.T) {
 	// tanpa perlu memalsukan error kuota terpisah).
 	otherTenant := uint64(2)
 	devices.population = []domain.Device{{ID: 10, TenantID: &otherTenant}}
-	devices.dev = &domain.Device{ID: 10, TenantID: &otherTenant}
+	devices.dev = &domain.Device{VendorID: uint64Ptr(1), ID: 10, TenantID: &otherTenant}
 
 	got, err := svc.AdvanceRollout(context.Background(), 1)
 	if err != nil {
@@ -694,17 +699,58 @@ func TestAdvanceRollout_ZeroScheduled_Pauses(t *testing.T) {
 func TestScheduleUpgrade_TenantMismatchForbidden(t *testing.T) {
 	tenantA := uint64(1)
 	tenantB := uint64(2)
-	firmware := &domain.FirmwareFile{ID: 2, StorageKey: "firmware/1/abc_image.bin", Version: "2.0.0"}
+	firmware := &domain.FirmwareFile{VendorID: 1, IsActive: true, ID: 2, StorageKey: "firmware/1/abc_image.bin", Version: "2.0.0"}
 	files := &fakeFirmwareFileRepo{byID: map[uint64]*domain.FirmwareFile{2: firmware}}
 	storage := newFakeObjectStorage()
 	storage.objects[firmware.StorageKey] = []byte("content")
 
 	svc, _, devices, _, _ := newTestService(files, storage)
-	devices.dev = &domain.Device{ID: 7, TenantID: &tenantA}
+	devices.dev = &domain.Device{VendorID: uint64Ptr(1), ID: 7, TenantID: &tenantA}
 
 	actor := domain.Actor{UserID: 1, TenantID: &tenantB, Roles: []string{domain.RoleAdmin}}
 	_, err := svc.ScheduleUpgrade(context.Background(), actor, 7, 2, nil)
 	if !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("error = %v, want ErrForbidden (tenant mismatch)", err)
+	}
+}
+
+// Firmware salah vendor/model, nonaktif, atau ke perangkat tanpa vendor dikenal
+// TIDAK boleh dijadwalkan (image salah bisa mem-brick ONT).
+func TestScheduleUpgrade_KompatibilitasFirmware(t *testing.T) {
+	tenantID := uint64(5)
+	model1, model2 := uint64(11), uint64(22)
+	cases := []struct {
+		name string
+		fw   domain.FirmwareFile
+		dev  domain.Device
+		ok   bool
+	}{
+		{"cocok vendor", domain.FirmwareFile{ID: 2, VendorID: 1, IsActive: true, StorageKey: "k"}, domain.Device{ID: 7, VendorID: uint64Ptr(1)}, true},
+		{"vendor berbeda", domain.FirmwareFile{ID: 2, VendorID: 1, IsActive: true, StorageKey: "k"}, domain.Device{ID: 7, VendorID: uint64Ptr(2)}, false},
+		{"perangkat tanpa vendor", domain.FirmwareFile{ID: 2, VendorID: 1, IsActive: true, StorageKey: "k"}, domain.Device{ID: 7}, false},
+		{"firmware nonaktif", domain.FirmwareFile{ID: 2, VendorID: 1, IsActive: false, StorageKey: "k"}, domain.Device{ID: 7, VendorID: uint64Ptr(1)}, false},
+		{"model firmware khusus, model device sama", domain.FirmwareFile{ID: 2, VendorID: 1, DeviceModelID: &model1, IsActive: true, StorageKey: "k"}, domain.Device{ID: 7, VendorID: uint64Ptr(1), DeviceModelID: &model1}, true},
+		{"model firmware khusus, model device lain", domain.FirmwareFile{ID: 2, VendorID: 1, DeviceModelID: &model1, IsActive: true, StorageKey: "k"}, domain.Device{ID: 7, VendorID: uint64Ptr(1), DeviceModelID: &model2}, false},
+		{"model firmware khusus, device tanpa model", domain.FirmwareFile{ID: 2, VendorID: 1, DeviceModelID: &model1, IsActive: true, StorageKey: "k"}, domain.Device{ID: 7, VendorID: uint64Ptr(1)}, false},
+	}
+	for _, c := range cases {
+		fw, dev := c.fw, c.dev
+		dev.TenantID = &tenantID
+		files := &fakeFirmwareFileRepo{byID: map[uint64]*domain.FirmwareFile{2: &fw}}
+		svc, jobs, devices, _, _ := newTestService(files, newFakeObjectStorage())
+		devices.dev = &dev
+		actor := domain.Actor{UserID: 1, TenantID: &tenantID, Roles: []string{domain.RoleAdmin}}
+		_, err := svc.ScheduleUpgrade(context.Background(), actor, 7, 2, nil)
+		if c.ok && err != nil {
+			t.Errorf("%s: harus lolos, err=%v", c.name, err)
+		}
+		if !c.ok {
+			if !errors.Is(err, domain.ErrInvalidInput) {
+				t.Errorf("%s: harus ErrInvalidInput, got %v", c.name, err)
+			}
+			if jobs.created != nil {
+				t.Errorf("%s: job tidak boleh dibuat", c.name)
+			}
+		}
 	}
 }

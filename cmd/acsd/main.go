@@ -7,7 +7,9 @@ import (
 	"context"
 	"log"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -127,7 +129,7 @@ func main() {
 	userDeviceRepo := mysql.NewUserDeviceRepository(db)
 	usageRepo := mysql.NewUsageRepository(db)
 
-	redisClient, err := redisutil.NewClient(cfg.RedisAddr, logger)
+	redisClient, err := redisutil.NewClient(cfg.RedisAddr, cfg.RedisPassword, logger)
 	if err != nil {
 		logger.Warn("redis: gagal koneksi, session cache dinonaktifkan", "error", err)
 	}
@@ -201,7 +203,8 @@ func main() {
 	// ---- REST API internal (BSS/OSS, portal NOC) ----
 	restEcho := echo.New()
 	restEcho.Use(middleware.Recover())
-	restEcho.Use(middleware.RequestLogger())
+	setClientIPExtractor(restEcho, cfg.TrustedProxies)
+	restEcho.Use(redactingRequestLogger(logger))
 	// Batas ukuran body: `c.Bind()` di /auth/login (anonim) & endpoint lain
 	// membaca body ke memori tanpa batas -> satu POST raksasa = memory
 	// exhaustion. 2 MB cukup longgar untuk semua payload JSON REST. Upload
@@ -211,7 +214,9 @@ func main() {
 	restEcho.Use(middleware.BodyLimitWithConfig(middleware.BodyLimitConfig{
 		LimitBytes: 2 << 20, // 2 MiB
 		Skipper: func(c *echo.Context) bool {
-			return c.Request().Method == http.MethodPost && c.Request().URL.Path == "/api/v1/firmware"
+			// firmware & files: multipart besar, dibatasi streaming di handler masing-masing
+			p := c.Request().URL.Path
+			return c.Request().Method == http.MethodPost && (p == "/api/v1/firmware" || p == "/api/v1/files")
 		},
 	}))
 	restEcho.Use(deliveryhttp.SecurityHeaders())
@@ -250,6 +255,7 @@ func main() {
 	// PRA-autentikasi (auth Inform dicek belakangan). 4 MiB jauh di atas
 	// envelope CWMP terbesar yang wajar (Inform / GetParameterValuesResponse
 	// ribuan parameter) tapi mencegah POST raksasa dari CPE nakal/anonim.
+	setClientIPExtractor(cwmpEcho, cfg.TrustedProxies)
 	cwmpEcho.Use(middleware.BodyLimit(4 << 20))
 	// Rate limit per identifier (default: IP) — endpoint ini sekarang menjaga
 	// shared secret Inform CWMP sungguhan (bukan cuma anti CPE nakal/loop
@@ -258,8 +264,13 @@ func main() {
 	deliverycwmp.NewHandler(sessionSvc, logger).WithStorage(objStorage).Register(cwmpEcho, "/cwmp")
 
 	// TR-369 / USP WebSocket Handler (MTP)
-	uspSessionSvc := usp_session.NewService(logger)
-	deliveryusp.NewHandler(logger, uspSessionSvc).Mount(cwmpEcho)
+	// Endpoint /usp masih kerangka & TANPA autentikasi di port publik CPE: default
+	// mati; aktifkan eksplisit (ACS_USP_ENABLED=true) hanya untuk pengembangan.
+	if cfg.USPEnabled {
+		uspSessionSvc := usp_session.NewService(logger)
+		deliveryusp.NewHandler(logger, uspSessionSvc).Mount(cwmpEcho)
+		logger.Warn("USP/TR-369 diaktifkan: endpoint /usp TANPA autentikasi — jangan di produksi")
+	}
 
 	// echo.Start() menangani graceful shutdown otomatis saat menerima
 	// SIGINT/SIGTERM (lihat vendor echo/v5 server.go — signal.NotifyContext
@@ -307,6 +318,65 @@ func parseLogLevel(s string) slog.Level {
 	default:
 		return slog.LevelInfo
 	}
+}
+
+// setClientIPExtractor: tanpa proxy tepercaya IP klien = alamat socket (header
+// X-Forwarded-For diabaikan). Dengan ACS_TRUSTED_PROXIES, XFF hanya dipercaya bila
+// berasal dari proxy yang terdaftar.
+func setClientIPExtractor(e *echo.Echo, proxies []*net.IPNet) {
+	if len(proxies) == 0 {
+		e.IPExtractor = echo.ExtractIPDirect()
+		return
+	}
+	opts := []echo.TrustOption{echo.TrustLoopback(false), echo.TrustLinkLocal(false), echo.TrustPrivateNet(false)}
+	for _, n := range proxies {
+		opts = append(opts, echo.TrustIPRange(n))
+	}
+	e.IPExtractor = echo.ExtractIPFromXFFHeader(opts...)
+}
+
+// sensitiveQueryParams — nilai query yang tak boleh masuk log akses (token
+// sesi, kode/state OIDC, token reset).
+var sensitiveQueryParams = []string{"token", "code", "state", "access_token", "id_token", "password"}
+
+// redactURI menyamarkan nilai query sensitif pada URI yang dicatat.
+func redactURI(uri string) string {
+	i := strings.IndexByte(uri, '?')
+	if i < 0 {
+		return uri
+	}
+	q, err := url.ParseQuery(uri[i+1:])
+	if err != nil {
+		return uri[:i] + "?[query tidak dapat dibaca]"
+	}
+	for _, k := range sensitiveQueryParams {
+		if q.Has(k) {
+			q.Set(k, "***")
+		}
+	}
+	return uri[:i] + "?" + q.Encode()
+}
+
+// redactingRequestLogger = RequestLogger bawaan Echo, tetapi URI-nya disamarkan
+// (JWT/kode OIDC pernah tercatat polos di access log lewat ?token=).
+func redactingRequestLogger(logger *slog.Logger) echo.MiddlewareFunc {
+	return middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
+		LogLatency: true, LogRemoteIP: true, LogHost: true, LogMethod: true, LogURI: true,
+		LogUserAgent: true, LogStatus: true, LogContentLength: true, LogResponseSize: true, LogRequestID: true,
+		HandleError: true,
+		LogValuesFunc: func(c *echo.Context, v middleware.RequestLoggerValues) error {
+			attrs := []any{
+				"method", v.Method, "uri", redactURI(v.URI), "status", v.Status, "latency", v.Latency.String(),
+				"host", v.Host, "remote_ip", v.RemoteIP, "user_agent", v.UserAgent, "request_id", v.RequestID,
+			}
+			if v.Error != nil {
+				logger.Error("REQUEST_ERROR", append(attrs, "error", v.Error.Error())...)
+			} else {
+				logger.Info("REQUEST", attrs...)
+			}
+			return nil
+		},
+	})
 }
 
 // runSweepers menjalankan tugas periodik ringan (FR-22, timeout task, wave

@@ -309,6 +309,11 @@ func (r *userRepository) AuthState(ctx context.Context, id uint64) (*domain.User
 	return &st, nil
 }
 
+func (r *userRepository) RevokeSessions(ctx context.Context, id uint64) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE users SET password_changed_at = NOW() WHERE id = ?`, id)
+	return translateErr(err)
+}
+
 func (r *userRepository) SoftDelete(ctx context.Context, id, deletedBy uint64) error {
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE users SET is_deleted = 1, deleted_at = ?, deleted_by = ? WHERE id = ?`,

@@ -466,6 +466,26 @@ func redactSensitiveParams(params *domain.JSONRawMessage, actor domain.Actor) {
 			redacted = true
 		}
 	}
+	// Nilai SET_PARAMETER_VALUES yang kuncinya rahasia (passphrase WiFi, password
+	// PPPoE, ...) juga disamarkan untuk NOC/VIEWER.
+	if raw, ok := m["values"]; ok {
+		var vals map[string]json.RawMessage
+		if json.Unmarshal(raw, &vals) == nil {
+			changed := false
+			for k := range vals {
+				if domain.IsSensitiveParamName(k) {
+					vals[k] = json.RawMessage(`"[redacted]"`)
+					changed = true
+				}
+			}
+			if changed {
+				if b, err := json.Marshal(vals); err == nil {
+					m["values"] = b
+					redacted = true
+				}
+			}
+		}
+	}
 	if !redacted {
 		return
 	}
@@ -547,6 +567,14 @@ func (s *Service) Cancel(ctx context.Context, actor domain.Actor, id uint64) err
 	}
 	if err := s.requireTaskTenantScope(ctx, actor, t); err != nil {
 		return err
+	}
+	// Task yang sudah berakhir tidak boleh "dibatalkan": riwayat COMPLETED/FAILED
+	// tidak boleh tertimpa CANCELLED.
+	if st, serr := s.refs.GetByID(ctx, domain.RefTableTaskStatus, t.TaskStatusID); serr == nil {
+		switch st.Code {
+		case domain.TaskStatusCompleted, domain.TaskStatusFailed, domain.TaskStatusCancelled, domain.TaskStatusTimeout:
+			return fmt.Errorf("%w: task sudah berstatus %s dan tidak dapat dibatalkan", domain.ErrConflict, st.Code)
+		}
 	}
 	return s.tasks.Cancel(ctx, id, actor.UserIDPtr())
 }

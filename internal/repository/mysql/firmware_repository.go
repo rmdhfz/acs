@@ -168,6 +168,22 @@ func (r *firmwareUpgradeJobRepository) ListByRolloutBatch(ctx context.Context, b
 // Job non-terminal (PENDING/QUEUED/SENT, dicocokkan via kode di ref_task_status
 // -- bukan hardcode ID -- supaya tidak bergantung urutan seed) yang sudah
 // lebih tua dari staleAfter diklasifikasikan efektif sbg timeoutStatusID.
+func (r *firmwareUpgradeJobRepository) CancelPendingTasksByBatch(ctx context.Context, batchID uint64, updatedBy *uint64) (int, error) {
+	res, err := r.db.ExecContext(ctx, `
+		UPDATE tasks t
+		  JOIN firmware_upgrade_jobs j ON j.task_id = t.id
+		  JOIN ref_task_status cur ON cur.id = t.task_status_id AND cur.code IN (?, ?)
+		  JOIN ref_task_status c   ON c.code = ?
+		   SET t.task_status_id = c.id, t.updated_by = ?
+		 WHERE j.rollout_batch_id = ?`,
+		domain.TaskStatusPending, domain.TaskStatusQueued, domain.TaskStatusCancelled, updatedBy, batchID)
+	if err != nil {
+		return 0, translateErr(err)
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}
+
 func (r *firmwareUpgradeJobRepository) CountByRolloutWave(ctx context.Context, batchID uint64, waveNumber *uint32, staleAfter time.Time, timeoutStatusID uint64) ([]domain.FirmwareRolloutWaveStatusCount, error) {
 	where := "j.rollout_batch_id = ?"
 	args := []interface{}{}

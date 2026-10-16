@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -332,4 +334,42 @@ func NormalizeXSDType(t string) string {
 		return "base64"
 	}
 	return ""
+}
+
+// sensitiveParamRe — nama parameter/kunci yang nilainya dianggap rahasia
+// (passphrase WiFi, password PPPoE/ACS/CR, PSK, token...). Selaras dengan
+// isSensitiveName di frontend (imports/opsShared.ts).
+var sensitiveParamRe = regexp.MustCompile(`(?i)pass(word|phrase|wd)|psk|preshared|secret|wepkey|token|key$`)
+
+// IsSensitiveParamName melaporkan apakah nilai parameter dengan nama ini rahasia.
+func IsSensitiveParamName(name string) bool { return sensitiveParamRe.MatchString(name) }
+
+// RedactedValue — pengganti nilai rahasia pada respons untuk role non-ADMIN.
+const RedactedValue = "[redacted]"
+
+// CanSeeSecrets: hanya SUPERADMIN/ADMIN yang boleh melihat nilai rahasia
+// (selaras redaksi task Download); NOC/VIEWER/ENDUSER tidak.
+func (a Actor) CanSeeSecrets() bool { return a.IsSuperadmin() || a.HasRole(RoleAdmin) }
+
+// RedactURLCredentials menyamarkan user:pass@ dan query token/key/secret pada URL.
+func RedactURLCredentials(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return RedactedValue
+	}
+	if u.User != nil {
+		u.User = url.User("***")
+	}
+	q := u.Query()
+	changed := false
+	for k := range q {
+		if IsSensitiveParamName(k) || strings.EqualFold(k, "sig") || strings.EqualFold(k, "signature") {
+			q.Set(k, "***")
+			changed = true
+		}
+	}
+	if changed {
+		u.RawQuery = q.Encode()
+	}
+	return u.String()
 }

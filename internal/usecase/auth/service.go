@@ -464,11 +464,20 @@ func (s *Service) AuthenticateAPIToken(ctx context.Context, plain string) (*doma
 	}
 	actor := domain.Actor{TenantID: rec.TenantID}
 	if rec.UserID != nil {
+		// Pemilik token harus masih ada DAN aktif: menonaktifkan/menghapus user
+		// harus ikut mematikan API token-nya (sebelumnya token tetap berlaku penuh).
 		u, err := s.users.GetByID(ctx, *rec.UserID)
-		if err == nil {
-			actor.UserID = u.ID
-			actor.Roles = u.Roles
+		if err != nil {
+			if errors.Is(err, domain.ErrNotFound) {
+				return nil, errors.New("pemilik token tidak ada")
+			}
+			return nil, fmt.Errorf("%w: %v", errSessionLookup, err)
 		}
+		if !u.IsActive {
+			return nil, errors.New("pemilik token nonaktif")
+		}
+		actor.UserID = u.ID
+		actor.Roles = u.Roles
 	}
 	return &actor, nil
 }

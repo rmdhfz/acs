@@ -708,6 +708,13 @@ func (s *Service) handleTransferComplete(ctx context.Context, deviceID uint64, t
 	// balik ke task yang tepat meski datang di luar urutan strict SENT.
 	if tc.CommandKey != "" {
 		t, err = s.taskSvc.GetByUUID(ctx, tc.CommandKey)
+		// CommandKey berasal dari CPE (tidak tepercaya): task harus milik device
+		// pengirim. Tanpa ini device tenant A bisa menyelesaikan/menggagalkan task
+		// device/tenant lain hanya dengan menebak UUID-nya.
+		if t != nil && t.DeviceID != deviceID {
+			s.log().Warn("cwmp: TransferComplete dengan CommandKey milik device lain diabaikan", "device_id", deviceID, "task_device_id", t.DeviceID)
+			return nil
+		}
 	}
 	if t == nil {
 		t, err = s.taskSvc.GetSentForDevice(ctx, deviceID)

@@ -43,14 +43,20 @@ func (s *Service) UploadFile(ctx context.Context, actor domain.Actor, in UploadF
 	if in.File == nil {
 		return nil, fmt.Errorf("%w: file wajib diisi", domain.ErrInvalidInput)
 	}
-	if in.FileType == "" {
-		return nil, fmt.Errorf("%w: file_type wajib diisi", domain.ErrInvalidInput)
+	switch in.FileType {
+	case domain.FileTypeFirmware, domain.FileTypeWebContent, domain.FileTypeVendorConfig,
+		domain.FileTypeTone, domain.FileTypeRinger, domain.FileTypeVendorLog:
+	default:
+		return nil, fmt.Errorf("%w: file_type tidak dikenal (gunakan salah satu: 1 Firmware Upgrade Image, 2 Web Content, 3 Vendor Configuration File, 4 Tone File, 5 Ringer Melody File, Vendor Log File)", domain.ErrInvalidInput)
+	}
+	if !actor.IsSuperadmin() && actor.TenantID == nil {
+		return nil, domain.ErrForbidden
 	}
 	if in.FileSize <= 0 || in.FileSize > domain.MaxFirmwareFileSizeBytes {
 		return nil, fmt.Errorf("%w: ukuran file tidak valid", domain.ErrInvalidInput)
 	}
 
-	if in.TenantID != nil && !actor.IsSuperadmin() && (*actor.TenantID != *in.TenantID) {
+	if in.TenantID != nil && !actor.IsSuperadmin() && (actor.TenantID == nil || *actor.TenantID != *in.TenantID) {
 		return nil, domain.ErrForbidden
 	}
 
@@ -135,6 +141,11 @@ func sanitizeObjectKeyPart(s string) string {
 }
 
 func (s *Service) List(ctx context.Context, actor domain.Actor, p domain.Pagination) ([]domain.File, int, error) {
+	// Non-superadmin tanpa tenant tidak boleh melihat apa pun (tenantID nil =
+	// "semua file" di repository).
+	if !actor.IsSuperadmin() && actor.TenantID == nil {
+		return nil, 0, domain.ErrForbidden
+	}
 	tenantID := actor.TenantID
 	if actor.IsSuperadmin() {
 		// Superadmin melihat file global (nil) juga, ini disederhanakan
@@ -150,7 +161,10 @@ func (s *Service) Delete(ctx context.Context, actor domain.Actor, id uint64) err
 	if err != nil {
 		return err
 	}
-	if f.TenantID != nil && !actor.IsSuperadmin() && (*actor.TenantID != *f.TenantID) {
+	// File global (tenant_id NULL) hanya boleh dihapus SUPERADMIN; file tenant hanya
+	// oleh tenant pemiliknya. (Sebelumnya file global lolos cek dan bisa dihapus
+	// ADMIN tenant mana pun.)
+	if !actor.IsSuperadmin() && (f.TenantID == nil || actor.TenantID == nil || *actor.TenantID != *f.TenantID) {
 		return domain.ErrForbidden
 	}
 

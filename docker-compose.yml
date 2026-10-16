@@ -13,7 +13,7 @@ services:
     volumes:
       - acs-mariadb-data:/var/lib/mysql
     ports:
-      - "13306:3306"
+      - "127.0.0.1:13306:3306" # hanya host lokal; jangan expose DB ke jaringan
     healthcheck:
       # -h 127.0.0.1 (TCP) WAJIB: pada boot pertama volume kosong, entrypoint
       # menjalankan server SEMENTARA yang hanya melayani socket (skip-networking).
@@ -61,7 +61,7 @@ services:
       - acs-minio-data:/data
     ports:
       - "19000:9000"
-      - "19001:9001"
+      - "127.0.0.1:19001:9001" # konsol MinIO hanya host lokal
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 5s
@@ -71,8 +71,12 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    # Password opsional (ACS_REDIS_PASSWORD); kosong = tanpa auth. Port hanya host lokal.
+    command: ["redis-server", "--requirepass", "${ACS_REDIS_PASSWORD:-}"]
+    environment:
+      REDISCLI_AUTH: ${ACS_REDIS_PASSWORD:-}
     ports:
-      - "16379:6379"
+      - "127.0.0.1:16379:6379"
     volumes:
       - acs-redis-data:/data
     healthcheck:
@@ -96,6 +100,12 @@ services:
       ACS_MINIO_BUCKET: ${ACS_MINIO_BUCKET:-acs-firmware}
       ACS_MINIO_USE_SSL: "false"
       ACS_REDIS_ADDR: "redis:6379"
+      ACS_REDIS_PASSWORD: ${ACS_REDIS_PASSWORD:-}
+      # Reverse proxy/LB tepercaya (IP/CIDR, pisahkan koma). WAJIB diisi bila ACS di belakang
+      # proxy agar IP klien benar; kosong = X-Forwarded-For diabaikan.
+      ACS_TRUSTED_PROXIES: ${ACS_TRUSTED_PROXIES:-}
+      # Endpoint /usp (TR-369) masih kerangka tanpa auth: default mati.
+      ACS_USP_ENABLED: ${ACS_USP_ENABLED:-false}
       # Email (reset password & notifikasi keamanan). Kosongkan ACS_SMTP_HOST
       # untuk menonaktifkan. Kredensial HANYA dari .env (tidak di-commit).
       ACS_SMTP_HOST: ${ACS_SMTP_HOST:-}
@@ -129,7 +139,7 @@ services:
       - ./deploy/prometheus_alerts.yml:/etc/prometheus/prometheus_alerts.yml:ro
       - acs-prometheus-data:/prometheus
     ports:
-      - "19090:9090"
+      - "127.0.0.1:19090:9090"
     depends_on:
       - acsd
 
@@ -139,7 +149,7 @@ services:
     volumes:
       - ./deploy/alertmanager/config.yml:/etc/alertmanager/alertmanager.yml:ro
     ports:
-      - "19093:9093"
+      - "127.0.0.1:19093:9093"
 
   grafana:
     image: grafana/grafana:latest
@@ -148,7 +158,7 @@ services:
       - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
       - acs-grafana-data:/var/lib/grafana
     ports:
-      - "13000:3000"
+      - "127.0.0.1:13000:3000"
     depends_on:
       - prometheus
 

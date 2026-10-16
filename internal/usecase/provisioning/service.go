@@ -90,6 +90,9 @@ func (s *Service) CreateProfile(ctx context.Context, actor domain.Actor, in Crea
 	if err := auth.RequireTenantScope(actor, in.TenantID); err != nil {
 		return nil, err
 	}
+	if err := validateProfileInput(in.Name, in.Description, in.Parameters); err != nil {
+		return nil, err
+	}
 	p := &domain.ProvisioningProfile{
 		ProfileUUID:   uuid.NewString(),
 		TenantID:      in.TenantID,
@@ -114,6 +117,26 @@ func (s *Service) CreateProfile(ctx context.Context, actor domain.Actor, in Crea
 		Action: "CREATE_PROVISIONING_PROFILE", EntityType: "provisioning_profile", EntityID: &p.ID,
 	})
 	return p, nil
+}
+
+// validateProfileInput menegakkan batas kolom provisioning_profiles /
+// provisioning_profile_parameters sebelum ada penulisan ke DB.
+func validateProfileInput(name string, description *string, params []domain.ProvisioningProfileParameter) error {
+	if strings.TrimSpace(name) == "" || len(name) > 128 {
+		return fmt.Errorf("%w: name wajib diisi (maks. 128 karakter)", domain.ErrInvalidInput)
+	}
+	if description != nil && len(*description) > 255 {
+		return fmt.Errorf("%w: description maksimum 255 karakter", domain.ErrInvalidInput)
+	}
+	for _, p := range params {
+		if strings.TrimSpace(p.ParameterName) == "" || len(p.ParameterName) > 512 {
+			return fmt.Errorf("%w: parameter_name wajib diisi (maks. 512 karakter)", domain.ErrInvalidInput)
+		}
+		if p.ParameterValue != nil && len(*p.ParameterValue) > 8192 {
+			return fmt.Errorf("%w: parameter_value maksimum 8192 karakter", domain.ErrInvalidInput)
+		}
+	}
+	return nil
 }
 
 func (s *Service) Get(ctx context.Context, actor domain.Actor, id uint64) (*domain.ProvisioningProfile, []domain.ProvisioningProfileParameter, error) {
@@ -154,6 +177,11 @@ func (s *Service) UpdateProfile(ctx context.Context, actor domain.Actor, p *doma
 		return err
 	}
 	if err := auth.RequireTenantScope(actor, existing.TenantID); err != nil {
+		return err
+	}
+	// Validasi SEBELUM menulis apa pun: profil & parameter ditulis dalam dua langkah
+	// terpisah, jadi kegagalan di langkah kedua meninggalkan profil setengah jadi.
+	if err := validateProfileInput(p.Name, p.Description, params); err != nil {
 		return err
 	}
 	p.UpdatedBy = actor.UserIDPtr()

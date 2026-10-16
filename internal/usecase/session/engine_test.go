@@ -494,6 +494,22 @@ func TestHandleTransferComplete(t *testing.T) {
 			t.Fatalf("status=%d msg=%v", tk.TaskStatusID, tk.ErrorMessage)
 		}
 	})
+	t.Run("CommandKey task milik device LAIN diabaikan (tidak lintas device/tenant)", func(t *testing.T) {
+		r := newEngRig()
+		other := r.addTask(9, tySetPV, stSent, 3)
+		other.DeviceID = devID + 1000
+		own := r.addTask(10, tySetPV, stSent, 3)
+		if err := r.svc.HandleRPCResponse(ctx, RPCResponse{SessionToken: sessTok,
+			TransferComplete: &TransferCompleteInfo{CommandKey: other.TaskUUID, Success: true}}); err != nil {
+			t.Fatal(err)
+		}
+		if other.TaskStatusID != stSent {
+			t.Fatalf("task device lain berubah status: %d", other.TaskStatusID)
+		}
+		if own.TaskStatusID != stSent {
+			t.Fatalf("task milik sendiri tidak boleh ikut diselesaikan oleh CommandKey asing: %d", own.TaskStatusID)
+		}
+	})
 	t.Run("tidak ada task yang cocok diabaikan", func(t *testing.T) {
 		r := newEngRig()
 		if err := r.svc.HandleRPCResponse(ctx, RPCResponse{SessionToken: sessTok,

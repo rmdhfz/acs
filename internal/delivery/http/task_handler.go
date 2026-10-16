@@ -31,6 +31,19 @@ func (r *Router) createTask(c *echo.Context) error {
 	if _, err := r.Refs.GetByCode(c.Request().Context(), domain.RefTableTaskTypes, req.TaskType); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "task_type tidak valid")
 	}
+	// RBAC per tipe task: endpoint khusus (reboot, set-parameter, factory-reset,
+	// push-file, add/delete-object) dikunci ke ADMIN; jalur generik ini TIDAK boleh
+	// menjadi celah bagi NOC. NOC hanya untuk tipe baca/ringan.
+	if !actor.IsSuperadmin() && !actor.HasRole(domain.RoleAdmin) && !nocMayCreateTaskType(req.TaskType) {
+		return echo.NewHTTPError(http.StatusForbidden, "role Anda tidak boleh membuat task bertipe "+req.TaskType+" (hanya ADMIN)")
+	}
+	// batas wajar agar satu request tidak membuat task yang berputar tanpa akhir
+	if req.MaxRetries > maxTaskRetries {
+		return echo.NewHTTPError(http.StatusBadRequest, "max_retries maksimum 10")
+	}
+	if req.Priority > 9 {
+		return echo.NewHTTPError(http.StatusBadRequest, "priority harus 1-9")
+	}
 	// storage_key hanya boleh diisi usecase internal: ia membuat ACS menerbitkan
 	// URL presigned untuk object APA PUN di bucket (termasuk milik tenant lain).
 	if _, has := req.Parameters[domain.TaskParamStorageKey]; has {
@@ -44,6 +57,20 @@ func (r *Router) createTask(c *echo.Context) error {
 		return handleErr(c, err)
 	}
 	return c.JSON(http.StatusCreated, t)
+}
+
+// maxTaskRetries membatasi max_retries yang boleh diminta lewat API.
+const maxTaskRetries = 10
+
+// nocMayCreateTaskType: tipe task yang boleh dibuat NOC lewat POST /tasks
+// (selaras dengan endpoint khusus yang terbuka bagi NOC).
+func nocMayCreateTaskType(t string) bool {
+	switch t {
+	case domain.TaskTypeGetParameterValues, domain.TaskTypeGetParameterNames,
+		domain.TaskTypeReboot, domain.TaskTypeScheduleInform:
+		return true
+	}
+	return false
 }
 
 func (r *Router) listTasks(c *echo.Context) error {

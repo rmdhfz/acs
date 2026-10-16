@@ -174,7 +174,27 @@ func (s *Service) ListConfigSnapshots(ctx context.Context, actor domain.Actor, d
 	if _, err := s.Get(ctx, actor, deviceID); err != nil {
 		return nil, 0, err
 	}
-	return s.configSnaps.ListByDevice(ctx, deviceID, p)
+	snaps, total, err := s.configSnaps.ListByDevice(ctx, deviceID, p)
+	if err != nil {
+		return nil, 0, err
+	}
+	if !actor.CanSeeSecrets() {
+		for i := range snaps {
+			var m map[string]any
+			if json.Unmarshal(snaps[i].SnapshotData, &m) != nil {
+				continue
+			}
+			for k := range m {
+				if domain.IsSensitiveParamName(k) {
+					m[k] = domain.RedactedValue
+				}
+			}
+			if b, err := json.Marshal(m); err == nil {
+				snaps[i].SnapshotData = domain.JSONRawMessage(b)
+			}
+		}
+	}
+	return snaps, total, nil
 }
 
 func (s *Service) List(ctx context.Context, actor domain.Actor, f domain.DeviceFilter, p domain.Pagination) ([]domain.Device, int, error) {
@@ -516,7 +536,19 @@ func (s *Service) ListParameters(ctx context.Context, actor domain.Actor, device
 	if _, err := s.Get(ctx, actor, deviceID); err != nil {
 		return nil, err
 	}
-	return s.deviceParams.ListByDevice(ctx, deviceID, prefix)
+	ps, err := s.deviceParams.ListByDevice(ctx, deviceID, prefix)
+	if err != nil {
+		return nil, err
+	}
+	if !actor.CanSeeSecrets() {
+		for i := range ps {
+			if domain.IsSensitiveParamName(ps[i].ParameterName) && ps[i].ParameterValue != nil {
+				v := domain.RedactedValue
+				ps[i].ParameterValue = &v
+			}
+		}
+	}
+	return ps, nil
 }
 
 func (s *Service) ListEvents(ctx context.Context, actor domain.Actor, deviceID uint64, p domain.Pagination) ([]domain.DeviceEvent, int, error) {

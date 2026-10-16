@@ -5,6 +5,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 
+	"acs/internal/domain"
 	"acs/internal/usecase/webhook"
 )
 
@@ -57,6 +58,11 @@ func (r *Router) listWebhooks(c *echo.Context) error {
 	if err != nil {
 		return handleErr(c, err)
 	}
+	if !actor.CanSeeSecrets() {
+		for i := range subs {
+			subs[i].TargetURL = domain.RedactURLCredentials(subs[i].TargetURL)
+		}
+	}
 	return c.JSON(http.StatusOK, listResponse{Data: subs, Total: total})
 }
 
@@ -69,6 +75,9 @@ func (r *Router) getWebhook(c *echo.Context) error {
 	sub, err := r.Webhooks.GetSubscription(c.Request().Context(), actor, id)
 	if err != nil {
 		return handleErr(c, err)
+	}
+	if !actor.CanSeeSecrets() {
+		sub.TargetURL = domain.RedactURLCredentials(sub.TargetURL)
 	}
 	return c.JSON(http.StatusOK, sub)
 }

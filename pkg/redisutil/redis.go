@@ -13,15 +13,15 @@ type Client struct {
 	logger *slog.Logger
 }
 
-func NewClient(addr string, logger *slog.Logger) (*Client, error) {
+func NewClient(addr, password string, logger *slog.Logger) (*Client, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
 
 	opts := &redis.Options{
 		Addr:     addr,
-		Password: "", // no password set
-		DB:       0,  // use default DB
+		Password: password, // kosong = tanpa auth
+		DB:       0,        // use default DB
 	}
 
 	rdb := redis.NewClient(opts)

@@ -91,6 +91,10 @@ type FirmwareUpgradeJobRepository interface {
 	// ListByRolloutBatch — daftar job milik satu batch, opsional difilter ke
 	// satu wave tertentu (waveNumber nil = seluruh wave dalam batch tsb).
 	ListByRolloutBatch(ctx context.Context, batchID uint64, waveNumber *uint32, p Pagination) ([]FirmwareUpgradeJob, int, error)
+	// CancelPendingTasksByBatch membatalkan task Download berstatus PENDING/QUEUED
+	// milik batch (dipanggil saat batch dibatalkan agar CPE yang kembali online tidak
+	// tetap menerima firmware). Mengembalikan jumlah task yang dibatalkan.
+	CancelPendingTasksByBatch(ctx context.Context, batchID uint64, updatedBy *uint64) (int, error)
 	// CountByRolloutWave — agregasi GROUP BY task_status_id utk job dalam
 	// satu batch, opsional difilter ke satu wave (waveNumber nil = seluruh
 	// wave dalam batch tsb) -- dasar perhitungan failure rate orchestration.

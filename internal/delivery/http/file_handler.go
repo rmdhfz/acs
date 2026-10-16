@@ -39,6 +39,15 @@ func (r *Router) uploadFile(c *echo.Context) error {
 		verPtr = &version
 	}
 
+	// Batas ukuran streaming (BodyLimit global 2 MiB dikecualikan untuk route ini,
+	// lihat cmd/acsd/main.go): tanpa ini upload besar tak terbatas.
+	c.Request().Body = http.MaxBytesReader(c.Response(), c.Request().Body, domain.MaxFirmwareFileSizeBytes+(1<<20))
+	if len(fileName) > 255 {
+		return echo.NewHTTPError(http.StatusBadRequest, "file_name maksimum 255 karakter")
+	}
+	if len(version) > 100 {
+		return echo.NewHTTPError(http.StatusBadRequest, "version maksimum 100 karakter")
+	}
 	fh, err := c.FormFile("file")
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "file part is missing or invalid")
@@ -56,6 +65,9 @@ func (r *Router) uploadFile(c *echo.Context) error {
 
 	if fileName == "" {
 		fileName = fh.Filename
+	}
+	if len(fileName) > 255 {
+		return echo.NewHTTPError(http.StatusBadRequest, "file_name maksimum 255 karakter")
 	}
 
 	in := file.UploadFileInput{

@@ -353,6 +353,17 @@ func (s *Service) CreateUser(ctx context.Context, actor domain.Actor, in CreateU
 	if err := validateRoleCodesAssignable(actor, in.RoleCodes); err != nil {
 		return nil, err
 	}
+	// Semua role_code harus dikenal (sebelumnya kode ngawur diam-diam dilewati
+	// tetapi tetap muncul di respons) dan SUPERADMIN bersifat lintas tenant.
+	for _, code := range in.RoleCodes {
+		role, rerr := s.refs.GetByCode(ctx, domain.RefTableRoles, code)
+		if rerr != nil {
+			return nil, fmt.Errorf("%w: role_code %q tidak dikenal", domain.ErrInvalidInput, code)
+		}
+		if strings.EqualFold(role.Code, domain.RoleSuperadmin) && in.TenantID != nil {
+			return nil, fmt.Errorf("%w: SUPERADMIN bersifat lintas tenant, tenant_id harus kosong", domain.ErrInvalidInput)
+		}
+	}
 	if err := validateUserEmail(in.Email); err != nil {
 		return nil, err
 	}
@@ -429,6 +440,12 @@ func (s *Service) requireUserMutationScope(ctx context.Context, actor domain.Act
 		}
 		if err := auth.RequireTenantScope(actor, target.TenantID); err != nil {
 			return nil, err
+		}
+		// Akun SUPERADMIN (apa pun tenant_id-nya) hanya boleh dimutasi sesama
+		// SUPERADMIN: kalau tidak, ADMIN tenant bisa mereset password/menonaktifkan
+		// superadmin dan mengambil alih platform.
+		if slices.ContainsFunc(target.Roles, func(r string) bool { return strings.EqualFold(r, domain.RoleSuperadmin) }) {
+			return nil, domain.ErrForbidden
 		}
 	}
 	return target, nil
@@ -555,6 +572,9 @@ func (s *Service) ReplaceUserRoles(ctx context.Context, actor domain.Actor, targ
 		}
 		roleIDByCanonicalCode[role.Code] = role.ID
 	}
+	if _, isSuper := roleIDByCanonicalCode[domain.RoleSuperadmin]; isSuper && target.TenantID != nil {
+		return nil, fmt.Errorf("%w: SUPERADMIN bersifat lintas tenant; akun ber-tenant tidak boleh diberi role ini", domain.ErrInvalidInput)
+	}
 
 	if !actor.IsSuperadmin() {
 		if targetID == actor.UserID && slices.Contains(target.Roles, domain.RoleAdmin) && !slices.Contains(canonicalCodes, domain.RoleAdmin) {
@@ -584,6 +604,9 @@ func (s *Service) ReplaceUserRoles(ctx context.Context, actor domain.Actor, targ
 	}
 
 	target.Roles = canonicalCodes
+	// Role ada di dalam JWT: cabut token lama agar perubahan peran berlaku seketika
+	// (bukan setelah token kedaluwarsa, bisa berjam-jam).
+	_ = s.users.RevokeSessions(ctx, target.ID)
 	_ = s.activity.Record(ctx, &domain.ActivityLog{UserID: actor.UserIDPtr(), TenantID: target.TenantID, Action: "REPLACE_USER_ROLES", EntityType: "user", EntityID: &target.ID})
 	return target, nil
 }

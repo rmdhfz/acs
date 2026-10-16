@@ -101,6 +101,11 @@ type issueTokenRequest struct {
 
 func (r *Router) issueAPIToken(c *echo.Context) error {
 	actor := ActorFrom(c)
+	// API token tidak boleh menerbitkan token baru (token curian bisa beranak-pinak
+	// dan bertahan walau token asalnya dicabut); hanya sesi login (JWT).
+	if strings.HasPrefix(bearerFromRequest(c.Request()), "acs_") {
+		return echo.NewHTTPError(http.StatusForbidden, "API token tidak dapat menerbitkan token baru; gunakan sesi login")
+	}
 	var req issueTokenRequest
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "payload tidak valid")
