@@ -20,6 +20,8 @@
     --danger-bg: #fdecea; --danger-bd: #f3c9c4;
     --ok-bg: #eaf7ee; --ok-bd: #bfe3c9;
     --code-bg: #f3f4f6;
+    --olt: #b45309; --olt-bg: #fff4e5;
+    --ont: #1d4ed8; --ont-bg: #eaf1ff;
   }
   * { box-sizing: border-box; }
   html { font-size: 10.5pt; }
@@ -74,22 +76,58 @@
   th { background: #f5f6f8; font-weight: 700; font-size: 8.5pt; letter-spacing: 0.03em; }
   td code { font-size: 8.3pt; }
   .role-name { font-weight: 700; white-space: nowrap; }
+  tr { page-break-inside: avoid; }
+  td.olt { background: var(--olt-bg); font-weight: 700; color: var(--olt); white-space: nowrap; }
+  td.ont { background: var(--ont-bg); font-weight: 700; color: var(--ont); white-space: nowrap; }
+  td.both { background: #f1f1f4; font-weight: 700; color: #4b5563; white-space: nowrap; }
 
   .toc { font-size: 9.4pt; columns: 2; column-gap: 24px; margin: 10px 0 4px; }
-  .toc ol { margin: 0; padding-left: 1.4em; }
+  .toc ol { margin: 0; padding-left: 1.6em; }
   .toc a { color: var(--ink); }
+  .toc li { break-inside: avoid; }
 
   .flow { font-family: "Consolas","SF Mono","Menlo",monospace; font-size: 8.6pt; background: #fbfbfc; border: 1px solid var(--rule-soft); border-radius: 5px; padding: 12px; white-space: pre; overflow-x: auto; margin: 10px 0; line-height: 1.45; }
 
   .fig { margin: 14px 0 18px; text-align: center; page-break-inside: avoid; }
   .fig .mermaid { display: block; margin: 0 auto; line-height: normal; }
   .fig .mermaid svg { max-width: 100% !important; max-height: 23cm; height: auto !important; }
+  .fig svg.art { width: 100%; height: auto; display: block; margin: 0 auto; }
   .fig figcaption { font-size: 8.4pt; color: var(--faint); margin-top: 6px; font-style: italic; }
+
+  /* ---- ilustrasi SVG ---- */
+  svg.art text { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; fill: #1a1f24; }
+  svg.art .t-title { font-size: 13px; font-weight: 700; }
+  svg.art .t-sub { font-size: 10.5px; fill: #55606b; }
+  svg.art .t-small { font-size: 9.5px; fill: #55606b; }
+  svg.art .t-lbl { font-size: 10.5px; font-weight: 700; }
+  svg.art .t-blue { fill: #1d4ed8; }
+  svg.art .t-amber { fill: #b45309; }
+  svg.art .t-gray { fill: #6b7280; }
+  svg.art .t-white { fill: #fff; }
+
+  /* ---- alur horizontal (HTML) ---- */
+  .lane { display: flex; align-items: stretch; gap: 0; margin: 12px 0 4px; page-break-inside: avoid; }
+  .lane .st { flex: 1 1 0; border: 1.5px solid var(--rule); border-radius: 7px; padding: 8px 8px 9px; font-size: 8.6pt; line-height: 1.38; background: #fff; position: relative; }
+  .lane .st .no { display: inline-block; width: 19px; height: 19px; line-height: 19px; text-align: center; border-radius: 50%; color: #fff; font-weight: 700; font-size: 8.5pt; margin-bottom: 4px; }
+  .lane .st b { display: block; font-size: 8.8pt; margin-bottom: 2px; }
+  .lane .st.olt { border-color: #f1c58b; background: var(--olt-bg); } .lane .st.olt .no { background: var(--olt); }
+  .lane .st.ont { border-color: #b3cdfb; background: var(--ont-bg); } .lane .st.ont .no { background: var(--ont); }
+  .lane .st.acs { border-color: #a9d8b5; background: var(--ok-bg); } .lane .st.acs .no { background: #2e7d43; }
+  .lane .ar { flex: 0 0 15px; display: flex; align-items: center; justify-content: center; color: var(--faint); font-size: 12pt; }
+  .legend { font-size: 8.4pt; color: var(--muted); margin: 2px 0 10px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin: 0 4px 0 10px; vertical-align: -1px; }
+
+  .vs { display: flex; gap: 10px; margin: 12px 0; page-break-inside: avoid; }
+  .vs > div { flex: 1 1 0; border: 1.5px solid var(--rule); border-radius: 7px; padding: 9px 11px; font-size: 9.2pt; }
+  .vs h4 { margin: 0 0 4px; font-size: 10pt; }
+  .vs ul { margin: 4px 0 0; padding-left: 1.1em; }
+  .vs .a { border-color: #f1c58b; background: var(--olt-bg); } .vs .a h4 { color: var(--olt); }
+  .vs .b { border-color: #b3cdfb; background: var(--ont-bg); } .vs .b h4 { color: var(--ont); }
 
   @page { size: A4; margin: 18mm 16mm 16mm; }
   @media print {
     h2, h3 { page-break-after: avoid; }
-    .callout, pre, table, ol.steps > li, .flow, .fig { page-break-inside: avoid; }
+    .callout, pre, table, ol.steps > li, .flow, .fig, .vs { page-break-inside: avoid; }
     .cover { page-break-after: avoid; }
   }
   footer { margin-top: 28px; border-top: 1px solid var(--rule); padding-top: 8px; font-size: 8pt; color: var(--faint); }
@@ -103,9 +141,9 @@
   <h1>Buku Panduan ACS</h1>
   <p class="sub">Auto Configuration Server multi-vendor (TR-069/CWMP) untuk manajemen CPE lintas merek</p>
   <div class="meta">
-    <strong>Versi dokumen:</strong> 1.0 &nbsp;·&nbsp;
-    <strong>Tanggal:</strong> 8 September 2026 &nbsp;·&nbsp;
-    <strong>Audiens:</strong> Operator NOC, Administrator Tenant, Tim Integrasi BSS/OSS
+    <strong>Versi dokumen:</strong> 2.0 &nbsp;·&nbsp;
+    <strong>Tanggal:</strong> 16 Oktober 2026 &nbsp;·&nbsp;
+    <strong>Audiens:</strong> Tim Operations/NOC, Administrator Tenant, Tim Jaringan (OLT), Tim Integrasi BSS/OSS
   </div>
 </div>
 
@@ -115,28 +153,272 @@ instalasi melayani banyak perusahaan (multi-tenant) dan banyak merek perangkat �
 ZTE, Huawei, FiberHome, Nokia, Cdata, dan vendor lain — <em>tanpa perubahan
 kode</em>, cukup penambahan data katalog.</p>
 
+<div class="callout ok"><span class="label">Jawaban singkat untuk pertanyaan "config di sisi OLT atau ONT?"</span>
+<p><strong>ACS mengonfigurasi sisi ONT (CPE), bukan OLT.</strong> ACS berbicara
+langsung ke ONT lewat jaringan IP memakai protokol TR-069. ACS <u>tidak</u> login
+ke OLT, tidak mengirim perintah CLI/SNMP ke OLT, dan tidak mendaftarkan ONT di
+port PON. Bagian OLT (VLAN, registrasi ONT, profil bandwidth) tetap dikerjakan
+Tim Jaringan lewat sistem manajemen OLT. Penjelasan lengkap dengan gambar ada di
+<a href="#s1">Bab 1</a>.</p></div>
+
 <div class="toc">
 <ol>
-  <li><a href="#s1">Konsep dasar &amp; komponen</a></li>
-  <li><a href="#s2">Menjalankan ACS</a></li>
-  <li><a href="#s3">Login, peran, dan tenant</a></li>
-  <li><a href="#s4">Onboarding vendor &amp; OUI</a></li>
-  <li><a href="#s5">Menghubungkan CPE ke ACS</a></li>
-  <li><a href="#s6">Melihat &amp; menelusuri perangkat</a></li>
-  <li><a href="#s7">Task: reboot, baca/tulis parameter</a></li>
-  <li><a href="#s8">Provisioning otomatis (Profile &amp; Zero-Touch)</a></li>
-  <li><a href="#s9">Preset engine (penegakan konfigurasi)</a></li>
-  <li><a href="#s10">Firmware &amp; canary rollout</a></li>
-  <li><a href="#s11">Integrasi sistem lain (API, token, webhook)</a></li>
-  <li><a href="#s12">Observability &amp; alert</a></li>
-  <li><a href="#s13">Keamanan operasional</a></li>
-  <li><a href="#s14">Pemecahan masalah</a></li>
-  <li><a href="#s15">Batasan yang perlu diketahui</a></li>
-  <li><a href="#s16">Lampiran — Diagram arsitektur &amp; alur</a></li>
+  <li><a href="#s1">Cara kerja ACS — di OLT atau di ONT?</a></li>
+  <li><a href="#s2">Komponen &amp; arsitektur</a></li>
+  <li><a href="#s3">Menjalankan ACS</a></li>
+  <li><a href="#s4">Login, peran, dan tenant</a></li>
+  <li><a href="#s5">Katalog vendor, OUI &amp; pemetaan parameter</a></li>
+  <li><a href="#s6">Menghubungkan CPE ke ACS</a></li>
+  <li><a href="#s7">Perangkat: tambah, edit, hapus, telusuri</a></li>
+  <li><a href="#s8">Impor &amp; ekspor data (dengan pratinjau)</a></li>
+  <li><a href="#s9">Task: reboot, baca/tulis parameter</a></li>
+  <li><a href="#s10">Provisioning otomatis (Profile &amp; Zero-Touch)</a></li>
+  <li><a href="#s11">Preset engine (penegakan konfigurasi)</a></li>
+  <li><a href="#s12">Firmware &amp; canary rollout</a></li>
+  <li><a href="#s13">Integrasi sistem lain (API, token, webhook)</a></li>
+  <li><a href="#s14">Observability &amp; alert</a></li>
+  <li><a href="#s15">Keamanan operasional</a></li>
+  <li><a href="#s16">Pemecahan masalah</a></li>
+  <li><a href="#s17">Protokol yang didukung &amp; batasan</a></li>
+  <li><a href="#s18">Lampiran — Diagram arsitektur &amp; alur</a></li>
 </ol>
 </div>
 
-<h2 id="s1"><span class="num">1</span> Konsep dasar &amp; komponen</h2>
+<!-- ======================================================================= -->
+<h2 id="s1"><span class="num">1</span> Cara kerja ACS — di OLT atau di ONT?</h2>
+
+<h3>1.1 Jawaban singkat</h3>
+<p>Di jaringan fiber (GPON/EPON/XGS-PON) ada <strong>dua jenis perangkat</strong>
+yang masing-masing punya "pengelola" sendiri:</p>
+
+<div class="vs">
+  <div class="a">
+    <h4>OLT — perangkat di sisi operator</h4>
+    <p>Kotak di POP/central office yang melayani ratusan–ribuan ONT lewat
+    serat PON. Dikelola oleh <strong>Tim Jaringan</strong> memakai
+    CLI/SSH, SNMP, NETCONF, atau EMS/NMS vendor.</p>
+    <p><strong>ACS tidak mengelola OLT.</strong></p>
+  </div>
+  <div class="b">
+    <h4>ONT/ONU — perangkat di rumah pelanggan</h4>
+    <p>Kotak kecil di rumah/kantor pelanggan: punya WiFi, port LAN, WAN
+    (PPPoE/DHCP), dan firmware sendiri. Mendukung agen TR-069.</p>
+    <p><strong>ACS mengelola ONT</strong> — membaca &amp; menulis
+    konfigurasinya.</p>
+  </div>
+</div>
+
+<div class="callout info"><span class="label">Satu kalimat</span>
+<p>Anggap ACS sebagai <em>"remote control ONT lewat internet"</em>: pelanggan
+telepon "WiFi saya lemot/ lupa password" — NOC cukup membuka halaman perangkat itu
+di ACS dan mengubah SSID/password WiFi, tanpa teknisi datang dan tanpa menyentuh
+OLT.</p></div>
+
+<h3>1.2 Peta: siapa mengatur apa lewat jalur apa</h3>
+
+<div class="fig">
+<svg class="art" viewBox="0 0 760 478" role="img" aria-label="Peta dua bidang manajemen: OLT dikelola lewat SNMP/CLI, ONT dikelola ACS lewat TR-069">
+  <defs>
+    <marker id="aBlue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1d4ed8"/></marker>
+    <marker id="aGray" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6b7280"/></marker>
+  </defs>
+
+  <!-- NMS (kiri atas) -->
+  <rect x="20" y="16" width="240" height="92" rx="9" fill="#f4f4f6" stroke="#9ca3af" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <text x="140" y="38" text-anchor="middle" class="t-title t-gray">Sistem manajemen OLT</text>
+  <text x="140" y="56" text-anchor="middle" class="t-sub">CLI/SSH · SNMP · NETCONF · EMS vendor</text>
+  <text x="140" y="73" text-anchor="middle" class="t-sub">dipakai Tim Jaringan</text>
+  <text x="140" y="95" text-anchor="middle" class="t-lbl t-amber">BUKAN ACS (belum ada di aplikasi ini)</text>
+
+  <!-- ACS (kanan atas) -->
+  <rect x="500" y="16" width="240" height="92" rx="9" fill="#1d4ed8"/>
+  <text x="620" y="40" text-anchor="middle" class="t-title t-white">ACS  (acsd)</text>
+  <text x="620" y="58" text-anchor="middle" class="t-sub t-white" style="fill:#dbe7ff">Server TR-069 / CWMP + Console web</text>
+  <text x="620" y="76" text-anchor="middle" class="t-sub t-white" style="fill:#dbe7ff">dipakai Tim Operations / NOC</text>
+  <text x="620" y="95" text-anchor="middle" class="t-lbl t-white">Aplikasi yang kita bangun</text>
+
+  <!-- jaringan IP -->
+  <rect x="20" y="158" width="720" height="40" rx="20" fill="#eef0f3" stroke="#cfd4da"/>
+  <text x="380" y="183" text-anchor="middle" class="t-sub">Jaringan IP operator  (backbone · VLAN manajemen · internet)</text>
+
+  <!-- garis NMS -> OLT -->
+  <line x1="140" y1="108" x2="140" y2="276" stroke="#6b7280" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#aGray)"/>
+  <text x="150" y="232" class="t-small">SNMP · SSH/CLI · NETCONF</text>
+  <text x="150" y="244" class="t-small">(atur OLT)</text>
+
+  <!-- garis ACS -> ONT -->
+  <line x1="620" y1="108" x2="620" y2="276" stroke="#1d4ed8" stroke-width="3" marker-start="url(#aBlue)" marker-end="url(#aBlue)"/>
+  <text x="610" y="222" text-anchor="end" class="t-lbl t-blue">TR-069 / CWMP</text>
+  <text x="610" y="235" text-anchor="end" class="t-small">SOAP/XML di atas HTTP(S)</text>
+  <text x="610" y="247" text-anchor="end" class="t-small">atur ONT (WiFi, PPPoE, firmware…)</text>
+  <text x="610" y="260" text-anchor="end" class="t-small">(lewat OLT sebagai paket IP biasa)</text>
+
+  <!-- OLT -->
+  <rect x="40" y="276" width="240" height="118" rx="9" fill="#fff4e5" stroke="#d99a4e" stroke-width="2"/>
+  <text x="160" y="298" text-anchor="middle" class="t-title t-amber">OLT</text>
+  <text x="160" y="316" text-anchor="middle" class="t-sub">Di sisi operator (POP)</text>
+  <text x="160" y="336" text-anchor="middle" class="t-small">• daftarkan ONT (serial) di port PON</text>
+  <text x="160" y="350" text-anchor="middle" class="t-small">• VLAN servis &amp; uplink</text>
+  <text x="160" y="364" text-anchor="middle" class="t-small">• profil bandwidth, line/service profile</text>
+  <text x="160" y="378" text-anchor="middle" class="t-small">• jalur/VLAN manajemen menuju ACS</text>
+
+  <!-- ONT -->
+  <rect x="500" y="276" width="240" height="118" rx="9" fill="#eaf1ff" stroke="#6b97f0" stroke-width="2"/>
+  <text x="620" y="298" text-anchor="middle" class="t-title t-blue">ONT / ONU  (CPE)</text>
+  <text x="620" y="316" text-anchor="middle" class="t-sub">Di rumah pelanggan</text>
+  <text x="620" y="336" text-anchor="middle" class="t-small">• SSID &amp; password WiFi</text>
+  <text x="620" y="350" text-anchor="middle" class="t-small">• akun PPPoE / WAN, LAN &amp; DHCP</text>
+  <text x="620" y="364" text-anchor="middle" class="t-small">• firmware, reboot, factory reset</text>
+  <text x="620" y="378" text-anchor="middle" class="t-small">• baca redaman optik &amp; status</text>
+
+  <!-- serat PON -->
+  <line x1="280" y1="335" x2="500" y2="335" stroke="#d97706" stroke-width="5"/>
+  <text x="390" y="324" text-anchor="middle" class="t-lbl t-amber">serat PON</text>
+  <text x="390" y="353" text-anchor="middle" class="t-small">OLT ↔ ONT dikelola OLT (OMCI)</text>
+  <text x="390" y="365" text-anchor="middle" class="t-small">ACS tidak memakai jalur ini</text>
+
+  <!-- pelanggan -->
+  <rect x="500" y="428" width="240" height="38" rx="8" fill="#fff" stroke="#cfd4da"/>
+  <text x="620" y="451" text-anchor="middle" class="t-sub">Perangkat pelanggan: HP · laptop · TV · telepon</text>
+  <line x1="620" y1="394" x2="620" y2="428" stroke="#9ca3af" stroke-width="2"/>
+
+  <!-- catatan kiri bawah -->
+  <rect x="40" y="428" width="240" height="38" rx="8" fill="#fff" stroke="#cfd4da"/>
+  <text x="160" y="445" text-anchor="middle" class="t-small">Uplink ke jaringan operator</text>
+  <text x="160" y="458" text-anchor="middle" class="t-small">(bukan urusan ACS)</text>
+  <line x1="160" y1="394" x2="160" y2="428" stroke="#9ca3af" stroke-width="2"/>
+
+</svg>
+<figcaption>Gambar 1 — Dua bidang manajemen. Garis biru tebal = jalur yang dipakai
+ACS. Lalu lintas TR-069 hanya <em>lewat</em> OLT sebagai paket IP biasa (VLAN
+manajemen); OLT sendiri tidak diatur oleh ACS.</figcaption>
+</div>
+
+<h3>1.3 Apa yang dikonfigurasi di mana</h3>
+<p>Tabel ini adalah pegangan sehari-hari. Kolom kiri menunjukkan <em>siapa
+pemilik pekerjaannya</em>.</p>
+
+<table>
+<tr><th style="width:15%">Sisi</th><th style="width:38%">Pekerjaan</th><th>Alat</th></tr>
+<tr><td class="olt">OLT</td><td>Mendaftarkan/meng-<em>authorize</em> ONT baru (berdasar serial/LOID) di port PON</td><td>Sistem manajemen OLT (Tim Jaringan)</td></tr>
+<tr><td class="olt">OLT</td><td>VLAN servis &amp; uplink, profil bandwidth (DBA), line/service profile</td><td>Sistem manajemen OLT</td></tr>
+<tr><td class="olt">OLT</td><td>Menyediakan <strong>jalur manajemen</strong> agar ONT bisa menjangkau ACS (VLAN/WAN manajemen) dan, bila dipakai, memasukkan URL ACS ke ONT lewat OMCI</td><td>Sistem manajemen OLT — ikuti dokumentasi vendor OLT Anda</td></tr>
+<tr><td class="ont">ONT via ACS</td><td>SSID, password &amp; keamanan WiFi (2,4/5 GHz), channel</td><td>ACS: tab Parameter, Task, Profile, Preset</td></tr>
+<tr><td class="ont">ONT via ACS</td><td>Akun WAN: PPPoE username/password, mode DHCP/statik, VLAN WAN internet (bila diizinkan firmware)</td><td>ACS: Provisioning Profile / Zero-Touch</td></tr>
+<tr><td class="ont">ONT via ACS</td><td>LAN &amp; DHCP server, DNS, port forwarding (parameter yang diekspos firmware)</td><td>ACS: Set Parameter</td></tr>
+<tr><td class="ont">ONT via ACS</td><td>Reboot, factory reset, upgrade firmware, diagnostik (ping/traceroute dari ONT), periodic inform</td><td>ACS: Task, Firmware, Diagnostics</td></tr>
+<tr><td class="ont">ONT via ACS</td><td>Membaca status: uptime, versi firmware, daftar perangkat LAN/WiFi, redaman optik RX/TX <em>sebagaimana dilaporkan ONT</em></td><td>ACS: tab Parameter, Redaman Optik</td></tr>
+<tr><td class="both">Terpisah</td><td>Melihat <em>sisi OLT</em> dari redaman/alarm (level optik di port PON, ONT offline karena putus serat)</td><td>Sistem manajemen OLT. ACS hanya melihat ONT <em>kalau ONT masih bisa menjangkau ACS</em></td></tr>
+</table>
+
+<div class="callout warn"><span class="label">Konsekuensi penting</span>
+<p>Jika ONT mati total atau serat putus, ACS <strong>tidak bisa</strong> menghubunginya
+(perangkat hilang dari jaringan). Diagnosis dan perbaikan di titik itu ada di sisi
+OLT/lapangan. Karena itu ACS dan sistem manajemen OLT saling melengkapi, bukan
+saling menggantikan.</p></div>
+
+<h3>1.4 Perjalanan satu ONT baru — dari kotak sampai terkonfigurasi</h3>
+
+<div class="lane">
+  <div class="st olt"><span class="no">1</span><b>OLT</b>Tim Jaringan mendaftarkan ONT di port PON &amp; menyiapkan VLAN, termasuk jalur manajemen ke ACS.</div>
+  <div class="ar">›</div>
+  <div class="st ont"><span class="no">2</span><b>ONT menyala</b>Mendapat IP manajemen (DHCP/PPPoE/statik) dan mengetahui alamat ACS.</div>
+  <div class="ar">›</div>
+  <div class="st ont"><span class="no">3</span><b>ONT → Inform</b>ONT menghubungi ACS: "ini saya, serial &amp; OUI sekian, event BOOTSTRAP".</div>
+  <div class="ar">›</div>
+  <div class="st acs"><span class="no">4</span><b>ACS mengenali</b>Secret → tenant. OUI → vendor. Device dibuat/di-update; aturan Zero-Touch dievaluasi.</div>
+  <div class="ar">›</div>
+  <div class="st acs"><span class="no">5</span><b>ACS mengonfigurasi ONT</b>Mengirim SetParameterValues (WiFi, PPPoE, …). ONT menerapkan &amp; melapor.</div>
+</div>
+<div class="legend"><i style="background:#b45309"></i>pekerjaan sisi OLT <i style="background:#1d4ed8"></i>aksi ONT <i style="background:#2e7d43"></i>aksi ACS</div>
+
+<p>Langkah 1 selalu manual di sisi OLT (di luar ACS). Langkah 2–5 otomatis begitu
+ONT bisa menjangkau ACS. Pada Zero-Touch Provisioning (<a href="#s10">Bab 10</a>)
+Anda cukup membuat aturan sekali; setiap ONT baru yang cocok langsung dikonfigurasi
+tanpa ada orang yang menyentuh ACS.</p>
+
+<h3>1.5 Bagaimana ONT tahu alamat ACS?</h3>
+<p>ONT harus tahu <em>URL ACS</em> dan kredensialnya. Ada empat cara umum — pilih
+sesuai vendor dan kebijakan operator:</p>
+<table>
+<tr><th style="width:26%">Cara</th><th>Keterangan</th></tr>
+<tr><td><strong>OMCI dari OLT</strong></td><td>OLT menanamkan URL ACS + kredensial ke ONT saat ONT diaktifkan (didukung banyak vendor; konfigurasinya di sisi OLT).</td></tr>
+<tr><td><strong>DHCP Option 43</strong></td><td>Server DHCP di jalur manajemen menyertakan URL ACS pada lease IP (standar TR-069 Annex F).</td></tr>
+<tr><td><strong>Firmware yang sudah di-<em>customize</em></strong></td><td>ONT dari vendor/ISP sudah berisi URL ACS bawaan.</td></tr>
+<tr><td><strong>Manual di GUI/CLI ONT</strong></td><td>Untuk uji lab/pilot: isi <em>ACS URL, Username, Password</em> di menu TR-069 ONT (lihat <a href="#s6">Bab 6</a>).</td></tr>
+</table>
+<p>Setelah itu ONT yang berinisiatif menghubungi ACS — itu sebabnya ACS tidak perlu
+tahu IP ONT lebih dulu.</p>
+
+<h3>1.6 Mengapa ONT yang memulai, dan bagaimana ACS "menyentil" ONT</h3>
+<p>Mayoritas ONT berada di belakang NAT/CGNAT atau firewall, sehingga ACS tidak
+bisa asal membuka koneksi ke ONT. Maka TR-069 dirancang <strong>ONT menghubungi
+ACS</strong> (keluar, biasanya port 80/443/7547 ke ACS):</p>
+<ul>
+  <li><strong>Periodic Inform</strong> — ONT lapor tiap N detik (mis. 300–3600) walau tak ada perintah.</li>
+  <li><strong>Event</strong> — ONT lapor saat boot (<code>1 BOOT</code>), pertama kali (<code>0 BOOTSTRAP</code>), nilai parameter berubah (<code>4 VALUE CHANGE</code>), dst.</li>
+  <li><strong>Connection Request</strong> — bila NOC butuh aksi <em>sekarang</em>, ACS mengirim HTTP GET ke <code>ConnectionRequestURL</code> ONT (alamat ini ditangkap otomatis dari Inform). ONT lalu segera membuka sesi baru ke ACS. Jika ONT tak terjangkau (CGNAT), ACS mencoba fallback UDP (STUN, TR-111); jika tetap gagal, task menunggu Inform berikutnya.</li>
+</ul>
+
+<div class="fig">
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant N as NOC (Console ACS)
+  participant A as ACS
+  participant O as ONT
+  N->>A: "Reboot ONT ini sekarang"
+  A->>A: simpan sebagai task PENDING
+  A->>O: HTTP GET ke ConnectionRequestURL (Digest/Basic)
+  O-->>A: 200/204 — "oke, saya hubungi balik"
+  O->>A: Inform (event 6 CONNECTION REQUEST)
+  A-->>O: InformResponse
+  O->>A: POST kosong ("siap terima perintah")
+  A-->>O: RPC Reboot
+  O-->>A: RebootResponse (lalu ONT restart)
+  A->>A: task COMPLETED
+</pre>
+<figcaption>Gambar 2 — "Reboot sekarang": ACS menyentil ONT dulu, baru perintah dikirim di sesi yang dibuka ONT.</figcaption>
+</div>
+
+<h3>1.7 Contoh nyata: mengganti password WiFi pelanggan</h3>
+
+<ol class="steps">
+  <li>NOC membuka <strong>Perangkat</strong> → cari serial pelanggan → tab <strong>Parameter</strong>, atau memakai Task <em>Tulis parameter</em>. Nilai baru dimasukkan (mis. logical key <code>wifi.wpa_passphrase</code>).</li>
+  <li>ACS menerjemahkan <em>logical key</em> ke path TR-069 milik vendor/model itu lewat tabel <code>vendor_parameter_mappings</code>, mis. pada data model TR-098
+  <code>InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1.KeyPassphrase</code>, pada TR-181
+  <code>Device.WiFi.AccessPoint.1.Security.KeyPassphrase</code>. (Path bisa berbeda tiap vendor/firmware — itu sebabnya ada pemetaan, bukan <code>if vendor == …</code> di kode. Pemetaan bawaan menyasar radio utama, instance 1; path per-band/per-model ditambah lewat Katalog.)</li>
+  <li>ACS membuat task <code>SetParameterValues</code> berstatus <code>PENDING</code>, lalu memicu Connection Request.</li>
+  <li>ONT membuka sesi; ACS mengirim <code>SetParameterValues</code>; ONT menerapkan, membalas <code>Status 0</code> (atau <code>1</code> bila butuh reboot).</li>
+  <li>Task menjadi <code>COMPLETED</code>; riwayat tercatat di Timeline Audit (siapa, kapan, nilai apa — tanpa menyimpan secret di log).</li>
+</ol>
+
+<div class="callout info"><span class="label">Yang <u>tidak</u> terjadi</span>
+<p>Tidak ada langkah di atas yang menyentuh OLT. OLT hanya meneruskan paket IP
+antara ACS dan ONT seperti lalu lintas data biasa.</p></div>
+
+<h3>1.8 Kasus khusus yang sering membingungkan</h3>
+<table>
+<tr><th style="width:30%">Situasi</th><th>Artinya untuk ACS</th></tr>
+<tr><td>ONT mode <strong>bridge</strong> + router pelanggan di belakangnya</td><td>Yang menerima WiFi/PPPoE adalah <em>router</em>. ACS mengelola ONT <em>bila</em> ONT punya agen TR-069 aktif; untuk router pelanggan, router itu sendiri harus diarahkan ke ACS (ia muncul sebagai device terpisah).</td></tr>
+<tr><td>ONT tipe SFU/sederhana <strong>tanpa agen TR-069</strong>, hanya dikelola OLT lewat OMCI</td><td>ACS tidak bisa mengelolanya. Konfigurasi hanya lewat OLT.</td></tr>
+<tr><td>Parameter WAN diprovisi <strong>oleh OLT lewat OMCI</strong></td><td>Jika OLT yang menulis, nilai itu bisa tertimpa/ bentrok bila ACS juga menulis. Sepakati satu pemilik per parameter (lihat tabel 1.3).</td></tr>
+<tr><td>Ingin ACS membaca <strong>level optik di sisi OLT</strong>, mengatur VLAN, atau mem-<em>provision</em> ONT di PON</td><td>Di luar cakupan ACS. Direncanakan sebagai modul terpisah <em>OLT Controller</em> (read-only dulu, ZTE) <u>setelah UAT</u> — lihat <a href="#s17">Bab 17</a>.</td></tr>
+<tr><td>Dua jaringan berbeda: manajemen vs internet</td><td>Praktik terbaik: ONT punya WAN <em>manajemen</em> khusus (VLAN terpisah) menuju ACS, terpisah dari WAN internet pelanggan. Pengaturan VLAN-nya di OLT.</td></tr>
+</table>
+
+<h3>1.9 Pertanyaan yang sering ditanyakan</h3>
+<table>
+<tr><th style="width:36%">Pertanyaan</th><th>Jawaban</th></tr>
+<tr><td>Apakah ACS menggantikan sistem manajemen OLT?</td><td>Tidak. Fungsinya berbeda: OLT = jaringan akses; ACS = perangkat pelanggan.</td></tr>
+<tr><td>ACS bisa membuat ONT baru "muncul" di OLT?</td><td>Tidak. Registrasi ONT di PON tetap di OLT. ACS baru melihat ONT setelah ONT online dan mengirim Inform.</td></tr>
+<tr><td>Kenapa ONT yang sudah online di OLT tidak muncul di ACS?</td><td>ONT belum bisa menjangkau ACS (jalur manajemen/VLAN/URL/kredensial) — lihat <a href="#s16">Bab 16</a>.</td></tr>
+<tr><td>Apakah perubahan di ACS ikut mengubah OLT?</td><td>Tidak. OLT tidak mengetahui perubahan yang dilakukan ACS pada ONT.</td></tr>
+<tr><td>Kita bisa "pra-daftarkan" ONT di ACS sebelum online?</td><td>Ya: <strong>Tambah Perangkat</strong> atau impor massal (<a href="#s7">Bab 7</a>–<a href="#s8">8</a>). Ini hanya mendaftarkan <em>catatan</em> di ACS; Inform pertama memakai baris yang sama.</td></tr>
+</table>
+
+<!-- ======================================================================= -->
+<h2 id="s2"><span class="num">2</span> Komponen &amp; arsitektur</h2>
 
 <p>CWMP adalah protokol <strong>stateful berbasis sesi</strong>, bukan
 request-response biasa. Perangkat (CPE) yang memulai kontak — bukan ACS:</p>
@@ -153,9 +435,10 @@ request-response biasa. Perangkat (CPE) yang memulai kontak — bukan ACS:</p>
 <table>
 <tr><th>Komponen</th><th>Fungsi</th><th>Port (dev)</th></tr>
 <tr><td>Backend <code>acsd</code></td><td>Endpoint CWMP untuk CPE + REST API untuk operator/BSS</td><td>REST <code>18080</code>, CWMP <code>17547</code></td></tr>
-<tr><td>MariaDB</td><td>Inventory, task, audit trail, katalog vendor</td><td><code>13306</code></td></tr>
+<tr><td>MariaDB</td><td>Inventory, task, audit trail, katalog vendor, token reset password</td><td><code>13306</code></td></tr>
 <tr><td>MinIO</td><td>Penyimpanan file firmware (S3-compatible)</td><td><code>19000</code> / konsol <code>19001</code></td></tr>
 <tr><td>Redis</td><td>Koordinasi antar-instance (event pub/sub)</td><td><code>16379</code></td></tr>
+<tr><td>SMTP (eksternal)</td><td>Email reset password &amp; notifikasi keamanan (mis. Gmail App Password)</td><td>587 (STARTTLS)</td></tr>
 <tr><td>Prometheus + Grafana</td><td>Metrik &amp; dashboard</td><td><code>19090</code> / <code>13000</code></td></tr>
 <tr><td>Frontend (Console)</td><td>Antarmuka web operator — dijalankan terpisah (<code>npm run dev</code>, port <code>5173</code>)</td><td>—</td></tr>
 </table>
@@ -164,123 +447,201 @@ request-response biasa. Perangkat (CPE) yang memulai kontak — bukan ACS:</p>
 <p>Perbedaan path parameter TR-069 antar vendor <strong>tidak</strong> ditangani
 dengan percabangan kode, melainkan lewat tabel pemetaan
 (<code>vendor_parameter_mappings</code>). Menambah dukungan vendor/model baru =
-operasi data, bukan rilis software.</p></div>
+operasi data, bukan rilis software. Root data model (<code>InternetGatewayDevice.*</code>
+TR-098 vs <code>Device.*</code> TR-181) di-resolve per perangkat, tidak diasumsikan.</p></div>
 
-<h2 id="s2"><span class="num">2</span> Menjalankan ACS</h2>
+<h2 id="s3"><span class="num">3</span> Menjalankan ACS</h2>
 
 <ol class="steps">
-  <li>Siapkan berkas <code>.env</code> dari <code>.env.example</code> — isi
+  <li>Salin <code>.env.example</code> menjadi <code>.env</code> dan isi:
   <code>ACS_DB_ROOT_PASSWORD</code>, <code>ACS_DB_PASSWORD</code>,
   <code>ACS_JWT_SECRET</code> (min. 32 karakter),
   <code>ACS_CREDENTIAL_ENC_KEY</code> (base64, 32 byte),
-  <code>ACS_MINIO_ACCESS_KEY</code>, <code>ACS_MINIO_SECRET_KEY</code>.</li>
+  <code>ACS_MINIO_ACCESS_KEY</code>, <code>ACS_MINIO_SECRET_KEY</code>.
+  Untuk email: <code>ACS_SMTP_HOST</code>, <code>ACS_SMTP_PORT</code>,
+  <code>ACS_SMTP_USERNAME</code>, <code>ACS_SMTP_PASSWORD</code>,
+  <code>ACS_SMTP_FROM</code>, <code>ACS_PUBLIC_URL</code>.
+  <strong>Berkas <code>.env</code> berisi rahasia — jangan di-commit atau dikirim lewat chat.</strong></li>
   <li>Jalankan stack:
-<pre>docker compose up -d        <span class="cmt"># menjalankan migrasi 0001→0021 lalu acsd</span></pre></li>
-  <li>Buat Superadmin pertama (sekali saja):
+<pre>docker compose up -d        <span class="cmt"># menjalankan migrasi 0001→0024 lalu acsd</span></pre></li>
+  <li>Buat Superadmin pertama (sekali saja; login memakai <strong>email</strong>):
 <pre>docker compose exec acsd /app/seed-admin \
-  -username admin -password '&lt;kata sandi kuat&gt;' -email admin@perusahaan.id</pre></li>
+  -username admin -password '&lt;kata sandi kuat&gt;' \
+  -email admin@perusahaan.id -fullname "Nama Admin"</pre></li>
+  <li>Jalankan Console web: <code>cd frontend &amp;&amp; npm install &amp;&amp; npm run dev</code>,
+  buka <code>http://localhost:5173/login</code>.</li>
   <li>Verifikasi: <code>curl -s localhost:18080/api/v1/metrics</code> membalas
   <code>200</code>, dan <code>POST</code> kosong ke <code>localhost:17547/cwmp</code>
   membalas <code>204</code>.</li>
 </ol>
 
 <div class="callout warn"><span class="label">Produksi</span>
-<p>Endpoint CWMP <strong>wajib</strong> di belakang terminasi TLS (reverse proxy).
-Endpoint <code>/api/v1/metrics</code> tidak berautentikasi (konvensi Prometheus
-exporter) — <strong>firewall di level jaringan</strong>. MinIO harus reachable
-dari jaringan CPE fisik bila memakai strategi presigned-URL untuk firmware.</p></div>
+<p>Endpoint CWMP <strong>wajib</strong> di belakang terminasi TLS (reverse proxy) —
+<code>acsd</code> sendiri belum melayani TLS. Endpoint <code>/api/v1/metrics</code>
+tidak berautentikasi (konvensi Prometheus exporter) — <strong>firewall di level
+jaringan</strong>. MinIO harus reachable dari jaringan CPE fisik bila memakai strategi
+presigned-URL untuk firmware. Bila di belakang reverse proxy, rate limit per-IP
+memerlukan konfigurasi trusted proxy (belum final).</p></div>
 
-<h2 id="s3"><span class="num">3</span> Login, peran, dan tenant</h2>
+<h2 id="s4"><span class="num">4</span> Login, peran, dan tenant</h2>
 
-<p>Detail lengkap alur login, SSO/OIDC, akun terkunci, dan pemecahan masalah
-login ada di <strong>PANDUAN_LOGIN_ACS.pdf</strong>. Ringkas:</p>
+<p>Detail login ada di <strong>LOGIN.md</strong>. Ringkas:</p>
+<ul>
+  <li><strong>Login dengan email + password.</strong> Password disimpan sebagai hash
+  <strong>Argon2id</strong> (hash lama bcrypt otomatis di-upgrade saat login berhasil).</li>
+  <li><strong>Lupa password lewat email:</strong> tautan sekali pakai berlaku 30 menit;
+  respons selalu seragam (tidak membocorkan apakah email terdaftar). Maksimum 3
+  permintaan per akun per jam.</li>
+  <li><strong>Lockout:</strong> 5 kali salah → akun terkunci 15 menit (pemilik menerima
+  email). Mengganti/reset password otomatis mencabut JWT lama.</li>
+  <li><strong>Email notifikasi:</strong> reset, password berubah, reset oleh admin, akun
+  terkunci, akun baru. Email tidak pernah memuat password.</li>
+  <li><strong>SSO OIDC</strong> tersedia bila dikonfigurasi; akun SSO tidak punya password lokal.</li>
+</ul>
 
 <table>
 <tr><th>Peran</th><th>Cakupan</th></tr>
 <tr><td class="role-name">SUPERADMIN</td><td>Lintas semua tenant. Kelola tenant, katalog vendor global, firmware, kuota.</td></tr>
-<tr><td class="role-name">ADMIN</td><td>Satu tenant. Kelola user tenant sendiri, provisioning, preset, branding, webhook.</td></tr>
-<tr><td class="role-name">NOC</td><td>Satu tenant. Operasi harian: task, reboot, diagnostics, connection request. Tidak mengubah konfigurasi kebijakan.</td></tr>
-<tr><td class="role-name">VIEWER</td><td>Satu tenant, hanya baca.</td></tr>
-<tr><td class="role-name">ENDUSER</td><td>Portal pelanggan (<code>/self-service</code>): kelola WiFi &amp; restart perangkat miliknya sendiri.</td></tr>
+<tr><td class="role-name">ADMIN</td><td>Satu tenant. Kelola user tenant sendiri, perangkat (tambah/edit/hapus/impor), provisioning, preset, branding, webhook.</td></tr>
+<tr><td class="role-name">NOC</td><td>Satu tenant. Operasi harian: task, reboot, diagnostics, connection request, <em>edit</em> perangkat. Tidak menambah/menghapus perangkat atau mengubah kebijakan.</td></tr>
+<tr><td class="role-name">VIEWER</td><td>Satu tenant, hanya baca (dan ekspor).</td></tr>
+<tr><td class="role-name">ENDUSER</td><td>Portal pelanggan (<code>/self-service</code>, menu "WiFi Saya"): kelola WiFi &amp; restart perangkat miliknya sendiri.</td></tr>
 </table>
 
 <p><strong>Tenant</strong> adalah batas isolasi data. Tiap tenant punya
 <em>shared secret Inform CWMP</em> sendiri (username/password yang diisikan ke
 setiap CPE milik tenant itu). Device baru yang Inform dengan secret tenant
-otomatis masuk ke tenant tersebut.</p>
+otomatis masuk ke tenant tersebut. Item global (tanpa tenant) hanya dapat diubah SUPERADMIN.</p>
 
-<p>Buat tenant: <strong>Administration → Tenants → Tambah</strong>, atau pakai
-<strong>Wizard Onboarding Tenant</strong> (Administration → Onboarding) yang
+<p>Buat tenant: <strong>Administrasi → Tenants → Tambah</strong>, atau pakai
+<strong>Wizard Onboarding Tenant</strong> (Administrasi → Onboarding) yang
 memandu: tenant + secret CWMP → admin pertama → langkah lanjutan.</p>
 
-<h2 id="s4"><span class="num">4</span> Onboarding vendor &amp; OUI</h2>
+<h2 id="s5"><span class="num">5</span> Katalog vendor, OUI &amp; pemetaan parameter</h2>
 
-<p>Sebelum CPE sebuah vendor bisa dikenali penuh, katalog perlu tahu:</p>
+<p>Menu <strong>Katalog Vendor</strong> (SUPERADMIN). Agar CPE dikenali penuh, katalog menyimpan:</p>
 <ol>
-  <li><strong>Vendor</strong> (<code>ref_vendors</code>) — sudah terisi: ZTE, Huawei, FiberHome, Nokia, Cdata.</li>
-  <li><strong>OUI</strong> (<code>vendor_ouis</code>) — 6 digit heksadesimal dari
-  <a href="https://standards-oui.ieee.org/">IEEE OUI registry</a>. <strong>Belum
-  terisi</strong> — wajib diisi per vendor sebelum uji lapangan (lihat callout).</li>
+  <li><strong>Vendor</strong> (<code>ref_vendors</code>) — terisi: ZTE, Huawei, FiberHome, Nokia, Cdata.</li>
+  <li><strong>OUI</strong> (<code>vendor_ouis</code>) — 6 karakter dari
+  <a href="https://standards-oui.ieee.org/">registri IEEE</a>. Sudah terisi awal
+  <strong>±3.176 blok</strong> lewat migrasi <code>0022</code>; tambah/koreksi lewat
+  <strong>Katalog → Vendor → OUI Terdaftar</strong> atau impor CSV.</li>
   <li><strong>Model perangkat</strong> (<code>device_models</code>) — opsional, untuk pemetaan spesifik per model.</li>
   <li><strong>Pemetaan parameter</strong> (<code>vendor_parameter_mappings</code>) —
   12 <em>logical key</em> standar sudah dipetakan untuk kelima vendor (nama/model/
   serial/versi, SSID, passphrase WiFi, PPPoE username/password, interval inform).</li>
 </ol>
 
-<div class="callout danger"><span class="label">Wajib sebelum uji lapangan</span>
-<p><code>vendor_ouis</code> masih kosong. Setiap CPE yang Inform akan muncul
-sebagai <em>"vendor belum diketahui"</em> sampai OUI-nya didaftarkan. Ini bukan
-kegagalan — segera tambahkan OUI perangkat lewat <strong>Catalog → Vendors →
-OUI Terdaftar</strong> begitu MAC address-nya terlihat. Satu digit OUI salah bisa
-membuat perangkat ter-assign ke vendor yang keliru — verifikasi dari registri
-IEEE, jangan dari ingatan.</p></div>
+<div class="callout warn"><span class="label">Verifikasi OUI dengan Inform nyata</span>
+<p>Data OUI berasal dari registri IEEE, tetapi belum dicocokkan dengan Inform dari
+CPE fisik. Saat uji lapangan, pastikan OUI dari Inform pertama ter-resolve ke vendor
+yang benar. Perangkat yang OUI-nya belum ada muncul sebagai <em>"vendor belum
+diketahui"</em> dan akan sembuh sendiri di Inform berikutnya setelah OUI ditambahkan.</p></div>
 
 <p>Prosedur langkah-demi-langkah menambah vendor/model baru: lihat
-<strong>VENDOR_ONBOARDING.md</strong>.</p>
+<strong>VENDOR_ONBOARDING.md</strong>. Seluruh tab katalog mendukung impor/ekspor (Bab 8).</p>
 
-<h2 id="s5"><span class="num">5</span> Menghubungkan CPE ke ACS</h2>
+<h2 id="s6"><span class="num">6</span> Menghubungkan CPE ke ACS</h2>
 
-<p>Di GUI/CLI tiap CPE, isi bagian <em>TR-069 / ACS / Remote Management</em>:</p>
+<p>Di GUI/CLI tiap CPE (atau lewat OLT/DHCP — lihat <a href="#s1">§1.5</a>), isi bagian
+<em>TR-069 / ACS / Remote Management</em>:</p>
 
 <table>
 <tr><th>Field CPE</th><th>Isi dengan</th></tr>
 <tr><td>ACS URL</td><td><code>https://acs.perusahaan.id/cwmp</code> (dev: <code>http://&lt;ip&gt;:17547/cwmp</code>)</td></tr>
-<tr><td>ACS Username / Password</td><td>shared secret Inform tenant (dari Administration → Tenants → Kredensial CWMP)</td></tr>
+<tr><td>ACS Username / Password</td><td>shared secret Inform tenant (dari Administrasi → Tenants → Kredensial CWMP)</td></tr>
 <tr><td>Periodic Inform Enable</td><td><code>true</code></td></tr>
 <tr><td>Periodic Inform Interval</td><td><code>300</code>–<code>3600</code> detik (ACS menambahkan <em>jitter</em> otomatis untuk mencegah lonjakan serempak)</td></tr>
+<tr><td>Connection Request Username/Password</td><td>Diisi sesuai kebijakan; ACS menjawab tantangan <strong>Digest</strong> maupun Basic dari CPE</td></tr>
 </table>
 
 <p>Setelah tersimpan, CPE akan mengirim Inform <code>1 BOOT</code> atau
 <code>0 BOOTSTRAP</code>. Dalam beberapa detik perangkat muncul di
-<strong>Devices</strong>. <code>ConnectionRequestURL</code> perangkat
+<strong>Perangkat</strong>. <code>ConnectionRequestURL</code> perangkat
 di-<strong>capture otomatis</strong> dari Inform — operator tidak perlu
 mengisinya manual agar bisa memicu Connection Request.</p>
 
-<h2 id="s6"><span class="num">6</span> Melihat &amp; menelusuri perangkat</h2>
+<h2 id="s7"><span class="num">7</span> Perangkat: tambah, edit, hapus, telusuri</h2>
 
+<h3>7.1 Dua cara perangkat masuk ke ACS</h3>
+<table>
+<tr><th style="width:28%">Cara</th><th>Kapan dipakai</th></tr>
+<tr><td><strong>Otomatis (self-register)</strong></td><td>Normal: ONT yang online mengirim Inform → ACS membuat catatan perangkat sendiri. Tidak perlu menambah manual.</td></tr>
+<tr><td><strong>Manual / pra-registrasi</strong></td><td>Anda sudah punya daftar ONT (dari gudang/ OLT) dan ingin menyiapkan catatannya dulu: lokasi, catatan, vendor/model, atau menandai tenant. Status awal <code>UNREGISTERED</code>; saat ONT melakukan Inform pertama, baris yang sama dipakai (id tetap, catatan terjaga, status berubah, vendor ter-resolve).</td></tr>
+</table>
+
+<h3>7.2 Tambah, edit, hapus</h3>
+<table>
+<tr><th style="width:20%">Aksi</th><th>Cara di Console</th><th style="width:18%">Peran</th></tr>
+<tr><td><strong>Tambah</strong></td><td><strong>Perangkat → Tambah Perangkat</strong>. Wajib: OUI (6 karakter) &amp; serial. Opsional: vendor, model, product class, MAC (<code>AA:BB:CC:DD:EE:FF</code>), catatan, lokasi (lat/lon harus berpasangan), URL &amp; kredensial Connection Request. Superadmin memilih tenant; ADMIN terkunci ke tenant sendiri.</td><td>ADMIN, SUPERADMIN</td></tr>
+<tr><td><strong>Edit</strong></td><td>Ikon pensil pada baris daftar, atau tombol <strong>Edit</strong> di halaman detail. Mengosongkan catatan/product class/MAC/URL CR berarti menghapus nilainya; koordinat tidak bisa dikosongkan sekali tersimpan. Password CR tersimpan terenkripsi dan tidak pernah ditampilkan.</td><td>NOC, ADMIN, SUPERADMIN</td></tr>
+<tr><td><strong>Hapus</strong></td><td>Ikon tempat sampah per baris, atau pilih beberapa baris lalu <em>hapus massal</em>. Soft delete: task terbuka di-<code>CANCELLED</code>; bila ONT yang sama Inform lagi, catatan lama di-<em>revive</em>.</td><td>ADMIN, SUPERADMIN</td></tr>
+</table>
+
+<div class="callout info"><span class="label">Aturan duplikat</span>
+<p>Serial+OUI yang sudah ada di tenant lain ditolak <code>409</code> tanpa membocorkan
+pemiliknya. Serial+OUI yang pernah dihapus di tenant yang sama di-<em>revive</em>.</p></div>
+
+<h3>7.3 Menelusuri</h3>
 <ul>
-  <li><strong>Devices</strong> — daftar dengan filter (vendor, status, tag,
-  pencarian serial/MAC), seleksi massal, dan aksi massal (apply profile /
+  <li><strong>Perangkat</strong> — daftar dengan filter (vendor, status, tag,
+  pencarian serial/MAC), seleksi massal, aksi massal (apply profile /
   firmware / reboot untuk banyak perangkat sekaligus).</li>
-  <li><strong>Device Detail</strong> — tab: Parameter (tree TR-069, bisa
+  <li><strong>Detail perangkat</strong> — tab: Parameter (tree TR-069, bisa
   expand/edit/AddObject/DeleteObject), Histori Event (CWMP), Task (RPC),
-  Diagnostics, Firmware, Redaman Optik (tren RX/TX power), Timeline Audit
-  (siapa mengubah apa).</li>
-  <li><strong>Ctrl/Cmd + K</strong> — command palette: cari perangkat atau
-  lompat ke halaman mana pun.</li>
-  <li><strong>Dashboard</strong> — distribusi status, perangkat per vendor,
-  antrean task, tren redaman optik.</li>
+  Diagnostics, Firmware, Redaman Optik (tren RX/TX power dari ONT), Timeline Audit.</li>
+  <li><strong>Ctrl/Cmd + K</strong> — command palette: cari perangkat atau lompat ke halaman mana pun.</li>
+  <li><strong>Dashboard</strong> — distribusi status, perangkat per vendor, antrean task, tren redaman optik.</li>
 </ul>
 
 <h3>Memaksa perangkat lapor sekarang (Connection Request)</h3>
-<p><strong>Device Detail → Connection Request</strong> (atau
-<code>POST /devices/:id/connection-request</code>). ACS menghubungi CPE agar
-segera membuka sesi, tanpa menunggu periodic inform. Bila CPE offline / di balik
-CGNAT, ACS mencoba fallback UDP (STUN/TR-111); bila tetap gagal, jawaban
-<strong>HTTP 502</strong> berarti "perangkat tidak dapat dihubungi" — kondisi
-lapangan biasa, bukan kerusakan ACS.</p>
+<p><strong>Detail perangkat → Connection Request</strong> (atau
+<code>POST /devices/:id/connection-request</code>). Ringkasan mekanismenya ada di
+<a href="#s1">§1.6</a>. Jawaban <strong>HTTP 502</strong> berarti "perangkat tidak
+dapat dihubungi" — kondisi lapangan biasa (offline/CGNAT), bukan kerusakan ACS.</p>
 
-<h2 id="s7"><span class="num">7</span> Task: reboot, baca/tulis parameter</h2>
+<h2 id="s8"><span class="num">8</span> Impor &amp; ekspor data (dengan pratinjau)</h2>
+
+<p>Banyak modul punya tombol <strong>Ekspor</strong> (CSV atau JSON) dan <strong>Impor</strong>
+(CSV). Impor <em>tidak langsung menulis</em>: Anda melihat dulu pratinjau yang sudah
+dicek terhadap data yang <em>sudah ada</em>, sehingga tidak ada waktu terbuang untuk
+impor yang ternyata salah.</p>
+
+<h3>8.1 Alur impor</h3>
+<div class="lane">
+  <div class="st ont"><span class="no">1</span><b>Pilih berkas</b>CSV (pemisah koma, titik-koma, atau tab; BOM dikenali). Unduh <em>template</em> bila perlu.</div>
+  <div class="ar">›</div>
+  <div class="st acs"><span class="no">2</span><b>Pratinjau</b>Setiap baris dicek vs data eksisting dan diberi label: <em>Baru · Diperbarui · Tidak berubah · Dilewati · Error</em> + alasannya.</div>
+  <div class="ar">›</div>
+  <div class="st ont"><span class="no">3</span><b>Pilih mode</b><em>Lewati</em> yang sudah ada, atau <em>Perbarui</em> yang berbeda. Filter &amp; unduh laporan pratinjau.</div>
+  <div class="ar">›</div>
+  <div class="st acs"><span class="no">4</span><b>Eksekusi</b>Hanya baris valid yang dikerjakan, dengan progres &amp; tombol batal; ringkasan hasil + CSV baris gagal.</div>
+</div>
+
+<h3>8.2 Modul yang mendukung</h3>
+<table>
+<tr><th style="width:26%">Modul (menu)</th><th style="width:14%">Impor</th><th style="width:14%">Ekspor</th><th>Catatan</th></tr>
+<tr><td>Perangkat</td><td>Ya</td><td>Ya</td><td>Maks. 1.000 baris/impor; dry-run di server (<code>?dry_run=true</code>); tenant lain ditolak tanpa bocor.</td></tr>
+<tr><td>Administrasi → Users</td><td>Ya</td><td>Ya</td><td>Email wajib valid &amp; unik; password tidak diekspor.</td></tr>
+<tr><td>Administrasi → Tenants</td><td>Ya</td><td>Ya</td><td>Kredensial CWMP tidak diekspor.</td></tr>
+<tr><td>Katalog Vendor (Vendor, OUI, Model, Mapping)</td><td>Ya</td><td>Ya</td><td>±3.100 OUI diproses dalam hitungan detik; konflik OUI lintas vendor dilaporkan.</td></tr>
+<tr><td>Tag</td><td>Ya</td><td>Ya</td><td>Tag global hanya SUPERADMIN.</td></tr>
+<tr><td>Preset</td><td>Ya</td><td>Ya</td><td>Nilai berkunci rahasia (password/psk/secret…) dikosongkan.</td></tr>
+<tr><td>Provisioning (Profile &amp; Zero-Touch Rule)</td><td>Ya</td><td>Ya</td><td>Nilai parameter rahasia dikosongkan saat ekspor.</td></tr>
+<tr><td>Task</td><td>—</td><td>Ya</td><td>Mengekspor semua task sesuai filter aktif.</td></tr>
+<tr><td>Firmware, File</td><td>—</td><td>Ya</td><td>Hanya metadata (versi, ukuran, checksum) — bukan berkas biner.</td></tr>
+<tr><td>Audit Trail</td><td>—</td><td>Ya</td><td>Untuk arsip/bukti audit (tidak ada impor demi integritas).</td></tr>
+<tr><td>Webhook</td><td>—</td><td>Ya</td><td>URL yang memuat token disamarkan (<code>token=***</code>).</td></tr>
+</table>
+
+<div class="callout ok"><span class="label">Aman &amp; bisa diulang</span>
+<p>Kolom ekspor memakai nama yang sama dengan kolom impor, sehingga <em>ekspor →
+impor ulang</em> menghasilkan semua baris "Tidak berubah". Sel yang diawali
+<code>=</code>, <code>+</code>, <code>-</code>, <code>@</code> dinetralkan agar tidak
+dieksekusi sebagai rumus saat dibuka di Excel (CSV injection). Rahasia tidak pernah
+diekspor. Batas klien: 5 MB / 5.000 baris per berkas.</p></div>
+
+<h2 id="s9"><span class="num">9</span> Task: reboot, baca/tulis parameter</h2>
 
 <p>Semua perintah ke CPE adalah <strong>task</strong> yang mengantre di ACS dan
 dieksekusi saat CPE membuka sesi berikutnya (atau segera, bila dipicu Connection
@@ -300,21 +661,22 @@ Request).</p>
 <code>max_retries</code>. Fault <strong>9005 (Invalid Parameter Name)</strong>
 langsung <code>FAILED</code> permanen — retry pasti percuma. Fault
 <strong>9003</strong> pada GetParameterValues memicu pemecahan daftar parameter
-menjadi dua task.</p></div>
+menjadi dua task. Seluruh nilai SetParameterValues saat ini dikirim bertipe
+<code>xsd:string</code> — perilaku CPE yang menuntut tipe lain perlu diuji.</p></div>
 
-<h2 id="s8"><span class="num">8</span> Provisioning otomatis (Profile &amp; Zero-Touch)</h2>
+<h2 id="s10"><span class="num">10</span> Provisioning otomatis (Profile &amp; Zero-Touch)</h2>
 
 <h3>Provisioning Profile</h3>
 <p>Kumpulan parameter target (mis. SSID, kredensial PPPoE, interval inform).
 Dibuat di <strong>Provisioning → Profiles</strong>. Builder punya autocomplete
 <em>logical key</em> (di-resolve ke path TR-069 sesuai vendor) dengan fallback
-raw-path manual. Terapkan ke satu perangkat lewat <strong>Device Detail →
-Apply Profile</strong>, atau massal lewat Devices → seleksi → Apply Profile.</p>
+raw-path manual. Terapkan ke satu perangkat lewat <strong>Detail perangkat →
+Apply Profile</strong>, atau massal lewat Perangkat → seleksi → Apply Profile.</p>
 
 <div class="callout warn"><span class="label">FR-18 — keputusan produk</span>
 <p>Mengubah isi profile <strong>tidak</strong> otomatis mendorong ulang ke
 perangkat yang sudah terprovisioning. Ini disengaja. Untuk penegakan
-berkelanjutan, gunakan <strong>Preset</strong> (bagian 9).</p></div>
+berkelanjutan, gunakan <strong>Preset</strong> (Bab 11).</p></div>
 
 <h3>Zero-Touch Rule (ZTP)</h3>
 <p><strong>Provisioning → Zero-Touch Rules</strong>. Cocokkan perangkat baru
@@ -329,13 +691,14 @@ parameter, lalu jalankan aksi gabungan: apply profile <em>dan/atau</em> reboot
   dengan task in-flight tidak mendapat aksi baru.</li>
 </ul>
 
-<h2 id="s9"><span class="num">9</span> Preset engine (penegakan konfigurasi)</h2>
+<h2 id="s11"><span class="num">11</span> Preset engine (penegakan konfigurasi)</h2>
 
 <p><strong>Presets</strong> (peran ADMIN). Setara "preset" GenieACS. Tiap sesi
 CWMP, preset dengan <code>enforce=1</code> yang <em>precondition</em>-nya cocok
 akan memeriksa apakah nilai perangkat menyimpang dari target; bila menyimpang,
 ACS otomatis mengantre satu <code>SetParameterValues</code> gabungan
-(drift-heal).</p>
+(drift-heal). Contoh: pelanggan mengganti SSID sendiri di GUI ONT → Inform
+berikutnya ACS mengembalikannya ke standar operator.</p>
 
 <p>Pagar bawaan: task in-flight ditunggu; cooldown 15 menit antar upaya; menyerah
 setelah 3 kegagalan berturut-turut (dan mencatat <code>activity_logs</code> agar
@@ -348,15 +711,16 @@ menambahkan offset deterministik per perangkat agar armada tidak Inform di detik
 yang sama. Nilai akhir di perangkat sengaja sedikit berbeda dari angka literal —
 ini fitur, bukan bug.</p></div>
 
-<h2 id="s10"><span class="num">10</span> Firmware &amp; canary rollout</h2>
+<h2 id="s12"><span class="num">12</span> Firmware &amp; canary rollout</h2>
 
 <ol class="steps">
   <li><strong>Upload</strong> (Superadmin): <strong>Firmware → Upload</strong> —
   unggah file biner sungguhan. Checksum SHA-256 dihitung di server saat
   streaming.</li>
-  <li><strong>Upgrade satu perangkat</strong>: Device Detail → Firmware →
+  <li><strong>Upgrade satu perangkat</strong>: Detail perangkat → Firmware →
   Jadwalkan. ACS mengirim RPC <code>Download</code> dengan presigned URL MinIO
-  (berlaku 1 jam), perangkat mengunduh lalu mengirim <code>TransferComplete</code>.</li>
+  (berlaku 1 jam), ONT mengunduh lalu mengirim <code>TransferComplete</code>.
+  (Yang diunduh dan diperbarui adalah firmware <em>ONT</em>, bukan OLT.)</li>
   <li><strong>Canary / staged rollout</strong> (<strong>Firmware → Rollout
   Batches</strong>): tentukan populasi (tenant/vendor/model), persentase per
   wave, dan ambang <em>failure rate</em>. Wave berikutnya jalan otomatis hanya
@@ -370,29 +734,32 @@ Selalu mulai dengan wave kecil (mis. 5%), ambang failure rate ketat, dan pantau
 sebelum melanjutkan. Jangan uji firmware ke perangkat produksi di sesi uji
 pertama.</p></div>
 
-<h2 id="s11"><span class="num">11</span> Integrasi sistem lain (API, token, webhook)</h2>
+<h2 id="s13"><span class="num">13</span> Integrasi sistem lain (API, token, webhook)</h2>
 
 <h3>REST API &amp; token</h3>
 <ul>
   <li><strong>Kontrak lengkap:</strong> <code>openapi.yaml</code> (OpenAPI 3.0.3,
-  103 operation) + <code>ACS-API.postman_collection.json</code> siap impor ke
-  Postman/Newman.</li>
+  126 operation) + <code>ACS-API.postman_collection.json</code> (126 request) siap
+  impor ke Postman/Newman. Skrip <code>scripts/api-parity.mjs</code> memeriksa
+  kesesuaian backend ↔ frontend.</li>
   <li><strong>Autentikasi mesin-ke-mesin:</strong> terbitkan API token di
-  <strong>Administration → API Token</strong> (<code>POST /auth/tokens</code>).
+  <strong>Administrasi → API Token</strong> (<code>POST /auth/tokens</code>).
   Token ber-prefix <code>acs_</code>, ditampilkan sekali. Kirim sebagai
   <code>Authorization: Bearer acs_...</code>. Cabut lewat
   <code>DELETE /auth/tokens/:id</code> bila bocor / karyawan resign.</li>
   <li>Token &amp; JWT sama-sama ter-scope tenant + peran. Menonaktifkan tenant
   langsung menolak semua token/JWT-nya pada request berikutnya.</li>
+  <li>Pra-registrasi massal dari sistem lain: <code>POST /devices/import</code>
+  (<code>?dry_run=true</code> untuk pratinjau; mode <code>skip</code>/<code>update</code>).</li>
 </ul>
 
 <h3>Webhook keluar</h3>
-<p><strong>Webhooks</strong> (peran ADMIN). Daftarkan URL target untuk menerima
+<p><strong>Webhook</strong> (peran ADMIN). Daftarkan URL target untuk menerima
 event bertipe (mis. <code>PARAMETER_VALUE_CHANGE</code>, <code>DEVICE_FAULT</code>,
 <code>TASK_FAILED</code>) ke BSS/OSS/NMS. Payload ditandatangani; ada log
 pengiriman &amp; hitung kegagalan.</p>
 
-<h2 id="s12"><span class="num">12</span> Observability &amp; alert</h2>
+<h2 id="s14"><span class="num">14</span> Observability &amp; alert</h2>
 
 <table>
 <tr><th>Metrik Prometheus</th><th>Arti</th></tr>
@@ -408,73 +775,112 @@ pengiriman &amp; hitung kegagalan.</p>
 <code>PENDING</code> &gt; 50 selama 5 menit, dan task <code>FAILED</code> per
 vendor &gt; 10. Prosedur operasional insiden: <strong>RUNBOOK.md</strong>.</p>
 
-<h2 id="s13"><span class="num">13</span> Keamanan operasional</h2>
+<h2 id="s15"><span class="num">15</span> Keamanan operasional</h2>
 
 <ul>
   <li><strong>Rate limit berlapis:</strong> <code>/auth/login</code> 2 req/s per IP,
-  <code>/cwmp</code> 5 req/s per IP, REST lainnya 30 req/s per IP.</li>
-  <li><strong>Proteksi brute-force:</strong> 5 login gagal berturut-turut →
-  akun terkunci 15 menit (pesan error disamarkan dengan "password salah" biasa).</li>
+  <code>/cwmp</code> 5 req/s per IP, REST lainnya 30 req/s per IP. (Per-instance &amp;
+  per-IP — fleet di belakang CGNAT berbagi jatah; lihat LAPORAN_KESIAPAN.md.)</li>
+  <li><strong>Password &amp; sesi:</strong> Argon2id, lockout 5×/15 menit, token reset
+  hanya disimpan sebagai hash SHA-256 (sekali pakai, 30 menit), JWT dicabut saat
+  password berubah/akun dinonaktifkan.</li>
+  <li><strong>Email:</strong> STARTTLS wajib; kredensial SMTP hanya di <code>.env</code>/secret manager,
+  tidak pernah di repository. Gunakan App Password, bukan password akun; putar (rotate) bila pernah terekspos.</li>
   <li><strong>Kuota task queue per tenant</strong> (Superadmin, opsional) —
   membatasi task <code>PENDING</code>/<code>QUEUED</code> agar satu tenant tidak
   membanjiri antrean bersama.</li>
   <li><strong>Kredensial terenkripsi at-rest</strong> (AES-256-GCM): shared secret
   Inform tenant, kredensial connection-request per-device. Tidak pernah ditulis
-  plaintext ke log atau response API.</li>
+  plaintext ke log, response API, maupun ekspor.</li>
+  <li><strong>SSRF guard</strong> pada Connection Request (alamat metadata-cloud/internal ditolak).</li>
   <li><strong>Audit trail:</strong> 7 kolom audit di tabel master + feed
-  <code>activity_logs</code> ("siapa mengubah apa") + timeline per-device.</li>
+  <code>activity_logs</code> ("siapa mengubah apa", termasuk impor massal) + timeline per-device.</li>
   <li><strong>Backup:</strong> prosedur <code>mariadb-dump</code> + restore drill
   di <strong>PENGUJIAN_LAPANGAN.md §7</strong>. Uji restore secara berkala, bukan
   hanya menyimpan dump.</li>
 </ul>
 
-<h2 id="s14"><span class="num">14</span> Pemecahan masalah</h2>
+<h2 id="s16"><span class="num">16</span> Pemecahan masalah</h2>
 
 <table>
 <tr><th>Gejala</th><th>Kemungkinan penyebab &amp; tindakan</th></tr>
-<tr><td>Perangkat tidak muncul di Devices</td><td>Inform ditolak (secret salah / tenant nonaktif) — cek log <code>acsd</code> untuk <code>Inform ditolak (unauthorized)</code>. Pastikan ACS URL &amp; secret di CPE benar, port CWMP reachable dari VLAN CPE.</td></tr>
-<tr><td>Perangkat muncul "vendor belum diketahui"</td><td>OUI belum terdaftar. Tambahkan di Catalog → Vendors → OUI. Assign <code>vendor_id</code> manual untuk perangkat yang sudah kadung dibuat.</td></tr>
-<tr><td>Task PENDING tidak pernah terkirim</td><td>Perangkat belum membuka sesi baru. Picu Connection Request. Bila 502, perangkat memang tidak dapat dihubungi (offline/CGNAT).</td></tr>
-<tr><td>SetParameterValues gagal 9005</td><td>Path parameter tidak ada di perangkat itu (beda per vendor/firmware). Cek pemetaan <code>vendor_parameter_mappings</code> untuk model tersebut.</td></tr>
+<tr><td>ONT online di OLT tetapi <strong>tidak muncul di ACS</strong></td><td>ONT belum menjangkau ACS. Periksa berurutan: (1) ONT punya IP manajemen &amp; rute ke ACS (VLAN/WAN manajemen — sisi OLT/jaringan); (2) URL ACS &amp; port benar; (3) username/password = shared secret tenant (log <code>acsd</code>: <code>Inform ditolak (unauthorized)</code>); (4) port CWMP terbuka dari jaringan manajemen; (5) tenant aktif.</td></tr>
+<tr><td>Perangkat muncul "vendor belum diketahui"</td><td>OUI belum terdaftar. Tambahkan di Katalog Vendor → OUI; perangkat sembuh sendiri di Inform berikutnya, atau isi <code>vendor_id</code> manual lewat Edit.</td></tr>
+<tr><td>Task PENDING tidak pernah terkirim</td><td>ONT belum membuka sesi baru. Picu Connection Request. Bila 502, perangkat tidak dapat dihubungi (offline/CGNAT) — tunggu periodic inform.</td></tr>
+<tr><td>SetParameterValues gagal 9005</td><td>Path parameter tidak ada di perangkat itu (beda per vendor/firmware). Cek <code>vendor_parameter_mappings</code> untuk model tersebut.</td></tr>
+<tr><td>Perubahan WiFi/WAN "kembali sendiri"</td><td>Ada Preset <code>enforce=1</code> yang menegakkan nilai lain, atau OLT (OMCI) ikut menulis parameter yang sama. Periksa Preset &amp; sepakati pemilik parameter (§1.3, §1.8).</td></tr>
+<tr><td>Login: "Email atau password salah" berulang</td><td>Salah ketik atau akun terkunci 15 menit — tunggu atau pakai <em>Lupa password</em>.</td></tr>
+<tr><td>Email reset tidak datang</td><td>Cek folder spam; pastikan <code>ACS_SMTP_*</code> terisi; alamat berdomain khusus-uji (<code>*.local</code>, <code>example.*</code>) sengaja dilewati mailer; lihat log <code>acsd</code> (<code>mailer:</code>).</td></tr>
 <tr><td>HTTP 429</td><td>Rate limit. Untuk integrasi, sebar beban; jangan burst.</td></tr>
-<tr><td>HTTP 401 "token ditolak" mendadak untuk semua user satu tenant</td><td>Tenant dinonaktifkan. Aktifkan kembali via Administration → Tenants.</td></tr>
+<tr><td>HTTP 401 "token ditolak" mendadak untuk semua user satu tenant</td><td>Tenant dinonaktifkan. Aktifkan kembali via Administrasi → Tenants.</td></tr>
+<tr><td>Impor: banyak baris "Error"</td><td>Buka kolom alasan di pratinjau (mis. OUI bukan 6 karakter, vendor tidak dikenal, serial duplikat di berkas). Perbaiki di CSV atau unduh laporan pratinjau; baris valid tetap bisa diimpor.</td></tr>
 <tr><td>Rollout batch PAUSED</td><td>Failure rate wave melebihi ambang, atau 0 perangkat berhasil dijadwalkan (kuota task queue penuh). Periksa <code>activity_logs</code>, perbaiki penyebab, lalu Advance manual.</td></tr>
+<tr><td>Dashboard menunjukkan "Polling", bukan realtime</td><td>Koneksi WebSocket belum berfungsi pada UI (diketahui, lihat Bab 17); data tetap ter-refresh berkala.</td></tr>
 </table>
 
 <p>Untuk diagnosis gejala CPE yang lebih dalam (rantai Inform → sesi → task →
 pemetaan parameter), gunakan panduan diagnostik di <strong>PENGUJIAN_LAPANGAN.md
 §2</strong> yang membedakan bug asli dari batasan yang sudah diketahui.</p>
 
-<h2 id="s15"><span class="num">15</span> Batasan yang perlu diketahui</h2>
+<h2 id="s17"><span class="num">17</span> Protokol yang didukung &amp; batasan</h2>
 
+<h3>17.1 Matriks protokol</h3>
+<table>
+<tr><th style="width:42%">Protokol / kemampuan</th><th style="width:16%">Status</th><th>Keterangan</th></tr>
+<tr><td>CWMP/TR-069: Inform, InformResponse, sesi stateful, cookie sesi</td><td>Didukung, diuji e2e</td><td>Simulator CPE (<code>cmd/cpesim</code>) &amp; 13 skenario e2e</td></tr>
+<tr><td>RPC: GetParameterValues, SetParameterValues, GetParameterNames, AddObject, DeleteObject, Reboot, FactoryReset, Download, Upload, ScheduleInform; Fault; TransferComplete</td><td>Didukung, diuji e2e</td><td>Set selalu <code>xsd:string</code></td></tr>
+<tr><td>Connection Request (HTTP Digest &amp; Basic) + fallback UDP STUN (TR-111)</td><td>Didukung</td><td>Digest dibuktikan e2e (S7)</td></tr>
+<tr><td>Data model TR-098 (<code>InternetGatewayDevice.*</code>) &amp; TR-181 (<code>Device.*</code>)</td><td>Didukung</td><td>Resolve per perangkat</td></tr>
+<tr><td>Diagnostics (ping/traceroute dsb.), Preset, Zero-Touch, firmware canary</td><td>Didukung</td><td></td></tr>
+<tr><td>REST/OpenAPI, WebSocket, webhook, Prometheus, OIDC</td><td>Didukung*</td><td>*WebSocket UI belum tersambung (lihat 17.2)</td></tr>
+<tr><td>USP / TR-369</td><td>Kerangka saja</td><td>Belum operasional (JSON, bukan protobuf)</td></tr>
+<tr><td>GetRPCMethods, SetParameterAttributes dari sisi ACS</td><td>Belum</td><td></td></tr>
+<tr><td><strong>SNMP, SSH/Telnet, NETCONF, driver OLT/router</strong></td><td><strong>Belum ada</strong></td><td>Itulah jalur manajemen OLT — lihat 17.3</td></tr>
+</table>
+
+<h3>17.2 Batasan yang perlu diketahui</h3>
 <div class="callout warn"><span class="label">Sebelum go-live penuh</span>
 <ul>
   <li><strong>Uji CPE fisik belum dilakukan.</strong> Seluruh validasi alur
-  sejauh ini memakai simulator (lihat PENGUJIAN_E2E.md, 9/9 skenario lulus) —
+  sejauh ini memakai simulator (PENGUJIAN_E2E.md, 13/13 skenario lulus) —
   bukan firmware vendor sungguhan. Jalankan PENGUJIAN_LAPANGAN.md dengan minimal
   1–2 unit per vendor sebelum rollout lebar.</li>
-  <li><strong><code>vendor_ouis</code> masih kosong</strong> untuk kelima vendor.</li>
-  <li><strong>Load test kapasitas puncak</strong> belum dilakukan — rate limiter
-  <code>/cwmp</code> membatasi pengukuran dari satu IP. Butuh rig multi-IP untuk
-  angka "ribuan sesi concurrent".</li>
-  <li><strong>USP / TR-369</strong> baru kerangka — belum operasional.</li>
+  <li><strong>CWMP dilayani via HTTP</strong> oleh <code>acsd</code>; TLS harus
+  dari reverse proxy.</li>
+  <li><strong>WebSocket <code>/ws</code> belum tersambung</strong> dari UI (backend menuntut
+  header Bearer, browser mengirim token lewat query) — fitur realtime belum aktif.</li>
+  <li><strong>Rate limit</strong> per-IP &amp; per-instance; di belakang reverse proxy perlu trusted proxy.</li>
+  <li><strong>Load test kapasitas puncak</strong> belum dilakukan (butuh rig multi-IP).</li>
   <li><strong>Ekspresivitas provisioning</strong> sengaja dibatasi ke data
   terstruktur (bukan skrip bebas seperti GenieACS) demi auditability.</li>
 </ul>
 </div>
 
+<h3>17.3 Rencana setelah UAT: OLT Controller</h3>
+<div class="callout info"><span class="label">Peta jalan</span>
+<p>Pertanyaan "bisakah kita juga melihat/mengatur OLT dari satu aplikasi?" dijawab
+dengan modul terpisah <strong>OLT Controller</strong> — bukan perluasan ACS. Rencana:
+dikerjakan <strong>setelah UAT</strong>, irisan pertama <strong>ZTE (C300/C320/C600),
+read-only</strong> (inventori ONT, status, level optik), ditulis dengan Go native.
+Perintah CLI/OID tidak ditulis dari ingatan, tetapi divalidasi terhadap perangkat/
+dokumentasi nyata. Dengan demikian satu konsol kelak dapat menampilkan sisi OLT
+<em>dan</em> sisi ONT, sementara ACS tetap fokus pada ONT lewat TR-069.</p></div>
+
 <p>Rekomendasi peluncuran: mulai dengan <strong>pilot terbatas</strong> (satu
 anak perusahaan, populasi perangkat kecil, pemantauan ketat), bukan rollout
 penuh serentak ke semua tenant.</p>
 
-<h2 id="s16"><span class="num">16</span> Lampiran — Diagram arsitektur &amp; alur</h2>
+<h2 id="s18"><span class="num">18</span> Lampiran — Diagram arsitektur &amp; alur</h2>
 
-<h3>16.1 Topologi &amp; matriks port</h3>
+<h3>18.1 Topologi &amp; matriks port</h3>
 <div class="fig">
 <pre class="mermaid">
 flowchart TB
   subgraph AKSES["ZONA AKSES — pelanggan"]
-    CPE["CPE&nbsp;&nbsp;ZTE · Huawei · FiberHome<br/>Nokia · Cdata"]
+    CPE["ONT / CPE&nbsp;&nbsp;ZTE · Huawei · FiberHome<br/>Nokia · Cdata"]
+  end
+  subgraph JAR["ZONA JARINGAN — operator"]
+    OLT["OLT<br/>(dikelola Tim Jaringan,<br/>BUKAN oleh ACS)"]
   end
   subgraph OPS["ZONA NOC / BSS"]
     NOC["Browser NOC (ACS Console)"]
@@ -491,7 +897,8 @@ flowchart TB
     MINIO[("MinIO :9000 — firmware")]
     REDIS[("Redis :6379")]
   end
-  CPE -- "HTTPS :443 — Inform" --&gt; PROXY
+  CPE -. "serat PON (OMCI) — dikelola OLT" .-> OLT
+  OLT -- "VLAN manajemen (IP lewat OLT)" --&gt; PROXY
   NOC -- "HTTPS :443 — REST" --&gt; PROXY
   BSS -- "HTTPS :443 — REST + token" --&gt; PROXY
   PROXY -- ":7547 / :8080" --&gt; ACSD
@@ -502,10 +909,10 @@ flowchart TB
   ACSD --&gt; REDIS
   ACSD -- "webhook keluar (HTTPS)" --&gt; BSS
 </pre>
-<figcaption>Gambar A — Topologi deployment. Panah = arah inisiasi koneksi.</figcaption>
+<figcaption>Gambar A — Topologi deployment. Garis putus-putus = jalur yang dikelola OLT, bukan ACS.</figcaption>
 </div>
 
-<h3>16.2 Sekuens sesi CWMP</h3>
+<h3>18.2 Sekuens sesi CWMP</h3>
 <div class="fig">
 <pre class="mermaid">
 sequenceDiagram
@@ -529,7 +936,7 @@ sequenceDiagram
 <figcaption>Gambar B — Satu sesi CWMP.</figcaption>
 </div>
 
-<h3>16.3 Provisioning otomatis (Zero-Touch + Preset)</h3>
+<h3>18.3 Provisioning otomatis (Zero-Touch + Preset)</h3>
 <div class="fig">
 <pre class="mermaid">
 flowchart LR
@@ -549,7 +956,7 @@ flowchart LR
 <figcaption>Gambar C — Evaluasi ZTP + Preset drift-heal per Inform.</figcaption>
 </div>
 
-<h3>16.4 Aktor &amp; use case</h3>
+<h3>18.4 Aktor &amp; use case</h3>
 <div class="fig">
 <pre class="mermaid">
 flowchart LR
@@ -564,7 +971,7 @@ flowchart LR
     direction TB
     u1(["Kelola tenant &amp; katalog vendor"])
     u2(["Kelola user &amp; peran tenant"])
-    u3(["Onboarding perangkat"])
+    u3(["Onboarding perangkat<br/>(otomatis / manual / impor)"])
     u4(["Provisioning: profile &amp; Zero-Touch"])
     u5(["Preset: penegakan konfigurasi"])
     u6(["Task: reboot, baca/tulis parameter"])
@@ -574,9 +981,10 @@ flowchart LR
     u10(["Audit trail &amp; observability"])
     u11(["Kelola WiFi &amp; restart sendiri"])
     u12(["Konsumsi REST API + webhook"])
+    u13(["Impor &amp; ekspor data"])
   end
-  SUP --- u1 & u2 & u8
-  ADM --- u2 & u4 & u5 & u10
+  SUP --- u1 & u2 & u8 & u13
+  ADM --- u2 & u3 & u4 & u5 & u10 & u13
   NOC --- u6 & u7 & u9
   VWR --- u9 & u10
   END --- u11
@@ -586,7 +994,7 @@ flowchart LR
 <figcaption>Gambar D — Diagram use case.</figcaption>
 </div>
 
-<h3>16.5 Model data (ERD inti)</h3>
+<h3>18.5 Model data (ERD inti)</h3>
 <div class="fig">
 <pre class="mermaid">
 erDiagram
@@ -594,6 +1002,7 @@ erDiagram
   TENANTS   ||--o{ DEVICES : "memiliki"
   USERS     ||--o{ USER_ROLES : "diberi"
   USERS     ||--o{ USER_DEVICES : "portal self-service"
+  USERS     ||--o{ PASSWORD_RESET_TOKENS : "reset via email"
   DEVICES   ||--o{ USER_DEVICES : ""
   REF_VENDORS ||--o{ VENDOR_OUIS : "OUI"
   REF_VENDORS ||--o{ DEVICE_MODELS : "model"
@@ -610,10 +1019,17 @@ erDiagram
     varchar serial_number
     varchar mac_address
     varchar software_version
+    decimal latitude
+    decimal longitude
     datetime last_inform_at
   }
+  USERS {
+    varchar email
+    varchar password_hash
+    datetime password_changed_at
+  }
 </pre>
-<figcaption>Gambar E1 — ERD: multi-tenant, inventory, katalog vendor.</figcaption>
+<figcaption>Gambar E1 — ERD: multi-tenant, inventory, katalog vendor, autentikasi.</figcaption>
 </div>
 <div class="fig">
 <pre class="mermaid">
@@ -643,8 +1059,8 @@ erDiagram
 </div>
 
 <footer>
-Buku Panduan ACS v1.0 — 8 September 2026. Dokumen pendamping:
-PANDUAN_LOGIN_ACS.pdf, PENGUJIAN_LAPANGAN.md, PENGUJIAN_E2E.md,
+Buku Panduan ACS v2.0 — 16 Oktober 2026. Dokumen pendamping:
+LOGIN.md, PANDUAN_LOGIN_ACS.pdf, PENGUJIAN_LAPANGAN.md, PENGUJIAN_E2E.md,
 VENDOR_ONBOARDING.md, RUNBOOK.md, openapi.yaml.
 </footer>
 
