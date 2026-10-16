@@ -65,6 +65,16 @@ type Router struct {
 	PublicURL string
 	// Readiness = dependensi yang diperiksa GET /readyz (lihat health_handler.go).
 	Readiness []ReadinessCheck
+	// LimiterStore membuat store rate limit untuk satu rute (prefix unik per rute). Nil = in-memory
+	// per instance; di deployment multi-instance diisi store Redis agar batas berlaku lintas instance.
+	LimiterStore func(prefix string, ratePerSec float64) middleware.RateLimiterStore
+}
+
+func (r *Router) limiter(prefix string, ratePerSec float64) echo.MiddlewareFunc {
+	if r.LimiterStore != nil {
+		return middleware.RateLimiter(r.LimiterStore(prefix, ratePerSec))
+	}
+	return middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(ratePerSec))
 }
 
 func (r *Router) Register(e *echo.Echo) {
@@ -81,16 +91,16 @@ func (r *Router) Register(e *echo.Echo) {
 	// RecordFailedLogin) -- rate limit per-IP di sini membatasi throughput
 	// serangan secara independen sbg lapisan pertahanan kedua, bukan
 	// pengganti fix TOCTOU-nya (temuan acs-security-reviewer).
-	api.POST("/auth/login", r.login, middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(2)))
+	api.POST("/auth/login", r.login, r.limiter("login", 2))
 
 	// Reset password lewat email — PUBLIK secara sengaja (pemanggil tidak bisa
 	// login), kontrol: rate limit per-IP lebih ketat dari login, respons seragam
 	// (anti-enumerasi), token sekali-pakai berumur pendek. Lihat auth_handler.go.
-	api.POST("/auth/forgot-password", r.forgotPassword, middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(0.2)))
-	api.POST("/auth/reset-password", r.resetPassword, middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(0.5)))
+	api.POST("/auth/forgot-password", r.forgotPassword, r.limiter("forgot", 0.2))
+	api.POST("/auth/reset-password", r.resetPassword, r.limiter("reset", 0.5))
 
 	// Tahap kedua login MFA: publik tetapi dibatasi laju & lockout akun yang sama dengan login.
-	api.POST("/auth/mfa/verify", r.mfaVerify, middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(2)))
+	api.POST("/auth/mfa/verify", r.mfaVerify, r.limiter("mfa-verify", 2))
 	api.GET("/auth/config", r.authConfig)
 	api.GET("/auth/oidc/login", r.oidcLogin)
 	api.GET("/auth/oidc/callback", r.oidcCallback)

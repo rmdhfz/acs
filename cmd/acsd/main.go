@@ -170,6 +170,36 @@ func main() {
 	wsHub := ws.NewHub()
 	go wsHub.Run()
 
+	// Mode HA (ACS_HA=true, butuh Redis): event WebSocket di-fan-out antar-instance, rate limit dibagi
+	// lintas instance, sweeper berjalan di satu instance per tick. Tanpa HA: perilaku satu instance.
+	haOn := cfg.HA && redisClient != nil
+	if cfg.HA && redisClient == nil {
+		logger.Warn("ACS_HA=true tetapi Redis tidak tersambung: HA dinonaktifkan (perilaku satu instance)")
+	}
+	if haOn {
+		wsHub.WithBus(context.Background(), redisClient.PubSub("acs:ws:events"))
+		logger.Info("HA aktif: fan-out WebSocket, rate limit terdistribusi, kunci leader sweeper")
+	}
+	limiterStore := func(prefix string, rate float64) middleware.RateLimiterStore {
+		mem := middleware.NewRateLimiterMemoryStore(rate)
+		if !haOn {
+			return mem
+		}
+		return redisClient.NewRateLimiter(prefix, rate, mem)
+	}
+	// lockSweeper: satu instance per tick. Redis bermasalah -> tetap jalan (sweeper idempoten).
+	lockSweeper := func(name string, ttl time.Duration) (func(), bool) {
+		if !haOn {
+			return func() {}, true
+		}
+		release, ok, err := redisClient.TryLock(context.Background(), "sweeper:"+name, ttl)
+		if err != nil {
+			logger.Warn("HA: kunci leader gagal, sweeper tetap dijalankan", "name", name, "error", err)
+			return func() {}, true
+		}
+		return release, ok
+	}
+
 	taskSvc := task.NewService(taskRepo, deviceRepo, deviceParamRepo, deviceModelRepo, paramMappingRepo, refRepo, activityLogRepo, tenantRepo, webhookSvc, wsHub)
 	// firmwareSvc dikonstruksi SEBELUM provisioningSvc -- provisioningSvc
 	// (ZTP aksi FirmwareFileID, migrations/0009) bergantung pada firmwareSvc
@@ -241,7 +271,7 @@ func main() {
 	// detik per tab; 30 req/s tetap membatasi brute-force /auth/login &
 	// scraping API token sambil tidak mengganggu pemakaian normal
 	// (ROADMAP.md Fase 2 — gap yang dicatat saat CWMP rate limit ditambahkan).
-	restEcho.Use(middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(30)))
+	restEcho.Use(middleware.RateLimiter(limiterStore("rest", 30)))
 	router := &deliveryhttp.Router{
 		Auth: authSvc, IAM: iamSvc, Devices: deviceSvc, Tasks: taskSvc, Provisioning: provisioningSvc,
 		Firmware: firmwareSvc, Diagnostics: diagnosticsSvc, Webhooks: webhookSvc, Sessions: sessionSvc,
@@ -256,6 +286,7 @@ func main() {
 
 		WSAllowedOrigins: cfg.CORSAllowOrigins,
 		PublicURL:        cfg.PublicURL,
+		LimiterStore:     limiterStore,
 		Readiness: []deliveryhttp.ReadinessCheck{
 			// DB kritis: tanpa DB ACS tak bisa melayani apa pun. Redis hanya cache sesi (opsional).
 			{Name: "database", Critical: true, Fn: func(ctx context.Context) error { return db.PingContext(ctx) }},
@@ -282,7 +313,7 @@ func main() {
 	// Rate limit per identifier (default: IP) — endpoint ini sekarang menjaga
 	// shared secret Inform CWMP sungguhan (bukan cuma anti CPE nakal/loop
 	// seperti sebelumnya), jadi juga jadi mitigasi brute-force kredensial.
-	cwmpEcho.Use(middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(cfg.CWMPRatePerIP)))
+	cwmpEcho.Use(middleware.RateLimiter(limiterStore("cwmp", cfg.CWMPRatePerIP)))
 	deliverycwmp.NewHandler(sessionSvc, logger).WithStorage(objStorage).Register(cwmpEcho, "/cwmp")
 
 	// TR-369 / USP WebSocket Handler (MTP)
@@ -315,7 +346,7 @@ func main() {
 	}()
 
 	stop := make(chan struct{})
-	go runSweepers(deviceSvc, taskSvc, firmwareSvc, webhookSvc, sessionSvc, diagnosticsSvc, mysql.NewRetentionRepository(db), cfg.LogRetentionDays, stop)
+	go runSweepers(deviceSvc, taskSvc, firmwareSvc, webhookSvc, sessionSvc, diagnosticsSvc, mysql.NewRetentionRepository(db), cfg.LogRetentionDays, lockSweeper, stop)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
@@ -406,7 +437,7 @@ func redactingRequestLogger(logger *slog.Logger) echo.MiddlewareFunc {
 // karena app server stateless (TECH.md §9). Dispatch webhook pakai ticker
 // terpisah yang lebih cepat (15 dtk) supaya event fault/value-change sampai
 // ke sistem pihak ketiga dengan latensi rendah.
-func runSweepers(deviceSvc *device.Service, taskSvc *task.Service, firmwareSvc *firmware.Service, webhookSvc *webhook.Service, sessionSvc *session.Service, diagSvc *diagnostics.Service, retention domain.RetentionRepository, retentionDays int, stop <-chan struct{}) {
+func runSweepers(deviceSvc *device.Service, taskSvc *task.Service, firmwareSvc *firmware.Service, webhookSvc *webhook.Service, sessionSvc *session.Service, diagSvc *diagnostics.Service, retention domain.RetentionRepository, retentionDays int, lock func(name string, ttl time.Duration) (func(), bool), stop <-chan struct{}) {
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
 	// Pemangkasan log: tiap 6 jam (data menahun dihapus bertahap per batch).
@@ -419,6 +450,10 @@ func runSweepers(deviceSvc *device.Service, taskSvc *task.Service, firmwareSvc *
 		case <-stop:
 			return
 		case <-retentionTicker.C:
+			release, ok := lock("retention", 30*time.Minute)
+			if !ok {
+				continue // instance lain yang memangkas log kali ini
+			}
 			if retentionDays > 0 {
 				cutoff := time.Now().AddDate(0, 0, -retentionDays)
 				if res, err := retention.PruneLogs(context.Background(), cutoff); err != nil {
@@ -427,6 +462,7 @@ func runSweepers(deviceSvc *device.Service, taskSvc *task.Service, firmwareSvc *
 					log.Printf("sweeper: retensi log (> %d hari) dipangkas: %v", retentionDays, res)
 				}
 			}
+			release()
 		case <-webhookTicker.C:
 			if n, err := webhookSvc.DispatchDue(context.Background()); err != nil {
 				log.Printf("sweeper: dispatch webhook gagal: %v", err)
@@ -434,6 +470,10 @@ func runSweepers(deviceSvc *device.Service, taskSvc *task.Service, firmwareSvc *
 				log.Printf("sweeper: %d webhook delivery diproses", n)
 			}
 		case <-ticker.C:
+			release, ok := lock("minute", 50*time.Second)
+			if !ok {
+				continue // instance lain yang menjalankan sweeper tick ini
+			}
 			ctx := context.Background()
 			if n, err := deviceSvc.MarkStaleOffline(ctx, 15*time.Minute); err != nil {
 				log.Printf("sweeper: mark stale offline gagal: %v", err)
@@ -466,6 +506,7 @@ func runSweepers(deviceSvc *device.Service, taskSvc *task.Service, firmwareSvc *
 			} else if n > 0 {
 				log.Printf("sweeper: %d firmware rollout batch diproses", n)
 			}
+			release()
 		}
 	}
 }

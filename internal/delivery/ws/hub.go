@@ -1,6 +1,9 @@
 package ws
 
 import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -29,6 +32,79 @@ type Hub struct {
 	Register   chan *Client
 	Unregister chan *Client
 	mu         sync.RWMutex
+
+	// Fan-out antar-instance (opsional, lihat WithBus): event yang dihasilkan instance A harus sampai
+	// ke browser yang tersambung ke instance B.
+	bus    Bus
+	origin string
+}
+
+// Bus — transport pesan antar-instance (Redis pub/sub di produksi). Publish gagal tidak boleh
+// mengganggu pengiriman lokal.
+type Bus interface {
+	Publish(ctx context.Context, data []byte) error
+	Subscribe(ctx context.Context, handler func(data []byte))
+}
+
+// busMessage — amplop di Bus. Origin dipakai agar instance tidak mengirim ulang pesannya sendiri.
+type busMessage struct {
+	Origin string          `json:"o"`
+	Scope  string          `json:"s"` // "all" | "tenant"
+	Tenant uint64          `json:"t,omitempty"`
+	Data   json.RawMessage `json:"d"`
+}
+
+// WithBus mengaktifkan fan-out antar-instance dan mulai mendengarkan pesan instance lain sampai ctx selesai.
+func (h *Hub) WithBus(ctx context.Context, bus Bus) *Hub {
+	b := make([]byte, 8)
+	_, _ = rand.Read(b)
+	h.bus, h.origin = bus, hex.EncodeToString(b)
+	go bus.Subscribe(ctx, h.deliverRemote)
+	return h
+}
+
+func (h *Hub) publish(scope string, tenant uint64, data []byte) {
+	if h.bus == nil {
+		return
+	}
+	msg, err := json.Marshal(busMessage{Origin: h.origin, Scope: scope, Tenant: tenant, Data: data})
+	if err != nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	if err := h.bus.Publish(ctx, msg); err != nil {
+		log.Printf("WS bus publish: %v (event hanya sampai ke klien instance ini)", err)
+	}
+}
+
+func (h *Hub) deliverRemote(raw []byte) {
+	var m busMessage
+	if json.Unmarshal(raw, &m) != nil || m.Origin == h.origin || len(m.Data) == 0 {
+		return
+	}
+	switch m.Scope {
+	case "all":
+		h.Broadcast <- []byte(m.Data)
+	case "tenant":
+		h.deliverToTenant(m.Tenant, []byte(m.Data))
+	}
+}
+
+// deliverToTenant mengirim ke klien lokal: SUPERADMIN atau TenantID yang cocok.
+func (h *Hub) deliverToTenant(tenantID uint64, data []byte) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for client := range h.Clients {
+		if client.Role == "SUPERADMIN" || (client.TenantID != nil && *client.TenantID == tenantID) {
+			select {
+			case client.Send <- data:
+			default:
+				// Buffer penuh atau client stuck, kita tidak close di sini karena
+				// block ini di dalam RLock, menghindari deadlock map iteration
+			}
+		}
+	}
 }
 
 var Upgrader = websocket.Upgrader{
@@ -89,6 +165,7 @@ func (h *Hub) BroadcastEvent(eventType string, payload interface{}) {
 		return
 	}
 	h.Broadcast <- data
+	h.publish("all", 0, data)
 }
 
 // BroadcastToTenant mengirim event hanya ke client yang terhubung dengan TenantID yang sesuai (atau superadmin)
@@ -103,19 +180,8 @@ func (h *Hub) BroadcastToTenant(tenantID uint64, eventType string, payload inter
 		return
 	}
 
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	for client := range h.Clients {
-		// Kirim ke SUPERADMIN, atau ke user dengan TenantID yang cocok
-		if client.Role == "SUPERADMIN" || (client.TenantID != nil && *client.TenantID == tenantID) {
-			select {
-			case client.Send <- data:
-			default:
-				// Buffer penuh atau client stuck, kita tidak close di sini karena
-				// block ini di dalam RLock, menghindari deadlock map iteration
-			}
-		}
-	}
+	h.deliverToTenant(tenantID, data)
+	h.publish("tenant", tenantID, data)
 }
 
 func (c *Client) WritePump() {

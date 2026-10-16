@@ -61,6 +61,11 @@ type Config struct {
 	// SaaS publik di mana admin tenant tidak tepercaya; matikan bila receiver webhook ada di LAN yang sama.
 	WebhookBlockPrivate bool
 
+	// HA — mode multi-instance (beberapa acsd di balik load balancer, berbagi MariaDB + Redis): rate limit
+	// terdistribusi, fan-out WebSocket antar-instance, dan kunci leader untuk sweeper. Butuh Redis.
+	// Mati (bawaan) = perilaku satu instance seperti sebelumnya.
+	HA bool
+
 	// LogRetentionDays — umur maksimum (hari) tabel log volume tinggi (event, sesi CWMP,
 	// metrik optik, riwayat webhook). 0 = tanpa pemangkasan. activity_logs (audit) tidak dipangkas.
 	LogRetentionDays int
@@ -197,6 +202,10 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("config: ACS_USP_ENABLED tidak valid: %w", err)
 	}
 	cfg.USPEnabled = uspEnabled
+	cfg.HA, err = strconv.ParseBool(getEnv("ACS_HA", "false"))
+	if err != nil {
+		return nil, fmt.Errorf("config: ACS_HA tidak valid: %w", err)
+	}
 	cfg.WebhookBlockPrivate, err = strconv.ParseBool(getEnv("ACS_WEBHOOK_BLOCK_PRIVATE", "false"))
 	if err != nil {
 		return nil, fmt.Errorf("config: ACS_WEBHOOK_BLOCK_PRIVATE tidak valid: %w", err)

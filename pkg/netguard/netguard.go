@@ -151,8 +151,10 @@ func SafeDialer(blockPrivate bool) *net.Dialer {
 func SafeTransport(blockPrivate bool) *http.Transport {
 	d := SafeDialer(blockPrivate)
 	return &http.Transport{
-		Proxy:                 nil,
-		DialContext:           func(ctx context.Context, network, addr string) (net.Conn, error) { return d.DialContext(ctx, network, addr) },
+		Proxy: nil,
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return d.DialContext(ctx, network, addr)
+		},
 		TLSHandshakeTimeout:   10 * time.Second,
 		ResponseHeaderTimeout: 15 * time.Second,
 		MaxIdleConns:          20,
