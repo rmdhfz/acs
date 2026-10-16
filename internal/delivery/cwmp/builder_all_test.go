@@ -197,3 +197,19 @@ func TestBuildSetParameterValues_TipeXSD(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildParameterAttributes(t *testing.T) {
+	body, err := BuildRequestBody(domain.TaskTypeSetParameterAttributes, "u",
+		[]byte(`{"attributes":[{"name":"Device.WiFi.SSID.1.SSID","notification_change":true,"notification":2}]}`), nsCWMP10)
+	if err != nil || body.SetParameterAttributes == nil {
+		t.Fatalf("%v %+v", err, body)
+	}
+	it := body.SetParameterAttributes.ParameterList.Items
+	if len(it) != 1 || it[0].Name != "Device.WiFi.SSID.1.SSID" || !it[0].NotificationChange || it[0].Notification != 2 {
+		t.Fatalf("%+v", it)
+	}
+	g, err := BuildRequestBody(domain.TaskTypeGetParameterAttributes, "u", []byte(`{"names":["A.B"]}`), nsCWMP10)
+	if err != nil || g.GetParameterAttributes == nil || len(g.GetParameterAttributes.ParameterNames.Items) != 1 {
+		t.Fatalf("%v %+v", err, g)
+	}
+}

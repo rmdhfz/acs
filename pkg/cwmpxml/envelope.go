@@ -92,6 +92,13 @@ type Body struct {
 
 	GetParameterAttributes         *GetParameterAttributes         `xml:"GetParameterAttributes"`
 	GetParameterAttributesResponse *GetParameterAttributesResponse `xml:"GetParameterAttributesResponse"`
+
+	GetRPCMethods           *GetRPCMethods           `xml:"GetRPCMethods"`
+	GetRPCMethodsResponse   *GetRPCMethodsResponse   `xml:"GetRPCMethodsResponse"`
+	Kicked                  *Kicked                  `xml:"Kicked"`
+	KickedResponse          *KickedResponse          `xml:"KickedResponse"`
+	RequestDownload         *RequestDownload         `xml:"RequestDownload"`
+	RequestDownloadResponse *RequestDownloadResponse `xml:"RequestDownloadResponse"`
 }
 
 // Fault adalah SOAP Fault pembungkus cwmp:Fault (CPE -> ACS saat RPC gagal).
@@ -264,6 +271,18 @@ func (b Body) Namespace() string {
 		return b.GetParameterAttributes.XMLName.Space
 	case b.GetParameterAttributesResponse != nil:
 		return b.GetParameterAttributesResponse.XMLName.Space
+	case b.GetRPCMethods != nil:
+		return b.GetRPCMethods.XMLName.Space
+	case b.GetRPCMethodsResponse != nil:
+		return b.GetRPCMethodsResponse.XMLName.Space
+	case b.Kicked != nil:
+		return b.Kicked.XMLName.Space
+	case b.KickedResponse != nil:
+		return b.KickedResponse.XMLName.Space
+	case b.RequestDownload != nil:
+		return b.RequestDownload.XMLName.Space
+	case b.RequestDownloadResponse != nil:
+		return b.RequestDownloadResponse.XMLName.Space
 	default:
 		return ""
 	}
@@ -337,6 +356,18 @@ func (b Body) Method() string {
 		return "GetParameterAttributes"
 	case b.GetParameterAttributesResponse != nil:
 		return "GetParameterAttributesResponse"
+	case b.GetRPCMethods != nil:
+		return "GetRPCMethods"
+	case b.GetRPCMethodsResponse != nil:
+		return "GetRPCMethodsResponse"
+	case b.Kicked != nil:
+		return "Kicked"
+	case b.KickedResponse != nil:
+		return "KickedResponse"
+	case b.RequestDownload != nil:
+		return "RequestDownload"
+	case b.RequestDownloadResponse != nil:
+		return "RequestDownloadResponse"
 	default:
 		return ""
 	}

@@ -66,7 +66,7 @@ const maxTaskRetries = 10
 // (selaras dengan endpoint khusus yang terbuka bagi NOC).
 func nocMayCreateTaskType(t string) bool {
 	switch t {
-	case domain.TaskTypeGetParameterValues, domain.TaskTypeGetParameterNames,
+	case domain.TaskTypeGetParameterValues, domain.TaskTypeGetParameterNames, domain.TaskTypeGetParameterAttributes,
 		domain.TaskTypeReboot, domain.TaskTypeScheduleInform:
 		return true
 	}

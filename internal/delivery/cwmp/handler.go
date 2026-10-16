@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -126,7 +127,20 @@ func (h *Handler) handle(c *echo.Context) error {
 		return c.NoContent(http.StatusBadRequest)
 	}
 
+	// RPC yang DIINISIASI CPE (selain TransferComplete di bawah) bukan respons atas task
+	// ACS: jawab langsung dan JANGAN korelasikan ke task SENT (sebelumnya GetRPCMethods
+	// dari CPE keliru menyelesaikan task SENT yang sedang menunggu respons aslinya).
+	if env.Body.GetRPCMethods != nil {
+		return h.respondGetRPCMethods(c, env)
+	}
+	if env.Body.Kicked != nil || env.Body.RequestDownload != nil {
+		return h.respondUnsupportedCPEMethod(c, env)
+	}
+
 	rpcResp := buildRPCResponse(token, env)
+	if env.Header != nil && env.Header.ID != nil {
+		rpcResp.CWMPID = env.Header.ID.Value
+	}
 	h.logRPCResponse(token, rpcResp)
 	if err := h.sessions.HandleRPCResponse(c.Request().Context(), rpcResp); err != nil {
 		h.log.Error("cwmp: HandleRPCResponse gagal", "session_token", session.RedactToken(token), "error", err)
@@ -141,6 +155,38 @@ func (h *Handler) handle(c *echo.Context) error {
 		return writeTransferCompleteResponse(c, env)
 	}
 	return h.next(c, token)
+}
+
+// acsMethods — method CWMP yang DIDUKUNG ACS untuk dipanggil CPE (TR-069 §A.3.1:
+// GetRPCMethods, Inform, TransferComplete wajib). Kicked/RequestDownload (opsional)
+// belum didukung.
+var acsMethods = []string{"GetRPCMethods", "Inform", "TransferComplete"}
+
+func (h *Handler) respondGetRPCMethods(c *echo.Context, env *cwmpxml.Envelope) error {
+	ns := env.Body.Namespace()
+	id := ""
+	if env.Header != nil && env.Header.ID != nil {
+		id = env.Header.ID.Value
+	}
+	return writeEnvelope(c, cwmpxml.NewEnvelope(id, ns, cwmpxml.Body{
+		GetRPCMethodsResponse: &cwmpxml.GetRPCMethodsResponse{
+			XMLName:    cwmpxml.RPCName(ns, "GetRPCMethodsResponse"),
+			MethodList: cwmpxml.StringList{ArrayType: fmt.Sprintf("xsd:string[%d]", len(acsMethods)), Items: acsMethods},
+		},
+	}))
+}
+
+// respondUnsupportedCPEMethod membalas SOAP Fault 9000 "Method not supported".
+func (h *Handler) respondUnsupportedCPEMethod(c *echo.Context, env *cwmpxml.Envelope) error {
+	ns := env.Body.Namespace()
+	id := ""
+	if env.Header != nil && env.Header.ID != nil {
+		id = env.Header.ID.Value
+	}
+	return writeEnvelope(c, cwmpxml.NewEnvelope(id, ns, cwmpxml.Body{Fault: &cwmpxml.Fault{
+		FaultCode: "Client", FaultString: "CWMP fault",
+		Detail: &cwmpxml.FaultDetail{CWMPFault: cwmpxml.CWMPFault{FaultCode: "9000", FaultString: "Method not supported"}},
+	}}))
 }
 
 // writeTransferCompleteResponse membalas TransferComplete dengan ID header

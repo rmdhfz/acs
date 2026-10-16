@@ -111,10 +111,36 @@ func ValidateTaskInput(taskType string, params map[string]interface{}) error {
 		if p.DelaySeconds < 1 {
 			return bad("parameters.delay_seconds minimal 1")
 		}
+	case domain.TaskTypeGetParameterAttributes:
+		var p struct {
+			Names []string `json:"names"`
+		}
+		if err := json.Unmarshal(raw, &p); err != nil || len(p.Names) == 0 {
+			return bad("parameters.names wajib berisi minimal 1 nama parameter")
+		}
+	case domain.TaskTypeSetParameterAttributes:
+		var p struct {
+			Attributes []struct {
+				Name               string   `json:"name"`
+				NotificationChange bool     `json:"notification_change"`
+				Notification       int      `json:"notification"`
+				AccessListChange   bool     `json:"access_list_change"`
+				AccessList         []string `json:"access_list"`
+			} `json:"attributes"`
+		}
+		if err := json.Unmarshal(raw, &p); err != nil || len(p.Attributes) == 0 {
+			return bad("parameters.attributes wajib berisi minimal 1 item {name, notification_change, notification, ...}")
+		}
+		for _, a := range p.Attributes {
+			if strings.TrimSpace(a.Name) == "" || len(a.Name) > 256 {
+				return bad("attributes[].name wajib diisi (maks. 256 karakter)")
+			}
+			if a.Notification < 0 || a.Notification > 2 {
+				return bad("attributes[].notification harus 0 (off), 1 (passive) atau 2 (active)")
+			}
+		}
 	default:
-		// SET/GET_PARAMETER_ATTRIBUTES ada di ref_task_types tetapi belum punya
-		// builder RPC; menerimanya = task yang pasti gagal dikirim.
-		return bad("tipe task %q belum didukung ACS", taskType)
+		return bad("tipe task %q tidak dikenal", taskType)
 	}
 	return nil
 }

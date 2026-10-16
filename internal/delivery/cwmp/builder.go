@@ -156,6 +156,44 @@ func BuildRequestBody(taskTypeCode, taskUUID string, parameters []byte, ns strin
 			XMLName: cwmpxml.RPCName(ns, "ScheduleInform"), DelaySeconds: p.DelaySeconds, CommandKey: taskUUID,
 		}}, nil
 
+	case domain.TaskTypeGetParameterAttributes:
+		var p struct {
+			Names []string `json:"names"`
+		}
+		if err := json.Unmarshal(parameters, &p); err != nil {
+			return cwmpxml.Body{}, err
+		}
+		return cwmpxml.Body{GetParameterAttributes: &cwmpxml.GetParameterAttributes{
+			XMLName:        cwmpxml.RPCName(ns, "GetParameterAttributes"),
+			ParameterNames: cwmpxml.StringList{ArrayType: fmt.Sprintf("xsd:string[%d]", len(p.Names)), Items: p.Names},
+		}}, nil
+
+	case domain.TaskTypeSetParameterAttributes:
+		var p struct {
+			Attributes []struct {
+				Name               string   `json:"name"`
+				NotificationChange bool     `json:"notification_change"`
+				Notification       int      `json:"notification"`
+				AccessListChange   bool     `json:"access_list_change"`
+				AccessList         []string `json:"access_list"`
+			} `json:"attributes"`
+		}
+		if err := json.Unmarshal(parameters, &p); err != nil {
+			return cwmpxml.Body{}, err
+		}
+		var list cwmpxml.SetParameterAttributesList
+		for _, a := range p.Attributes {
+			list.Items = append(list.Items, cwmpxml.SetParameterAttributesStruct{
+				Name: a.Name, NotificationChange: a.NotificationChange, Notification: a.Notification,
+				AccessListChange: a.AccessListChange,
+				AccessList:       cwmpxml.StringList{ArrayType: fmt.Sprintf("xsd:string[%d]", len(a.AccessList)), Items: a.AccessList},
+			})
+		}
+		list.ArrayType = fmt.Sprintf("cwmp:SetParameterAttributesStruct[%d]", len(list.Items))
+		return cwmpxml.Body{SetParameterAttributes: &cwmpxml.SetParameterAttributes{
+			XMLName: cwmpxml.RPCName(ns, "SetParameterAttributes"), ParameterList: list,
+		}}, nil
+
 	default:
 		return cwmpxml.Body{}, fmt.Errorf("cwmp: builder belum mendukung tipe task %q", taskTypeCode)
 	}

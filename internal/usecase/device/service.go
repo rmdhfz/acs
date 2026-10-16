@@ -908,3 +908,50 @@ func (s *Service) SetParameterValues(ctx context.Context, actor domain.Actor, de
 func (s *Service) SaveOpticalMetric(ctx context.Context, metric *domain.DeviceOpticalMetric) error {
 	return s.opticalMetrics.Create(ctx, metric)
 }
+
+// ParameterAttribute — satu entri SetParameterAttributes (notifikasi perubahan nilai).
+type ParameterAttribute struct {
+	Name               string   `json:"name"`
+	NotificationChange bool     `json:"notification_change"`
+	Notification       int      `json:"notification"` // 0 off, 1 passive, 2 active
+	AccessListChange   bool     `json:"access_list_change"`
+	AccessList         []string `json:"access_list"`
+}
+
+// SetParameterAttributes mengantre RPC SetParameterAttributes (mengaktifkan notifikasi
+// "4 VALUE CHANGE" agar perubahan nilai dilaporkan CPE tanpa polling).
+func (s *Service) SetParameterAttributes(ctx context.Context, actor domain.Actor, deviceID uint64, attrs []ParameterAttribute) error {
+	d, err := s.Get(ctx, actor, deviceID)
+	if err != nil {
+		return err
+	}
+	_, err = s.tasks.CreateTask(ctx, actor, domain.CreateTaskInput{
+		DeviceID:   d.ID,
+		TaskType:   domain.TaskTypeSetParameterAttributes,
+		Priority:   5,
+		Parameters: map[string]interface{}{"attributes": attrs},
+	})
+	if err == nil {
+		_ = s.activity.Record(ctx, &domain.ActivityLog{
+			UserID: actor.UserIDPtr(), TenantID: actor.TenantID,
+			Action: "SET_PARAMETER_ATTRIBUTES", EntityType: "device", EntityID: &deviceID,
+			Details: map[string]interface{}{"count": len(attrs)},
+		})
+	}
+	return err
+}
+
+// GetParameterAttributes mengantre RPC GetParameterAttributes (membaca konfigurasi notifikasi).
+func (s *Service) GetParameterAttributes(ctx context.Context, actor domain.Actor, deviceID uint64, names []string) error {
+	d, err := s.Get(ctx, actor, deviceID)
+	if err != nil {
+		return err
+	}
+	_, err = s.tasks.CreateTask(ctx, actor, domain.CreateTaskInput{
+		DeviceID:   d.ID,
+		TaskType:   domain.TaskTypeGetParameterAttributes,
+		Priority:   5,
+		Parameters: map[string]interface{}{"names": names},
+	})
+	return err
+}

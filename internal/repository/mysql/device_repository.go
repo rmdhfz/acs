@@ -320,6 +320,14 @@ func upsertDeviceParameterChunk(ctx context.Context, tx *sqlx.Tx, chunk []domain
 	return translateErr(err)
 }
 
+func (r *deviceParameterRepository) HasPrefix(ctx context.Context, deviceID uint64, prefix string) (bool, error) {
+	var n int
+	err := r.db.GetContext(ctx, &n,
+		`SELECT COUNT(*) FROM (SELECT 1 FROM device_parameters WHERE device_id = ? AND parameter_name LIKE ? LIMIT 1) x`,
+		deviceID, likeEscape(prefix)+"%")
+	return n > 0, translateErr(err)
+}
+
 func (r *deviceParameterRepository) ListByDevice(ctx context.Context, deviceID uint64, prefix string) ([]domain.DeviceParameter, error) {
 	var rows []domain.DeviceParameter
 	if prefix == "" {

@@ -518,3 +518,24 @@ func TestHandleTransferComplete(t *testing.T) {
 		}
 	})
 }
+
+// Respons dikorelasikan lewat cwmp:ID (= task_uuid); ID milik device lain/tak dikenal
+// jatuh ke task SENT milik device sendiri (tidak pernah menyentuh task asing).
+func TestHandleRPCResponse_KorelasiCWMPID(t *testing.T) {
+	ctx := context.Background()
+	r := newEngRig()
+	own := r.addTask(1, tySetPV, stSent, 3)
+	foreign := r.addTask(2, tySetPV, stPending, 3)
+	foreign.DeviceID = devID + 1
+	foreign.TaskStatusID = stSent
+
+	if err := r.svc.HandleRPCResponse(ctx, RPCResponse{SessionToken: sessTok, CWMPID: foreign.TaskUUID, RawResponse: []byte(`{}`)}); err != nil {
+		t.Fatal(err)
+	}
+	if foreign.TaskStatusID != stSent {
+		t.Fatal("task device lain tidak boleh diselesaikan lewat cwmp:ID")
+	}
+	if own.TaskStatusID != stCompleted {
+		t.Fatalf("fallback ke task SENT milik sendiri, status=%d", own.TaskStatusID)
+	}
+}

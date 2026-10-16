@@ -530,7 +530,11 @@ type TransferCompleteInfo struct {
 // RPCResponse membawa tepat satu dari Fault/TransferComplete/ParameterValues
 // terisi, sesuai method yang diterima delivery/cwmp dari CPE.
 type RPCResponse struct {
-	SessionToken     string
+	SessionToken string
+	// CWMPID — nilai header cwmp:ID pada respons CPE; ACS memakai task_uuid sebagai ID
+	// RPC yang dikirim, jadi dipakai mengorelasikan respons ke task yang BENAR
+	// (bukan sekadar "task SENT terakhir"). Kosong bila CPE tidak mengembalikannya.
+	CWMPID           string
 	Fault            *FaultInfo
 	TransferComplete *TransferCompleteInfo
 	ParameterValues  []InformParameter // dari GetParameterValuesResponse (FR-30)
@@ -549,13 +553,13 @@ func (s *Service) HandleRPCResponse(ctx context.Context, resp RPCResponse) error
 		return s.handleTransferComplete(ctx, sess.DeviceID, resp.TransferComplete)
 	}
 	if resp.Fault != nil {
-		return s.handleFault(ctx, sess.DeviceID, resp.Fault)
+		return s.handleFault(ctx, sess.DeviceID, resp.CWMPID, resp.Fault)
 	}
 
-	t, err := s.taskSvc.GetSentForDevice(ctx, sess.DeviceID)
+	t, err := s.sentTaskFor(ctx, sess.DeviceID, resp.CWMPID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil // respons tanpa task yang cocok (mis. GetRPCMethods) - abaikan
+			return nil // respons tanpa task yang cocok - abaikan
 		}
 		return err
 	}
@@ -643,8 +647,21 @@ func (s *Service) recordAppliedValues(ctx context.Context, deviceID uint64, t *d
 //     lagi (<=1 parameter), tetap jatuh ke alur Fail/failOrRetry biasa.
 //
 // Fault code lain di luar dua ini TIDAK berubah perilakunya sama sekali.
-func (s *Service) handleFault(ctx context.Context, deviceID uint64, f *FaultInfo) error {
-	t, err := s.taskSvc.GetSentForDevice(ctx, deviceID)
+// sentTaskFor memilih task yang dijawab respons CPE: bila cwmp:ID cocok dengan task SENT
+// milik device ini, itu yang dipakai; selain itu fallback ke task SENT terakhir device.
+func (s *Service) sentTaskFor(ctx context.Context, deviceID uint64, cwmpID string) (*domain.Task, error) {
+	if cwmpID != "" {
+		if t, err := s.taskSvc.GetByUUID(ctx, cwmpID); err == nil && t.DeviceID == deviceID {
+			if st, serr := s.refs.GetByID(ctx, domain.RefTableTaskStatus, t.TaskStatusID); serr == nil && st.Code == domain.TaskStatusSent {
+				return t, nil
+			}
+		}
+	}
+	return s.taskSvc.GetSentForDevice(ctx, deviceID)
+}
+
+func (s *Service) handleFault(ctx context.Context, deviceID uint64, cwmpID string, f *FaultInfo) error {
+	t, err := s.sentTaskFor(ctx, deviceID, cwmpID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil

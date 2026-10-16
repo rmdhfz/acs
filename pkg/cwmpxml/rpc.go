@@ -285,3 +285,40 @@ type GetParameterAttributesResponse struct {
 	XMLName       xml.Name
 	ParameterList ParameterAttributeList `xml:"ParameterList"`
 }
+
+// ---- RPC yang DIINISIASI CPE (selain Inform & TransferComplete) ----
+
+// GetRPCMethods dapat dikirim CPE (mis. untuk mengetahui method yang didukung ACS)
+// maupun ACS; di sini yang relevan adalah arah CPE -> ACS.
+type GetRPCMethods struct {
+	XMLName xml.Name
+}
+
+type GetRPCMethodsResponse struct {
+	XMLName    xml.Name
+	MethodList StringList `xml:"MethodList"`
+}
+
+// Kicked: CPE meminta ACS "menendang" (login portal); ACS membalas URL.
+type Kicked struct {
+	XMLName xml.Name
+	Command string `xml:"Command"`
+	Referer string `xml:"Referer"`
+	Arg     string `xml:"Arg"`
+	Next    string `xml:"Next"`
+}
+
+type KickedResponse struct {
+	XMLName xml.Name
+	NextURL string `xml:"NextURL"`
+}
+
+// RequestDownload: CPE meminta ACS menjadwalkan Download (mis. file konfigurasi).
+type RequestDownload struct {
+	XMLName  xml.Name
+	FileType string `xml:"FileType"`
+}
+
+type RequestDownloadResponse struct {
+	XMLName xml.Name
+}

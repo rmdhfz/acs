@@ -90,14 +90,23 @@ func (s *Service) ResolveParameterPath(ctx context.Context, deviceID uint64, key
 	if dev.VendorID == nil {
 		return "", fmt.Errorf("task: device belum diketahui vendor-nya, tidak bisa resolve logical key %q", key)
 	}
-	if dev.DeviceModelID == nil {
-		return "", fmt.Errorf("task: device belum diketahui model-nya, tidak bisa resolve logical key %q", key)
+	// Data model version: dari model perangkat bila ada; bila belum (ONT baru, model
+	// belum terdaftar) dideteksi dari root parameter yang pernah dilaporkan CPE.
+	var dmvID uint64
+	if dev.DeviceModelID != nil {
+		dm, err := s.deviceModels.GetByID(ctx, *dev.DeviceModelID)
+		if err != nil {
+			return "", err
+		}
+		dmvID = dm.DataModelVersionID
+	} else {
+		id, err := s.detectDataModelVersion(ctx, dev.ID)
+		if err != nil {
+			return "", fmt.Errorf("%w: %v", domain.ErrInvalidInput, err)
+		}
+		dmvID = id
 	}
-	dm, err := s.deviceModels.GetByID(ctx, *dev.DeviceModelID)
-	if err != nil {
-		return "", err
-	}
-	m, err := s.paramMappings.Resolve(ctx, *dev.VendorID, dm.DataModelVersionID, dev.DeviceModelID, key, dev.SoftwareVersion)
+	m, err := s.paramMappings.Resolve(ctx, *dev.VendorID, dmvID, dev.DeviceModelID, key, dev.SoftwareVersion)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return "", fmt.Errorf("task: tidak ada vendor_parameter_mappings untuk logical key %q pada device ini (kirim raw TR-069 path bila belum dipetakan, lihat FR-12)", key)
@@ -105,6 +114,28 @@ func (s *Service) ResolveParameterPath(ctx context.Context, deviceID uint64, key
 		return "", err
 	}
 	return m.TR069Path, nil
+}
+
+// detectDataModelVersion menentukan TR-098 vs TR-181 dari parameter device (root object
+// pada ref_data_model_versions), tanpa mengasumsikan salah satunya.
+func (s *Service) detectDataModelVersion(ctx context.Context, deviceID uint64) (uint64, error) {
+	if s.deviceParams == nil {
+		return 0, errors.New("data model perangkat belum diketahui")
+	}
+	for _, code := range []string{"TR098", "TR181"} {
+		dmv, err := s.refs.GetByCode(ctx, domain.RefTableDataModelVersions, code)
+		if err != nil {
+			continue
+		}
+		root := "InternetGatewayDevice."
+		if code == "TR181" {
+			root = "Device."
+		}
+		if ok, err := s.deviceParams.HasPrefix(ctx, deviceID, root); err == nil && ok {
+			return dmv.ID, nil
+		}
+	}
+	return 0, errors.New("model & data model perangkat belum diketahui (belum ada parameter dari CPE); gunakan raw TR-069 path atau daftarkan model")
 }
 
 func looksLikeRawPath(key string) bool {
@@ -160,6 +191,11 @@ func (s *Service) CreateTask(ctx context.Context, actor domain.Actor, in domain.
 		}
 	}
 
+	if resolved, rerr := s.resolveLogicalKeys(ctx, in.DeviceID, taskType.Code, in.Parameters); rerr != nil {
+		return nil, rerr
+	} else {
+		in.Parameters = resolved
+	}
 	if taskType.Code == domain.TaskTypeSetParameterValues {
 		in.Parameters = s.withTypeHints(ctx, in.DeviceID, in.Parameters)
 	}
@@ -214,6 +250,90 @@ func (s *Service) CreateTask(ctx context.Context, actor domain.Actor, in domain.
 	}
 
 	return t, nil
+}
+
+// resolveLogicalKeys mengganti logical key (mis. wifi.ssid) pada parameters task dengan
+// raw path TR-069 sesuai vendor/data model perangkat; raw path dibiarkan. Key yang tak
+// dapat di-resolve = 400 (bukan 500 / dikirim mentah ke CPE lalu Fault 9005).
+func (s *Service) resolveLogicalKeys(ctx context.Context, deviceID uint64, taskType string, params map[string]interface{}) (map[string]interface{}, error) {
+	if params == nil || s.paramMappings == nil {
+		return params, nil
+	}
+	resolveOne := func(k string) (string, error) {
+		p, err := s.ResolveParameterPath(ctx, deviceID, k)
+		if err != nil && !errors.Is(err, domain.ErrInvalidInput) && !errors.Is(err, domain.ErrNotFound) {
+			if strings.HasPrefix(err.Error(), "task: ") {
+				return "", fmt.Errorf("%w: %v", domain.ErrInvalidInput, err)
+			}
+		}
+		return p, err
+	}
+	out := make(map[string]interface{}, len(params))
+	for k, v := range params {
+		out[k] = v
+	}
+	switch taskType {
+	case domain.TaskTypeSetParameterValues:
+		raw, _ := json.Marshal(params["values"])
+		var vals map[string]string
+		if json.Unmarshal(raw, &vals) != nil || len(vals) == 0 {
+			return params, nil
+		}
+		nv := make(map[string]string, len(vals))
+		for k, v := range vals {
+			p, err := resolveOne(k)
+			if err != nil {
+				return nil, err
+			}
+			nv[p] = v
+		}
+		out["values"] = nv
+		if rawT, ok := params["types"]; ok {
+			var types map[string]string
+			if b, _ := json.Marshal(rawT); json.Unmarshal(b, &types) == nil {
+				nt := make(map[string]string, len(types))
+				for k, v := range types {
+					p, err := resolveOne(k)
+					if err != nil {
+						return nil, err
+					}
+					nt[p] = v
+				}
+				out["types"] = nt
+			}
+		}
+	case domain.TaskTypeGetParameterValues, domain.TaskTypeGetParameterAttributes:
+		raw, _ := json.Marshal(params["names"])
+		var names []string
+		if json.Unmarshal(raw, &names) != nil || len(names) == 0 {
+			return params, nil
+		}
+		for i, n := range names {
+			p, err := resolveOne(n)
+			if err != nil {
+				return nil, err
+			}
+			names[i] = p
+		}
+		out["names"] = names
+	case domain.TaskTypeSetParameterAttributes:
+		raw, _ := json.Marshal(params["attributes"])
+		var attrs []map[string]interface{}
+		if json.Unmarshal(raw, &attrs) != nil || len(attrs) == 0 {
+			return params, nil
+		}
+		for _, a := range attrs {
+			if n, ok := a["name"].(string); ok {
+				p, err := resolveOne(n)
+				if err != nil {
+					return nil, err
+				}
+				a["name"] = p
+			}
+		}
+		out["attributes"] = attrs
+	}
+	return out, nil
 }
 
 // withTypeHints melengkapi parameters SET_PARAMETER_VALUES dengan "types"

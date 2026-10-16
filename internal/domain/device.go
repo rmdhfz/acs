@@ -107,6 +107,9 @@ type DeviceParameter struct {
 type DeviceParameterRepository interface {
 	Upsert(ctx context.Context, p *DeviceParameter) error
 	UpsertBatch(ctx context.Context, ps []DeviceParameter) error
+	// HasPrefix: apakah device punya parameter berawalan prefix (deteksi root data model
+	// TR-098/TR-181 dari parameter yang pernah dilaporkan CPE).
+	HasPrefix(ctx context.Context, deviceID uint64, prefix string) (bool, error)
 	ListByDevice(ctx context.Context, deviceID uint64, prefix string) ([]DeviceParameter, error)
 	Get(ctx context.Context, deviceID uint64, name string) (*DeviceParameter, error)
 }

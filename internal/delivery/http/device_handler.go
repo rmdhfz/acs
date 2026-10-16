@@ -379,3 +379,45 @@ func (r *Router) setParameterValuesDevice(c *echo.Context) error {
 		"message": "Task SetParameterValues berhasil ditambahkan ke antrean.",
 	})
 }
+
+type setParameterAttributesRequest struct {
+	Attributes []device.ParameterAttribute `json:"attributes"`
+}
+
+func (r *Router) setParameterAttributesDevice(c *echo.Context) error {
+	actor := ActorFrom(c)
+	id, err := parseUint64Param(c, "id")
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "id tidak valid")
+	}
+	var req setParameterAttributesRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "payload tidak valid")
+	}
+	if len(req.Attributes) == 0 || len(req.Attributes) > 200 {
+		return echo.NewHTTPError(http.StatusBadRequest, "attributes wajib diisi (1–200 item)")
+	}
+	if err := r.Devices.SetParameterAttributes(c.Request().Context(), actor, id, req.Attributes); err != nil {
+		return handleErr(c, err)
+	}
+	return c.JSON(http.StatusAccepted, map[string]string{"message": "Task SetParameterAttributes berhasil ditambahkan ke antrean."})
+}
+
+func (r *Router) getParameterAttributesDevice(c *echo.Context) error {
+	actor := ActorFrom(c)
+	id, err := parseUint64Param(c, "id")
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "id tidak valid")
+	}
+	var req getParameterValuesRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "payload tidak valid")
+	}
+	if len(req.Names) == 0 || len(req.Names) > 200 {
+		return echo.NewHTTPError(http.StatusBadRequest, "names wajib diisi (1–200 item)")
+	}
+	if err := r.Devices.GetParameterAttributes(c.Request().Context(), actor, id, req.Names); err != nil {
+		return handleErr(c, err)
+	}
+	return c.JSON(http.StatusAccepted, map[string]string{"message": "Task GetParameterAttributes berhasil ditambahkan ke antrean."})
+}

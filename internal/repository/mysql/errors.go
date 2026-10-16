@@ -46,3 +46,9 @@ func translateErr(err error) error {
 	}
 	return err
 }
+
+// likeEscape menetralkan wildcard LIKE (% _ \) pada input agar dicocokkan literal.
+func likeEscape(s string) string {
+	r := strings.NewReplacer(`\`, `\`, `%`, `\%`, `_`, `\_`)
+	return r.Replace(s)
+}
