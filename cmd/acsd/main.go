@@ -282,7 +282,7 @@ func main() {
 	// Rate limit per identifier (default: IP) — endpoint ini sekarang menjaga
 	// shared secret Inform CWMP sungguhan (bukan cuma anti CPE nakal/loop
 	// seperti sebelumnya), jadi juga jadi mitigasi brute-force kredensial.
-	cwmpEcho.Use(middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(5)))
+	cwmpEcho.Use(middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(cfg.CWMPRatePerIP)))
 	deliverycwmp.NewHandler(sessionSvc, logger).WithStorage(objStorage).Register(cwmpEcho, "/cwmp")
 
 	// TR-369 / USP WebSocket Handler (MTP)

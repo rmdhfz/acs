@@ -37,7 +37,7 @@ export function StatCard({ label, value, icon: Icon, tone = 'default', loading, 
         ) : (
           <p className="text-2xl font-semibold tabular-nums text-slate-900 dark:text-slate-100">{value}</p>
         )}
-        {hint && !loading && <p className="mt-0.5 truncate text-[11px] text-slate-400 dark:text-slate-500">{hint}</p>}
+        {hint && !loading && <p className="mt-0.5 truncate text-[11px] text-slate-500 dark:text-slate-400">{hint}</p>}
       </div>
     </>
   )

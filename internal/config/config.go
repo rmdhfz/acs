@@ -52,6 +52,11 @@ type Config struct {
 	// kerangka & tanpa autentikasi. Default MATI.
 	USPEnabled bool
 
+	// CWMPRatePerIP — batas request/detik PER IP pada endpoint CWMP (default 5). Naikkan bila banyak
+	// CPE berbagi satu IP publik (CGNAT/kantor) atau untuk uji beban; jangan dimatikan di produksi
+	// (juga mitigasi brute-force shared secret Inform).
+	CWMPRatePerIP float64
+
 	// LogRetentionDays — umur maksimum (hari) tabel log volume tinggi (event, sesi CWMP,
 	// metrik optik, riwayat webhook). 0 = tanpa pemangkasan. activity_logs (audit) tidak dipangkas.
 	LogRetentionDays int
@@ -188,6 +193,10 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("config: ACS_USP_ENABLED tidak valid: %w", err)
 	}
 	cfg.USPEnabled = uspEnabled
+	cfg.CWMPRatePerIP, err = strconv.ParseFloat(getEnv("ACS_CWMP_RATE_LIMIT", "5"), 64)
+	if err != nil || cfg.CWMPRatePerIP < 1 || cfg.CWMPRatePerIP > 1_000_000 {
+		return nil, fmt.Errorf("config: ACS_CWMP_RATE_LIMIT harus angka 1..1000000 (request/detik per IP)")
+	}
 	cfg.OpticalPollMinutes, err = strconv.Atoi(getEnv("ACS_OPTICAL_POLL_MINUTES", "360"))
 	if err != nil || cfg.OpticalPollMinutes < 0 || (cfg.OpticalPollMinutes > 0 && cfg.OpticalPollMinutes < 15) {
 		return nil, fmt.Errorf("config: ACS_OPTICAL_POLL_MINUTES harus 0 (nonaktif) atau >= 15")

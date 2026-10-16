@@ -203,7 +203,7 @@ function OUIChip({ oui, notes, onDelete, disabled }: { oui: string; notes: strin
           disabled={disabled}
           aria-label={`Hapus OUI ${oui}`}
           title={`Hapus OUI ${oui}`}
-          className="rounded text-slate-400 transition-colors hover:text-red-600 disabled:opacity-50 dark:hover:text-red-400"
+          className="rounded text-slate-500 transition-colors hover:text-red-600 disabled:opacity-50 dark:hover:text-red-400 dark:text-slate-400"
         >
           <X className="h-3 w-3" />
         </button>
@@ -217,8 +217,8 @@ function VendorOUICell({ vendorId, vendorName, canManage }: { vendorId: number; 
   const ouis = data ?? []
   const [open, setOpen] = useState(false)
 
-  if (isLoading) return <span className="text-xs text-slate-400 dark:text-slate-500">…</span>
-  if (ouis.length === 0) return <span className="text-xs text-slate-400 dark:text-slate-500">Belum ada</span>
+  if (isLoading) return <span className="text-xs text-slate-500 dark:text-slate-400">…</span>
+  if (ouis.length === 0) return <span className="text-xs text-slate-500 dark:text-slate-400">Belum ada</span>
 
   return (
     <div className="flex flex-wrap items-center gap-1">
@@ -228,7 +228,7 @@ function VendorOUICell({ vendorId, vendorName, canManage }: { vendorId: number; 
       {ouis.slice(0, OUI_PREVIEW).map((o) => (
         <OUIChip key={o.id} oui={o.oui} notes={o.notes} />
       ))}
-      {ouis.length > OUI_PREVIEW && <span className="text-[11px] text-slate-400 dark:text-slate-500">+{ouis.length - OUI_PREVIEW}</span>}
+      {ouis.length > OUI_PREVIEW && <span className="text-[11px] text-slate-500 dark:text-slate-400">+{ouis.length - OUI_PREVIEW}</span>}
       <button
         type="button"
         onClick={() => setOpen(true)}

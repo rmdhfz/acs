@@ -47,7 +47,7 @@ const toneConfig: Record<ToastTone, { icon: typeof CheckCircle2; classes: string
   info: {
     icon: Info,
     classes: 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900',
-    iconClass: 'text-slate-400',
+    iconClass: 'text-slate-500',
   },
 }
 
@@ -117,7 +117,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               <button
                 onClick={() => dismiss(toast.id)}
                 aria-label="Tutup notifikasi"
-                className="-m-1 shrink-0 rounded p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                className="-m-1 shrink-0 rounded p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300 dark:text-slate-400"
               >
                 <X className="h-3.5 w-3.5" />
               </button>

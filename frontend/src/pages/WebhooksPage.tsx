@@ -46,7 +46,7 @@ function DeliveryPanel({ sub }: { sub: WebhookSubscription }) {
       {isLoading ? (
         <PageSpinner />
       ) : deliveries.length === 0 ? (
-        <p className="py-4 text-center text-xs text-slate-400">Belum ada delivery log</p>
+        <p className="py-4 text-center text-xs text-slate-500 dark:text-slate-400">Belum ada delivery log</p>
       ) : (
         deliveries.map((d: WebhookDelivery) => (
           <div
@@ -56,7 +56,7 @@ function DeliveryPanel({ sub }: { sub: WebhookSubscription }) {
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <DeliveryStatusBadge status={d.status} />
-                <span className="text-slate-400">
+                <span className="text-slate-500 dark:text-slate-400">
                   {fmtDatetime(d.created_at)} · percobaan {d.attempt_count}/{d.max_attempts}
                   {d.response_status ? ` · HTTP ${d.response_status}` : ''}
                 </span>
@@ -140,7 +140,7 @@ function SubscriptionRow({ sub, eventLabel }: { sub: WebhookSubscription; eventL
                 </span>
               )}
             </div>
-            <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-400">
+            <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
               <Globe className="h-3 w-3" />
               <span className="truncate">{sub.target_url}</span>
               <button onClick={copyUUID} className="flex items-center gap-1 hover:text-slate-600 dark:hover:text-slate-300">
@@ -156,7 +156,7 @@ function SubscriptionRow({ sub, eventLabel }: { sub: WebhookSubscription; eventL
               onClick={handleTest}
               disabled={testMut.isPending || !sub.is_active}
               title="Kirim test delivery"
-              className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-40 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+              className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-40 dark:hover:bg-slate-800 dark:hover:text-slate-300 dark:text-slate-400"
             >
               <TestTube className="h-4 w-4" />
             </button>
@@ -164,21 +164,21 @@ function SubscriptionRow({ sub, eventLabel }: { sub: WebhookSubscription; eventL
               onClick={toggleActive}
               disabled={updateMut.isPending}
               title={sub.is_active ? 'Nonaktifkan' : 'Aktifkan'}
-              className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-40 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+              className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-40 dark:hover:bg-slate-800 dark:hover:text-slate-300 dark:text-slate-400"
             >
               {sub.is_active ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
             </button>
             <button
               onClick={() => setShowDeleteConfirm(true)}
               title="Hapus"
-              className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+              className="rounded-lg p-2 text-slate-500 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 dark:hover:text-red-400 dark:text-slate-400"
             >
               <Trash2 className="h-4 w-4" />
             </button>
             <button
               onClick={() => setExpanded((v) => !v)}
               title={expanded ? 'Tutup delivery log' : 'Buka delivery log'}
-              className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+              className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300 dark:text-slate-400"
             >
               {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
             </button>
@@ -200,7 +200,7 @@ function SubscriptionRow({ sub, eventLabel }: { sub: WebhookSubscription; eventL
       {showDeleteConfirm && (
         <Modal title="Hapus Webhook?" onClose={() => setShowDeleteConfirm(false)}>
           <div className="p-6 pt-2">
-          <p className="mt-2 text-sm text-slate-500">
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
             Webhook <span className="font-medium text-slate-700 dark:text-slate-300">{sub.name}</span> akan dihapus permanen.
             Delivery log yang belum terkirim tidak akan dikirim lagi.
           </p>
@@ -283,7 +283,7 @@ function CreateWebhookModal({ onClose }: { onClose: () => void }) {
               <Check className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
             </div>
             <div>
-              <p className="text-xs text-slate-500">Salin secret sekarang — tidak akan ditampilkan lagi</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Salin secret sekarang — tidak akan ditampilkan lagi</p>
             </div>
           </div>
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800/50 dark:bg-amber-900/20">
@@ -300,7 +300,7 @@ function CreateWebhookModal({ onClose }: { onClose: () => void }) {
               </button>
             </div>
           </div>
-          <p className="mt-3 text-xs text-slate-400">
+          <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
             Gunakan secret ini untuk memverifikasi HMAC signature di header <code>X-ACS-Signature</code> pada setiap delivery.
           </p>
           <div className="mt-5 flex justify-end">
@@ -449,14 +449,14 @@ export function WebhooksPage() {
       {/* Event types reference */}
       {(eventRefs?.length ?? 0) > 0 && (
         <div className="mt-8 rounded-xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/50">
-          <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Event Types Tersedia</h3>
+          <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Event Types Tersedia</h3>
           <div className="space-y-1.5">
             {(eventRefs ?? []).map((r) => (
               <div key={r.id} className="flex items-start gap-2 text-xs">
                 <Zap className="mt-0.5 h-3 w-3 flex-shrink-0 text-indigo-500" />
                 <div>
                   <code className="font-medium text-slate-700 dark:text-slate-300">{r.code}</code>
-                  <span className="ml-2 text-slate-400">{r.name}</span>
+                  <span className="ml-2 text-slate-500 dark:text-slate-400">{r.name}</span>
                 </div>
               </div>
             ))}

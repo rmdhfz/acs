@@ -77,15 +77,15 @@ function DeviceCard({ device }: { device: SelfServiceDevice }) {
             <span className="truncate font-medium text-slate-900 dark:text-slate-100">
               {device.model ?? 'Perangkat'}
             </span>
-            <span className="text-xs text-slate-400">{device.online ? 'Online' : 'Offline'}</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400">{device.online ? 'Online' : 'Offline'}</span>
           </div>
           <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
             <div>
-              <dt className="inline text-slate-400">Serial: </dt>
+              <dt className="inline text-slate-500 dark:text-slate-400">Serial: </dt>
               <dd className="inline font-mono text-slate-600 dark:text-slate-300">{device.serial_number}</dd>
             </div>
             <div>
-              <dt className="inline text-slate-400">Firmware: </dt>
+              <dt className="inline text-slate-500 dark:text-slate-400">Firmware: </dt>
               <dd className="inline text-slate-600 dark:text-slate-300">{device.software_version ?? '–'}</dd>
             </div>
           </dl>
@@ -168,7 +168,7 @@ function WiFiForm({ deviceId, onClose }: { deviceId: number; onClose: () => void
         <p className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
           <CheckCircle2 className="h-4 w-4" /> Perubahan diantre. Perangkat akan menerapkannya saat terhubung berikutnya (biasanya beberapa menit).
         </p>
-        <button onClick={onClose} className="mt-2 text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
+        <button onClick={onClose} className="mt-2 text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 dark:text-slate-400">
           Tutup
         </button>
       </div>

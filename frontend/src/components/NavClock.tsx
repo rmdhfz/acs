@@ -28,7 +28,7 @@ export function NavClock({ compact = false }: { compact?: boolean }) {
 
   return (
     <span className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400" title={now.toString()}>
-      <Clock className="h-4 w-4 text-slate-400" />
+      <Clock className="h-4 w-4 text-slate-500 dark:text-slate-400" />
       <span className="hidden lg:inline">{date}</span>
       <span className="font-medium tabular-nums text-slate-700 dark:text-slate-200">{time}</span>
     </span>

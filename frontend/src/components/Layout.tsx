@@ -77,6 +77,7 @@ function ThemeToggle() {
     <button
       onClick={() => setTheme(THEME_CYCLE[(THEME_CYCLE.indexOf(theme) + 1) % THEME_CYCLE.length])}
       title={`Tema: ${THEME_LABEL[theme]} (klik utk ganti)`}
+      aria-label={`Ganti tema (saat ini: ${THEME_LABEL[theme]})`}
       className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
     >
       <Icon className="h-4 w-4" strokeWidth={2} />
@@ -149,12 +150,13 @@ export function Layout() {
           )}
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold leading-none text-slate-900 dark:text-slate-100">{brandName}</p>
-            <p className="mt-0.5 text-[11px] leading-none text-slate-400 dark:text-slate-500">Multi-Vendor TR-069</p>
+            <p className="mt-0.5 text-[11px] leading-none text-slate-500 dark:text-slate-400">Multi-Vendor TR-069</p>
           </div>
         </div>
         <button
           onClick={() => setMobileNavOpen(false)}
-          className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 md:hidden dark:hover:bg-slate-800"
+          aria-label="Tutup menu navigasi"
+          className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 md:hidden dark:hover:bg-slate-800 dark:text-slate-400"
         >
           <X className="h-4 w-4" />
         </button>
@@ -163,11 +165,11 @@ export function Layout() {
       <div className="px-3 pt-3">
         <button
           onClick={() => setPaletteOpen(true)}
-          className="flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm text-slate-400 transition-colors hover:border-slate-300 hover:bg-white dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700 dark:hover:bg-slate-800"
+          className="flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm text-slate-500 transition-colors hover:border-slate-300 hover:bg-white dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700 dark:hover:bg-slate-800 dark:text-slate-400"
         >
           <Search className="h-3.5 w-3.5" />
           <span className="flex-1 text-left">{t('common.search')}…</span>
-          <kbd className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] text-slate-400 dark:border-slate-700 dark:bg-slate-950">
+          <kbd className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
             {isMac ? '⌘K' : 'Ctrl+K'}
           </kbd>
         </button>
@@ -209,15 +211,15 @@ export function Layout() {
           </div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{user?.username}</p>
-            <p className="truncate text-[11px] text-slate-400 dark:text-slate-500">{user?.roles.join(', ')}</p>
+            <p className="truncate text-[11px] text-slate-600 dark:text-slate-400">{user?.roles.join(', ')}</p>
           </div>
-          <UserCircle2 className="h-4 w-4 shrink-0 text-slate-400" strokeWidth={2} />
+          <UserCircle2 className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" strokeWidth={2} />
         </NavLink>
         <div className="mt-1 flex items-center gap-1 px-1">
           <button
             onClick={() => setPwOpen(true)}
             title={t('top.changePassword')}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 dark:text-slate-400"
           >
             <KeyRound className="h-4 w-4" strokeWidth={2} />
           </button>
@@ -226,7 +228,7 @@ export function Layout() {
           <button
             onClick={logout}
             title={t('top.logout')}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-400"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-400 dark:text-slate-400"
           >
             <LogOut className="h-4 w-4" strokeWidth={2} />
           </button>
@@ -242,6 +244,7 @@ export function Layout() {
         <div className="fixed inset-x-0 top-0 z-30 flex h-14 items-center justify-between border-b border-slate-200 bg-white px-4 md:hidden dark:border-slate-800 dark:bg-slate-900">
           <button
             onClick={() => setMobileNavOpen(true)}
+            aria-label="Buka menu navigasi"
             className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
           >
             <Menu className="h-5 w-5" />

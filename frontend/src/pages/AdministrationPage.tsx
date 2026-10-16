@@ -169,7 +169,7 @@ function UsersTab({ isSuperadmin }: { isSuperadmin: boolean }) {
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         {isSuperadmin ? (
-          <select value={tenantFilter} onChange={(e) => setTenantFilter(e.target.value)} className={`max-w-xs ${inputCls}`}>
+          <select value={tenantFilter} aria-label="Filter tenant" onChange={(e) => setTenantFilter(e.target.value)} className={`max-w-xs ${inputCls}`}>
             <option value="">Semua tenant</option>
             {tenants.map((t) => (
               <option key={t.id} value={t.id}>
@@ -234,7 +234,7 @@ function UsersTab({ isSuperadmin }: { isSuperadmin: boolean }) {
                     <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{u.email || '-'}</td>
                     <td className="px-5 py-3.5">
                       <div className="flex flex-wrap gap-1">
-                        {u.roles.length === 0 ? <span className="text-xs text-slate-400 dark:text-slate-500">-</span> : u.roles.map((r) => <StatusBadge key={r} code="PROVISIONING" label={r} />)}
+                        {u.roles.length === 0 ? <span className="text-xs text-slate-500 dark:text-slate-400">-</span> : u.roles.map((r) => <StatusBadge key={r} code="PROVISIONING" label={r} />)}
                       </div>
                     </td>
                     <td className="px-5 py-3.5">
@@ -480,7 +480,7 @@ function EditUserModal({ user, isSelf, onClose }: { user: User; isSelf: boolean;
             Akun aktif
           </label>
           {isSelf && (
-            <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
               Ini akun Anda sendiri — menonaktifkannya bisa ditolak backend (self-lockout guard).
             </p>
           )}
@@ -649,7 +649,7 @@ function ApiTokensTab() {
                     {t.expires_at ? (
                       formatDateTime(t.expires_at)
                     ) : (
-                      <span className="text-xs text-slate-400 dark:text-slate-500">Tidak kedaluwarsa</span>
+                      <span className="text-xs text-slate-500 dark:text-slate-400">Tidak kedaluwarsa</span>
                     )}
                   </td>
                   <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{formatDateTime(t.created_at)}</td>
@@ -849,7 +849,7 @@ function TenantsTab() {
                   </td>
                   <td className="px-5 py-3.5 text-slate-600 dark:text-slate-400">
                     {t.max_pending_tasks == null ? (
-                      <span className="text-xs text-slate-400 dark:text-slate-500">Tidak dibatasi</span>
+                      <span className="text-xs text-slate-500 dark:text-slate-400">Tidak dibatasi</span>
                     ) : (
                       <span className="font-mono text-xs">{t.max_pending_tasks} pending</span>
                     )}

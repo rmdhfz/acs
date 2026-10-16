@@ -28,7 +28,7 @@ export function PasswordStrengthBar({ password }: { password: string }) {
       </div>
       <p className={`mt-1 text-xs ${TEXT_COLOR[score]}`}>
         {t(LABEL_KEY[score])}
-        {hints.length > 0 && <span className="text-slate-400 dark:text-slate-500"> — {hints.join(', ')}</span>}
+        {hints.length > 0 && <span className="text-slate-500 dark:text-slate-400"> — {hints.join(', ')}</span>}
       </p>
     </div>
   )

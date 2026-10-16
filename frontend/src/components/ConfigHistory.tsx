@@ -85,10 +85,10 @@ export function ConfigHistory({ deviceId }: { deviceId: number }) {
                 <div key={s.id} className="p-4 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
                   <div className="flex items-center justify-between mb-2">
                     <span className="flex items-center gap-1.5 text-sm font-medium text-slate-900 dark:text-slate-100">
-                      <Clock className="h-4 w-4 text-slate-400" />
+                      <Clock className="h-4 w-4 text-slate-500 dark:text-slate-400" />
                       {formatDateTime(s.created_at)}
                     </span>
-                    <span className="text-xs text-slate-500">ID: {s.id}</span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">ID: {s.id}</span>
                   </div>
                   <div className="flex gap-2 mt-3">
                     <button
@@ -126,7 +126,7 @@ export function ConfigHistory({ deviceId }: { deviceId: number }) {
                 <ArrowRightLeft className="h-4 w-4" />
                 Visual Diff
               </h4>
-              <div className="text-sm text-slate-500 flex items-center gap-4">
+              <div className="text-sm text-slate-500 flex items-center gap-4 dark:text-slate-400">
                 {leftSnap && <span>Kiri: #{leftSnap.id}</span>}
                 {rightSnap && <span>Kanan: #{rightSnap.id}</span>}
               </div>
@@ -134,11 +134,11 @@ export function ConfigHistory({ deviceId }: { deviceId: number }) {
             
             <div className="flex-1 overflow-auto p-0 bg-slate-50 dark:bg-slate-950 font-mono text-sm">
               {!leftSnap || !rightSnap ? (
-                <div className="flex h-full items-center justify-center text-slate-400 p-8">
+                <div className="flex h-full items-center justify-center text-slate-500 p-8 dark:text-slate-400">
                   Pilih dua snapshot dari daftar di samping untuk melihat perbedaan (diff).
                 </div>
               ) : diff.length === 0 ? (
-                <div className="flex h-full items-center justify-center text-slate-400 p-8">
+                <div className="flex h-full items-center justify-center text-slate-500 p-8 dark:text-slate-400">
                   Tidak ada perbedaan konfigurasi.
                 </div>
               ) : (
@@ -155,14 +155,14 @@ export function ConfigHistory({ deviceId }: { deviceId: number }) {
                         )}
                         {d.status === 'added' && (
                           <>
-                            <td className="py-2 px-4 text-slate-400 italic">--</td>
+                            <td className="py-2 px-4 text-slate-500 italic dark:text-slate-400">--</td>
                             <td className="py-2 px-4 bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 truncate max-w-[150px]">{d.rightVal}</td>
                           </>
                         )}
                         {d.status === 'removed' && (
                           <>
                             <td className="py-2 px-4 bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400 line-through truncate max-w-[150px]">{d.leftVal}</td>
-                            <td className="py-2 px-4 text-slate-400 italic">--</td>
+                            <td className="py-2 px-4 text-slate-500 italic dark:text-slate-400">--</td>
                           </>
                         )}
                       </tr>

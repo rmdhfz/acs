@@ -130,7 +130,7 @@ function CatalogTab() {
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <select value={vendorId} onChange={(e) => setVendorId(e.target.value)} className={`${inputCls} max-w-xs`}>
+        <select value={vendorId} aria-label="Filter vendor" onChange={(e) => setVendorId(e.target.value)} className={`${inputCls} max-w-xs`}>
           <option value="">Pilih vendor untuk melihat firmware...</option>
           {vendors.map((v) => (
             <option key={v.id} value={v.id}>
@@ -171,7 +171,7 @@ function CatalogTab() {
                   <tr key={f.id}>
                     <td className="px-5 py-3.5 font-medium text-slate-900 dark:text-slate-100">{f.version}</td>
                     <td className="px-5 py-3.5 font-mono text-xs text-slate-600 dark:text-slate-400">{f.file_name}</td>
-                    <td className="px-5 py-3.5 max-w-[220px] truncate font-mono text-xs text-slate-400 dark:text-slate-500" title={f.checksum_sha256 ?? undefined}>
+                    <td className="px-5 py-3.5 max-w-[220px] truncate font-mono text-xs text-slate-500 dark:text-slate-400" title={f.checksum_sha256 ?? undefined}>
                       {f.checksum_sha256 ?? '-'}
                     </td>
                     <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{f.file_size_bytes ? `${(f.file_size_bytes / 1_000_000).toFixed(1)} MB` : '-'}</td>
@@ -375,12 +375,12 @@ function RolloutTab({ canManage }: { canManage: boolean }) {
                       </td>
                       <td className="px-5 py-3.5 text-xs text-slate-600 dark:text-slate-400">#{b.firmware_file_id}</td>
                       <td className="px-5 py-3.5 tabular-nums text-slate-700 dark:text-slate-300">
-                        {b.current_wave} <span className="text-slate-400">×{b.wave_percentage}%</span>
+                        {b.current_wave} <span className="text-slate-500 dark:text-slate-400">×{b.wave_percentage}%</span>
                       </td>
                       <td className="px-5 py-3.5 tabular-nums text-slate-500 dark:text-slate-400">{b.max_failure_rate_percent}%</td>
                       <td className="px-5 py-3.5">
                         <StatusBadge code={badge.code} label={badge.label} />
-                        {b.scheduled_at && code === 'PENDING' && <div className="mt-1 text-[10px] text-slate-500">Jadwal: {formatDateTime(b.scheduled_at)}</div>}
+                        {b.scheduled_at && code === 'PENDING' && <div className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">Jadwal: {formatDateTime(b.scheduled_at)}</div>}
                       </td>
                       <td className="px-5 py-3.5 text-right">
                         {canAct && (

@@ -51,7 +51,7 @@ export function DetailGrid({ rows }: { rows: DetailRow[] }) {
         <div key={label} className="contents">
           <dt className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</dt>
           <dd className="break-words text-slate-900 dark:text-slate-100">
-            {value === null || value === undefined || value === '' ? <span className="text-slate-400 dark:text-slate-500">-</span> : value}
+            {value === null || value === undefined || value === '' ? <span className="text-slate-500 dark:text-slate-400">-</span> : value}
           </dd>
         </div>
       ))}

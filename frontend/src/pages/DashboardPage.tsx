@@ -82,7 +82,7 @@ function CardHeader({ title, to, toLabel }: { title: string; to?: string; toLabe
 }
 
 function Empty({ children }: { children: ReactNode }) {
-  return <p className="py-8 text-center text-sm text-slate-400 dark:text-slate-500">{children}</p>
+  return <p className="py-8 text-center text-sm text-slate-500 dark:text-slate-400">{children}</p>
 }
 
 function greetingKey(hour: number) {
@@ -233,7 +233,7 @@ export function DashboardPage() {
             {connected ? t('dash.live') : t('dash.polling')}
           </span>
           {dataUpdatedAt > 0 && (
-            <span className="hidden text-xs text-slate-400 sm:inline dark:text-slate-500">
+            <span className="hidden text-xs text-slate-500 sm:inline dark:text-slate-400">
               {t('dash.updated', { time: formatRelativeTime(new Date(dataUpdatedAt).toISOString()) })}
             </span>
           )}
@@ -341,7 +341,7 @@ export function DashboardPage() {
                     </span>
                     <span className="tabular-nums text-slate-900 dark:text-slate-100">
                       {s.value}
-                      <span className="ml-1.5 text-xs text-slate-400">{Math.round((s.value / totalDevices) * 100)}%</span>
+                      <span className="ml-1.5 text-xs text-slate-500 dark:text-slate-400">{Math.round((s.value / totalDevices) * 100)}%</span>
                     </span>
                   </li>
                 ))}
@@ -359,7 +359,7 @@ export function DashboardPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead>
-                  <tr className="border-b border-slate-100 text-xs uppercase tracking-wide text-slate-400 dark:border-slate-800">
+                  <tr className="border-b border-slate-100 text-xs uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:text-slate-400">
                     <th className="pb-2 font-medium">{t('dash.col.device')}</th>
                     <th className="hidden pb-2 font-medium sm:table-cell">{t('dash.col.vendor')}</th>
                     <th className="pb-2 font-medium">{t('dash.col.status')}</th>
@@ -403,7 +403,7 @@ export function DashboardPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead>
-                  <tr className="border-b border-slate-100 text-xs uppercase tracking-wide text-slate-400 dark:border-slate-800">
+                  <tr className="border-b border-slate-100 text-xs uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:text-slate-400">
                     <th className="pb-2 font-medium">{t('dash.col.task')}</th>
                     <th className="hidden pb-2 font-medium sm:table-cell">{t('dash.col.device')}</th>
                     <th className="pb-2 font-medium">{t('dash.col.status')}</th>
@@ -453,8 +453,8 @@ export function DashboardPage() {
                 </Link>
               </li>
             ))}
-            <li className="flex items-center gap-3 px-3 py-2 text-sm text-slate-400 dark:text-slate-500">
-              <span className="flex h-7 w-7 items-center justify-center rounded-md bg-slate-100 text-slate-400 dark:bg-slate-800">
+            <li className="flex items-center gap-3 px-3 py-2 text-sm text-slate-500 dark:text-slate-400">
+              <span className="flex h-7 w-7 items-center justify-center rounded-md bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                 <Search className="h-4 w-4" />
               </span>
               {t('dash.quick.search')}
@@ -501,7 +501,7 @@ export function DashboardPage() {
                     <span className="truncate text-slate-700 dark:text-slate-300">{v.name}</span>
                     <span className="tabular-nums text-slate-900 dark:text-slate-100">
                       {v.value}
-                      <span className="ml-1.5 text-xs text-slate-400">{Math.round((v.value / totalDevices) * 100)}%</span>
+                      <span className="ml-1.5 text-xs text-slate-500 dark:text-slate-400">{Math.round((v.value / totalDevices) * 100)}%</span>
                     </span>
                   </div>
                   <div className="h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
@@ -552,11 +552,11 @@ export function DashboardPage() {
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm text-slate-700 dark:text-slate-300">
                         <span className="font-medium text-slate-900 dark:text-slate-100">{a.username ?? 'system'}</span> · {a.action}
-                        <span className="text-slate-400"> {a.entity_type}</span>
+                        <span className="text-slate-500 dark:text-slate-400"> {a.entity_type}</span>
                       </p>
                       {a.description && <p className="truncate text-xs text-slate-500 dark:text-slate-400">{a.description}</p>}
                     </div>
-                    <span className="shrink-0 text-xs text-slate-400 dark:text-slate-500">{formatRelativeTime(a.created_at)}</span>
+                    <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">{formatRelativeTime(a.created_at)}</span>
                   </li>
                 ))}
               </ul>

@@ -104,6 +104,8 @@ services:
       # Reverse proxy/LB tepercaya (IP/CIDR, pisahkan koma). WAJIB diisi bila ACS di belakang
       # proxy agar IP klien benar; kosong = X-Forwarded-For diabaikan.
       ACS_TRUSTED_PROXIES: ${ACS_TRUSTED_PROXIES:-}
+      # Batas request/detik PER IP di endpoint CWMP (naikkan bila banyak CPE berbagi satu IP/CGNAT).
+      ACS_CWMP_RATE_LIMIT: ${ACS_CWMP_RATE_LIMIT:-5}
       # Endpoint /usp (TR-369) masih kerangka tanpa auth: default mati.
       ACS_USP_ENABLED: ${ACS_USP_ENABLED:-false}
       # Retensi tabel log (hari); 0 = tanpa pemangkasan. activity_logs (audit) tidak dipangkas.

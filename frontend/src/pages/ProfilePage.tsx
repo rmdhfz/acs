@@ -46,10 +46,10 @@ const THEME_OPTIONS: { value: Theme; icon: typeof Sun; labelKey: string }[] = [
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform ?? navigator.userAgent)
 
-function Field({ label, children, copy }: { label: string; children: React.ReactNode; copy?: string }) {
+function Field({ label, children, copy, className = '' }: { label: string; children: React.ReactNode; copy?: string; className?: string }) {
   return (
-    <div className="min-w-0">
-      <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{label}</dt>
+    <div className={`min-w-0 ${className}`}>
+      <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</dt>
       <dd className="mt-1 flex items-center gap-1.5 text-sm text-slate-800 dark:text-slate-200">
         <span className="min-w-0 truncate">{children}</span>
         {copy && <CopyButton value={copy} />}
@@ -134,18 +134,16 @@ export default function ProfilePage() {
               <dl className="mt-6 grid gap-x-6 gap-y-4 border-t border-slate-100 pt-5 sm:grid-cols-2 dark:border-slate-800">
                 <Field label={t('profile.scope')}>
                   <span className="inline-flex items-center gap-1.5">
-                    {user.tenant_id ? <Building2 className="h-3.5 w-3.5 text-slate-400" /> : <Globe2 className="h-3.5 w-3.5 text-slate-400" />}
+                    {user.tenant_id ? <Building2 className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" /> : <Globe2 className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />}
                     {scopeLabel}
                   </span>
                 </Field>
                 <Field label={t('profile.userId')} copy={String(user.id)}>
                   <span className="font-mono">#{user.id}</span>
                 </Field>
-                <div className="sm:col-span-2">
-                  <Field label="UUID" copy={user.uuid}>
-                    <span className="font-mono text-xs text-slate-500 dark:text-slate-400">{user.uuid}</span>
-                  </Field>
-                </div>
+                <Field label="UUID" copy={user.uuid} className="sm:col-span-2">
+                  <span className="font-mono text-xs text-slate-500 dark:text-slate-400">{user.uuid}</span>
+                </Field>
               </dl>
             </div>
           </section>
@@ -153,12 +151,12 @@ export default function ProfilePage() {
           {/* Keamanan */}
           <section className={`${cardCls} p-5`}>
             <h2 className={sectionTitleCls}>
-              <ShieldCheck className="h-4 w-4 text-slate-400" /> {t('profile.security')}
+              <ShieldCheck className="h-4 w-4 text-slate-500 dark:text-slate-400" /> {t('profile.security')}
             </h2>
 
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 p-3.5 dark:border-slate-700">
               <div className="flex min-w-0 gap-3">
-                <KeyRound className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+                <KeyRound className="mt-0.5 h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" />
                 <div>
                   <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{t('top.changePassword')}</p>
                   <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{t('profile.changePasswordDesc')}</p>
@@ -172,7 +170,7 @@ export default function ProfilePage() {
               </button>
             </div>
 
-            <h3 className="mb-2 mt-5 text-xs font-medium uppercase tracking-wide text-slate-400">{t('profile.checklist')}</h3>
+            <h3 className="mb-2 mt-5 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">{t('profile.checklist')}</h3>
             <ul className="space-y-2">
               {['profile.chk.password', 'profile.chk.lockout', 'profile.chk.session', 'profile.chk.sso'].map((k) => (
                 <li key={k} className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-400">
@@ -188,7 +186,7 @@ export default function ProfilePage() {
           {/* Hak akses */}
           <section className={`${cardCls} p-5`}>
             <h2 className={sectionTitleCls}>
-              <UserCog className="h-4 w-4 text-slate-400" /> {t('profile.accessTitle')}
+              <UserCog className="h-4 w-4 text-slate-500 dark:text-slate-400" /> {t('profile.accessTitle')}
             </h2>
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{t('profile.accessDesc')}</p>
             <ul className="mt-4 space-y-3">
@@ -204,11 +202,11 @@ export default function ProfilePage() {
           {/* Preferensi */}
           <section className={`${cardCls} p-5`}>
             <h2 className={sectionTitleCls}>
-              <Palette className="h-4 w-4 text-slate-400" /> {t('profile.prefs')}
+              <Palette className="h-4 w-4 text-slate-500 dark:text-slate-400" /> {t('profile.prefs')}
             </h2>
             <div className="mt-4 space-y-5">
               <div>
-                <p className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">
+                <p className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                   <Languages className="h-3.5 w-3.5" /> {t('profile.language')}
                 </p>
                 <div className="grid grid-cols-2 gap-2 sm:max-w-sm">
@@ -220,7 +218,7 @@ export default function ProfilePage() {
                 </div>
               </div>
               <div>
-                <p className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">
+                <p className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                   <Palette className="h-3.5 w-3.5" /> {t('profile.theme')}
                 </p>
                 <div className="grid grid-cols-3 gap-2 sm:max-w-md">
@@ -239,7 +237,7 @@ export default function ProfilePage() {
         <div className="space-y-5">
           <section className={`${cardCls} p-5`}>
             <h2 className={sectionTitleCls}>
-              <Clock3 className="h-4 w-4 text-slate-400" /> {t('profile.session')}
+              <Clock3 className="h-4 w-4 text-slate-500 dark:text-slate-400" /> {t('profile.session')}
             </h2>
             <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">{t('profile.sessionExpires')}</p>
             <p className={`text-2xl font-semibold tabular-nums ${sessionTone}`}>
@@ -256,7 +254,7 @@ export default function ProfilePage() {
           {isAdmin && (
             <section className={`${cardCls} p-5`}>
               <h2 className={sectionTitleCls}>
-                <Terminal className="h-4 w-4 text-slate-400" /> {t('profile.apiTokens')}
+                <Terminal className="h-4 w-4 text-slate-500 dark:text-slate-400" /> {t('profile.apiTokens')}
               </h2>
               <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{t('profile.apiTokensDesc')}</p>
               <div className="mt-3 flex items-center justify-between">
@@ -270,11 +268,11 @@ export default function ProfilePage() {
 
           <section className={`${cardCls} p-5`}>
             <h2 className={sectionTitleCls}>
-              <Command className="h-4 w-4 text-slate-400" /> {t('profile.shortcuts')}
+              <Command className="h-4 w-4 text-slate-500 dark:text-slate-400" /> {t('profile.shortcuts')}
             </h2>
             <div className="mt-3 flex items-center justify-between gap-3 text-sm text-slate-600 dark:text-slate-400">
               <span>{t('profile.shortcut.search')}</span>
-              <kbd className="shrink-0 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800">
+              <kbd className="shrink-0 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
                 {isMac ? '⌘K' : 'Ctrl+K'}
               </kbd>
             </div>

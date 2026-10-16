@@ -105,7 +105,7 @@ export default function PresetsPage() {
                     <td className="px-5 py-3.5 font-medium text-slate-900 dark:text-slate-100">
                       {p.name}
                       {p.tenant_id == null && (
-                        <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-400" title="Preset global — berlaku untuk semua tenant">
+                        <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-600 dark:bg-slate-800 dark:text-slate-400" title="Preset global — berlaku untuk semua tenant">
                           Global
                         </span>
                       )}
@@ -117,7 +117,7 @@ export default function PresetsPage() {
                           <ShieldCheck className="h-3 w-3" /> Aktif
                         </span>
                       ) : (
-                        <span className="text-xs text-slate-400">Nonaktif</span>
+                        <span className="text-xs text-slate-500 dark:text-slate-400">Nonaktif</span>
                       )}
                     </td>
                     <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{p.channel ?? '—'}</td>
@@ -302,7 +302,7 @@ function PresetModal({ preset, onClose }: { preset: Preset | null; onClose: () =
 
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-600 dark:text-slate-400">
-            Precondition <span className="font-normal text-slate-400">— JSON, kosakata sama dengan Zero-Touch Rule. <code>{'{}'}</code> = cocok semua device.</span>
+            Precondition <span className="font-normal text-slate-500 dark:text-slate-400">— JSON, kosakata sama dengan Zero-Touch Rule. <code>{'{}'}</code> = cocok semua device.</span>
           </label>
           <textarea
             value={precondition}
@@ -316,7 +316,7 @@ function PresetModal({ preset, onClose }: { preset: Preset | null; onClose: () =
 
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-600 dark:text-slate-400">
-            Configurations <span className="font-normal text-slate-400">— JSON array. v1: hanya <code>op: "set_parameter"</code>.</span>
+            Configurations <span className="font-normal text-slate-500 dark:text-slate-400">— JSON array. v1: hanya <code>op: "set_parameter"</code>.</span>
           </label>
           <textarea
             value={configurations}

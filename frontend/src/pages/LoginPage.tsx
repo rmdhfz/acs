@@ -211,7 +211,7 @@ export function LoginPage() {
             {t('common.email')}
           </label>
           <div className="relative">
-            <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
             <input
               id="email"
               ref={emailRef}
@@ -240,7 +240,7 @@ export function LoginPage() {
             </Link>
           </div>
           <div className="relative">
-            <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
             <input
               id="password"
               ref={passwordRef}
@@ -262,7 +262,7 @@ export function LoginPage() {
               onClick={() => setShowPassword((v) => !v)}
               aria-label={showPassword ? t('login.hidePassword') : t('login.showPassword')}
               aria-pressed={showPassword}
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-slate-400 transition-colors hover:text-slate-600 dark:hover:text-slate-300"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-slate-500 transition-colors hover:text-slate-600 dark:hover:text-slate-300 dark:text-slate-400"
             >
               {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
@@ -317,7 +317,7 @@ export function LoginPage() {
           <div className="w-full border-t border-slate-200 dark:border-slate-800" />
         </div>
         <div className="relative flex justify-center text-xs">
-          <span className="bg-white px-3 text-slate-400 dark:bg-slate-950 dark:text-slate-500">{t('login.or')}</span>
+          <span className="bg-white px-3 text-slate-500 dark:bg-slate-950 dark:text-slate-400">{t('login.or')}</span>
         </div>
       </div>
       )}
@@ -328,14 +328,14 @@ export function LoginPage() {
         href={SSO_URL}
         className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
       >
-        <KeyRound className="h-4 w-4 text-slate-400" />
+        <KeyRound className="h-4 w-4 text-slate-500 dark:text-slate-400" />
         {t('login.sso')}
       </a>
-      <p className="mt-2 text-center text-xs text-slate-400 dark:text-slate-500">{t('login.ssoHint')}</p>
+      <p className="mt-2 text-center text-xs text-slate-500 dark:text-slate-400">{t('login.ssoHint')}</p>
       </>
       )}
 
-      <p className="mt-8 text-center text-xs text-slate-400 dark:text-slate-500">
+      <p className="mt-8 text-center text-xs text-slate-500 dark:text-slate-400">
         {t('login.needHelp')}{' '}
         <Link to="/forgot-password" className="font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400">
           {t('login.forgotLink')}

@@ -8,7 +8,7 @@ export const CREDIT_URL = 'https://linkedin.com/in/hfzrmd'
 export function CreditFooter({ className = '' }: { className?: string }) {
   const { t } = useI18n()
   return (
-    <p className={`text-xs text-slate-400 dark:text-slate-500 ${className}`}>
+    <p className={`text-xs text-slate-500 dark:text-slate-400 ${className}`}>
       © {new Date().getFullYear()} ACS Console · {t('footer.madeBy')}{' '}
       <a
         href={CREDIT_URL}

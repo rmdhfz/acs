@@ -50,7 +50,7 @@ export default function AuditPage() {
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold text-slate-900 dark:text-slate-100">
-            <ScrollText className="h-5 w-5 text-slate-400" /> {t('audit.title')}
+            <ScrollText className="h-5 w-5 text-slate-500 dark:text-slate-400" /> {t('audit.title')}
           </h1>
           <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">{t('audit.subtitle')}</p>
         </div>
@@ -63,13 +63,13 @@ export default function AuditPage() {
       </div>
 
       <div className="mb-4 flex flex-wrap gap-2">
-        <select value={action} onChange={(e) => setAction(e.target.value)} className={selectCls}>
+        <select value={action} aria-label="Filter aksi" onChange={(e) => setAction(e.target.value)} className={selectCls}>
           <option value="">{t('audit.filterAction')}</option>
           {actions.map((a) => (
             <option key={a} value={a}>{a}</option>
           ))}
         </select>
-        <select value={entityType} onChange={(e) => setEntityType(e.target.value)} className={selectCls}>
+        <select value={entityType} aria-label="Filter tipe entitas" onChange={(e) => setEntityType(e.target.value)} className={selectCls}>
           <option value="">{t('audit.filterEntity')}</option>
           {entities.map((e) => (
             <option key={e} value={e}>{e}</option>
@@ -83,7 +83,7 @@ export default function AuditPage() {
         ) : rows.length === 0 ? (
           <EmptyState icon={ScrollText} title={t('audit.empty')} />
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Tabel audit trail (dapat digulir)">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
@@ -99,19 +99,19 @@ export default function AuditPage() {
                   <tr key={r.id}>
                     <td className="px-5 py-3">
                       <span className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
-                        {r.username ? <User className="h-3.5 w-3.5 text-slate-400" /> : <Cog className="h-3.5 w-3.5 text-slate-400" />}
-                        {r.username ?? <span className="italic text-slate-400">sistem</span>}
+                        {r.username ? <User className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" /> : <Cog className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />}
+                        {r.username ?? <span className="italic text-slate-500 dark:text-slate-400">sistem</span>}
                       </span>
                     </td>
                     <td className="px-5 py-3">
                       <span className={`rounded px-1.5 py-0.5 font-mono text-[11px] font-medium ${actionTone(r.action)}`}>{r.action}</span>
-                      {r.description && <p className="mt-0.5 max-w-md truncate text-xs text-slate-400" title={r.description}>{r.description}</p>}
+                      {r.description && <p className="mt-0.5 max-w-md truncate text-xs text-slate-500 dark:text-slate-400" title={r.description}>{r.description}</p>}
                     </td>
                     <td className="px-5 py-3 text-slate-500 dark:text-slate-400">
                       {r.entity_type}
-                      {r.entity_id != null && <span className="text-slate-400"> #{r.entity_id}</span>}
+                      {r.entity_id != null && <span className="text-slate-500 dark:text-slate-400"> #{r.entity_id}</span>}
                     </td>
-                    <td className="px-5 py-3 font-mono text-xs text-slate-400">{r.ip_address ?? '—'}</td>
+                    <td className="px-5 py-3 font-mono text-xs text-slate-500 dark:text-slate-400">{r.ip_address ?? '—'}</td>
                     <td className="whitespace-nowrap px-5 py-3 text-slate-500 dark:text-slate-400" title={formatDateTime(r.created_at)}>
                       {formatRelativeTime(r.created_at)}
                     </td>

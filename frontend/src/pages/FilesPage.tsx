@@ -61,7 +61,7 @@ export default function FilesPage() {
       <div className="mb-4 flex items-start justify-between gap-4">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold text-slate-900 dark:text-slate-100">
-            <Package className="h-5 w-5 text-slate-400" /> File
+            <Package className="h-5 w-5 text-slate-500 dark:text-slate-400" /> File
           </h1>
           <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
             Firmware image, konfigurasi vendor, dan file lain yang bisa di-push / di-pull dari CPE.
@@ -108,7 +108,7 @@ export default function FilesPage() {
                   <tr key={f.id}>
                     <td className="px-5 py-3.5">
                       <span className="flex items-center gap-2.5 font-medium text-slate-900 dark:text-slate-100">
-                        <FileText className="h-4 w-4 shrink-0 text-slate-400" />
+                        <FileText className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" />
                         <span className="truncate">{f.file_name}</span>
                       </span>
                     </td>
@@ -124,7 +124,7 @@ export default function FilesPage() {
                     <td className="px-5 py-3.5 text-right">
                       <button
                         onClick={() => setToDelete(f)}
-                        className="rounded p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-400"
+                        className="rounded p-1.5 text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-400 dark:text-slate-400"
                         title="Hapus file"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -231,7 +231,7 @@ function UploadModal({
             required
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-slate-900 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-white hover:file:bg-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:file:bg-slate-100 dark:file:text-slate-900"
           />
-          <p className="mt-1 text-xs text-slate-400">Maksimum 256 MiB. Checksum SHA-256 dihitung otomatis di server.</p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Maksimum 256 MiB. Checksum SHA-256 dihitung otomatis di server.</p>
         </div>
         <div className="flex justify-end gap-2.5 pt-1">
           <button type="button" onClick={onClose} className={ghostBtnCls}>Batal</button>

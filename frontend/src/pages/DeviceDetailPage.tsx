@@ -189,7 +189,7 @@ export function DeviceDetailPage() {
               onClick={handleConnReq}
               disabled={triggerConnReq.isPending || !device.connection_request_url}
               title={!device.connection_request_url ? 'Device tidak memiliki connection request URL' : ''}
-              className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-300 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50 disabled:opacity-50"
+              className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 font-medium text-slate-700 dark:text-slate-300 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50 disabled:opacity-50"
             >
               <Radio className="h-4 w-4" /> Connection Req
             </button>
@@ -197,7 +197,7 @@ export function DeviceDetailPage() {
           {hasRole('ADMIN') && (
             <button
               onClick={() => setShowApplyProfile(true)}
-              className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-300 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50"
+              className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 font-medium text-slate-700 dark:text-slate-300 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50"
             >
               <Sparkles className="h-4 w-4" /> Terapkan Provisioning Profile
             </button>
@@ -206,7 +206,7 @@ export function DeviceDetailPage() {
             <button
               onClick={handleReboot}
               disabled={rebootMutation.isPending}
-              className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-300 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50"
+              className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 font-medium text-slate-700 dark:text-slate-300 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50"
             >
               <RefreshCcw className="h-4 w-4" /> Reboot
             </button>
@@ -242,7 +242,7 @@ export function DeviceDetailPage() {
       </div>
       {connReqError && <p className="mb-4 text-sm text-red-600">{connReqError}</p>}
 
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div>
           <div className="flex items-center gap-3">
             <h1 className="font-mono text-lg font-semibold text-slate-900 dark:text-slate-100">{device.serial_number}</h1>
@@ -268,14 +268,17 @@ export function DeviceDetailPage() {
       )}
       {showEditDevice && <DeviceFormModal mode="edit" device={device} onClose={() => setShowEditDevice(false)} />}
 
-      <div className="mb-4 flex gap-1 border-b border-slate-200">
+      {/* Baris tab dapat digulir: di layar sempit 9 tab tidak muat (sebelumnya melebarkan seluruh halaman). */}
+      <div role="tablist" aria-label="Bagian detail device" className="mb-4 flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-800">
         {TABS.map((t) => (
           <button
             key={t.key}
+            role="tab"
+            aria-selected={tab === t.key}
             onClick={() => setTab(t.key)}
-            className={`flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
+            className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
               tab === t.key
-                ? 'border-slate-900 text-slate-900 dark:text-slate-100'
+                ? 'border-slate-900 text-slate-900 dark:border-slate-100 dark:text-slate-100'
                 : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800'
             }`}
           >
@@ -303,8 +306,8 @@ export function DeviceDetailPage() {
 function InfoItem({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div>
-      <dt className="text-xs text-slate-400 dark:text-slate-500">{label}</dt>
-      <dd className={`text-slate-800 ${mono ? 'font-mono text-xs' : ''}`}>{value}</dd>
+      <dt className="text-xs text-slate-500 dark:text-slate-400">{label}</dt>
+      <dd className={`text-slate-800 dark:text-slate-200 ${mono ? 'font-mono text-xs' : ''}`}>{value}</dd>
     </div>
   )
 }
@@ -337,8 +340,8 @@ function DeviceTagsBar({ deviceId, canManage }: { deviceId: number; canManage: b
 
   return (
     <div className="mb-6 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-      <span className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Tag</span>
-      {assigned.length === 0 && <span className="text-sm text-slate-400 dark:text-slate-500">—</span>}
+      <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Tag</span>
+      {assigned.length === 0 && <span className="text-sm text-slate-500 dark:text-slate-400">—</span>}
       {assigned.map((t) => (
         <span
           key={t.id}
@@ -354,7 +357,7 @@ function DeviceTagsBar({ deviceId, canManage }: { deviceId: number; canManage: b
             <button
               type="button"
               onClick={() => run(() => remove.mutateAsync(t.id))}
-              className="ml-0.5 text-slate-400 hover:text-red-600 dark:hover:text-red-400"
+              className="ml-0.5 text-slate-500 hover:text-red-600 dark:hover:text-red-400 dark:text-slate-400"
               aria-label={`Lepas tag ${t.name}`}
             >
               ×
@@ -365,6 +368,7 @@ function DeviceTagsBar({ deviceId, canManage }: { deviceId: number; canManage: b
       {canManage && available.length > 0 && (
         <select
           value=""
+          aria-label="Tambahkan tag ke device ini"
           onChange={(e) => {
             const id = Number(e.target.value)
             if (id) run(() => assign.mutateAsync(id))
@@ -519,11 +523,11 @@ function OpticalMetricsTab({ deviceId }: { deviceId: number }) {
 
 function MetricStat({ label, value, unit }: { label: string; value: number | null; unit: string }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
       <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</p>
       <p className="mt-1 text-lg font-semibold tabular-nums text-slate-900 dark:text-slate-100">
         {value ?? '-'}
-        {value !== null && <span className="ml-1 text-xs font-normal text-slate-400 dark:text-slate-500">{unit}</span>}
+        {value !== null && <span className="ml-1 text-xs font-normal text-slate-500 dark:text-slate-400">{unit}</span>}
       </p>
     </div>
   )
@@ -549,9 +553,9 @@ function EventsTab({ deviceId }: { deviceId: number }) {
             <li key={e.id} className="flex items-center justify-between gap-4 px-5 py-3 text-sm">
               <div className="flex items-center gap-3">
                 <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300" />
-                <span className="font-medium text-slate-800">{code?.name ?? code?.code ?? `#${e.event_code_id}`}</span>
+                <span className="font-medium text-slate-800 dark:text-slate-200">{code?.name ?? code?.code ?? `#${e.event_code_id}`}</span>
               </div>
-              <span className="shrink-0 text-xs text-slate-400 dark:text-slate-500">{formatDateTime(e.occurred_at)}</span>
+              <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">{formatDateTime(e.occurred_at)}</span>
             </li>
           )
         })}
@@ -687,7 +691,7 @@ function DiagnosticResult({ d, fallback }: { d: DeviceDiagnostic; fallback: stri
           </dl>
         )}
         {r.hops && r.hops.length > 0 && (
-          <table className="w-full text-left"><thead className="text-slate-500"><tr><th className="py-1 pr-3">Hop</th><th className="pr-3">Host</th><th className="pr-3">Alamat</th><th>RTT (ms)</th></tr></thead>
+          <table className="w-full text-left"><thead className="text-slate-500 dark:text-slate-400"><tr><th className="py-1 pr-3">Hop</th><th className="pr-3">Host</th><th className="pr-3">Alamat</th><th>RTT (ms)</th></tr></thead>
             <tbody>{r.hops.map((h) => (<tr key={h.hop} className="border-t border-slate-100 dark:border-slate-800"><td className="py-1 pr-3 font-mono">{h.hop}</td><td className="pr-3">{h.host || '-'}</td><td className="pr-3 font-mono">{h.address || '-'}</td><td className="font-mono">{h.rtt || '-'}</td></tr>))}</tbody></table>
         )}
       </div>
@@ -761,7 +765,7 @@ function DiagnosticsTab({ deviceId, canTrigger }: { deviceId: number; canTrigger
                     <div className="flex items-center gap-3">
                       <StatusBadge code={d.status === 'COMPLETED' ? 'COMPLETED' : d.status === 'FAILED' ? 'FAILED' : 'PENDING'} label={d.diagnostic_type} />
                     </div>
-                    <span className="shrink-0 text-xs text-slate-400 dark:text-slate-500">{formatDateTime(d.executed_at ?? d.created_at)}</span>
+                    <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">{formatDateTime(d.executed_at ?? d.created_at)}</span>
                   </div>
                   <DiagnosticResult d={d} fallback={result} />
                 </li>
@@ -919,13 +923,13 @@ function TimelineTab({ deviceId }: { deviceId: number }) {
           <li key={log.id} className="flex items-start gap-3 px-5 py-3.5">
             <div className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300" />
             <div className="min-w-0 flex-1">
-              <p className="text-sm text-slate-800">
+              <p className="text-sm text-slate-800 dark:text-slate-200">
                 <span className="font-medium">{log.username ?? 'Sistem'}</span>{' '}
                 {(ACTIVITY_LABELS[log.action] ?? log.action).toLowerCase()}
               </p>
               {log.description && <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{log.description}</p>}
             </div>
-            <span className="shrink-0 text-xs text-slate-400 dark:text-slate-500">{formatDateTime(log.created_at)}</span>
+            <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">{formatDateTime(log.created_at)}</span>
           </li>
         ))}
       </ul>

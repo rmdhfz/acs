@@ -34,7 +34,7 @@ export function SsoCallbackPage() {
           <a href="/login" className="text-sm font-medium text-indigo-600 hover:text-indigo-500">Kembali ke halaman login</a>
         </div>
       ) : (
-        <p role="status" className="text-sm text-slate-500">Mohon tunggu…</p>
+        <p role="status" className="text-sm text-slate-500 dark:text-slate-400">Mohon tunggu…</p>
       )}
     </AuthShell>
   )

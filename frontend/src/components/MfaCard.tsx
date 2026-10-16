@@ -30,7 +30,7 @@ export function MfaCard() {
           {data?.enabled ? (
             <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
           ) : (
-            <ShieldOff className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+            <ShieldOff className="mt-0.5 h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" />
           )}
           <div>
             <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
@@ -172,7 +172,7 @@ function SetupModal({ onClose }: { onClose: () => void }) {
           {qr ? (
             <img src={qr} alt="Kode QR untuk aplikasi authenticator" width={208} height={208} className="rounded-lg border border-slate-200 bg-white p-1 dark:border-slate-700" />
           ) : error && !secret ? null : (
-            <Spinner className="h-5 w-5 text-slate-400" />
+            <Spinner className="h-5 w-5 text-slate-500 dark:text-slate-400" />
           )}
           {secret && (
             <div className="flex items-center gap-1.5">

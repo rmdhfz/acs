@@ -11,7 +11,7 @@ import type { Device } from '../lib/types'
 const inputCls =
   'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:disabled:bg-slate-800/50'
 const labelCls = 'mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300'
-const hintCls = 'mt-1 text-xs text-slate-400 dark:text-slate-500'
+const hintCls = 'mt-1 text-xs text-slate-500 dark:text-slate-400'
 
 interface Props {
   mode: 'create' | 'edit'
@@ -147,14 +147,14 @@ export function DeviceFormModal({ mode, device, onClose, onSaved }: Props) {
         {isEdit && device && (
           <div className="grid grid-cols-2 gap-3 rounded-lg bg-slate-50 px-3.5 py-2.5 text-xs dark:bg-slate-800/50">
             <div>
-              <span className="text-slate-400">OUI</span>
+              <span className="text-slate-500 dark:text-slate-400">OUI</span>
               <p className="font-mono text-slate-700 dark:text-slate-300">{device.oui ?? '—'}</p>
             </div>
             <div>
-              <span className="text-slate-400">Serial number</span>
+              <span className="text-slate-500 dark:text-slate-400">Serial number</span>
               <p className="break-all font-mono text-slate-700 dark:text-slate-300">{device.serial_number}</p>
             </div>
-            <p className="col-span-2 text-slate-400">OUI dan serial adalah identitas TR-069 dan tidak dapat diubah. Salah daftar? Hapus perangkat lalu daftarkan ulang.</p>
+            <p className="col-span-2 text-slate-500 dark:text-slate-400">OUI dan serial adalah identitas TR-069 dan tidak dapat diubah. Salah daftar? Hapus perangkat lalu daftarkan ulang.</p>
           </div>
         )}
 
@@ -272,7 +272,7 @@ export function DeviceFormModal({ mode, device, onClose, onSaved }: Props) {
           <textarea id="df-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} maxLength={255} placeholder="mis. ONT lantai 2 ruang server, pelanggan korporat" className={inputCls} />
           <div className="flex justify-between">
             {fe('notes') ?? <span />}
-            <span className="mt-1 text-xs text-slate-400">{notes.length}/255</span>
+            <span className="mt-1 text-xs text-slate-500 dark:text-slate-400">{notes.length}/255</span>
           </div>
         </div>
 
@@ -297,7 +297,7 @@ export function DeviceFormModal({ mode, device, onClose, onSaved }: Props) {
         <details className="group rounded-lg border border-slate-200 dark:border-slate-700">
           <summary className="flex cursor-pointer list-none items-center justify-between px-3.5 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-300">
             Connection Request (opsional)
-            <ChevronDown className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180" />
+            <ChevronDown className="h-4 w-4 text-slate-500 transition-transform group-open:rotate-180 dark:text-slate-400" />
           </summary>
           <div className="space-y-4 border-t border-slate-200 px-3.5 py-3.5 dark:border-slate-700">
             <div>

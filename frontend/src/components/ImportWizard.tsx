@@ -268,7 +268,7 @@ export function ImportWizard({ adapter, title, onClose, onChanged }: ImportWizar
                 e.target.value = ''
               }}
             />
-            <p className="mt-3 text-[11px] text-slate-400 dark:text-slate-500">
+            <p className="mt-3 text-[11px] text-slate-500 dark:text-slate-400">
               Maks. 5 MB / 5.000 baris. Dari Excel: Simpan sebagai &ldquo;CSV UTF-8&rdquo; (pemisah koma atau titik-koma otomatis dikenali).
             </p>
           </div>
@@ -290,10 +290,10 @@ export function ImportWizard({ adapter, title, onClose, onChanged }: ImportWizar
                 <Download className="h-4 w-4" /> Unduh template CSV
               </button>
             </div>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Pratinjau data impor (dapat digulir)">
               <table className="w-full text-left text-xs">
                 <thead>
-                  <tr className="border-b border-slate-100 uppercase tracking-wide text-slate-400 dark:border-slate-800">
+                  <tr className="border-b border-slate-100 uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:text-slate-400">
                     <th className="px-4 py-2 font-medium">Kolom</th>
                     <th className="px-4 py-2 font-medium">Wajib</th>
                     <th className="px-4 py-2 font-medium">Contoh</th>
@@ -306,7 +306,7 @@ export function ImportWizard({ adapter, title, onClose, onChanged }: ImportWizar
                     .map((c) => (
                     <tr key={c.key}>
                       <td className="px-4 py-2 font-mono text-slate-800 dark:text-slate-200">{c.key}</td>
-                      <td className="px-4 py-2">{c.required ? <span className="font-semibold text-red-600 dark:text-red-400">ya</span> : <span className="text-slate-400">tidak</span>}</td>
+                      <td className="px-4 py-2">{c.required ? <span className="font-semibold text-red-600 dark:text-red-400">ya</span> : <span className="text-slate-500 dark:text-slate-400">tidak</span>}</td>
                       <td className="px-4 py-2 font-mono text-slate-500 dark:text-slate-400">{c.secret && c.example ? maskSecret(c.example) : c.example}</td>
                       <td className="px-4 py-2 text-slate-500 dark:text-slate-400">{c.hint}</td>
                     </tr>
@@ -346,7 +346,7 @@ export function ImportWizard({ adapter, title, onClose, onChanged }: ImportWizar
 
           {adapter.supportsUpdate && (
             <fieldset className="rounded-lg border border-slate-200 p-3 dark:border-slate-800" disabled={planning}>
-              <legend className="px-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">Jika data sudah ada</legend>
+              <legend className="px-1.5 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Jika data sudah ada</legend>
               <div className="flex flex-wrap gap-x-6 gap-y-2">
                 {(
                   [
@@ -431,7 +431,7 @@ export function ImportWizard({ adapter, title, onClose, onChanged }: ImportWizar
                         const M = ACTION_META[it.action]
                         return (
                           <tr key={it.rowNo}>
-                            <td className="px-3 py-2 font-mono text-xs text-slate-400">{it.rowNo}</td>
+                            <td className="px-3 py-2 font-mono text-xs text-slate-500 dark:text-slate-400">{it.rowNo}</td>
                             <td className="px-3 py-2">
                               <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${M.badge}`}>
                                 <M.icon className="h-3 w-3" /> {M.label}
@@ -444,7 +444,7 @@ export function ImportWizard({ adapter, title, onClose, onChanged }: ImportWizar
                       })}
                       {pageItems.length === 0 && (
                         <tr>
-                          <td colSpan={4} className="px-3 py-8 text-center text-sm text-slate-400">
+                          <td colSpan={4} className="px-3 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
                             Tidak ada baris untuk filter ini.
                           </td>
                         </tr>
@@ -505,7 +505,7 @@ export function ImportWizard({ adapter, title, onClose, onChanged }: ImportWizar
           <button type="button" onClick={() => abortRef.current?.abort()} className={btnGhost}>
             <X className="h-4 w-4" /> Hentikan
           </button>
-          <p className="text-xs text-slate-400">Menghentikan tidak membatalkan baris yang sudah berhasil; sisanya tidak diproses.</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">Menghentikan tidak membatalkan baris yang sudah berhasil; sisanya tidak diproses.</p>
         </div>
       )}
 
@@ -535,7 +535,7 @@ export function ImportWizard({ adapter, title, onClose, onChanged }: ImportWizar
                       .slice(0, 100)
                       .map((r) => (
                         <tr key={r.rowNo}>
-                          <td className="w-16 px-3 py-2 font-mono text-xs text-slate-400">{r.rowNo}</td>
+                          <td className="w-16 px-3 py-2 font-mono text-xs text-slate-500 dark:text-slate-400">{r.rowNo}</td>
                           <td className="px-3 py-2 font-medium text-slate-800 dark:text-slate-200">{r.label}</td>
                           <td className="px-3 py-2 text-xs text-red-600 dark:text-red-400">{r.error}</td>
                         </tr>

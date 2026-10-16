@@ -105,6 +105,7 @@ export function TasksPage() {
         />
         <select
           value={statusFilter}
+          aria-label="Filter status task"
           onChange={(e) => {
             setStatusFilter(e.target.value)
             setPage(1)
@@ -120,6 +121,7 @@ export function TasksPage() {
         </select>
         <select
           value={typeFilter}
+          aria-label="Filter tipe task"
           onChange={(e) => {
             setTypeFilter(e.target.value)
             setPage(1)
@@ -190,7 +192,7 @@ export function TasksPage() {
                                 e.stopPropagation()
                                 void handleCancel(t.id)
                               }}
-                              className="rounded-md p-1.5 text-slate-400 dark:text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600"
+                              className="rounded-md p-1.5 text-slate-500 dark:text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
                               title="Batalkan"
                             >
                               <X className="h-4 w-4" />
@@ -203,25 +205,25 @@ export function TasksPage() {
                           <td colSpan={7} className="px-5 py-4">
                             <dl className="grid grid-cols-2 gap-4 text-xs sm:grid-cols-4">
                               <div>
-                                <dt className="text-slate-400 dark:text-slate-500">Task UUID</dt>
+                                <dt className="text-slate-500 dark:text-slate-400">Task UUID</dt>
                                 <dd className="font-mono text-slate-700 dark:text-slate-300">{t.task_uuid}</dd>
                               </div>
                               <div>
-                                <dt className="text-slate-400 dark:text-slate-500">Terkirim</dt>
+                                <dt className="text-slate-500 dark:text-slate-400">Terkirim</dt>
                                 <dd className="text-slate-700 dark:text-slate-300">{formatDateTime(t.sent_at)}</dd>
                               </div>
                               <div>
-                                <dt className="text-slate-400 dark:text-slate-500">Selesai</dt>
+                                <dt className="text-slate-500 dark:text-slate-400">Selesai</dt>
                                 <dd className="text-slate-700 dark:text-slate-300">{formatDateTime(t.completed_at)}</dd>
                               </div>
                               <div>
-                                <dt className="text-slate-400 dark:text-slate-500">Error</dt>
+                                <dt className="text-slate-500 dark:text-slate-400">Error</dt>
                                 <dd className="text-red-600">{t.error_message ?? '-'}</dd>
                               </div>
                             </dl>
                             {formatJSONField(t.parameters) && (
                               <div className="mt-3">
-                                <p className="text-xs text-slate-400 dark:text-slate-500">Parameters</p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">Parameters</p>
                                 <pre className="mt-1 max-h-40 overflow-auto rounded-lg bg-slate-900 p-3 text-xs text-slate-200">
                                   {formatJSONField(t.parameters)}
                                 </pre>
@@ -244,6 +246,7 @@ export function TasksPage() {
                 <button
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page <= 1}
+                  aria-label="Halaman sebelumnya"
                   className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 dark:text-slate-400 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <ChevronLeft className="h-4 w-4" />
@@ -254,6 +257,7 @@ export function TasksPage() {
                 <button
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={page >= totalPages}
+                  aria-label="Halaman berikutnya"
                   className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 dark:text-slate-400 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <ChevronRight className="h-4 w-4" />

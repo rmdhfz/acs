@@ -28,14 +28,14 @@ export function NotificationBell() {
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-10 z-50 w-80 rounded-xl border border-slate-200 bg-white shadow-xl">
+          <div className="absolute right-0 top-10 z-50 w-80 rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-900">
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
               <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Notifikasi</p>
-              <span className="text-[11px] text-slate-400 dark:text-slate-500">polling tiap 5 detik</span>
+              <span className="text-[11px] text-slate-500 dark:text-slate-400">polling tiap 5 detik</span>
             </div>
             <div className="max-h-80 overflow-y-auto">
               {notifications.length === 0 ? (
-                <p className="px-4 py-8 text-center text-sm text-slate-400 dark:text-slate-500">Belum ada notifikasi</p>
+                <p className="px-4 py-8 text-center text-sm text-slate-500 dark:text-slate-400">Belum ada notifikasi</p>
               ) : (
                 <ul className="divide-y divide-slate-100">
                   {notifications.map((n) => (
@@ -47,7 +47,7 @@ export function NotificationBell() {
                       )}
                       <div className="min-w-0 flex-1">
                         <p className="text-sm text-slate-700 dark:text-slate-300">{n.message}</p>
-                        <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">{formatRelativeTime(new Date(n.createdAt).toISOString())}</p>
+                        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{formatRelativeTime(new Date(n.createdAt).toISOString())}</p>
                       </div>
                       <button
                         onClick={() => dismiss(n.id)}

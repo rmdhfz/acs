@@ -69,7 +69,7 @@ export function TenantOnboardingWizard() {
                     ? 'bg-emerald-500 text-white'
                     : step === s.key
                       ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
-                      : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
+                      : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
                 }`}
               >
                 {step > s.key ? <Check className="h-4 w-4" /> : s.key}
@@ -138,7 +138,7 @@ function TenantStep({ onCreated }: { onCreated: (tenant: Tenant) => void }) {
   return (
     <StepCard>
       <div className="mb-4 flex items-center gap-2.5">
-        <Building2 className="h-5 w-5 text-slate-400" />
+        <Building2 className="h-5 w-5 text-slate-500 dark:text-slate-400" />
         <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Langkah 1 — Data Tenant</h2>
       </div>
       <form onSubmit={handleSubmit} className="space-y-3">
@@ -212,7 +212,7 @@ function AdminUserStep({ tenant, onCreated, onBack }: { tenant: Tenant; onCreate
   return (
     <StepCard>
       <div className="mb-4 flex items-center gap-2.5">
-        <UserPlus className="h-5 w-5 text-slate-400" />
+        <UserPlus className="h-5 w-5 text-slate-500 dark:text-slate-400" />
         <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
           Langkah 2 — Admin Pertama utk <span className="font-mono">{tenant.name}</span>
         </h2>
@@ -283,11 +283,11 @@ function DoneStep({ tenant, adminUser }: { tenant: Tenant; adminUser: User | nul
       <p className="mb-3 text-sm font-medium text-slate-700 dark:text-slate-300">Langkah lanjutan yang disarankan (opsional):</p>
       <div className="space-y-2">
         <button onClick={() => navigate('/provisioning')} className={`${secondaryBtnCls} w-full justify-start gap-3`}>
-          <FileSliders className="h-4 w-4 text-slate-400" />
+          <FileSliders className="h-4 w-4 text-slate-500 dark:text-slate-400" />
           Buat Provisioning Profile & Zero-Touch Rule default
         </button>
         <button onClick={() => navigate('/catalog')} className={`${secondaryBtnCls} w-full justify-start gap-3`}>
-          <Cable className="h-4 w-4 text-slate-400" />
+          <Cable className="h-4 w-4 text-slate-500 dark:text-slate-400" />
           Cek Catalog Vendor (pastikan vendor CPE tenant ini sudah terdaftar)
         </button>
       </div>

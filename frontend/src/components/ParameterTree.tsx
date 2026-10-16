@@ -106,7 +106,7 @@ function TreeNodeView({ node, depth = 0, onRefreshNode, onEditNode, onAddObject,
           )}
           <span className="truncate" title={node.fullPath}>{node.name}</span>
         </div>
-        <div className="flex-1 text-sm font-mono text-slate-400 truncate pl-4 border-l border-slate-700 flex items-center justify-between">
+        <div className="flex-1 text-sm font-mono text-slate-500 truncate pl-4 border-l border-slate-700 flex items-center justify-between dark:text-slate-400">
           {isEditing ? (
             <div className="flex items-center gap-2 w-full pr-2">
               {/* Field edit inline ini tidak punya label terpisah karena muncul
@@ -140,10 +140,10 @@ function TreeNodeView({ node, depth = 0, onRefreshNode, onEditNode, onAddObject,
               <span className="truncate">{node.param?.parameter_value ?? <span className="text-slate-600 italic">null</span>}</span>
               {canEdit && (
                 <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 pr-2 transition-opacity">
-                  <button onClick={() => onRefreshNode(node.fullPath, true)} className="p-1 text-slate-400 hover:text-blue-400" title="Refresh Value">
+                  <button onClick={() => onRefreshNode(node.fullPath, true)} className="p-1 text-slate-500 hover:text-blue-400 dark:text-slate-400" title="Refresh Value">
                     <RefreshCw className="w-3.5 h-3.5" />
                   </button>
-                  <button onClick={() => { setIsEditing(true); setEditVal(node.param?.parameter_value ?? '') }} className="p-1 text-slate-400 hover:text-orange-400" title="Edit Value">
+                  <button onClick={() => { setIsEditing(true); setEditVal(node.param?.parameter_value ?? '') }} className="p-1 text-slate-500 hover:text-orange-400 dark:text-slate-400" title="Edit Value">
                     <Edit2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -163,9 +163,9 @@ function TreeNodeView({ node, depth = 0, onRefreshNode, onEditNode, onAddObject,
         onClick={() => setIsOpen(!isOpen)}
       >
         {isOpen ? (
-          <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+          <ChevronDown className="w-4 h-4 text-slate-500 shrink-0 dark:text-slate-400" />
         ) : (
-          <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+          <ChevronRight className="w-4 h-4 text-slate-500 shrink-0 dark:text-slate-400" />
         )}
         
         {isOpen ? (
@@ -180,14 +180,14 @@ function TreeNodeView({ node, depth = 0, onRefreshNode, onEditNode, onAddObject,
 
         {canEdit && node.name !== 'Root' && (
           <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 pr-2 transition-opacity" onClick={(e) => e.stopPropagation()}>
-            <button onClick={() => onRefreshNode(node.fullPath, false)} className="p-1 text-slate-400 hover:text-blue-400" title="Refresh Children">
+            <button onClick={() => onRefreshNode(node.fullPath, false)} className="p-1 text-slate-500 hover:text-blue-400 dark:text-slate-400" title="Refresh Children">
               <RefreshCw className="w-3.5 h-3.5" />
             </button>
-            <button onClick={() => onAddObject(node.fullPath)} className="p-1 text-slate-400 hover:text-emerald-400" title="Add Object">
+            <button onClick={() => onAddObject(node.fullPath)} className="p-1 text-slate-500 hover:text-emerald-400 dark:text-slate-400" title="Add Object">
               <Plus className="w-3.5 h-3.5" />
             </button>
             {isInstance && (
-              <button onClick={() => onDeleteObject(node.fullPath)} className="p-1 text-slate-400 hover:text-red-400" title="Delete Object">
+              <button onClick={() => onDeleteObject(node.fullPath)} className="p-1 text-slate-500 hover:text-red-400 dark:text-slate-400" title="Delete Object">
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
             )}
@@ -312,7 +312,7 @@ export function ParameterTree({ deviceId, parameters, onRefresh, isLoading }: Pa
     <div className="flex flex-col h-[600px] border border-slate-700 rounded-xl overflow-hidden bg-slate-900">
       <div className="flex items-center justify-between p-3 border-b border-slate-700 bg-slate-800/50">
         <div className="flex-1 max-w-md relative">
-          <Settings2 className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Settings2 className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 dark:text-slate-400" />
           <input
             type="text"
             placeholder="Cari parameter atau nilai..."
@@ -341,7 +341,7 @@ export function ParameterTree({ deviceId, parameters, onRefresh, isLoading }: Pa
 
       <div className="flex-1 overflow-auto p-2">
         {Object.keys(filteredTree.children).length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-slate-500">
+          <div className="flex flex-col items-center justify-center h-full text-slate-500 dark:text-slate-400">
             <FolderOpen className="w-12 h-12 mb-3 text-slate-600" />
             <p>Tidak ada parameter yang ditemukan.</p>
           </div>

@@ -87,7 +87,7 @@ export function ExportMenu<T>({ filename, columns, getRows, disabled, hint, labe
       >
         {busy ? <Spinner className="h-4 w-4" /> : <Download className="h-4 w-4" />}
         {busy ? (progress ? `Mengambil ${progress.done.toLocaleString('id-ID')}/${progress.total.toLocaleString('id-ID')}…` : 'Menyiapkan…') : label}
-        {!busy && <ChevronDown className="h-3.5 w-3.5 text-slate-400" />}
+        {!busy && <ChevronDown className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />}
       </button>
       {open && (
         <div role="menu" className="absolute right-0 z-30 mt-1.5 w-56 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
@@ -105,7 +105,7 @@ export function ExportMenu<T>({ filename, columns, getRows, disabled, hint, labe
           >
             <FileJson className="h-4 w-4 text-amber-600" /> JSON
           </button>
-          {hint && <p className="border-t border-slate-100 px-3.5 py-2 text-[11px] leading-snug text-slate-400 dark:border-slate-800 dark:text-slate-500">{hint}</p>}
+          {hint && <p className="border-t border-slate-100 px-3.5 py-2 text-[11px] leading-snug text-slate-500 dark:border-slate-800 dark:text-slate-400">{hint}</p>}
         </div>
       )}
     </div>

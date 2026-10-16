@@ -33,7 +33,7 @@ export function DeviceMap({ devices }: DeviceMapProps) {
 
   if (geoDevices.length === 0) {
     return (
-      <div className="h-[400px] w-full rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center text-slate-400">
+      <div className="h-[400px] w-full rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center text-slate-500 dark:text-slate-400">
         Belum ada perangkat dengan koordinat (latitude/longitude)
       </div>
     )
@@ -54,7 +54,7 @@ export function DeviceMap({ devices }: DeviceMapProps) {
                 <div className="text-sm">
                   <div className="font-semibold mb-1">{d.serial_number}</div>
                   <div className="mb-2"><StatusBadge code={status?.code} label={status?.name || '-'} /></div>
-                  <div className="text-xs text-slate-500 mb-2">{d.ip_address}</div>
+                  <div className="text-xs text-slate-500 mb-2 dark:text-slate-400">{d.ip_address}</div>
                   <Link to={`/devices/${d.id}`} className="text-blue-600 hover:underline text-xs">Lihat Detail &rarr;</Link>
                 </div>
               </Popup>

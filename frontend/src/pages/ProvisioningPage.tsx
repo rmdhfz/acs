@@ -150,7 +150,7 @@ function ProfilesTab({ canManage }: { canManage: boolean }) {
                 <tr key={p.id} onClick={() => canManage && setModalId(p.id)} className={canManage ? 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50' : ''}>
                   <td className="px-5 py-3.5">
                     <p className="font-medium text-slate-900 dark:text-slate-100">{p.name}</p>
-                    {p.description && <p className="text-xs text-slate-400 dark:text-slate-500">{p.description}</p>}
+                    {p.description && <p className="text-xs text-slate-500 dark:text-slate-400">{p.description}</p>}
                   </td>
                   <td className="px-5 py-3.5 text-slate-600 dark:text-slate-400">
                     {p.vendor_id ? vendors.find((v) => v.id === p.vendor_id)?.name ?? `#${p.vendor_id}` : 'Semua vendor'}
@@ -168,7 +168,8 @@ function ProfilesTab({ canManage }: { canManage: boolean }) {
                           e.stopPropagation()
                           void handleDelete(p.id, p.name)
                         }}
-                        className="rounded-md p-1.5 text-slate-400 dark:text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600"
+                        aria-label={`Hapus profil ${p.name}`}
+                        className="rounded-md p-1.5 text-slate-500 dark:text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -320,7 +321,7 @@ function ProfileModal({ id, onClose }: { id: number | undefined; onClose: () => 
                 + tambah parameter
               </button>
             </div>
-            <p className="mb-1.5 text-xs text-slate-400 dark:text-slate-500">
+            <p className="mb-1.5 text-xs text-slate-500 dark:text-slate-400">
               {vendorId
                 ? mappings && mappings.length > 0
                   ? `Ketik untuk cari logical key vendor ini (${mappings.length} tersedia) — raw TR-069 path tetap bisa diketik manual.`
@@ -351,17 +352,17 @@ function ProfileModal({ id, onClose }: { id: number | undefined; onClose: () => 
                         onChange={(e) => updateParam(i, { parameter_value: e.target.value })}
                         className={`${inputCls} flex-1 font-mono text-xs`}
                       />
-                      <button type="button" onClick={() => removeParam(i)} className="shrink-0 rounded-md p-2 text-slate-400 dark:text-slate-500 hover:bg-red-50 hover:text-red-600">
+                      <button type="button" onClick={() => removeParam(i)} aria-label={`Hapus parameter #${i + 1}`} className="shrink-0 rounded-md p-2 text-slate-500 dark:text-slate-400 hover:bg-red-50 hover:text-red-600">
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
                     {matchedMapping && (
-                      <p className="mt-0.5 truncate pl-0.5 font-mono text-[11px] text-slate-400 dark:text-slate-500">-&gt; {matchedMapping.tr069_path}</p>
+                      <p className="mt-0.5 truncate pl-0.5 font-mono text-[11px] text-slate-500 dark:text-slate-400">-&gt; {matchedMapping.tr069_path}</p>
                     )}
                   </div>
                 )
               })}
-              {params.length === 0 && <p className="text-xs text-slate-400 dark:text-slate-500">Belum ada parameter.</p>}
+              {params.length === 0 && <p className="text-xs text-slate-500 dark:text-slate-400">Belum ada parameter.</p>}
             </div>
           </div>
 
@@ -481,7 +482,7 @@ function ZTRulesTab({ canManage }: { canManage: boolean }) {
                               void handleDelete(r.id)
                             }}
                             aria-label={`Hapus rule #${r.id}`}
-                            className="rounded-md p-1.5 text-slate-400 dark:text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600"
+                            className="rounded-md p-1.5 text-slate-500 dark:text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
@@ -656,7 +657,7 @@ function ZTRuleModal({ id, onClose }: { id: number | undefined; onClose: () => v
               </option>
             ))}
           </select>
-          <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             <span className="font-medium">Saat Bootstrap</span>: perilaku lama, sekali seumur hidup device. <span className="font-medium">Setiap Inform</span>: pengawasan berkelanjutan — hati-hati memasangkan dengan aksi Reboot.
           </p>
         </div>

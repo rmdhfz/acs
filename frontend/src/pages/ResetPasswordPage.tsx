@@ -100,7 +100,7 @@ export function ResetPasswordPage() {
             {t('reset.newPassword')}
           </label>
           <div className="relative">
-            <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
             <input
               id="new-password"
               type={show ? 'text' : 'password'}
@@ -115,7 +115,7 @@ export function ResetPasswordPage() {
               onClick={() => setShow((v) => !v)}
               aria-label={show ? t('login.hidePassword') : t('login.showPassword')}
               aria-pressed={show}
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-slate-400 transition-colors hover:text-slate-600 dark:hover:text-slate-300"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-slate-500 transition-colors hover:text-slate-600 dark:hover:text-slate-300 dark:text-slate-400"
             >
               {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
@@ -128,7 +128,7 @@ export function ResetPasswordPage() {
             {t('reset.confirm')}
           </label>
           <div className="relative">
-            <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
             <input
               id="confirm-password"
               type={show ? 'text' : 'password'}
