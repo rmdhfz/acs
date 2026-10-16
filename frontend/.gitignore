@@ -29,3 +29,6 @@ dist-ssr
 
 # Hasil build SSR beranda (sementara)
 dist-ssr
+
+# Screenshot audit UI (npm run audit:ui)
+.ui-audit/

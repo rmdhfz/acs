@@ -65,6 +65,9 @@ jobs:
       - name: Lint (oxlint)
         run: npm run lint
 
+      - name: Tes (CSV + komponen Vitest)
+        run: npm test
+
       - name: Type-check + build
         run: npm run build
 
