@@ -58,6 +58,9 @@ type Router struct {
 	Presets        *preset.Service
 	SelfService    *selfservice.Service
 	WSHub          *ws.Hub
+	// WSAllowedOrigins = origin Console yang boleh membuka WebSocket (sama
+	// dengan ACS_CORS_ALLOW_ORIGINS).
+	WSAllowedOrigins []string
 }
 
 func (r *Router) Register(e *echo.Echo) {

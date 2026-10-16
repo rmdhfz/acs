@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
-import { getAuthToken } from './api'
+import { API_BASE, getAuthToken } from './api'
 import { useQueryClient } from '@tanstack/react-query'
 
 interface WSEvent {
@@ -19,6 +19,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeout = useRef<number | null>(null)
   const backoffRef = useRef(3000)
+  const tokenAtConnect = useRef<string | null>(null)
 
   useEffect(() => {
     const connect = () => {
@@ -29,22 +30,13 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         return
       }
 
-      // Gunakan WSS jika HTTPS, WS jika HTTP
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      // Fallback localhost jika VITE_API_BASE_URL mengarah ke API (misal http://localhost:18080/api/v1)
-      const host = import.meta.env.VITE_API_BASE_URL 
-        ? new URL(import.meta.env.VITE_API_BASE_URL as string).host 
-        : window.location.host
-        
-      const wsUrl = `${protocol}//${host}/api/v1/ws?token=${token}`
-      const ws = new WebSocket(wsUrl)
-      
-      // Catatan: Karena Websocket API bawaan browser tidak mendukung custom headers, 
-      // cookie atau token URL param digunakan. Karena kita pakai token auth di Bearer,
-      // ini bisa menyulitkan koneksi WS murni. Solusi alternatif adalah kita bisa mengirim 
-      // auth token pada message pertama, ATAU di backend menerima token via query params.
-      // Modifikasi ws_handler di backend untuk mengekstrak token dari query param diperlukan
-      // jika `getAuthToken()` digunakan. 
+      // URL WebSocket diturunkan dari alamat API yang sama dengan REST (http→ws,
+      // https→wss). Peramban tidak bisa mengirim header Authorization pada
+      // WebSocket, jadi token ditawarkan sebagai subprotocol ("acs.bearer", token);
+      // dengan begitu token tidak muncul di URL/access log.
+      const wsUrl = API_BASE.replace(/^http/i, 'ws').replace(/\/+$/, '') + '/ws'
+      const ws = new WebSocket(wsUrl, ['acs.bearer', token])
+      tokenAtConnect.current = token
 
       ws.onopen = () => {
         setConnected(true)
@@ -98,7 +90,14 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     // The provider should ideally be wrapped inside AuthProvider so token is available
     connect()
 
+    // Token berubah (login ulang / logout / ganti password) → tutup koneksi lama;
+    // onclose menyambung kembali dengan token terbaru (atau menunggu login).
+    const tokenWatch = window.setInterval(() => {
+      if (wsRef.current && tokenAtConnect.current !== getAuthToken()) wsRef.current.close()
+    }, 10000)
+
     return () => {
+      window.clearInterval(tokenWatch)
       if (reconnectTimeout.current) clearTimeout(reconnectTimeout.current)
       if (wsRef.current) wsRef.current.close()
     }

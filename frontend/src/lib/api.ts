@@ -1,4 +1,4 @@
-const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:18080/api/v1'
+export const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:18080/api/v1'
 
 const TOKEN_STORAGE_KEY = 'acs_token'
 

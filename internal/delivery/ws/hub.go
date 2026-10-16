@@ -63,7 +63,8 @@ func (h *Hub) Run() {
 			}
 			h.mu.Unlock()
 		case message := <-h.Broadcast:
-			h.mu.RLock()
+			// Lock penuh (bukan RLock): klien lambat di-delete dari map di sini.
+			h.mu.Lock()
 			for client := range h.Clients {
 				select {
 				case client.Send <- message:
@@ -72,7 +73,7 @@ func (h *Hub) Run() {
 					delete(h.Clients, client)
 				}
 			}
-			h.mu.RUnlock()
+			h.mu.Unlock()
 		}
 	}
 }

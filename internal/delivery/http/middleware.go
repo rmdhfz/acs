@@ -20,11 +20,10 @@ const actorContextKey = "actor"
 func AuthMiddleware(authSvc *auth.Service) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {
-			h := c.Request().Header.Get("Authorization")
-			if h == "" || !strings.HasPrefix(h, "Bearer ") {
+			tokenStr := bearerFromRequest(c.Request())
+			if tokenStr == "" {
 				return echo.NewHTTPError(http.StatusUnauthorized, "missing bearer token")
 			}
-			tokenStr := strings.TrimPrefix(h, "Bearer ")
 
 			// ResolveActor menyatukan parsing JWT/API token DAN cek tenant aktif
 			// (auth.ErrTenantInactive) -- lihat komentar lengkap di
@@ -55,6 +54,40 @@ func AuthMiddleware(authSvc *auth.Service) echo.MiddlewareFunc {
 			return next(c)
 		}
 	}
+}
+
+// wsBearerProtocol adalah penanda subprotocol WebSocket: peramban tidak bisa
+// mengirim header Authorization pada new WebSocket(), jadi klien menawarkan
+// ["acs.bearer", "<token>"] lewat Sec-WebSocket-Protocol. Dibanding query
+// string, token di header ini tidak masuk access log/riwayat/Referer.
+const wsBearerProtocol = "acs.bearer"
+
+// bearerFromRequest mengambil token dari header Authorization; khusus
+// permintaan upgrade WebSocket juga dari Sec-WebSocket-Protocol. Kosong = tidak ada.
+func bearerFromRequest(r *http.Request) string {
+	if h := r.Header.Get("Authorization"); h != "" {
+		if strings.HasPrefix(h, "Bearer ") {
+			return strings.TrimPrefix(h, "Bearer ")
+		}
+		return ""
+	}
+	if !strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+		return ""
+	}
+	var offered []string
+	for _, v := range r.Header.Values("Sec-WebSocket-Protocol") {
+		for _, p := range strings.Split(v, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				offered = append(offered, p)
+			}
+		}
+	}
+	for i, p := range offered {
+		if p == wsBearerProtocol && i+1 < len(offered) {
+			return offered[i+1]
+		}
+	}
+	return ""
 }
 
 func ActorFrom(c *echo.Context) domain.Actor {

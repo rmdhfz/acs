@@ -237,6 +237,8 @@ func main() {
 		Tags:           tagSvc, Presets: presetSvc,
 		SelfService: selfServiceSvc,
 		WSHub:       wsHub,
+
+		WSAllowedOrigins: cfg.CORSAllowOrigins,
 	}
 	router.Register(restEcho)
 
