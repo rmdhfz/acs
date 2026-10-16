@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -295,6 +296,11 @@ const (
 	// setiap kali, sehingga task ditandai FAILED segera (task.Service.
 	// FailPermanently), TIDAK lewat siklus max_retries seperti fault lain.
 	FaultCodeInvalidParameterName = "9005"
+
+	// FaultCodeACSBuild — kode INTERNAL ACS (bukan dari spec TR-069): task tidak
+	// bisa dibangun menjadi RPC (tipe belum didukung / parameters rusak). Retry
+	// pasti percuma -> FAILED permanen, supaya antrean device tidak tersangkut.
+	FaultCodeACSBuild = "ACS-BUILD"
 	// FaultCodeInvalidArguments — 9003: pada task GET_PARAMETER_VALUES,
 	// umumnya berarti CPE menolak krn ParameterNames terlalu panjang (kuirk
 	// umum lintas vendor, bukan satu vendor spesifik). Ditangani dgn
@@ -303,3 +309,27 @@ const (
 	// Untuk task type lain, 9003 tetap lewat alur retry generik biasa.
 	FaultCodeInvalidArguments = "9003"
 )
+
+// NormalizeXSDType memetakan atribut xsi:type CPE (mis. "xsd:unsignedInt",
+// "xsd:boolean") ke kode ref_parameter_types (string, int, unsignedInt, boolean,
+// dateTime, base64). Tipe tak dikenal/kosong -> "" (pemanggil memakai string).
+func NormalizeXSDType(t string) string {
+	if i := strings.LastIndex(t, ":"); i >= 0 {
+		t = t[i+1:]
+	}
+	switch strings.ToLower(strings.TrimSpace(t)) {
+	case "string":
+		return "string"
+	case "int", "integer":
+		return "int"
+	case "unsignedint":
+		return "unsignedInt"
+	case "boolean":
+		return "boolean"
+	case "datetime":
+		return "dateTime"
+	case "base64", "base64binary":
+		return "base64"
+	}
+	return ""
+}

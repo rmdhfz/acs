@@ -144,6 +144,10 @@ func (r *engTasks) MarkFailed(_ context.Context, id, statusID uint64, msg string
 	r.byID[id].ErrorMessage = &msg
 	return nil
 }
+func (r *engTasks) Reschedule(_ context.Context, id uint64, at time.Time) error {
+	r.byID[id].ScheduledAt = &at
+	return nil
+}
 func (r *engTasks) IncrementRetry(_ context.Context, id uint64) error {
 	r.byID[id].RetryCount++
 	r.retries[id]++
@@ -321,6 +325,23 @@ func TestHandleRPCResponse_Normal(t *testing.T) {
 		}
 		if tk := r.tasks.byID[1]; tk.TaskStatusID != stCompleted || string(tk.Response) != `{"Status":0}` {
 			t.Fatalf("%+v", tk)
+		}
+	})
+	t.Run("SetParameterValues sukses mencatat nilai yang diterapkan ke device_parameters", func(t *testing.T) {
+		r := newEngRig()
+		tk := r.addTask(1, tySetPV, stSent, 3)
+		tk.Parameters = domain.JSONRawMessage(`{"values":{"A.B":"baru","C.D":"2"}}`)
+		if err := r.svc.HandleRPCResponse(ctx, RPCResponse{SessionToken: sessTok, RawResponse: []byte(`{"Status":0}`)}); err != nil {
+			t.Fatal(err)
+		}
+		got := map[string]string{}
+		for _, p := range r.params.upserted {
+			if p.ParameterValue != nil {
+				got[p.ParameterName] = *p.ParameterValue
+			}
+		}
+		if len(got) != 2 || got["A.B"] != "baru" || got["C.D"] != "2" {
+			t.Fatalf("nilai yang diterapkan tidak tercatat: %v", got)
 		}
 	})
 	t.Run("nilai parameter disimpan ke device_parameters", func(t *testing.T) {

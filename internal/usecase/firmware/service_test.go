@@ -461,27 +461,25 @@ func TestUploadFirmware_PropagatesStorageUploadError(t *testing.T) {
 	}
 }
 
-func TestScheduleUpgrade_PropagatesPresignError(t *testing.T) {
+// URL presigned dibuat saat RPC Download dikirim (delivery/cwmp), BUKAN saat dijadwalkan:
+// error presign tidak boleh menggagalkan penjadwalan, dan task hanya membawa object key.
+func TestScheduleUpgrade_TidakMemanggilPresignSaatEnqueue(t *testing.T) {
 	tenantID := uint64(5)
 	firmware := &domain.FirmwareFile{ID: 2, StorageKey: "firmware/1/abc_image.bin", Version: "2.0.0", FileName: "image.bin"}
 	files := &fakeFirmwareFileRepo{byID: map[uint64]*domain.FirmwareFile{2: firmware}}
 	storage := newFakeObjectStorage()
 	storage.objects[firmware.StorageKey] = []byte("content")
-	storage.presignErr = errors.New("minio: object tidak ditemukan di bucket")
+	storage.presignErr = errors.New("minio: tidak dipanggil saat enqueue")
 
 	svc, jobs, devices, tasks, _ := newTestService(files, storage)
 	devices.dev = &domain.Device{ID: 7, TenantID: &tenantID}
 
 	actor := domain.Actor{UserID: 1, TenantID: &tenantID, Roles: []string{domain.RoleAdmin}}
-	_, err := svc.ScheduleUpgrade(context.Background(), actor, 7, 2, nil)
-	if err == nil {
-		t.Fatal("ScheduleUpgrade() error = nil, want error dari PresignedGetURL")
+	if _, err := svc.ScheduleUpgrade(context.Background(), actor, 7, 2, nil); err != nil {
+		t.Fatalf("ScheduleUpgrade() error = %v; presign tidak boleh dipanggil saat enqueue", err)
 	}
-	if jobs.created != nil {
-		t.Fatalf("job upgrade tidak seharusnya dibuat kalau presigned URL gagal digenerate (state setengah jadi tanpa URL valid): %+v", jobs.created)
-	}
-	if tasks.lastInput.DeviceID != 0 {
-		t.Fatalf("task Download tidak seharusnya dibuat kalau presigned URL gagal digenerate")
+	if jobs.created == nil || tasks.lastInput.DeviceID != 7 {
+		t.Fatalf("job & task Download harus dibuat (job=%v)", jobs.created)
 	}
 }
 
@@ -503,9 +501,13 @@ func TestScheduleUpgrade_UsesPresignedURLFromObjectStorage(t *testing.T) {
 	if job == nil || jobs.created == nil {
 		t.Fatal("job tidak dibuat")
 	}
-	gotURL, _ := tasks.lastInput.Parameters["url"].(string)
-	if !strings.HasPrefix(gotURL, "https://minio.local/"+firmware.StorageKey) {
-		t.Fatalf("url task Download = %q, want presigned URL dari object storage", gotURL)
+	// URL presigned TIDAK dibuat saat enqueue (bisa kedaluwarsa sebelum task
+	// dikirim); task hanya membawa object key, URL dibuat saat RPC dikirim.
+	if got, _ := tasks.lastInput.Parameters[domain.TaskParamStorageKey].(string); got != firmware.StorageKey {
+		t.Fatalf("storage_key task Download = %q, want %q", got, firmware.StorageKey)
+	}
+	if _, has := tasks.lastInput.Parameters["url"]; has {
+		t.Fatal("task Download tidak boleh membawa url presigned saat enqueue")
 	}
 }
 

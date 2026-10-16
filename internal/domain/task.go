@@ -111,6 +111,9 @@ type TaskRepository interface {
 	MarkFailed(ctx context.Context, id uint64, statusID uint64, errMsg string) error
 	SetErrorMessage(ctx context.Context, id uint64, errMsg string) error
 	IncrementRetry(ctx context.Context, id uint64) error
+	// Reschedule menunda task hingga `at` (backoff retry): task PENDING dengan
+	// scheduled_at di masa depan tidak diambil NextRequest sebelum waktunya.
+	Reschedule(ctx context.Context, id uint64, at time.Time) error
 	Cancel(ctx context.Context, id uint64, updatedBy *uint64) error
 }
 
@@ -138,6 +141,13 @@ type TaskEnqueuer interface {
 	// raw path). task.Service sudah mengimplementasikannya.
 	ResolveParameterPath(ctx context.Context, deviceID uint64, key string) (string, error)
 }
+
+// TaskParamStorageKey — kunci parameters task DOWNLOAD yang berisi object key di
+// object storage. URL presigned dibuat SAAT RPC dikirim ke CPE (delivery/cwmp),
+// bukan saat task dibuat: task bisa menunggu berjam-jam (CPE offline, rollout
+// bertahap, scheduled_at) sehingga URL yang dibuat saat enqueue sudah kedaluwarsa.
+// Hanya dibuat oleh usecase internal (firmware, push file); API generik menolaknya.
+const TaskParamStorageKey = "storage_key"
 
 // CreateTaskInput adalah payload umum pembuatan task, didefinisikan di domain
 // (bukan di usecase/task) agar usecase lain (firmware, diagnostics) bisa

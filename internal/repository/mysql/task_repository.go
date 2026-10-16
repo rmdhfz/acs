@@ -270,6 +270,11 @@ func (r *taskRepository) IncrementRetry(ctx context.Context, id uint64) error {
 	return translateErr(err)
 }
 
+func (r *taskRepository) Reschedule(ctx context.Context, id uint64, at time.Time) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE tasks SET scheduled_at = ? WHERE id = ?`, at, id)
+	return translateErr(err)
+}
+
 func (r *taskRepository) Cancel(ctx context.Context, id uint64, updatedBy *uint64) error {
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE tasks t JOIN ref_task_status s ON s.code = ? SET t.task_status_id = s.id, t.updated_by = ? WHERE t.id = ?`,

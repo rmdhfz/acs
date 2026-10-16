@@ -30,6 +30,8 @@ type fakeTaskRepo struct {
 	// FailPermanently), terpisah dari statusHistory/lastErrorMessage yang
 	// mencatat jalur failOrRetry (SetErrorMessage+UpdateStatus terpisah).
 	markFailedCalls []markFailedCall
+	// rescheduled — waktu backoff yang dipasang failOrRetry saat task kembali PENDING.
+	rescheduled []time.Time
 }
 
 type markFailedCall struct {
@@ -92,6 +94,10 @@ func (f *fakeTaskRepo) SetErrorMessage(_ context.Context, _ uint64, msg string) 
 }
 func (f *fakeTaskRepo) IncrementRetry(context.Context, uint64) error {
 	f.retryCount++
+	return nil
+}
+func (f *fakeTaskRepo) Reschedule(_ context.Context, _ uint64, at time.Time) error {
+	f.rescheduled = append(f.rescheduled, at)
 	return nil
 }
 func (f *fakeTaskRepo) Cancel(context.Context, uint64, *uint64) error { return nil }
@@ -362,7 +368,27 @@ func TestFailOrRetry(t *testing.T) {
 			if repo.lastErrorMessage == "" {
 				t.Errorf("error_message tidak tersimpan")
 			}
+			// Backoff: hanya task yang kembali PENDING dijadwalkan ulang ke masa depan.
+			if tc.wantFinalStatus == pendingStatusID {
+				if len(repo.rescheduled) != 1 || time.Until(repo.rescheduled[0]) < 30*time.Second {
+					t.Errorf("retry harus dijadwalkan ulang >= 30 dtk ke depan, got %v", repo.rescheduled)
+				}
+			} else if len(repo.rescheduled) != 0 {
+				t.Errorf("task final tidak boleh dijadwalkan ulang: %v", repo.rescheduled)
+			}
 		})
+	}
+}
+
+func TestRetryBackoff(t *testing.T) {
+	want := []time.Duration{time.Minute, 2 * time.Minute, 4 * time.Minute, 8 * time.Minute, 16 * time.Minute, 30 * time.Minute, 30 * time.Minute}
+	for i, w := range want {
+		if got := RetryBackoff(uint32(i + 1)); got != w {
+			t.Errorf("RetryBackoff(%d) = %v, want %v", i+1, got, w)
+		}
+	}
+	if RetryBackoff(1000) != 30*time.Minute {
+		t.Error("harus dibatasi 30 menit")
 	}
 }
 

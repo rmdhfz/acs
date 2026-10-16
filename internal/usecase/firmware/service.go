@@ -295,19 +295,17 @@ func (s *Service) scheduleUpgradeJob(ctx context.Context, actor domain.Actor, de
 	}
 
 	// Presigned URL MinIO LANGSUNG (bukan proxy lewat ACS) — keputusan
-	// produk yang sudah disepakati, lihat domain.ObjectStorage. Digenerate
-	// on-demand di sini (bukan disimpan) karena masa berlakunya pendek.
-	downloadURL, err := s.storage.PresignedGetURL(ctx, fw.StorageKey, presignedDownloadExpiry)
-	if err != nil {
-		return nil, fmt.Errorf("firmware: gagal membuat presigned URL: %w", err)
-	}
+	// produk yang sudah disepakati, lihat domain.ObjectStorage. URL dibuat
+	// SAAT RPC Download dikirim (delivery/cwmp), bukan di sini: task bisa
+	// menunggu lama sehingga URL yang dibuat sekarang kedaluwarsa. Task hanya
+	// membawa object key.
 	t, err := s.tasks.CreateTask(ctx, actor, domain.CreateTaskInput{
 		DeviceID: deviceID,
 		TaskType: domain.TaskTypeDownload,
 		Priority: 3,
 		Parameters: map[string]interface{}{
 			"file_type":        "1 Firmware Upgrade Image",
-			"url":              downloadURL,
+			domain.TaskParamStorageKey: fw.StorageKey,
 			"checksum_sha256":  fw.ChecksumSHA256,
 			"target_file_name": fw.FileName,
 		},

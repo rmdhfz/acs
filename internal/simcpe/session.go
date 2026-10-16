@@ -143,6 +143,12 @@ func RunSession(ctx context.Context, hc *http.Client, d *Device, o SessionOpts) 
 				return fail("turn %d: parse envelope: %v", turn, err)
 			}
 			idle = env.IsEmpty()
+			// ACS menjawab TransferComplete dengan TransferCompleteResponse
+			// (balasan, bukan RPC): lanjutkan dengan POST kosong.
+			if env.Body.TransferCompleteResponse != nil {
+				outBody = nil
+				continue
+			}
 		}
 
 		if idle {

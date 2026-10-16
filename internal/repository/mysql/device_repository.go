@@ -267,7 +267,7 @@ func (r *deviceParameterRepository) Upsert(ctx context.Context, p *domain.Device
 	const q = `INSERT INTO device_parameters (device_id, parameter_name, parameter_value, parameter_type_id, writable)
 		VALUES (:device_id, :parameter_name, :parameter_value, :parameter_type_id, :writable)
 		ON DUPLICATE KEY UPDATE parameter_value = VALUES(parameter_value),
-			parameter_type_id = VALUES(parameter_type_id), writable = VALUES(writable)`
+			parameter_type_id = COALESCE(VALUES(parameter_type_id), parameter_type_id), writable = VALUES(writable)`
 	_, err := r.db.NamedExecContext(ctx, q, p)
 	return translateErr(err)
 }
@@ -315,7 +315,7 @@ func upsertDeviceParameterChunk(ctx context.Context, tx *sqlx.Tx, chunk []domain
 	q := `INSERT INTO device_parameters (device_id, parameter_name, parameter_value, parameter_type_id, writable)
 		VALUES ` + strings.Join(placeholders, ",") + `
 		ON DUPLICATE KEY UPDATE parameter_value = VALUES(parameter_value),
-			parameter_type_id = VALUES(parameter_type_id), writable = VALUES(writable)`
+			parameter_type_id = COALESCE(VALUES(parameter_type_id), parameter_type_id), writable = VALUES(writable)`
 	_, err := tx.ExecContext(ctx, q, args...)
 	return translateErr(err)
 }

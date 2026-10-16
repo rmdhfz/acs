@@ -38,6 +38,44 @@ type SessionService interface {
 type Handler struct {
 	sessions SessionService
 	log      *slog.Logger
+	// storage dipakai menerbitkan URL presigned Download SAAT RPC dikirim.
+	storage domain.ObjectStorage
+}
+
+// downloadURLTTL — masa berlaku URL presigned Download sejak RPC dikirim; CPE
+// mengunduh segera setelah menerima RPC.
+const downloadURLTTL = time.Hour
+
+// WithStorage memasang object storage untuk task Download ber-storage_key.
+func (h *Handler) WithStorage(s domain.ObjectStorage) *Handler {
+	h.storage = s
+	return h
+}
+
+// resolveParameters mengganti storage_key pada parameters Download dengan URL
+// presigned yang baru dibuat; tipe lain dikembalikan apa adanya.
+func (h *Handler) resolveParameters(ctx context.Context, rpc *session.OutboundRPC) ([]byte, error) {
+	if rpc.TaskType != domain.TaskTypeDownload {
+		return rpc.Parameters, nil
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(rpc.Parameters, &m); err != nil {
+		return nil, err
+	}
+	key, _ := m[domain.TaskParamStorageKey].(string)
+	if key == "" {
+		return rpc.Parameters, nil
+	}
+	if h.storage == nil {
+		return nil, errors.New("object storage tidak terkonfigurasi untuk task Download")
+	}
+	u, err := h.storage.PresignedGetURL(ctx, key, downloadURLTTL)
+	if err != nil {
+		return nil, err
+	}
+	m["url"] = u
+	delete(m, domain.TaskParamStorageKey)
+	return json.Marshal(m)
 }
 
 // NewHandler — logger nil diperbolehkan (fallback slog.Default()), supaya
@@ -94,7 +132,28 @@ func (h *Handler) handle(c *echo.Context) error {
 		h.log.Error("cwmp: HandleRPCResponse gagal", "session_token", session.RedactToken(token), "error", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
+	// TransferComplete adalah RPC yang DIINISIASI CPE: TR-069 mewajibkan ACS
+	// membalasnya dengan TransferCompleteResponse pada HTTP response ini
+	// (bukan RPC berikutnya / 204). CPE lalu mengirim POST kosong yang ditangani
+	// next(). Tanpa balasan ini CPE nyata bisa mengulang TransferComplete
+	// berkali-kali atau menganggap sesi rusak.
+	if env.Body.TransferComplete != nil {
+		return writeTransferCompleteResponse(c, env)
+	}
 	return h.next(c, token)
+}
+
+// writeTransferCompleteResponse membalas TransferComplete dengan ID header
+// dan namespace yang sama seperti yang dipakai CPE.
+func writeTransferCompleteResponse(c *echo.Context, env *cwmpxml.Envelope) error {
+	ns := env.Body.Namespace()
+	id := ""
+	if env.Header != nil && env.Header.ID != nil {
+		id = env.Header.ID.Value
+	}
+	return writeEnvelope(c, cwmpxml.NewEnvelope(id, ns, cwmpxml.Body{
+		TransferCompleteResponse: &cwmpxml.TransferCompleteResponse{XMLName: cwmpxml.RPCName(ns, "TransferCompleteResponse")},
+	}))
 }
 
 func (h *Handler) handleInform(c *echo.Context, token string, env *cwmpxml.Envelope) error {
@@ -119,7 +178,7 @@ func (h *Handler) handleInform(c *echo.Context, token string, env *cwmpxml.Envel
 	}
 	params := make([]session.InformParameter, 0, len(inf.ParameterList.Values))
 	for _, p := range inf.ParameterList.Values {
-		params = append(params, session.InformParameter{Name: p.Name, Value: p.Value.Value})
+		params = append(params, session.InformParameter{Name: p.Name, Value: p.Value.Value, Type: p.Value.Type})
 	}
 
 	// Basic Auth wajib untuk setiap Inform (session baru maupun lanjutan) —
@@ -210,10 +269,23 @@ func (h *Handler) next(c *echo.Context, token string) error {
 		ns = cwmpxml.NSCWMP
 	}
 
-	body, err := BuildRequestBody(rpc.TaskType, rpc.TaskUUID, rpc.Parameters, ns)
+	params, err := h.resolveParameters(c.Request().Context(), rpc)
+	var body cwmpxml.Body
+	if err == nil {
+		body, err = BuildRequestBody(rpc.TaskType, rpc.TaskUUID, params, ns)
+	}
 	if err != nil {
 		h.log.Error("cwmp: BuildRequestBody gagal", "session_token", session.RedactToken(token), "task_type", rpc.TaskType, "error", err)
-		return c.NoContent(http.StatusInternalServerError)
+		// Task sudah berstatus SENT: tanpa ini ia tersangkut dan CPE menerima 500.
+		// Tandai FAILED permanen lalu lanjutkan sesi dengan task berikutnya / 204.
+		if ferr := h.sessions.HandleRPCResponse(c.Request().Context(), session.RPCResponse{
+			SessionToken: token,
+			Fault:        &session.FaultInfo{Code: domain.FaultCodeACSBuild, Message: "ACS gagal membangun RPC: " + err.Error()},
+		}); ferr != nil {
+			h.log.Error("cwmp: gagal menandai task tak-terbangun sebagai FAILED", "session_token", session.RedactToken(token), "error", ferr)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+		return h.next(c, token)
 	}
 	h.log.Debug("cwmp: mengirim RPC ke CPE", "session_token", session.RedactToken(token), "task_uuid", rpc.TaskUUID, "task_type", rpc.TaskType, "cwmp_namespace", ns)
 	return writeEnvelope(c, cwmpxml.NewEnvelope(rpc.TaskUUID, ns, body))
@@ -269,7 +341,7 @@ func buildRPCResponse(token string, env *cwmpxml.Envelope) session.RPCResponse {
 		nv := ParseResponseValues(b.GetParameterValuesResponse.ParameterList)
 		resp.ParameterValues = make([]session.InformParameter, 0, len(nv))
 		for _, v := range nv {
-			resp.ParameterValues = append(resp.ParameterValues, session.InformParameter{Name: v.Name, Value: v.Value})
+			resp.ParameterValues = append(resp.ParameterValues, session.InformParameter{Name: v.Name, Value: v.Value, Type: v.Type})
 		}
 		resp.RawResponse, _ = json.Marshal(b.GetParameterValuesResponse)
 		return resp

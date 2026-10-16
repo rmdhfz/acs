@@ -255,7 +255,7 @@ func main() {
 	// shared secret Inform CWMP sungguhan (bukan cuma anti CPE nakal/loop
 	// seperti sebelumnya), jadi juga jadi mitigasi brute-force kredensial.
 	cwmpEcho.Use(middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(5)))
-	deliverycwmp.NewHandler(sessionSvc, logger).Register(cwmpEcho, "/cwmp")
+	deliverycwmp.NewHandler(sessionSvc, logger).WithStorage(objStorage).Register(cwmpEcho, "/cwmp")
 
 	// TR-369 / USP WebSocket Handler (MTP)
 	uspSessionSvc := usp_session.NewService(logger)

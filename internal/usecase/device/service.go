@@ -730,11 +730,6 @@ func (s *Service) PushFile(ctx context.Context, actor domain.Actor, deviceID uin
 		return domain.ErrForbidden
 	}
 
-	downloadURL, err := s.storage.PresignedGetURL(ctx, f.StorageKey, 1*time.Hour)
-	if err != nil {
-		return fmt.Errorf("pushFile: gagal membuat presigned URL: %w", err)
-	}
-
 	tr069FileType := "3 Vendor Configuration File"
 	if f.FileType == domain.FileTypeFirmware {
 		tr069FileType = "1 Firmware Upgrade Image"
@@ -748,7 +743,7 @@ func (s *Service) PushFile(ctx context.Context, actor domain.Actor, deviceID uin
 		Priority: 5,
 		Parameters: map[string]interface{}{
 			"file_type":        tr069FileType,
-			"url":              downloadURL,
+			domain.TaskParamStorageKey: f.StorageKey, // URL presigned dibuat saat RPC dikirim
 			"target_file_name": f.FileName,
 			"file_size":        f.FileSizeBytes,
 		},

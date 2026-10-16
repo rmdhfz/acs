@@ -171,10 +171,29 @@ func TestParseResponseValues(t *testing.T) {
 		{Name: "a", Value: cwmpxml.ValueType{Type: "xsd:string", Value: "1"}},
 		{Name: "b", Value: cwmpxml.ValueType{Value: ""}},
 	}})
-	if len(got) != 2 || got[0] != (NameValue{"a", "1"}) || got[1] != (NameValue{"b", ""}) {
+	if len(got) != 2 || got[0].Name != "a" || got[0].Value != "1" || got[1].Name != "b" || got[1].Value != "" {
 		t.Fatalf("%+v", got)
 	}
 	if out := ParseResponseValues(cwmpxml.ParameterValueList{}); out == nil || len(out) != 0 {
 		t.Fatalf("kosong harus slice kosong non-nil: %#v", out)
+	}
+}
+
+// Tipe parameter: hint "types" dipakai sebagai xsi:type; tanpa hint / tak dikenal -> xsd:string.
+func TestBuildSetParameterValues_TipeXSD(t *testing.T) {
+	params := []byte(`{"values":{"A.Interval":"300","A.Enable":"true","A.SSID":"x","A.Aneh":"1"},"types":{"A.Interval":"xsd:unsignedInt","A.Enable":"boolean","A.Aneh":"xsd:float"}}`)
+	body, err := BuildRequestBody(domain.TaskTypeSetParameterValues, "u", params, nsCWMP10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, v := range body.SetParameterValues.ParameterList.Values {
+		got[v.Name] = v.Value.Type
+	}
+	want := map[string]string{"A.Interval": "xsd:unsignedInt", "A.Enable": "xsd:boolean", "A.SSID": "xsd:string", "A.Aneh": "xsd:string"}
+	for k, w := range want {
+		if got[k] != w {
+			t.Errorf("tipe %s = %q, want %q", k, got[k], w)
+		}
 	}
 }

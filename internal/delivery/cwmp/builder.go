@@ -38,6 +38,7 @@ func BuildRequestBody(taskTypeCode, taskUUID string, parameters []byte, ns strin
 	case domain.TaskTypeSetParameterValues:
 		var p struct {
 			Values       map[string]string `json:"values"`
+			Types        map[string]string `json:"types"` // path -> xsd:type (opsional; default xsd:string)
 			ParameterKey string            `json:"parameter_key"`
 		}
 		if err := json.Unmarshal(parameters, &p); err != nil {
@@ -54,7 +55,7 @@ func BuildRequestBody(taskTypeCode, taskUUID string, parameters []byte, ns strin
 		for _, name := range names {
 			pl.Values = append(pl.Values, cwmpxml.ParameterValue{
 				Name:  name,
-				Value: cwmpxml.ValueType{Type: "xsd:string", Value: p.Values[name]},
+				Value: cwmpxml.ValueType{Type: xsdTypeFor(p.Types[name]), Value: p.Values[name]},
 			})
 		}
 		pl.ArrayType = fmt.Sprintf("cwmp:ParameterValueStruct[%d]", len(pl.Values))
@@ -160,12 +161,21 @@ func BuildRequestBody(taskTypeCode, taskUUID string, parameters []byte, ns strin
 	}
 }
 
+// xsdTypeFor menerjemahkan hint tipe ("boolean", "xsd:unsignedInt", ...) ke
+// atribut xsi:type; tak dikenal/kosong -> xsd:string (perilaku lama).
+func xsdTypeFor(hint string) string {
+	if code := domain.NormalizeXSDType(hint); code != "" {
+		return "xsd:" + code
+	}
+	return "xsd:string"
+}
+
 // ParseResponseValues mengekstrak ParameterValueList generik dari Body
 // respons (GetParameterValuesResponse) menjadi pasangan name/value polos.
 func ParseResponseValues(pl cwmpxml.ParameterValueList) []NameValue {
 	out := make([]NameValue, 0, len(pl.Values))
 	for _, v := range pl.Values {
-		out = append(out, NameValue{Name: v.Name, Value: v.Value.Value})
+		out = append(out, NameValue{Name: v.Name, Value: v.Value.Value, Type: v.Value.Type})
 	}
 	return out
 }
@@ -173,4 +183,5 @@ func ParseResponseValues(pl cwmpxml.ParameterValueList) []NameValue {
 type NameValue struct {
 	Name  string
 	Value string
+	Type  string // xsi:type dari CPE, mis. "xsd:unsignedInt" (kosong bila tak ada)
 }

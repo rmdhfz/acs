@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -29,6 +30,8 @@ import (
 )
 
 type Service struct {
+	// typeIDs: cache kode tipe XSD -> id ref_parameter_types (lihat paramTypeID).
+	typeIDs         sync.Map
 	sessions        domain.DeviceSessionRepository
 	events          domain.DeviceEventRepository
 	deviceParams    domain.DeviceParameterRepository
@@ -153,6 +156,7 @@ type InformEvent struct {
 type InformParameter struct {
 	Name  string
 	Value string
+	Type  string // xsi:type dari CPE (mis. "xsd:unsignedInt"); dipakai agar Set memakai tipe benar
 }
 
 type InformInput struct {
@@ -267,7 +271,7 @@ func (s *Service) HandleInform(ctx context.Context, in InformInput) (*InformResu
 		params := make([]domain.DeviceParameter, 0, len(in.Parameters))
 		for _, p := range in.Parameters {
 			val := p.Value
-			params = append(params, domain.DeviceParameter{DeviceID: dev.ID, ParameterName: p.Name, ParameterValue: &val})
+			params = append(params, domain.DeviceParameter{DeviceID: dev.ID, ParameterName: p.Name, ParameterValue: &val, ParameterTypeID: s.paramTypeID(ctx, p.Type)})
 		}
 		_ = s.deviceParams.UpsertBatch(ctx, params)
 	}
@@ -560,11 +564,19 @@ func (s *Service) HandleRPCResponse(ctx context.Context, resp RPCResponse) error
 	}
 	s.log().Debug("cwmp: task COMPLETED dari respons RPC CPE", "device_id", sess.DeviceID, "task_id", t.ID)
 
+	// SetParameterValues sukses -> catat nilai yang baru diterapkan ke
+	// device_parameters. Tanpa ini drift-check preset membandingkan dengan nilai
+	// LAMA (atau menganggap parameter "belum pernah terlihat") dan menegakkan
+	// ulang tiap cooldown sampai preset ditandai FAILED.
+	if typeRef, terr := s.refs.GetByID(ctx, domain.RefTableTaskTypes, t.TaskTypeID); terr == nil && typeRef.Code == domain.TaskTypeSetParameterValues {
+		s.recordAppliedValues(ctx, sess.DeviceID, t)
+	}
+
 	if len(resp.ParameterValues) > 0 {
 		params := make([]domain.DeviceParameter, 0, len(resp.ParameterValues))
 		for _, p := range resp.ParameterValues {
 			val := p.Value
-			params = append(params, domain.DeviceParameter{DeviceID: sess.DeviceID, ParameterName: p.Name, ParameterValue: &val, Writable: true})
+			params = append(params, domain.DeviceParameter{DeviceID: sess.DeviceID, ParameterName: p.Name, ParameterValue: &val, ParameterTypeID: s.paramTypeID(ctx, p.Type), Writable: true})
 		}
 		_ = s.deviceParams.UpsertBatch(ctx, params)
 
@@ -575,6 +587,46 @@ func (s *Service) HandleRPCResponse(ctx context.Context, resp RPCResponse) error
 		}
 	}
 	return nil
+}
+
+// paramTypeID me-resolve atribut xsi:type CPE ke id ref_parameter_types
+// (di-cache per proses; nil bila tipe kosong/tak dikenal, sehingga nilai tipe yang
+// sudah tersimpan tidak tertimpa — lihat COALESCE pada upsert).
+func (s *Service) paramTypeID(ctx context.Context, xsd string) *uint64 {
+	code := domain.NormalizeXSDType(xsd)
+	if code == "" || s.refs == nil {
+		return nil
+	}
+	if v, ok := s.typeIDs.Load(code); ok {
+		id := v.(uint64)
+		return &id
+	}
+	ref, err := s.refs.GetByCode(ctx, domain.RefTableParameterTypes, code)
+	if err != nil {
+		return nil
+	}
+	s.typeIDs.Store(code, ref.ID)
+	id := ref.ID
+	return &id
+}
+
+// recordAppliedValues menyimpan values task SET_PARAMETER_VALUES (yang sudah
+// di-ACK CPE) ke device_parameters. Best-effort: kegagalan hanya dilog.
+func (s *Service) recordAppliedValues(ctx context.Context, deviceID uint64, t *domain.Task) {
+	var p struct {
+		Values map[string]string `json:"values"`
+	}
+	if err := json.Unmarshal(t.Parameters, &p); err != nil || len(p.Values) == 0 {
+		return
+	}
+	params := make([]domain.DeviceParameter, 0, len(p.Values))
+	for name, v := range p.Values {
+		val := v
+		params = append(params, domain.DeviceParameter{DeviceID: deviceID, ParameterName: name, ParameterValue: &val, Writable: true})
+	}
+	if err := s.deviceParams.UpsertBatch(ctx, params); err != nil {
+		s.log().Warn("cwmp: gagal mencatat nilai SetParameterValues ke device_parameters", "device_id", deviceID, "task_id", t.ID, "error", err)
+	}
 }
 
 // handleFault menerjemahkan cwmp:Fault dari CPE ke aksi pada task yang
@@ -621,6 +673,9 @@ func (s *Service) handleFault(ctx context.Context, deviceID uint64, f *FaultInfo
 	}
 
 	switch f.Code {
+	case domain.FaultCodeACSBuild:
+		return s.taskSvc.FailPermanently(ctx, t, msg)
+
 	case domain.FaultCodeInvalidParameterName:
 		s.log().Warn("cwmp: fault 9005 Invalid Parameter Name -> task FAILED permanen (parameter tidak didukung device ini)",
 			"device_id", deviceID, "task_id", t.ID)

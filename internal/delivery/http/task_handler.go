@@ -31,6 +31,11 @@ func (r *Router) createTask(c *echo.Context) error {
 	if _, err := r.Refs.GetByCode(c.Request().Context(), domain.RefTableTaskTypes, req.TaskType); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "task_type tidak valid")
 	}
+	// storage_key hanya boleh diisi usecase internal: ia membuat ACS menerbitkan
+	// URL presigned untuk object APA PUN di bucket (termasuk milik tenant lain).
+	if _, has := req.Parameters[domain.TaskParamStorageKey]; has {
+		return echo.NewHTTPError(http.StatusBadRequest, "parameters.storage_key tidak boleh diisi lewat API (gunakan endpoint firmware/push file)")
+	}
 	t, err := r.Tasks.CreateTask(c.Request().Context(), actor, domain.CreateTaskInput{
 		DeviceID: req.DeviceID, TaskType: req.TaskType, Priority: req.Priority,
 		Parameters: req.Parameters, MaxRetries: req.MaxRetries, ScheduledAt: req.ScheduledAt, ExpiresAt: req.ExpiresAt,

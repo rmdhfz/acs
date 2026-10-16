@@ -140,6 +140,10 @@ func (s *Service) CreateTask(ctx context.Context, actor domain.Actor, in domain.
 		return nil, fmt.Errorf("task: tipe task tidak dikenal %q: %w", in.TaskType, err)
 	}
 
+	if err := ValidateTaskInput(taskType.Code, in.Parameters); err != nil {
+		return nil, err
+	}
+
 	// Proactive chunking (lihat komentar MaxGetParameterValuesNamesPerTask) —
 	// dicek SEBELUM kuota/status pending & SEBELUM baris Task tunggal
 	// dibentuk, supaya satu request oversized otomatis jadi beberapa task
@@ -154,6 +158,10 @@ func (s *Service) CreateTask(ctx context.Context, actor domain.Actor, in domain.
 		if names, ok := extractParameterNames(in.Parameters); ok && len(names) > MaxGetParameterValuesNamesPerTask {
 			return s.createChunkedGetParameterValues(ctx, actor, in, names)
 		}
+	}
+
+	if taskType.Code == domain.TaskTypeSetParameterValues {
+		in.Parameters = s.withTypeHints(ctx, in.DeviceID, in.Parameters)
 	}
 
 	pendingStatus, err := s.refs.GetByCode(ctx, domain.RefTableTaskStatus, domain.TaskStatusPending)
@@ -206,6 +214,62 @@ func (s *Service) CreateTask(ctx context.Context, actor domain.Actor, in domain.
 	}
 
 	return t, nil
+}
+
+// withTypeHints melengkapi parameters SET_PARAMETER_VALUES dengan "types"
+// (path -> xsd:type) dari tipe yang pernah dilaporkan CPE (device_parameters,
+// terisi dari Inform/GetParameterValues). Tanpa ini semua nilai dikirim sebagai
+// xsd:string dan firmware yang ketat menolak boolean/angka dengan fault 9006.
+// Tipe yang diberikan pemanggil dihormati; tipe tak diketahui/"string" dibiarkan
+// (default xsd:string). Best-effort: kegagalan lookup tidak menggagalkan task.
+func (s *Service) withTypeHints(ctx context.Context, deviceID uint64, params map[string]interface{}) map[string]interface{} {
+	if s.deviceParams == nil || s.refs == nil {
+		return params
+	}
+	raw, err := json.Marshal(params)
+	if err != nil {
+		return params
+	}
+	var p struct {
+		Values map[string]string `json:"values"`
+		Types  map[string]string `json:"types"`
+	}
+	if json.Unmarshal(raw, &p) != nil || len(p.Values) == 0 {
+		return params
+	}
+	types := make(map[string]string, len(p.Types))
+	for k, v := range p.Types {
+		types[k] = v
+	}
+	codeByID := map[uint64]string{}
+	for name := range p.Values {
+		if _, given := types[name]; given {
+			continue
+		}
+		dp, err := s.deviceParams.Get(ctx, deviceID, name)
+		if err != nil || dp == nil || dp.ParameterTypeID == nil {
+			continue
+		}
+		code, seen := codeByID[*dp.ParameterTypeID]
+		if !seen {
+			if ref, err := s.refs.GetByID(ctx, domain.RefTableParameterTypes, *dp.ParameterTypeID); err == nil {
+				code = ref.Code
+			}
+			codeByID[*dp.ParameterTypeID] = code
+		}
+		if code != "" && code != "string" {
+			types[name] = "xsd:" + code
+		}
+	}
+	if len(types) == 0 {
+		return params
+	}
+	out := make(map[string]interface{}, len(params)+1)
+	for k, v := range params {
+		out[k] = v
+	}
+	out["types"] = types
+	return out
 }
 
 // createChunkedGetParameterValues memecah satu permintaan GET_PARAMETER_VALUES
@@ -674,6 +738,13 @@ func (s *Service) failOrRetry(ctx context.Context, t *domain.Task, finalStatusCo
 	if err := s.tasks.UpdateStatus(ctx, t.ID, status.ID, nil); err != nil {
 		return err
 	}
+	if statusCode == domain.TaskStatusPending {
+		// Backoff: tanpa ini task diambil lagi di SESI YANG SAMA (CPE masih
+		// terhubung) dan menghabiskan max_retries dalam hitungan detik.
+		if err := s.tasks.Reschedule(ctx, t.ID, time.Now().Add(RetryBackoff(t.RetryCount+1))); err != nil {
+			return err
+		}
+	}
 
 	s.publishTaskStatusEvent(ctx, t.ID, statusCode)
 
@@ -681,6 +752,18 @@ func (s *Service) failOrRetry(ctx context.Context, t *domain.Task, finalStatusCo
 		s.notifyTaskFailed(ctx, t, errMsg)
 	}
 	return nil
+}
+
+// RetryBackoff = jeda sebelum percobaan ke-n (n >= 1): 1m, 2m, 4m, ... maks 30m.
+func RetryBackoff(n uint32) time.Duration {
+	d := time.Minute
+	for i := uint32(1); i < n && d < 30*time.Minute; i++ {
+		d *= 2
+	}
+	if d > 30*time.Minute {
+		d = 30 * time.Minute
+	}
+	return d
 }
 
 func (s *Service) handleAutoDiscoveryResponse(ctx context.Context, t *domain.Task, response domain.JSONRawMessage) {

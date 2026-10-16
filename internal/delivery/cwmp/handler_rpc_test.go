@@ -91,16 +91,25 @@ func TestNext_GagalDanKosong(t *testing.T) {
 			t.Fatalf("HTTP %d", rec.Code)
 		}
 	})
-	t.Run("tipe task tak dikenal builder -> 500", func(t *testing.T) {
+	// Task yang tak bisa dibangun jadi RPC TIDAK boleh membuat CPE menerima 500 dan
+	// task tersangkut SENT: ditandai FAILED permanen (fault ACS-BUILD) lalu sesi
+	// dilanjutkan (di sini: tak ada task lagi -> 204).
+	t.Run("tipe task tak dikenal builder -> task FAILED permanen + 204", func(t *testing.T) {
 		svc := &fakeSessions{nextQueue: []nextResult{{rpc: &session.OutboundRPC{TaskUUID: "u", TaskType: "TIPE_GAIB"}}}}
-		if rec := openSession(t, svc).post(emptyPost, "", ""); rec.Code != http.StatusInternalServerError {
+		if rec := openSession(t, svc).post(emptyPost, "", ""); rec.Code != http.StatusNoContent {
 			t.Fatalf("HTTP %d", rec.Code)
 		}
+		if len(svc.respIn) != 1 || svc.respIn[0].Fault == nil || svc.respIn[0].Fault.Code != domain.FaultCodeACSBuild {
+			t.Fatalf("task tak-terbangun harus dilaporkan sebagai fault ACS-BUILD: %+v", svc.respIn)
+		}
 	})
-	t.Run("JSON parameter rusak -> 500", func(t *testing.T) {
+	t.Run("JSON parameter rusak -> task FAILED permanen + 204", func(t *testing.T) {
 		svc := &fakeSessions{nextQueue: []nextResult{{rpc: &session.OutboundRPC{TaskUUID: "u", TaskType: domain.TaskTypeGetParameterValues, Parameters: []byte("{")}}}}
-		if rec := openSession(t, svc).post(emptyPost, "", ""); rec.Code != http.StatusInternalServerError {
+		if rec := openSession(t, svc).post(emptyPost, "", ""); rec.Code != http.StatusNoContent {
 			t.Fatalf("HTTP %d", rec.Code)
+		}
+		if len(svc.respIn) != 1 || svc.respIn[0].Fault == nil || svc.respIn[0].Fault.Code != domain.FaultCodeACSBuild {
+			t.Fatalf("harus fault ACS-BUILD: %+v", svc.respIn)
 		}
 	})
 }
@@ -143,10 +152,14 @@ func TestRespons_TransferCompleteDiInitiasiCPE(t *testing.T) {
 	if len(svc.respIn) != 1 || svc.respIn[0].TransferComplete == nil || !svc.respIn[0].TransferComplete.Success {
 		t.Fatalf("TransferComplete sukses salah: %+v", svc.respIn)
 	}
-	// Tak ada task tersisa -> 204 (ACS tidak membalas TransferCompleteResponse
-	// di jalur ini; sesi ditutup via NextRequest).
-	if rec.Code != http.StatusNoContent && rec.Code != 200 {
-		t.Fatalf("HTTP %d", rec.Code)
+	// TR-069: TransferComplete (RPC dari CPE) WAJIB dijawab TransferCompleteResponse
+	// dengan ID header yang sama — bukan 204 / RPC berikutnya.
+	if rec.Code != http.StatusOK {
+		t.Fatalf("HTTP %d, harus 200 TransferCompleteResponse", rec.Code)
+	}
+	out := rec.Body.String()
+	if !strings.Contains(out, "TransferCompleteResponse") || !strings.Contains(out, "cpe-id-77") {
+		t.Fatalf("balasan bukan TransferCompleteResponse ber-ID cpe-id-77: %s", out)
 	}
 }
 
