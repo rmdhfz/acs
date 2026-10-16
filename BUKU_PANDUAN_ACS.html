@@ -496,7 +496,28 @@ memerlukan konfigurasi trusted proxy (belum final).</p></div>
   email). Mengganti/reset password otomatis mencabut JWT lama.</li>
   <li><strong>Email notifikasi:</strong> reset, password berubah, reset oleh admin, akun
   terkunci, akun baru. Email tidak pernah memuat password.</li>
-  <li><strong>SSO OIDC</strong> tersedia bila dikonfigurasi; akun SSO tidak punya password lokal.</li>
+  <li><strong>Verifikasi dua langkah (MFA TOTP)</strong> opsional per pengguna — lihat di bawah.</li>
+  <li><strong>SSO OIDC</strong> tersedia bila dikonfigurasi (tombol "Masuk dengan SSO" tampil otomatis). Akun
+  dipetakan lewat <strong>email</strong> yang sama dengan akun di ACS (tidak ada pendaftaran otomatis: admin
+  membuat akunnya lebih dulu). Login SSO mengandalkan MFA di penyedia identitas (IdP), bukan MFA lokal.</li>
+</ul>
+
+<h3>4.1 Verifikasi dua langkah (MFA TOTP)</h3>
+<p><strong>Mengaktifkan</strong> (tiap pengguna sendiri): <em>Profil → Keamanan → Verifikasi dua langkah → Aktifkan</em>.
+Pindai kode QR dengan aplikasi authenticator (Google/Microsoft Authenticator, Authy, dll.), ketik kode 6 digit,
+lalu <strong>simpan 10 kode pemulihan</strong> — hanya tampil sekali; tombol <em>Selesai</em> baru aktif setelah Anda
+menyatakan sudah menyimpannya. Selanjutnya login meminta kode setelah password.</p>
+<ul>
+  <li>Kode 6 digit berubah tiap 30 detik; <strong>satu kode hanya berlaku sekali</strong> (memakai ulang kode yang sama ditolak).
+  Bila selalu ditolak, periksa jam ponsel (harus otomatis/sinkron).</li>
+  <li><strong>Kode pemulihan</strong> (format <code>XXXXX-XXXXX</code>) dipakai saat ponsel hilang; tiap kode sekali pakai.
+  Sisa kode ditampilkan di Profil; bila tinggal ≤ 2, nonaktifkan lalu aktifkan ulang MFA untuk set baru.</li>
+  <li><strong>Kode salah ikut lockout akun</strong> (5 kali → terkunci 15 menit), sama seperti password salah.</li>
+  <li><strong>Menonaktifkan</strong> butuh password <em>dan</em> kode (token yang tercuri saja tidak cukup); sesi di perangkat lain berakhir.</li>
+  <li><strong>Kehilangan ponsel dan kode pemulihan:</strong> ADMIN tenant yang sama (atau SUPERADMIN) memakai tombol
+  <em>Lepas MFA</em> di <em>Administrasi → Users</em> (hanya muncul untuk akun ber-MFA). Sesi akun itu dicabut dan aksinya
+  tercatat di Audit Trail (<code>MFA_RESET</code>).</li>
+  <li>API token tidak dapat mengelola MFA (hanya sesi login).</li>
 </ul>
 
 <table>
@@ -654,7 +675,30 @@ Request).</p>
 <tr><td>Tulis parameter</td><td><code>POST /devices/:id/tasks/set-parameter-values</code></td><td>ADMIN</td></tr>
 <tr><td>Tambah/hapus objek</td><td><code>.../tasks/add-object</code>, <code>.../tasks/delete-object</code></td><td>ADMIN</td></tr>
 <tr><td>Factory reset</td><td><code>POST /devices/:id/factory-reset</code></td><td>ADMIN</td></tr>
+<tr><td>Ping / Traceroute dari ONT</td><td><code>POST /devices/:id/diagnostics</code> (tab Diagnostics)</td><td>NOC, ADMIN</td></tr>
+<tr><td>Telusuri pohon parameter</td><td><code>POST /devices/:id/refresh</code> (tab Parameter → refresh)</td><td>NOC, ADMIN</td></tr>
+<tr><td>Atribut notifikasi perubahan nilai</td><td><code>POST /devices/:id/tasks/set-parameter-attributes</code> (menu Notifikasi di tab Parameter)</td><td>ADMIN</td></tr>
 </table>
+
+<h3>9.1 Diagnostics: Ping &amp; Traceroute dari ONT</h3>
+<p>Tab <em>Diagnostics</em> pada detail perangkat: pilih tipe, isi <em>Host/IP tujuan</em>, <em>Jalankan</em>. ACS menulis parameter
+diagnostik ONT (path diambil dari <code>vendor_parameter_mappings</code> dengan kunci <code>diag.*</code>, bukan percabangan per vendor),
+ONT menjalankannya lalu mengirim Inform berevent <code>8 DIAGNOSTICS COMPLETE</code>; ACS membaca hasilnya. Status
+<code>PENDING → COMPLETED/FAILED</code> dengan hasil terstruktur (Ping: paket terkirim/diterima/hilang, RTT min/rata-rata/maks;
+Traceroute: daftar hop). Host terlarang (loopback, link-local/metadata cloud) ditolak saat input. Diagnostik yang tak kunjung selesai
+ditandai gagal otomatis oleh sweeper. ONT yang tidak mendukung <code>IPPingDiagnostics</code>/<code>TraceRouteDiagnostics</code> memberi
+fault — catat model &amp; firmware, lalu tambahkan mapping bila pathnya berbeda.</p>
+
+<h3>9.2 Telusuri pohon &amp; notifikasi perubahan nilai</h3>
+<p><em>Refresh</em> global di tab Parameter menelusuri pohon parameter secara bertahap (GetParameterNames per level, kedalaman 3) tanpa menimpa nilai
+yang sudah ada. <em>Notifikasi</em> (SetParameterAttributes) membuat ONT mengirim Inform berevent <code>4 VALUE CHANGE</code> saat nilai
+berubah sehingga ACS ikut ter-update seketika (Passive = dilaporkan di Inform berikutnya; Active = ONT segera membuka sesi).</p>
+
+<h3>9.3 Redaman optik</h3>
+<p>ACS membaca <code>optical.*</code> (Rx/Tx power, tegangan, bias, suhu) lewat mapping, mengalikan nilai mentah dengan <code>value_scale</code>
+(mis. 0,001 → dBm), dan menyimpannya sebagai metrik untuk tab <em>Redaman Optik</em> + deteksi anomali. Pembacaan otomatis dilakukan setelah
+Inform bila data terakhir lebih tua dari <code>ACS_OPTICAL_POLL_MINUTES</code> (bawaan 360; minimum 15; 0 = mati). Model tanpa mapping
+<code>optical.*</code> tidak menampilkan data — tambahkan mapping di Katalog Vendor.</p>
 
 <div class="callout info"><span class="label">Retry &amp; kegagalan</span>
 <p>Task yang gagal karena <code>cwmp:Fault</code> generik di-retry hingga
@@ -778,9 +822,9 @@ vendor &gt; 10. Prosedur operasional insiden: <strong>RUNBOOK.md</strong>.</p>
 <h2 id="s15"><span class="num">15</span> Keamanan operasional</h2>
 
 <ul>
-  <li><strong>Rate limit berlapis:</strong> <code>/auth/login</code> 2 req/s per IP,
-  <code>/cwmp</code> 5 req/s per IP, REST lainnya 30 req/s per IP. (Per-instance &amp;
-  per-IP — fleet di belakang CGNAT berbagi jatah; lihat LAPORAN_KESIAPAN.md.)</li>
+  <li><strong>Rate limit berlapis:</strong> <code>/auth/login</code> &amp; <code>/auth/mfa/verify</code> 2 req/s per IP,
+  <code>/cwmp</code> 5 req/s per IP (bawaan; atur <code>ACS_CWMP_RATE_LIMIT</code> bila banyak CPE berbagi IP/CGNAT), REST lainnya 30 req/s per IP.
+  Per-instance secara bawaan; dengan <code>ACS_HA=true</code> + Redis hitungannya dibagi lintas instance.</li>
   <li><strong>Password &amp; sesi:</strong> Argon2id, lockout 5×/15 menit, token reset
   hanya disimpan sebagai hash SHA-256 (sekali pakai, 30 menit), JWT dicabut saat
   password berubah/akun dinonaktifkan.</li>
@@ -790,9 +834,14 @@ vendor &gt; 10. Prosedur operasional insiden: <strong>RUNBOOK.md</strong>.</p>
   membatasi task <code>PENDING</code>/<code>QUEUED</code> agar satu tenant tidak
   membanjiri antrean bersama.</li>
   <li><strong>Kredensial terenkripsi at-rest</strong> (AES-256-GCM): shared secret
-  Inform tenant, kredensial connection-request per-device. Tidak pernah ditulis
-  plaintext ke log, response API, maupun ekspor.</li>
-  <li><strong>SSRF guard</strong> pada Connection Request (alamat metadata-cloud/internal ditolak).</li>
+  Inform tenant, kredensial connection-request per-device, rahasia TOTP, dan <strong>nilai rahasia di Provisioning Profile &amp;
+  Preset</strong> (parameter bernama password/psk/secret/token/key). Tidak pernah ditulis plaintext ke log, response API, maupun
+  ekspor. Data lama dienkripsi dengan <code>/app/seal-secrets</code>; <strong>kunci <code>ACS_CREDENTIAL_ENC_KEY</code> tidak boleh hilang/diganti</strong>.
+  Nilai yang <em>dilaporkan CPE</em> (tab Parameter) tidak dienkripsi di DB tetapi disamarkan untuk non-admin.</li>
+  <li><strong>SSRF guard</strong> pada Connection Request (HTTP &amp; UDP) dan webhook: alamat metadata-cloud/loopback/link-local ditolak
+  saat validasi <em>dan saat menyambung</em> (menutup DNS rebinding &amp; redirect). SaaS publik: <code>ACS_WEBHOOK_BLOCK_PRIVATE=true</code>
+  menolak juga jaringan privat untuk target webhook.</li>
+  <li><strong>MFA TOTP</strong> (bagian 4.1): rahasia terenkripsi, kode sekali pakai, kode pemulihan ber-HMAC, token tahap-2 bukan sesi.</li>
   <li><strong>Audit trail:</strong> 7 kolom audit di tabel master + feed
   <code>activity_logs</code> ("siapa mengubah apa", termasuk impor massal) + timeline per-device.</li>
   <li><strong>Backup:</strong> prosedur <code>mariadb-dump</code> + restore drill
@@ -811,7 +860,10 @@ vendor &gt; 10. Prosedur operasional insiden: <strong>RUNBOOK.md</strong>.</p>
 <tr><td>Perubahan WiFi/WAN "kembali sendiri"</td><td>Ada Preset <code>enforce=1</code> yang menegakkan nilai lain, atau OLT (OMCI) ikut menulis parameter yang sama. Periksa Preset &amp; sepakati pemilik parameter (§1.3, §1.8).</td></tr>
 <tr><td>Login: "Email atau password salah" berulang</td><td>Salah ketik atau akun terkunci 15 menit — tunggu atau pakai <em>Lupa password</em>.</td></tr>
 <tr><td>Email reset tidak datang</td><td>Cek folder spam; pastikan <code>ACS_SMTP_*</code> terisi; alamat berdomain khusus-uji (<code>*.local</code>, <code>example.*</code>) sengaja dilewati mailer; lihat log <code>acsd</code> (<code>mailer:</code>).</td></tr>
-<tr><td>HTTP 429</td><td>Rate limit. Untuk integrasi, sebar beban; jangan burst.</td></tr>
+<tr><td>HTTP 429</td><td>Rate limit. Untuk integrasi, sebar beban; jangan burst. Banyak ONT satu IP: naikkan <code>ACS_CWMP_RATE_LIMIT</code>.</td></tr>
+<tr><td>Login meminta "kode verifikasi" tetapi selalu ditolak</td><td>Jam ponsel tidak sinkron (TOTP bergantung waktu), atau kode yang sama dipakai dua kali. Pakai kode berikutnya atau kode pemulihan. Hilang semua: minta ADMIN <em>Lepas MFA</em>.</td></tr>
+<tr><td>Kolom parameter bernilai <code>enc:v1:…</code> / Preset gagal dimuat</td><td><code>ACS_CREDENTIAL_ENC_KEY</code> berbeda dari yang dipakai saat data dienkripsi (acsd sengaja gagal-tertutup). Kembalikan kunci semula.</td></tr>
+<tr><td><code>/readyz</code> 503</td><td>Database tidak terjangkau (kritis). <code>/healthz</code> tetap 200 selama proses hidup. Redis down hanya dilaporkan.</td></tr>
 <tr><td>HTTP 401 "token ditolak" mendadak untuk semua user satu tenant</td><td>Tenant dinonaktifkan. Aktifkan kembali via Administrasi → Tenants.</td></tr>
 <tr><td>Impor: banyak baris "Error"</td><td>Buka kolom alasan di pratinjau (mis. OUI bukan 6 karakter, vendor tidak dikenal, serial duplikat di berkas). Perbaiki di CSV atau unduh laporan pratinjau; baris valid tetap bisa diimpor.</td></tr>
 <tr><td>Rollout batch PAUSED</td><td>Failure rate wave melebihi ambang, atau 0 perangkat berhasil dijadwalkan (kuota task queue penuh). Periksa <code>activity_logs</code>, perbaiki penyebab, lalu Advance manual.</td></tr>
@@ -827,16 +879,19 @@ pemetaan parameter), gunakan panduan diagnostik di <strong>PENGUJIAN_LAPANGAN.md
 <h3>17.1 Matriks protokol</h3>
 <table>
 <tr><th style="width:42%">Protokol / kemampuan</th><th style="width:16%">Status</th><th>Keterangan</th></tr>
-<tr><td>CWMP/TR-069: Inform, InformResponse, sesi stateful, cookie sesi</td><td>Didukung, diuji e2e</td><td>Simulator CPE (<code>cmd/cpesim</code>) &amp; 13 skenario e2e</td></tr>
+<tr><td>CWMP/TR-069: Inform, InformResponse, sesi stateful, cookie sesi</td><td>Didukung, diuji e2e</td><td>Simulator CPE (<code>cmd/cpesim</code>) &amp; 16 skenario e2e</td></tr>
 <tr><td>RPC: GetParameterValues, SetParameterValues, GetParameterNames, AddObject, DeleteObject, Reboot, FactoryReset, Download, Upload, ScheduleInform; Fault; TransferComplete</td><td>Didukung, diuji e2e</td><td>Set selalu <code>xsd:string</code></td></tr>
-<tr><td>Connection Request (HTTP Digest &amp; Basic) + fallback UDP STUN (TR-111)</td><td>Didukung</td><td>Digest dibuktikan e2e (S7)</td></tr>
+<tr><td>Connection Request (HTTP Digest &amp; Basic) + fallback UDP (TR-069 Annex G, HMAC-SHA1)</td><td>Didukung</td><td>Digest dibuktikan e2e (S7); UDP teruji terhadap penerima uji, belum CPE nyata. Bukan STUN</td></tr>
 <tr><td>Data model TR-098 (<code>InternetGatewayDevice.*</code>) &amp; TR-181 (<code>Device.*</code>)</td><td>Didukung</td><td>Resolve per perangkat</td></tr>
 <tr><td>Preset, Zero-Touch, firmware canary</td><td>Didukung</td><td></td></tr>
-<tr><td>Diagnostics (ping/traceroute dari ONT)</td><td>Belum</td><td>Pemetaan parameter diagnostik &amp; pengambilan hasil belum ada; API membalas 501</td></tr>
+<tr><td>Diagnostics (ping/traceroute dari ONT)</td><td>Didukung, diuji e2e</td><td>S14 (dua vendor, event 8); hasil pada ONT nyata bergantung dukungan firmware</td></tr>
+<tr><td>Redaman optik (Rx/Tx, mapping + skala)</td><td>Didukung</td><td>S15 (TR-181); path optik TR-098 per vendor perlu diverifikasi di UAT</td></tr>
+<tr><td>Verifikasi dua langkah (MFA TOTP, RFC 6238)</td><td>Didukung, diuji e2e</td><td>S16; kode pemulihan, reset admin</td></tr>
+<tr><td>Health/readiness (<code>/healthz</code>, <code>/readyz</code>), reverse proxy TLS (Caddy), multi-instance (<code>ACS_HA</code>)</td><td>Didukung</td><td>Lihat RUNBOOK.md §F–H; diuji dengan dua instance nyata</td></tr>
 <tr><td>REST/OpenAPI, WebSocket realtime, webhook, Prometheus</td><td>Didukung</td><td>WebSocket memakai token via subprotocol</td></tr>
-<tr><td>OIDC / SSO</td><td>Belum siap</td><td>Callback masih POC; tombol SSO disembunyikan kecuali <code>VITE_SSO_URL</code> diisi</td></tr>
+<tr><td>OIDC / SSO</td><td>Didukung (teruji IdP tiruan)</td><td>Pemetaan lewat email, tanpa auto-provisioning; belum diuji terhadap IdP organisasi nyata</td></tr>
 <tr><td>USP / TR-369</td><td>Kerangka saja</td><td>Belum operasional (JSON, bukan protobuf)</td></tr>
-<tr><td>GetRPCMethods, SetParameterAttributes dari sisi ACS</td><td>Belum</td><td></td></tr>
+<tr><td>GetRPCMethods (dijawab ACS), SetParameterAttributes/GetParameterAttributes, penelusuran pohon</td><td>Didukung</td><td>Teruji unit + simulator; belum CPE nyata. Virtual parameters (gaya GenieACS) tidak ada</td></tr>
 <tr><td><strong>SNMP, SSH/Telnet, NETCONF, driver OLT/router</strong></td><td><strong>Belum ada</strong></td><td>Itulah jalur manajemen OLT — lihat 17.3</td></tr>
 </table>
 
@@ -844,15 +899,16 @@ pemetaan parameter), gunakan panduan diagnostik di <strong>PENGUJIAN_LAPANGAN.md
 <div class="callout warn"><span class="label">Sebelum go-live penuh</span>
 <ul>
   <li><strong>Uji CPE fisik belum dilakukan.</strong> Seluruh validasi alur
-  sejauh ini memakai simulator (PENGUJIAN_E2E.md, 13/13 skenario lulus) —
+  sejauh ini memakai simulator (PENGUJIAN_E2E.md, 16/16 skenario lulus) —
   bukan firmware vendor sungguhan. Jalankan PENGUJIAN_LAPANGAN.md dengan minimal
   1–2 unit per vendor sebelum rollout lebar.</li>
-  <li><strong>CWMP dilayani via HTTP</strong> oleh <code>acsd</code>; TLS harus
-  dari reverse proxy.</li>
+  <li><strong>CWMP dilayani via HTTP</strong> oleh <code>acsd</code>; TLS dari reverse proxy
+  (overlay Caddy siap pakai: <code>docker-compose.tls.yml</code>, RUNBOOK.md §F — belum diuji dengan CPE fisik).</li>
   <li><strong>Rate limit</strong> per-IP &amp; per-instance; di belakang reverse proxy isi <code>ACS_TRUSTED_PROXIES</code> agar IP klien benar.</li>
-  <li><strong>Diagnostics (ping/traceroute) belum tersedia</strong> dan <strong>OIDC/SSO belum siap</strong> (lihat tabel 17.1).</li>
+  <li><strong>SSO</strong> belum diuji terhadap IdP organisasi nyata, dan <strong>tidak ada pendaftaran tenant mandiri</strong> (tenant dibuat Superadmin).</li>
   <li><strong>Retensi log:</strong> tabel event/sesi/optik/riwayat webhook dipangkas otomatis setelah <code>ACS_LOG_RETENTION_DAYS</code> (default 90); audit trail tidak dipangkas.</li>
-  <li><strong>Load test kapasitas puncak</strong> belum dilakukan (butuh rig multi-IP).</li>
+  <li><strong>Kapasitas:</strong> uji beban lab (minimal Inform, satu instance, laptop): ~550–620 sesi/dtk, p95 ≈ 99 ms pada 50 koneksi,
+  tanpa galat (RUNBOOK.md §L). Inform nyata lebih berat; ulangi dengan profil realistis &amp; CPE fisik sebelum menjanjikan kapasitas.</li>
   <li><strong>Ekspresivitas provisioning</strong> sengaja dibatasi ke data
   terstruktur (bukan skrip bebas seperti GenieACS) demi auditability.</li>
 </ul>
