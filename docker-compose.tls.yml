@@ -1,0 +1,40 @@
+# Overlay TLS: menambahkan Caddy (HTTPS otomatis) di depan acsd. Pemakaian:
+#
+#   1. cd frontend && VITE_API_BASE_URL=/api/v1 VITE_SITE_URL=https://$ACS_DOMAIN npm run build
+#   2. isi di .env:  ACS_DOMAIN=acs.contoh.id   ACS_TLS_EMAIL=noc@contoh.id
+#                    ACS_PUBLIC_URL=https://acs.contoh.id
+#                    ACS_CORS_ALLOW_ORIGINS=https://acs.contoh.id
+#   3. docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d
+#
+# Setelah ini port 18080/17547 acsd TIDAK lagi perlu dibuka ke internet (hanya 80/443 milik Caddy).
+services:
+  acsd:
+    environment:
+      # Caddy ada di jaringan compose: percayai X-Forwarded-For dari subnet privat Docker saja,
+      # supaya IP klien/CPE asli terbaca (rate limit, audit, Connection Request).
+      ACS_TRUSTED_PROXIES: ${ACS_TRUSTED_PROXIES:-172.16.0.0/12,192.168.0.0/16,10.0.0.0/8}
+    # Tidak dipublikasikan ke host: hanya lewat Caddy.
+    ports: !override []
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    depends_on:
+      acsd:
+        condition: service_started
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp" # HTTP/3
+    environment:
+      ACS_DOMAIN: ${ACS_DOMAIN:?isi ACS_DOMAIN (mis. acs.contoh.id)}
+      ACS_TLS_EMAIL: ${ACS_TLS_EMAIL:?isi ACS_TLS_EMAIL (email notifikasi Let's Encrypt)}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./frontend/dist:/srv/console:ro
+      - acs-caddy-data:/data
+      - acs-caddy-config:/config
+
+volumes:
+  acs-caddy-data:
+  acs-caddy-config:

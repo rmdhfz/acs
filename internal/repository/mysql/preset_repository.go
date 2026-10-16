@@ -9,17 +9,36 @@ import (
 )
 
 type presetRepository struct {
-	db *sqlx.DB
+	db     *sqlx.DB
+	sealer ValueSealer // nil = tanpa enkripsi at-rest (lihat sealed_values.go)
 }
 
-func NewPresetRepository(db *sqlx.DB) domain.PresetRepository {
-	return &presetRepository{db: db}
+func NewPresetRepository(db *sqlx.DB, sealer ValueSealer) domain.PresetRepository {
+	return &presetRepository{db: db, sealer: sealer}
+}
+
+// openAll membuka nilai rahasia pada hasil query (fail closed).
+func (r *presetRepository) openAll(presets []domain.Preset) error {
+	for i := range presets {
+		out, err := openPresetConfigs(r.sealer, presets[i].Configurations)
+		if err != nil {
+			return err
+		}
+		presets[i].Configurations = out
+	}
+	return nil
 }
 
 func (r *presetRepository) Create(ctx context.Context, preset *domain.Preset) error {
+	sealed, err := sealPresetConfigs(r.sealer, preset.Configurations)
+	if err != nil {
+		return err
+	}
+	row := *preset // salinan: struct pemanggil tetap berisi plaintext
+	row.Configurations = sealed
 	query := `INSERT INTO presets (tenant_id, name, weight, precondition, configurations, is_active, enforce, channel)
 			  VALUES (:tenant_id, :name, :weight, :precondition, :configurations, :is_active, :enforce, :channel)`
-	res, err := r.db.NamedExecContext(ctx, query, preset)
+	res, err := r.db.NamedExecContext(ctx, query, &row)
 	if err != nil {
 		return translateErr(err)
 	}
@@ -33,7 +52,11 @@ func (r *presetRepository) GetByID(ctx context.Context, id uint64) (*domain.Pres
 	if err := r.db.GetContext(ctx, &preset, `SELECT * FROM presets WHERE id = ?`, id); err != nil {
 		return nil, translateErr(err)
 	}
-	return &preset, nil
+	opened := []domain.Preset{preset}
+	if err := r.openAll(opened); err != nil {
+		return nil, err
+	}
+	return &opened[0], nil
 }
 
 func (r *presetRepository) List(ctx context.Context, tenantID *uint64, p domain.Pagination) ([]domain.Preset, int, error) {
@@ -49,11 +72,20 @@ func (r *presetRepository) List(ctx context.Context, tenantID *uint64, p domain.
 	if err := r.db.SelectContext(ctx, &presets, query, tenantID, p.Limit(), p.Offset()); err != nil {
 		return nil, 0, translateErr(err)
 	}
+	if err := r.openAll(presets); err != nil {
+		return nil, 0, err
+	}
 
 	return presets, total, nil
 }
 
 func (r *presetRepository) Update(ctx context.Context, preset *domain.Preset) error {
+	sealed, err := sealPresetConfigs(r.sealer, preset.Configurations)
+	if err != nil {
+		return err
+	}
+	row := *preset
+	row.Configurations = sealed
 	query := `UPDATE presets SET
 				name = :name,
 				weight = :weight,
@@ -63,7 +95,7 @@ func (r *presetRepository) Update(ctx context.Context, preset *domain.Preset) er
 				enforce = :enforce,
 				channel = :channel
 			  WHERE id = :id`
-	_, err := r.db.NamedExecContext(ctx, query, preset)
+	_, err = r.db.NamedExecContext(ctx, query, &row)
 	return translateErr(err)
 }
 
@@ -82,6 +114,9 @@ func (r *presetRepository) ListActiveEnforce(ctx context.Context, tenantID *uint
 			  ORDER BY weight ASC, id ASC`
 	if err := r.db.SelectContext(ctx, &presets, query, tenantID); err != nil {
 		return nil, translateErr(err)
+	}
+	if err := r.openAll(presets); err != nil {
+		return nil, err
 	}
 	return presets, nil
 }

@@ -63,9 +63,15 @@ type Router struct {
 	WSAllowedOrigins []string
 	// PublicURL = origin Console (tujuan redirect login SSO), tanpa slash akhir.
 	PublicURL string
+	// Readiness = dependensi yang diperiksa GET /readyz (lihat health_handler.go).
+	Readiness []ReadinessCheck
 }
 
 func (r *Router) Register(e *echo.Echo) {
+	// Probe orkestrator/load balancer: publik, read-only, tanpa data pengguna (di luar /api/v1).
+	e.GET("/healthz", r.healthz)
+	e.GET("/readyz", r.readyz)
+
 	api := e.Group("/api/v1")
 
 	// Rate limit KHUSUS lebih ketat dari default REST 30 req/s (cmd/acsd/

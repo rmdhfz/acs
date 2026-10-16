@@ -87,10 +87,13 @@ func (r *provisioningProfileRepository) SoftDelete(ctx context.Context, id, dele
 
 // ---- ProvisioningProfileParameter ----
 
-type provisioningProfileParameterRepository struct{ db *sqlx.DB }
+type provisioningProfileParameterRepository struct {
+	db     *sqlx.DB
+	sealer ValueSealer // nil = tanpa enkripsi at-rest (lihat sealed_values.go)
+}
 
-func NewProvisioningProfileParameterRepository(db *sqlx.DB) domain.ProvisioningProfileParameterRepository {
-	return &provisioningProfileParameterRepository{db: db}
+func NewProvisioningProfileParameterRepository(db *sqlx.DB, sealer ValueSealer) domain.ProvisioningProfileParameterRepository {
+	return &provisioningProfileParameterRepository{db: db, sealer: sealer}
 }
 
 // Replace mengganti seluruh parameter milik profile dalam satu transaksi
@@ -109,7 +112,17 @@ func (r *provisioningProfileParameterRepository) Replace(ctx context.Context, pr
 		VALUES (:profile_id, :parameter_name, :parameter_value, :parameter_type_id, :apply_order)`
 	for i := range params {
 		params[i].ProfileID = profileID
-		if _, err := tx.NamedExecContext(ctx, q, &params[i]); err != nil {
+		// Salinan: slice milik pemanggil tidak boleh berisi ciphertext setelah Replace.
+		row := params[i]
+		if row.ParameterValue != nil {
+			sealed, err := sealValue(r.sealer, row.ParameterName, *row.ParameterValue)
+			if err != nil {
+				_ = tx.Rollback()
+				return err
+			}
+			row.ParameterValue = &sealed
+		}
+		if _, err := tx.NamedExecContext(ctx, q, &row); err != nil {
 			_ = tx.Rollback()
 			return translateErr(err)
 		}
@@ -123,6 +136,16 @@ func (r *provisioningProfileParameterRepository) ListByProfile(ctx context.Conte
 		`SELECT * FROM provisioning_profile_parameters WHERE profile_id = ? ORDER BY apply_order, id`, profileID)
 	if err != nil {
 		return nil, translateErr(err)
+	}
+	for i := range rows {
+		if rows[i].ParameterValue == nil {
+			continue
+		}
+		plain, err := openValue(r.sealer, *rows[i].ParameterValue)
+		if err != nil {
+			return nil, err
+		}
+		rows[i].ParameterValue = &plain
 	}
 	return rows, nil
 }

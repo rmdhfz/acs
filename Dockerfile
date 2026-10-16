@@ -11,6 +11,7 @@ COPY . .
 RUN CGO_ENABLED=0 go build -o /out/acsd ./cmd/acsd
 RUN CGO_ENABLED=0 go build -o /out/migrate ./cmd/migrate
 RUN CGO_ENABLED=0 go build -o /out/seed-admin ./cmd/seed-admin
+RUN CGO_ENABLED=0 go build -o /out/seal-secrets ./cmd/seal-secrets
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
@@ -18,7 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 # butuh hak apa pun (port 8080/7547 > 1024, tidak menulis ke filesystem).
 RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin acs
 WORKDIR /app
-COPY --from=build /out/acsd /out/migrate /out/seed-admin ./
+COPY --from=build /out/acsd /out/migrate /out/seed-admin /out/seal-secrets ./
 COPY migrations ./migrations
 USER acs
 EXPOSE 8080 7547

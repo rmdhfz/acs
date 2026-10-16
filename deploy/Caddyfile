@@ -1,0 +1,60 @@
+# Reverse proxy TLS siap pakai untuk ACS (overlay docker-compose.tls.yml).
+# Caddy memperoleh & memperbarui sertifikat Let's Encrypt otomatis untuk ACS_DOMAIN
+# (DNS A/AAAA ke server ini + port 80/443 terbuka dari internet).
+#
+# Alamat ACS yang dipasang di CPE:  https://<ACS_DOMAIN>/cwmp
+# Alamat Console web:               https://<ACS_DOMAIN>/
+{
+	# Email Let's Encrypt (pemberitahuan kedaluwarsa sertifikat) — WAJIB diisi.
+	email {$ACS_TLS_EMAIL}
+}
+
+{$ACS_DOMAIN} {
+	encode zstd gzip
+
+	# Console web (hasil `npm run build` di-mount ke /srv/console). Rute SPA jatuh ke index.html.
+	handle /api/* {
+		# WebSocket (/api/v1/ws) otomatis di-upgrade oleh reverse_proxy.
+		reverse_proxy acsd:8080
+	}
+
+	# Trafik TR-069 dari CPE. Tanpa buffering: sesi CWMP stateful & berurutan.
+	handle /cwmp* {
+		reverse_proxy acsd:7547 {
+			flush_interval -1
+			transport http {
+				read_timeout 10m
+			}
+		}
+	}
+
+	# Probe kesehatan publik (read-only) — dipakai monitoring eksternal/uptime checker.
+	handle /healthz {
+		reverse_proxy acsd:8080
+	}
+	handle /readyz {
+		reverse_proxy acsd:8080
+	}
+
+	# Aset ber-hash: tidak ada = 404 sungguhan (bukan HTML SPA yang menyesatkan), cache panjang.
+	handle /assets/* {
+		root * /srv/console
+		header Cache-Control "public, max-age=31536000, immutable"
+		file_server
+	}
+
+	handle {
+		root * /srv/console
+		try_files {path} /index.html
+		header Cache-Control "no-cache"
+		file_server
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+}

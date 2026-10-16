@@ -69,6 +69,9 @@ func scenarioProvisioning(ctx context.Context, w *World) result {
 	}
 	path := simcpe.Profiles[key].RootPrefix() + "LANDevice.1.WLANConfiguration.1.SSID"
 	target := "ACS-Prov-" + w.runID
+	// Nilai rahasia (nama sensitif): di DB tersegel AES-GCM, tetapi CPE harus menerima plaintext.
+	pskPath := simcpe.Profiles[key].RootPrefix() + "LANDevice.1.WLANConfiguration.1.KeyPassphrase"
+	psk := "Rahasia-" + w.runID
 
 	var prof struct {
 		ID uint64 `json:"id"`
@@ -78,6 +81,7 @@ func scenarioProvisioning(ctx context.Context, w *World) result {
 		"name":      "e2e-ssid-" + w.runID,
 		"parameters": []map[string]any{
 			{"parameter_name": path, "parameter_value": target, "apply_order": 1},
+			{"parameter_name": pskPath, "parameter_value": psk, "apply_order": 2},
 		},
 	}, &prof)
 	if err != nil {
@@ -97,10 +101,13 @@ func scenarioProvisioning(ctx context.Context, w *World) result {
 	if got, _ := dev.Param(path); got != target {
 		return failr("nilai di CPE = %q, harusnya %q", got, target)
 	}
+	if got, _ := dev.Param(pskPath); got != psk {
+		return failr("nilai rahasia di CPE = %q, harusnya plaintext %q (jalur enkripsi at-rest rusak?)", got, psk)
+	}
 	if !w.deviceHasTask(d.ID, "SET_PARAMETER_VALUES", "COMPLETED") {
 		return failr("task SET_PARAMETER_VALUES tidak COMPLETED (%s)", w.taskDump(d.ID))
 	}
-	return pass("profile diterapkan: %s = %q di CPE, task COMPLETED", shortPath(path), target)
+	return pass("profile diterapkan: %s = %q di CPE (+ nilai rahasia plaintext di CPE, tersegel di DB), task COMPLETED", shortPath(path), target)
 }
 
 // S3 — reboot manual: POST /devices/:id/reboot -> CPE menerima Reboot RPC,

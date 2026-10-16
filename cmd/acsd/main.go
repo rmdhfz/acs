@@ -114,7 +114,7 @@ func main() {
 	opticalMetricRepo := mysql.NewDeviceOpticalMetricRepository(db)
 	taskRepo := mysql.NewTaskRepository(db)
 	profileRepo := mysql.NewProvisioningProfileRepository(db)
-	profileParamRepo := mysql.NewProvisioningProfileParameterRepository(db)
+	profileParamRepo := mysql.NewProvisioningProfileParameterRepository(db, enc)
 	ztRuleRepo := mysql.NewZeroTouchRuleRepository(db)
 	firmwareFileRepo := mysql.NewFirmwareFileRepository(db)
 	firmwareJobRepo := mysql.NewFirmwareUpgradeJobRepository(db)
@@ -124,7 +124,7 @@ func main() {
 	webhookDeliveryRepo := mysql.NewWebhookDeliveryRepository(db)
 	fileRepo := mysql.NewFileRepository(db)
 	tagRepo := mysql.NewTagRepository(db)
-	presetRepo := mysql.NewPresetRepository(db)
+	presetRepo := mysql.NewPresetRepository(db, enc)
 	presetAppRepo := mysql.NewPresetApplicationRepository(db)
 	userDeviceRepo := mysql.NewUserDeviceRepository(db)
 	usageRepo := mysql.NewUsageRepository(db)
@@ -256,6 +256,16 @@ func main() {
 
 		WSAllowedOrigins: cfg.CORSAllowOrigins,
 		PublicURL:        cfg.PublicURL,
+		Readiness: []deliveryhttp.ReadinessCheck{
+			// DB kritis: tanpa DB ACS tak bisa melayani apa pun. Redis hanya cache sesi (opsional).
+			{Name: "database", Critical: true, Fn: func(ctx context.Context) error { return db.PingContext(ctx) }},
+			{Name: "redis", Critical: false, Fn: func(ctx context.Context) error {
+				if redisClient == nil {
+					return nil // tidak dikonfigurasi/gagal saat start: fitur nonaktif, bukan "down"
+				}
+				return redisClient.DB().Ping(ctx).Err()
+			}},
+		},
 	}
 	router.Register(restEcho)
 
