@@ -172,7 +172,7 @@ Modul impor+ekspor: Perangkat, User, Tenant, Katalog (Vendor/OUI/Model/Mapping),
 
 **Buku Panduan v2.0** (`BUKU_PANDUAN_ACS.html` → `.pdf`, 21 hlm; dibuat dengan Chrome headless `--print-to-pdf`, diagram Mermaid dari CDN + SVG inline): bab baru **"Cara kerja ACS — di OLT atau di ONT?"** (ACS mengonfigurasi ONT/CPE lewat TR-069; OLT dikelola terpisah lewat SNMP/CLI/NETCONF; peta dua bidang manajemen, tabel "dikonfigurasi di mana", perjalanan ONT baru, cara ONT tahu URL ACS, Connection Request, kasus bridge/SFU/OMCI, FAQ), serta pembaruan login email/Argon2id/reset, tambah-edit-hapus perangkat, impor/ekspor, matriks protokol & batasan, troubleshooting.
 
-**Panduan UAT (Rabu 21 Okt 2026)** — `PANDUAN_UAT_ACS.html/.pdf` (10 hlm): persiapan H-3..H-1 per PIC (DEV/NET/OPS), agenda ±4 jam, 10 kasus uji Network (N1–N10), 20 kasus Operasional (O1–O20), 2 skenario gabungan (G1–G2), daftar batasan yang sudah diketahui, kriteria GO/NO-GO + tingkat keparahan, lembar lingkungan/ONT/bug/sign-off, backup & tabel gejala. Melengkapi `PENGUJIAN_LAPANGAN.md` (gladi jaringan §3a).
+**Panduan UAT (Rabu 21 Okt 2026)** — `PANDUAN_UAT_ACS.html/.pdf` (16 hlm): linimasa & serah-terima antar tiga tim, langkah demi langkah per tim (IT: server, .env, firewall, Console, tenant/akun, gladi, pemantauan; Network: jalur dua arah, ONT uji, isian TR-069; Ops: akun, data uji, peran), agenda ±4 jam, 10 kasus uji Network (N1–N10), 20 kasus Operasional (O1–O20), 2 skenario gabungan (G1–G2), daftar batasan yang sudah diketahui, kriteria GO/NO-GO + tingkat keparahan, lembar lingkungan/ONT/bug/sign-off, backup & tabel gejala. Melengkapi `PENGUJIAN_LAPANGAN.md` (gladi jaringan §3a).
 
 ### BELUM
 
