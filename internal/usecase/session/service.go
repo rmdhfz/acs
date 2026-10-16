@@ -30,6 +30,10 @@ import (
 )
 
 type Service struct {
+	// opticalPollEvery — interval polling redaman optik (0 = nonaktif); opticalSkip = cache
+	// negatif (vendor/model tanpa mapping optical.*) agar tidak menambah query tiap Inform.
+	opticalPollEvery time.Duration
+	opticalSkip      sync.Map // "vendor:model" -> time.Time kedaluwarsa cache
 	// typeIDs: cache kode tipe XSD -> id ref_parameter_types (lihat paramTypeID).
 	typeIDs         sync.Map
 	sessions        domain.DeviceSessionRepository
@@ -337,6 +341,8 @@ func (s *Service) HandleInform(ctx context.Context, in InformInput) (*InformResu
 		}
 	}
 
+	s.maybePollOptical(ctx, dev)
+
 	_ = s.deviceSvc.MarkOnline(ctx, dev)
 
 	if s.publisher != nil && dev.TenantID != nil {
@@ -599,6 +605,7 @@ func (s *Service) HandleRPCResponse(ctx context.Context, resp RPCResponse) error
 		if err := s.diagnosticsSvc.HandleParameterValues(ctx, t.ID, vals); err != nil && !errors.Is(err, domain.ErrNotFound) {
 			s.log().Warn("cwmp: gagal memproses hasil diagnostik", "task_id", t.ID, "error", err)
 		}
+		s.handleOpticalResult(ctx, sess.DeviceID, t, vals)
 	} else if s.diagnosticsSvc != nil {
 		// Respons non-GPV (mis. SetParameterValues pemicu): maju ke fase menunggu hasil.
 		if err := s.diagnosticsSvc.HandleResult(ctx, t.ID, nil, true); err != nil && !errors.Is(err, domain.ErrNotFound) {
@@ -627,6 +634,76 @@ func (s *Service) paramTypeID(ctx context.Context, xsd string) *uint64 {
 	s.typeIDs.Store(code, ref.ID)
 	id := ref.ID
 	return &id
+}
+
+// WithOpticalPoll mengaktifkan polling redaman optik berkala (interval 0 = mati).
+func (s *Service) WithOpticalPoll(every time.Duration) *Service {
+	s.opticalPollEvery = every
+	return s
+}
+
+// maybePollOptical mengantre pembacaan optik (GetParameterValues terpetakan) bila sudah lewat
+// intervalnya. Hanya berjalan bila vendor/model punya mapping optical.*; hasil negatif
+// di-cache 1 jam per vendor/model.
+func (s *Service) maybePollOptical(ctx context.Context, dev *domain.Device) {
+	if s.opticalPollEvery <= 0 || dev.VendorID == nil {
+		return
+	}
+	cacheKey := fmt.Sprintf("%d:%v", *dev.VendorID, dev.DeviceModelID)
+	if v, ok := s.opticalSkip.Load(cacheKey); ok && time.Now().Before(v.(time.Time)) {
+		return
+	}
+	if last, err := s.deviceSvc.LastOpticalAt(ctx, dev.ID); err == nil && last != nil && time.Since(*last) < s.opticalPollEvery {
+		return
+	}
+	if pending, err := s.taskSvc.HasPendingForDevice(ctx, dev.ID); err != nil || pending {
+		return
+	}
+	queued, err := s.taskSvc.EnqueueOpticalPoll(ctx, dev.ID)
+	if err != nil {
+		s.log().Warn("cwmp: gagal mengantre polling optik", "device_id", dev.ID, "error", err)
+		return
+	}
+	if !queued {
+		s.opticalSkip.Store(cacheKey, time.Now().Add(time.Hour))
+	}
+}
+
+// handleOpticalResult mengubah hasil GetParameterValues polling optik menjadi metrik
+// (nilai × skala mapping) dan menjalankan deteksi anomali yang sama dengan jalur Inform.
+func (s *Service) handleOpticalResult(ctx context.Context, deviceID uint64, t *domain.Task, values map[string]string) {
+	var p struct {
+		Optical *struct {
+			Fields map[string]string  `json:"fields"`
+			Scales map[string]float64 `json:"scales"`
+		} `json:"optical"`
+	}
+	if json.Unmarshal(t.Parameters, &p) != nil || p.Optical == nil {
+		return
+	}
+	get := func(field string) *float64 {
+		path, ok := p.Optical.Fields[field]
+		if !ok {
+			return nil
+		}
+		raw, ok := values[path]
+		if !ok {
+			return nil
+		}
+		var v float64
+		if _, err := fmt.Sscanf(strings.TrimSpace(raw), "%f", &v); err != nil {
+			return nil
+		}
+		if sc := p.Optical.Scales[path]; sc != 0 {
+			v *= sc
+		}
+		return &v
+	}
+	dev, err := s.devices.GetByID(ctx, deviceID)
+	if err != nil {
+		return
+	}
+	s.recordOptical(ctx, dev, get("rx_dbm"), get("tx_dbm"), get("voltage"), get("bias_ma"), get("temperature_c"), p.Optical.Fields["rx_dbm"])
 }
 
 // failDiagnostic menandai diagnostik terkait task ini FAILED (bila ada).
@@ -885,6 +962,11 @@ func (s *Service) detectAnomalyOptical(ctx context.Context, dev *domain.Device, 
 		}
 	}
 
+	s.recordOptical(ctx, dev, rxPower, txPower, voltage, bias, temp, paramName)
+}
+
+// recordOptical menyimpan metrik optik & memicu deteksi anomali redaman (dBm kanonik).
+func (s *Service) recordOptical(ctx context.Context, dev *domain.Device, rxPower, txPower, voltage, bias, temp *float64, paramName string) {
 	if rxPower != nil || txPower != nil || voltage != nil || bias != nil || temp != nil {
 		metric := &domain.DeviceOpticalMetric{
 			DeviceID:           dev.ID,

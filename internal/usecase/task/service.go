@@ -80,15 +80,25 @@ func (s *Service) notifyTaskFailed(ctx context.Context, t *domain.Task, errMsg s
 // path TR-069 sesuai vendor/model device. Raw path yang sudah eksplisit
 // (diawali root object TR-098/TR-181) diteruskan apa adanya (FR-12).
 func (s *Service) ResolveParameterPath(ctx context.Context, deviceID uint64, key string) (string, error) {
-	if looksLikeRawPath(key) {
-		return key, nil
-	}
-	dev, err := s.devices.GetByID(ctx, deviceID)
+	m, err := s.ResolveMapping(ctx, deviceID, key)
 	if err != nil {
 		return "", err
 	}
+	return m.TR069Path, nil
+}
+
+// ResolveMapping = ResolveParameterPath tetapi mengembalikan seluruh mapping (path, tipe, skala).
+// Raw path menghasilkan mapping sintetis (skala 1).
+func (s *Service) ResolveMapping(ctx context.Context, deviceID uint64, key string) (*domain.VendorParameterMapping, error) {
+	if looksLikeRawPath(key) {
+		return &domain.VendorParameterMapping{TR069Path: key, LogicalKey: key, ValueScale: 1}, nil
+	}
+	dev, err := s.devices.GetByID(ctx, deviceID)
+	if err != nil {
+		return nil, err
+	}
 	if dev.VendorID == nil {
-		return "", fmt.Errorf("task: device belum diketahui vendor-nya, tidak bisa resolve logical key %q", key)
+		return nil, fmt.Errorf("task: device belum diketahui vendor-nya, tidak bisa resolve logical key %q", key)
 	}
 	// Data model version: dari model perangkat bila ada; bila belum (ONT baru, model
 	// belum terdaftar) dideteksi dari root parameter yang pernah dilaporkan CPE.
@@ -96,24 +106,27 @@ func (s *Service) ResolveParameterPath(ctx context.Context, deviceID uint64, key
 	if dev.DeviceModelID != nil {
 		dm, err := s.deviceModels.GetByID(ctx, *dev.DeviceModelID)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 		dmvID = dm.DataModelVersionID
 	} else {
 		id, err := s.detectDataModelVersion(ctx, dev.ID)
 		if err != nil {
-			return "", fmt.Errorf("%w: %v", domain.ErrInvalidInput, err)
+			return nil, fmt.Errorf("%w: %v", domain.ErrInvalidInput, err)
 		}
 		dmvID = id
 	}
 	m, err := s.paramMappings.Resolve(ctx, *dev.VendorID, dmvID, dev.DeviceModelID, key, dev.SoftwareVersion)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return "", fmt.Errorf("task: tidak ada vendor_parameter_mappings untuk logical key %q pada device ini (kirim raw TR-069 path bila belum dipetakan, lihat FR-12)", key)
+			return nil, fmt.Errorf("task: tidak ada vendor_parameter_mappings untuk logical key %q pada device ini (kirim raw TR-069 path bila belum dipetakan, lihat FR-12)", key)
 		}
-		return "", err
+		return nil, err
 	}
-	return m.TR069Path, nil
+	if m.ValueScale == 0 {
+		m.ValueScale = 1
+	}
+	return m, nil
 }
 
 // detectDataModelVersion menentukan TR-098 vs TR-181 dari parameter device (root object
@@ -993,4 +1006,39 @@ func (s *Service) handleAutoDiscoveryResponse(ctx context.Context, t *domain.Tas
 			Parameters: map[string]interface{}{"names": namesToGet},
 		})
 	}
+}
+
+// EnqueueOpticalPoll mengantre GetParameterValues untuk kunci optical.* yang TERPETAKAN pada
+// perangkat ini (rx/tx/voltage/bias/temperature). Mengembalikan false bila tak ada satu pun
+// mapping (vendor/model belum punya path optik) — bukan error. Skala per-path dibawa di task
+// agar hasil dikonversi ke satuan kanonik tanpa percabangan vendor.
+func (s *Service) EnqueueOpticalPoll(ctx context.Context, deviceID uint64) (bool, error) {
+	keys := map[string]string{
+		"optical.rx_power": "rx_dbm", "optical.tx_power": "tx_dbm", "optical.voltage": "voltage",
+		"optical.bias_current": "bias_ma", "optical.temperature": "temperature_c",
+	}
+	fields := map[string]string{}
+	scales := map[string]float64{}
+	var names []string
+	for _, k := range []string{"optical.rx_power", "optical.tx_power", "optical.voltage", "optical.bias_current", "optical.temperature"} {
+		m, err := s.ResolveMapping(ctx, deviceID, k)
+		if err != nil {
+			if errors.Is(err, domain.ErrInvalidInput) || errors.Is(err, domain.ErrNotFound) || strings.HasPrefix(err.Error(), "task: ") {
+				continue
+			}
+			return false, err
+		}
+		fields[keys[k]] = m.TR069Path
+		scales[m.TR069Path] = m.ValueScale
+		names = append(names, m.TR069Path)
+	}
+	if len(names) == 0 {
+		return false, nil
+	}
+	sys := domain.Actor{Roles: []string{domain.RoleSuperadmin}}
+	_, err := s.CreateTask(ctx, sys, domain.CreateTaskInput{
+		DeviceID: deviceID, TaskType: domain.TaskTypeGetParameterValues, Priority: 8,
+		Parameters: map[string]interface{}{"names": names, "optical": map[string]interface{}{"fields": fields, "scales": scales}},
+	})
+	return err == nil, err
 }

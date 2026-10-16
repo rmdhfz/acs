@@ -80,7 +80,10 @@ type VendorParameterMapping struct {
 	LogicalKey             string  `db:"logical_key" json:"logical_key"`
 	TR069Path              string  `db:"tr069_path" json:"tr069_path"`
 	ParameterTypeID        *uint64 `db:"parameter_type_id" json:"parameter_type_id"`
-	Description            *string `db:"description" json:"description"`
+	// ValueScale — pengali nilai mentah CPE -> satuan kanonik (mis. 0,001 untuk 0,001 dBm -> dBm);
+	// 0/tak diisi diperlakukan 1 (migrations/0026).
+	ValueScale  float64 `db:"value_scale" json:"value_scale"`
+	Description *string `db:"description" json:"description"`
 	Audit
 }
 

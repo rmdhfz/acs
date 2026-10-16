@@ -122,6 +122,7 @@ func main() {
 		{"S12-auth-email-reset", scenarioAuthEmailReset},
 		{"S13-device-provision-import", scenarioDeviceProvision},
 		{"S14-diagnostics", scenarioDiagnostics},
+		{"S15-optical-poll", scenarioOpticalPoll},
 	}
 
 	var results []result

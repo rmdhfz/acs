@@ -373,6 +373,7 @@ CREATE TABLE vendor_parameter_mappings (
     logical_key             VARCHAR(128)    NOT NULL COMMENT 'cth: wifi.5g.ssid, wan.pppoe.username, device.optical.rx_power',
     tr069_path              VARCHAR(512)    NOT NULL,
     parameter_type_id       BIGINT UNSIGNED NULL,
+    value_scale             DECIMAL(14,6)   NOT NULL DEFAULT 1 COMMENT 'Pengali nilai mentah -> satuan kanonik (migrations/0026)',
     description             VARCHAR(255)    NULL,
     created_at              DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     created_by              BIGINT UNSIGNED NULL,
@@ -4447,6 +4448,25 @@ CROSS JOIN (
     UNION ALL SELECT 'diag.traceroute.max_hops' AS logical_key, 'Device.IP.Diagnostics.TraceRoute.MaxHopCount' AS tr069_path, 'unsignedInt' AS ptype, 'Diagnostik Traceroute (TR181, parameter standar MaxHopCount)' AS description
     UNION ALL SELECT 'diag.traceroute.response_time' AS logical_key, 'Device.IP.Diagnostics.TraceRoute.ResponseTime' AS tr069_path, 'unsignedInt' AS ptype, 'Diagnostik Traceroute (TR181, parameter standar ResponseTime)' AS description
     UNION ALL SELECT 'diag.traceroute.hops' AS logical_key, 'Device.IP.Diagnostics.TraceRoute.RouteHops.' AS tr069_path, 'string' AS ptype, 'Diagnostik Traceroute (TR181, parameter standar RouteHops.)' AS description
+) k
+LEFT JOIN ref_parameter_types pt ON pt.code = k.ptype
+WHERE v.code IN ('ZTE', 'HUAWEI', 'FIBERHOME', 'NOKIA', 'CDATA') AND v.is_deleted = 0
+  AND NOT EXISTS (
+      SELECT 1 FROM vendor_parameter_mappings m
+       WHERE m.vendor_id = v.id AND m.data_model_version_id = dmv.id AND m.device_model_id IS NULL
+         AND m.logical_key = k.logical_key AND m.software_version_pattern IS NULL AND m.is_deleted = 0);
+
+-- migrations/0026_mapping_value_scale_optical: seed optical.* (kolom value_scale sudah ada di CREATE TABLE di atas)
+INSERT INTO vendor_parameter_mappings
+    (vendor_id, data_model_version_id, device_model_id, logical_key, tr069_path, parameter_type_id, value_scale, description)
+SELECT v.id, dmv.id, NULL, k.logical_key, k.tr069_path, pt.id, 0.001, k.description
+FROM ref_vendors v
+CROSS JOIN (SELECT id FROM ref_data_model_versions WHERE code = 'TR181') dmv
+CROSS JOIN (
+    SELECT 'optical.rx_power' AS logical_key, 'Device.Optical.Interface.1.OpticalSignalLevel' AS tr069_path, 'int' AS ptype,
+           'Level sinyal optik diterima (TR-181 Device.Optical.Interface, satuan 0,001 dBm). Standar; belum diverifikasi pada CPE nyata' AS description
+    UNION ALL SELECT 'optical.tx_power', 'Device.Optical.Interface.1.TransmitOpticalLevel', 'int',
+           'Level daya optik terkirim (TR-181 Device.Optical.Interface, satuan 0,001 dBm). Standar; belum diverifikasi pada CPE nyata'
 ) k
 LEFT JOIN ref_parameter_types pt ON pt.code = k.ptype
 WHERE v.code IN ('ZTE', 'HUAWEI', 'FIBERHOME', 'NOKIA', 'CDATA') AND v.is_deleted = 0

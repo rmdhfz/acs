@@ -565,6 +565,18 @@ func (s *Service) LatestOpticalMetric(ctx context.Context, actor domain.Actor, d
 	return s.opticalMetrics.Latest(ctx, deviceID)
 }
 
+// LastOpticalAt — waktu metrik optik terakhir (nil bila belum ada); dipakai pemicu polling.
+func (s *Service) LastOpticalAt(ctx context.Context, deviceID uint64) (*time.Time, error) {
+	m, err := s.opticalMetrics.Latest(ctx, deviceID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &m.RecordedAt, nil
+}
+
 func (s *Service) ListOpticalMetrics(ctx context.Context, actor domain.Actor, deviceID uint64, p domain.Pagination) ([]domain.DeviceOpticalMetric, int, error) {
 	if _, err := s.Get(ctx, actor, deviceID); err != nil {
 		return nil, 0, err

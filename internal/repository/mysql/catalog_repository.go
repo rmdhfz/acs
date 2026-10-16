@@ -224,8 +224,11 @@ func (r *vendorParameterMappingRepository) Create(ctx context.Context, m *domain
 	now := time.Now()
 	m.CreatedAt, m.UpdatedAt = now, now
 	const q = `INSERT INTO vendor_parameter_mappings
-		(vendor_id, data_model_version_id, device_model_id, software_version_pattern, logical_key, tr069_path, parameter_type_id, description, created_at, updated_at, created_by)
-		VALUES (:vendor_id, :data_model_version_id, :device_model_id, :software_version_pattern, :logical_key, :tr069_path, :parameter_type_id, :description, :created_at, :updated_at, :created_by)`
+		(vendor_id, data_model_version_id, device_model_id, software_version_pattern, logical_key, tr069_path, parameter_type_id, value_scale, description, created_at, updated_at, created_by)
+		VALUES (:vendor_id, :data_model_version_id, :device_model_id, :software_version_pattern, :logical_key, :tr069_path, :parameter_type_id, :value_scale, :description, :created_at, :updated_at, :created_by)`
+	if m.ValueScale == 0 {
+		m.ValueScale = 1
+	}
 	res, err := r.db.NamedExecContext(ctx, q, m)
 	if err != nil {
 		return translateErr(err)
@@ -243,8 +246,8 @@ func (r *vendorParameterMappingRepository) Upsert(ctx context.Context, m *domain
 	// berbeda pada scope vendor/dmv/model/logical_key yang sama BUKAN
 	// duplikat, dan sengaja tidak saling menimpa.
 	const q = `INSERT INTO vendor_parameter_mappings
-		(vendor_id, data_model_version_id, device_model_id, software_version_pattern, logical_key, tr069_path, parameter_type_id, description, created_at, updated_at, created_by)
-		VALUES (:vendor_id, :data_model_version_id, :device_model_id, :software_version_pattern, :logical_key, :tr069_path, :parameter_type_id, :description, :created_at, :updated_at, :created_by)
+		(vendor_id, data_model_version_id, device_model_id, software_version_pattern, logical_key, tr069_path, parameter_type_id, value_scale, description, created_at, updated_at, created_by)
+		VALUES (:vendor_id, :data_model_version_id, :device_model_id, :software_version_pattern, :logical_key, :tr069_path, :parameter_type_id, :value_scale, :description, :created_at, :updated_at, :created_by)
 		ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id), tr069_path = VALUES(tr069_path), parameter_type_id = VALUES(parameter_type_id),
 			description = VALUES(description), updated_at = VALUES(updated_at), is_deleted = 0, deleted_at = NULL, deleted_by = NULL`
 	// `id = LAST_INSERT_ID(id)` membuat LastInsertId() mengembalikan id baris
@@ -260,15 +263,21 @@ func (r *vendorParameterMappingRepository) Upsert(ctx context.Context, m *domain
 		WHERE vendor_id = ? AND data_model_version_id = ? AND device_model_id <=> ? AND logical_key = ?
 		  AND software_version_pattern <=> ? ORDER BY is_deleted ASC, id DESC LIMIT 1`,
 		m.VendorID, m.DataModelVersionID, m.DeviceModelID, m.LogicalKey, m.SoftwareVersionPattern); gerr == nil {
-		if _, uerr := r.db.ExecContext(ctx, `UPDATE vendor_parameter_mappings SET tr069_path = ?, parameter_type_id = ?, description = ?,
+		if m.ValueScale == 0 {
+			m.ValueScale = 1
+		}
+		if _, uerr := r.db.ExecContext(ctx, `UPDATE vendor_parameter_mappings SET tr069_path = ?, parameter_type_id = ?, value_scale = ?, description = ?,
 			updated_at = ?, is_deleted = 0, deleted_at = NULL, deleted_by = NULL WHERE id = ?`,
-			m.TR069Path, m.ParameterTypeID, m.Description, m.UpdatedAt, existingID); uerr != nil {
+			m.TR069Path, m.ParameterTypeID, m.ValueScale, m.Description, m.UpdatedAt, existingID); uerr != nil {
 			return translateErr(uerr)
 		}
 		m.ID = existingID
 		return nil
 	} else if !errors.Is(gerr, sql.ErrNoRows) {
 		return translateErr(gerr)
+	}
+	if m.ValueScale == 0 {
+		m.ValueScale = 1
 	}
 	res, err := r.db.NamedExecContext(ctx, q, m)
 	if err != nil {

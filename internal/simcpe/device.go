@@ -63,6 +63,9 @@ func NewDevice(p Profile, serial string) *Device {
 	}
 
 	if p.DataModel == TR181 {
+		// Objek optik STANDAR TR-181 (satuan 0,001 dBm): -23,5 dBm terima, +2,1 dBm kirim.
+		set("Optical.Interface.1.OpticalSignalLevel", "-23500")
+		set("Optical.Interface.1.TransmitOpticalLevel", "2100")
 		set("WiFi.SSID.1.SSID", "Home-"+shortSerial(serial))
 		set("WiFi.AccessPoint.1.Security.KeyPassphrase", "changeme-"+shortSerial(serial))
 		set("PPP.Interface.1.Username", "pppoe-"+shortSerial(serial))
