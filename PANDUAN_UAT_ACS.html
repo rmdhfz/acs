@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Panduan UAT ACS</title>
+<style>
+  :root {
+    --ink: #1a1f24; --muted: #55606b; --faint: #8a929b; --accent: #1d4ed8;
+    --rule: #d7dbe0; --rule-soft: #e9ecef;
+    --info-bg: #eef4ff; --info-bd: #c7dbff;
+    --warn-bg: #fdf5e4; --warn-bd: #f0dcae;
+    --danger-bg: #fdecea; --danger-bd: #f3c9c4;
+    --ok-bg: #eaf7ee; --ok-bd: #bfe3c9;
+    --code-bg: #f3f4f6;
+    --net: #b45309; --net-bg: #fff4e5;
+    --ops: #1d4ed8; --ops-bg: #eaf1ff;
+  }
+  * { box-sizing: border-box; }
+  html { font-size: 10pt; }
+  body { margin: 0; color: var(--ink); font-family: "Segoe UI","Helvetica Neue",Arial,sans-serif; line-height: 1.5; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .page { max-width: 17.4cm; margin: 0 auto; padding: 0 0 2cm; }
+
+  .cover { border-bottom: 3px solid var(--accent); padding-bottom: 14px; margin-bottom: 18px; }
+  .cover .kicker { font-size: 8pt; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); }
+  .cover h1 { font-size: 22pt; line-height: 1.12; margin: 6px 0 4px; }
+  .cover .sub { color: var(--muted); font-size: 10.5pt; margin: 0; }
+  .cover .meta { margin-top: 10px; font-size: 8.6pt; color: var(--faint); }
+  .cover .meta strong { color: var(--muted); }
+
+  h2 { font-size: 13pt; margin: 22px 0 8px; padding-top: 12px; border-top: 1px solid var(--rule); }
+  h2 .num { display: inline-block; min-width: 1.5em; color: var(--accent); }
+  h3 { font-size: 10.5pt; margin: 14px 0 5px; }
+  p { margin: 6px 0; }
+  ul, ol { margin: 6px 0; padding-left: 1.3em; }
+  li { margin: 3px 0; }
+  a { color: var(--accent); text-decoration: none; }
+  code { font-family: "Consolas","SF Mono",monospace; font-size: 8.7pt; background: var(--code-bg); padding: 1px 4px; border-radius: 3px; }
+  pre { background: var(--code-bg); border: 1px solid var(--rule-soft); border-radius: 5px; padding: 8px 11px; font-family: "Consolas",monospace; font-size: 8.4pt; line-height: 1.45; white-space: pre-wrap; word-break: break-word; margin: 8px 0; }
+
+  .callout { border: 1px solid var(--rule); border-left-width: 4px; border-radius: 4px; padding: 8px 12px; margin: 10px 0; font-size: 9.4pt; }
+  .callout .label { font-weight: 700; font-size: 7.8pt; letter-spacing: 0.08em; text-transform: uppercase; display: block; margin-bottom: 2px; }
+  .callout p:first-of-type { margin-top: 0; } .callout p:last-child { margin-bottom: 0; }
+  .callout.info { background: var(--info-bg); border-color: var(--info-bd); border-left-color: var(--accent); } .callout.info .label { color: var(--accent); }
+  .callout.warn { background: var(--warn-bg); border-color: var(--warn-bd); border-left-color: #b8860b; } .callout.warn .label { color: #96690a; }
+  .callout.danger { background: var(--danger-bg); border-color: var(--danger-bd); border-left-color: #c0392b; } .callout.danger .label { color: #a93226; }
+  .callout.ok { background: var(--ok-bg); border-color: var(--ok-bd); border-left-color: #2e7d43; } .callout.ok .label { color: #256b38; }
+
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 8.9pt; }
+  th, td { border: 1px solid var(--rule); padding: 5px 8px; text-align: left; vertical-align: top; }
+  th { background: #f5f6f8; font-weight: 700; font-size: 8.2pt; letter-spacing: 0.03em; }
+  tr { page-break-inside: avoid; }
+  td.id { font-weight: 700; white-space: nowrap; width: 9%; }
+  td.res { white-space: nowrap; width: 15%; font-size: 8.4pt; }
+  table.net td.id { color: var(--net); } table.ops td.id { color: var(--ops); } table.gab td.id { color: #2e7d43; }
+  table.net th { background: var(--net-bg); } table.ops th { background: var(--ops-bg); } table.gab th { background: var(--ok-bg); }
+  .blank { display: inline-block; border-bottom: 1px solid #999; min-width: 5cm; height: 1em; }
+  td.fill { height: 0.9cm; }
+
+  .lane { display: flex; align-items: stretch; margin: 10px 0; page-break-inside: avoid; }
+  .lane .st { flex: 1 1 0; border: 1.5px solid var(--rule); border-radius: 7px; padding: 7px 8px; font-size: 8.5pt; line-height: 1.35; background: #fff; }
+  .lane .st b { display: block; font-size: 8.8pt; margin-bottom: 2px; }
+  .lane .st.net { border-color: #f1c58b; background: var(--net-bg); } .lane .st.net b { color: var(--net); }
+  .lane .st.ops { border-color: #b3cdfb; background: var(--ops-bg); } .lane .st.ops b { color: var(--ops); }
+  .lane .st.acs { border-color: #a9d8b5; background: var(--ok-bg); } .lane .st.acs b { color: #256b38; }
+  .lane .ar { flex: 0 0 14px; display: flex; align-items: center; justify-content: center; color: var(--faint); font-size: 12pt; }
+  .tag { display: inline-block; font-size: 7.6pt; font-weight: 700; padding: 1px 6px; border-radius: 9px; vertical-align: 1px; }
+  .tag.net { background: var(--net-bg); color: var(--net); border: 1px solid #f1c58b; }
+  .tag.ops { background: var(--ops-bg); color: var(--ops); border: 1px solid #b3cdfb; }
+  .tag.dev { background: #f1f1f4; color: #4b5563; border: 1px solid #d1d5db; }
+
+  .toc { font-size: 9.2pt; columns: 2; column-gap: 24px; margin: 8px 0; }
+  .toc ol { margin: 0; padding-left: 1.6em; } .toc a { color: var(--ink); } .toc li { break-inside: avoid; }
+
+  @page { size: A4; margin: 16mm 15mm 15mm; }
+  @media print { h2, h3 { page-break-after: avoid; } .callout, pre, table, .lane { page-break-inside: avoid; } }
+  footer { margin-top: 24px; border-top: 1px solid var(--rule); padding-top: 8px; font-size: 8pt; color: var(--faint); }
+</style>
+</head>
+<body>
+<div class="page">
+
+<div class="cover">
+  <div class="kicker">Pengujian Penerimaan Pengguna (UAT)</div>
+  <h1>Panduan UAT ACS</h1>
+  <p class="sub">Skenario uji, checklist persiapan, lembar hasil, dan kriteria lulus — Tim Operasional &amp; Tim Network</p>
+  <div class="meta">
+    <strong>Hari pelaksanaan:</strong> Rabu, 21 Oktober 2026 &nbsp;·&nbsp;
+    <strong>Versi dokumen:</strong> 1.0 (disusun 16 Oktober 2026) &nbsp;·&nbsp;
+    <strong>Peserta:</strong> Tim Operasional (NOC), Tim Network (OLT/jaringan), Tim Pengembang
+  </div>
+</div>
+
+<div class="callout ok"><span class="label">Tujuan UAT</span>
+<p>Memastikan ACS bisa dipakai tim operasional dan network untuk pekerjaan sehari-hari
+<strong>pada ONT sungguhan</strong>: ONT muncul di ACS, bisa dibaca, diubah
+konfigurasinya (WiFi dll.), di-reboot, dan semua aksi tercatat. Sistem ini
+<strong>belum pernah menerima Inform dari ONT fisik</strong> — validasi sebelumnya
+memakai simulator (13 skenario e2e lulus). UAT ini adalah bukti pertama di dunia
+nyata, jadi temuan itu <em>diharapkan</em> dan berharga.</p></div>
+
+<div class="callout info"><span class="label">Ingat pembagian tanggung jawab</span>
+<p><strong>ACS mengonfigurasi sisi ONT, bukan OLT.</strong> Tim Network tetap
+mengerjakan sisi OLT (registrasi ONT, VLAN, jalur manajemen); ACS mengatur
+konfigurasi di dalam ONT lewat TR-069. Penjelasan bergambar: <em>Buku Panduan ACS</em>, Bab 1.</p></div>
+
+<div class="toc"><ol>
+  <li><a href="#s1">Ruang lingkup &amp; aturan main</a></li>
+  <li><a href="#s2">Persiapan H-3 s.d. H-1</a></li>
+  <li><a href="#s3">Agenda hari-H</a></li>
+  <li><a href="#s4">Bagian A — Uji Tim Network</a></li>
+  <li><a href="#s5">Bagian B — Uji Tim Operasional</a></li>
+  <li><a href="#s6">Bagian C — Skenario gabungan</a></li>
+  <li><a href="#s7">Yang sudah diketahui belum lengkap</a></li>
+  <li><a href="#s8">Kriteria lulus &amp; tingkat keparahan</a></li>
+  <li><a href="#s9">Lembar lingkungan, bug, &amp; sign-off</a></li>
+  <li><a href="#s10">Pemulihan &amp; bantuan cepat</a></li>
+</ol></div>
+
+<!-- ============================================================ -->
+<h2 id="s1"><span class="num">1</span> Ruang lingkup &amp; aturan main</h2>
+
+<table>
+<tr><th style="width:50%">Diuji pada UAT ini</th><th>TIDAK diuji / jangan dicoba</th></tr>
+<tr><td>
+<ul>
+<li>ONT mendaftar otomatis lewat Inform; identifikasi vendor/tenant</li>
+<li>Penelusuran perangkat, parameter, event, task</li>
+<li>Reboot, baca &amp; ubah parameter (SSID WiFi uji)</li>
+<li>Connection Request (ACS menyentil ONT)</li>
+<li>Provisioning Profile, Zero-Touch, Preset</li>
+<li>Tambah/edit/hapus perangkat, impor/ekspor</li>
+<li>Login email, lupa password, peran &amp; hak akses, audit</li>
+</ul></td>
+<td>
+<ul>
+<li><strong>Konfigurasi OLT dari ACS</strong> — memang bukan fungsi ACS (belum ada)</li>
+<li><strong>Upgrade firmware ke ONT pelanggan aktif</strong> (risiko brick). Bila ingin, pakai unit yang boleh rusak</li>
+<li><strong>Mengirim kredensial PPPoE pelanggan asli</strong> — pakai kredensial uji</li>
+<li>Aksi massal ke banyak ONT sekaligus (uji satu-satu dulu)</li>
+<li>Factory reset ONT yang sedang dipakai pelanggan</li>
+<li>Uji beban/kapasitas ribuan perangkat</li>
+</ul></td></tr>
+</table>
+
+<div class="callout warn"><span class="label">Aturan main</span>
+<ul>
+  <li>Gunakan <strong>tenant pilot khusus</strong> dan ONT uji. Jangan menyentuh data/pelanggan produksi.</li>
+  <li>Satu orang = satu akun (jangan berbagi password). Password <strong>tidak boleh</strong> ditulis di lembar ini, di chat grup, atau di tiket — kirim lewat kanal aman.</li>
+  <li>Jangan lanjut ke langkah berikutnya bila langkah sebelumnya gagal; catat di titik mana gagal dan lanjut ke kasus lain.</li>
+  <li>Setiap kegagalan: tangkap layar + jam kejadian + serial ONT (lihat templat bug, §9).</li>
+</ul></div>
+
+<!-- ============================================================ -->
+<h2 id="s2"><span class="num">2</span> Persiapan H-3 s.d. H-1 (Jumat–Selasa)</h2>
+
+<p>Tandai ☐ → ✔ saat selesai. <span class="tag dev">DEV</span> = tim pengembang/IT,
+<span class="tag net">NET</span> = Tim Network, <span class="tag ops">OPS</span> = Tim Operasional.</p>
+
+<table>
+<tr><th style="width:5%">✔</th><th style="width:8%">PIC</th><th>Persiapan</th></tr>
+<tr><td>☐</td><td><span class="tag dev">DEV</span></td><td><strong>Lingkungan UAT hidup &amp; terjangkau</strong> dari segmen jaringan ONT: <code>docker compose up -d</code> (migrasi 0001→0024), Console web terbuka, REST + CWMP berjalan. Catat alamat di §9.</td></tr>
+<tr><td>☐</td><td><span class="tag dev">DEV</span></td><td><strong>Putuskan HTTP vs HTTPS untuk ACS URL.</strong> <code>acsd</code> hanya melayani HTTP polos di port CWMP; shared secret lewat Basic Auth tanpa enkripsi. LAN uji tertutup: boleh. Bila firmware ONT mewajibkan <code>https://</code> atau jalur melewati jaringan tidak tepercaya → pasang reverse proxy TLS <em>sebelum</em> hari-H.</td></tr>
+<tr><td>☐</td><td><span class="tag dev">DEV</span></td><td><strong>Rotasi rahasia.</strong> Buat ulang Gmail App Password (yang lama pernah tertempel di chat), ganti password Superadmin dengan yang kuat (bukan kata sederhana), isi ulang <code>.env</code> (JWT secret, kunci enkripsi kredensial, MinIO). Pastikan <code>.env</code> tidak ter-commit.</td></tr>
+<tr><td>☐</td><td><span class="tag dev">DEV</span></td><td><strong>Bersihkan data uji</strong> dari pengembangan (akun <code>e2e-*</code>, <code>demo-*</code>, tenant/perangkat e2e) agar daftar bersih; hapus akun uji sementara.</td></tr>
+<tr><td>☐</td><td><span class="tag dev">DEV</span></td><td><strong>Backup database</strong> sebelum UAT (perintah di §10). Simpan nama file backup di §9.</td></tr>
+<tr><td>☐</td><td><span class="tag dev">DEV</span></td><td><strong>Buat tenant pilot</strong> (Administrasi → Tenants) dan catat <em>Kredensial CWMP</em> (username/password Inform) → kirim ke Tim Network lewat kanal aman.</td></tr>
+<tr><td>☐</td><td><span class="tag dev">DEV</span></td><td><strong>Akun per orang:</strong> minimal 1 ADMIN, 1 NOC, 1 VIEWER untuk tenant pilot (Administrasi → Users, atau impor CSV). Email wajib valid — akun baru menerima email selamat datang.</td></tr>
+<tr><td>☐</td><td><span class="tag dev">DEV</span></td><td><strong>SMTP berfungsi:</strong> uji kirim "Lupa password" ke satu alamat nyata sebelum hari-H. Tanpa SMTP, kasus O2 dilewati.</td></tr>
+<tr><td>☐</td><td><span class="tag net">NET</span></td><td><strong>Jalur manajemen ONT → ACS terbuka:</strong> VLAN/WAN manajemen di OLT, rute &amp; firewall mengizinkan ONT menjangkau ACS (port CWMP) <em>dan</em> ACS menjangkau ONT (port Connection Request, mis. 7547) — dua arah.</td></tr>
+<tr><td>☐</td><td><span class="tag net">NET</span></td><td><strong>Gladi jaringan</strong> dari segmen yang sama dengan ONT (bukan dari server ACS): <code>curl -i -X POST http://&lt;ACS&gt;:&lt;port&gt;/cwmp</code> harus <strong>204</strong>. Gladi penuh dengan simulator: <em>PENGUJIAN_LAPANGAN.md §3a</em>.</td></tr>
+<tr><td>☐</td><td><span class="tag net">NET</span></td><td><strong>Siapkan 2–3 ONT uji</strong> (idealnya ≥ 2 vendor berbeda; boleh gagal/diatur ulang). Catat serial, MAC, vendor, model, firmware (§9). Pastikan ONT mendukung &amp; mengaktifkan agen TR-069.</td></tr>
+<tr><td>☐</td><td><span class="tag net">NET</span></td><td><strong>Tentukan cara ONT tahu URL ACS</strong> (OMCI dari OLT, DHCP Option 43, firmware bawaan, atau isi manual di GUI ONT). Siapkan untuk semua ONT uji.</td></tr>
+<tr><td>☐</td><td><span class="tag ops">OPS</span></td><td>Baca <em>Buku Panduan ACS</em> Bab 1 (ACS di OLT atau ONT?), Bab 7–10. Siapkan <strong>kredensial WiFi uji</strong> (SSID/password dummy) — bukan milik pelanggan.</td></tr>
+<tr><td>☐</td><td><span class="tag ops">OPS</span></td><td>Pastikan peserta bisa login ke Console dan menerima email (cek spam). Tentukan pencatat hasil (1 orang per tim).</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="s3"><span class="num">3</span> Agenda hari-H (usulan ±4 jam)</h2>
+<table>
+<tr><th style="width:15%">Waktu</th><th>Kegiatan</th><th style="width:18%">PIC</th></tr>
+<tr><td>09.00</td><td>Pembukaan, tinjau ruang lingkup &amp; aturan main (§1), konfirmasi lingkungan (§9), cek backup</td><td>Semua</td></tr>
+<tr><td>09.20</td><td><strong>Bagian A</strong> — ONT pertama online &amp; terdaftar (N1–N5) &nbsp;‖&nbsp; <strong>Bagian B awal</strong> — login &amp; navigasi (O1–O4) berjalan paralel</td><td>NET ‖ OPS</td></tr>
+<tr><td>10.30</td><td><strong>Bagian B</strong> — perangkat, task, parameter, reboot (O5–O12) menggunakan ONT yang sudah online</td><td>OPS (NET mendampingi)</td></tr>
+<tr><td>11.45</td><td>Istirahat singkat; rekap sementara temuan</td><td>Semua</td></tr>
+<tr><td>12.00</td><td><strong>Bagian A lanjutan</strong> (N6–N9) &nbsp;‖&nbsp; <strong>Bagian B lanjutan</strong> — Provisioning, ZTP, Preset, RBAC, audit (O13–O20)</td><td>NET ‖ OPS</td></tr>
+<tr><td>13.00</td><td><strong>Bagian C</strong> — skenario gabungan end-to-end dengan ONT "baru" (G1–G2)</td><td>NET + OPS</td></tr>
+<tr><td>13.45</td><td>Triase temuan, tentukan tingkat keparahan, keputusan Go/No-Go (§8), sign-off (§9)</td><td>Semua</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="s4"><span class="num">4</span> Bagian A — Uji Tim Network <span class="tag net">NET</span></h2>
+<p>Fokus: <em>apakah ONT nyata bisa berbicara dengan ACS</em>. Penguji: Tim Network.
+Pengamat: Tim Pengembang (membaca log <code>acsd</code> bila gagal).</p>
+
+<table class="net">
+<tr><th>ID</th><th>Langkah</th><th>Hasil yang diharapkan</th><th>Hasil</th></tr>
+<tr><td class="id">N1</td><td><strong>Jangkauan.</strong> Dari segmen ONT: POST kosong ke URL ACS (<code>curl -i -X POST …/cwmp</code>).</td><td>HTTP <strong>204</strong> (dengan header rate limit). Timeout/refused → jaringan/firewall.</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
+<tr><td class="id">N2</td><td><strong>Inform pertama.</strong> Isi ACS URL + username/password tenant pilot di ONT (§2), simpan/reboot ONT.</td><td>Dalam ±2 menit ONT muncul di <strong>Perangkat</strong> (tenant pilot) dengan serial &amp; MAC sesuai; <strong>Histori Event</strong> ada <code>0 BOOTSTRAP</code> atau <code>1 BOOT</code>.</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
+<tr><td class="id">N3</td><td><strong>Identifikasi.</strong> Buka Detail perangkat → Overview.</td><td>Vendor benar (bukan "belum diketahui"); data model TR-098 (<code>InternetGatewayDevice.*</code>) atau TR-181 (<code>Device.*</code>) sesuai ONT. Catat OUI &amp; ProductClass bila ada yang meleset.</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
+<tr><td class="id">N4</td><td><strong>Kredensial salah (uji negatif).</strong> Ubah sementara password ACS di satu ONT uji menjadi salah, lalu paksa Inform.</td><td>ACS menolak (HTTP 401 di sisi ONT), <strong>tidak</strong> membuat perangkat/tenant baru. Kembalikan password yang benar.</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
+<tr><td class="id">N5</td><td><strong>Periodic Inform.</strong> Set interval pendek (mis. 300 dtk) di ONT atau lewat ACS; tunggu satu siklus.</td><td>Event <code>2 PERIODIC</code> tercatat pada selang yang wajar (ACS menambahkan <em>jitter</em> sehingga angka bisa sedikit berbeda).</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
+<tr><td class="id">N6</td><td><strong>Connection Request.</strong> Edit perangkat → isi <em>username/password Connection Request</em> sesuai yang di-set di ONT. Tekan <strong>Connection Req</strong> di Detail.</td><td>Toast sukses; sesi baru dengan event <code>6 CONNECTION REQUEST</code> muncul dalam hitungan detik. Bila gagal: catat apakah <em>502</em> (tak terjangkau/NAT), 401 (kredensial CR salah), atau diblok firewall.</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
+<tr><td class="id">N7</td><td><strong>ONT offline → online.</strong> Buat task (mis. Reboot atau baca parameter) saat ONT dicabut dayanya; nyalakan lagi.</td><td>Task <code>PENDING</code> tereksekusi di sesi berikutnya setelah ONT online (bukan hilang / langsung gagal).</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
+<tr><td class="id">N8</td><td><strong>Beberapa ONT bergantian.</strong> Nyalakan 2–3 ONT berselang ±10 detik (jangan serentak).</td><td>Semua muncul. Bila ada HTTP 429: itu rate limit 5 req/dtk per IP (batasan diketahui, lihat §7) — catat jumlah ONT di balik satu IP.</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
+<tr><td class="id">N9</td><td><strong>ACS tidak mengubah OLT.</strong> Setelah mengubah SSID/reboot ONT lewat ACS (O11), periksa OLT.</td><td>Registrasi ONT, VLAN, profil di OLT <strong>tidak berubah</strong>; layanan pelanggan uji tidak terganggu di luar reboot ONT.</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
+<tr><td class="id">N10</td><td><strong>(Opsional)</strong> Bandingkan redaman optik: tab <em>Redaman Optik</em> di ACS vs level di sistem OLT.</td><td>Hanya bila model ONT melaporkan parameter optik (vendor-specific, sering belum dipetakan). Catat model+firmware dan path bila ada — bahan perluasan katalog. Tidak lulus ≠ bug.</td><td class="res">☐ Lulus ☐ Gagal ☐ Lewat</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="s5"><span class="num">5</span> Bagian B — Uji Tim Operasional <span class="tag ops">OPS</span></h2>
+<p>Fokus: <em>alur kerja NOC di Console</em>. Gunakan akun sesuai peran seperti tertera.
+Lakukan O5–O12 pada ONT yang sudah online dari Bagian A.</p>
+
+<table class="ops">
+<tr><th>ID</th><th>Langkah (peran)</th><th>Hasil yang diharapkan</th><th>Hasil</th></tr>
+<tr><td class="id">O1</td><td><strong>Login email</strong> (ADMIN). Coba juga password salah satu kali (pakai akun cadangan — 5 kali salah mengunci akun 15 menit).</td><td>Masuk dengan email + password. Salah → pesan seragam "Email atau password salah". Tidak ada pesan yang membocorkan apakah email terdaftar.</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
+<tr><td class="id">O2</td><td><strong>Lupa password.</strong> "Lupa password?" → isi email.</td><td>Layar selalu sama (generik). Email tautan datang ≤ 1 menit; tautan <code>/reset-password#…</code> berfungsi sekali, password baru diterima, email konfirmasi datang, tautan yang sama tidak bisa dipakai lagi. <em>Lewati bila SMTP belum disiapkan.</em></td><td class="res">☐ Lulus ☐ Gagal ☐ Lewat</td></tr>
+<tr><td class="id">O3</td><td><strong>Profil &amp; ganti password</strong> (semua peran).</td><td>Profil menampilkan identitas &amp; hak akses. Ganti password dengan password lama salah → ditolak <em>tanpa</em> logout; benar → berhasil dan sesi tetap aktif.</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
+<tr><td class="id">O4</td><td><strong>Dashboard</strong> (VIEWER).</td><td>KPI (jumlah perangkat, status, task) sesuai kenyataan; klik kartu → daftar terfilter. (Indikator "Polling" normal, realtime belum aktif — §7.)</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
+<tr><td class="id">O5</td><td><strong>Tambah perangkat manual</strong> (ADMIN): Perangkat → Tambah Perangkat (OUI 6 karakter + serial; isi vendor/lokasi/catatan).</td><td>Perangkat tampil dengan status <code>UNREGISTERED</code>. Setelah ONT dengan serial/OUI itu Inform, baris <strong>yang sama</strong> dipakai (tidak ada duplikat, catatan tetap).</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
+<tr><td class="id">O6</td><td><strong>Edit perangkat</strong> (NOC): pensil di daftar atau tombol Edit di detail; ubah catatan/lokasi.</td><td>Perubahan tersimpan. VIEWER <strong>tidak</strong> melihat tombol Edit.</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
+<tr><td class="id">O7</td><td><strong>Hapus perangkat</strong> (ADMIN): satu per satu lalu hapus massal untuk perangkat <em>uji buatan sendiri</em> (bukan ONT UAT utama).</td><td>Hilang dari daftar; task terbuka menjadi <code>CANCELLED</code>. NOC tidak melihat tombol hapus. Bila ONT-nya Inform lagi, catatan hidup kembali.</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
+<tr><td class="id">O8</td><td><strong>Impor &amp; ekspor perangkat</strong> (ADMIN): Ekspor CSV; ubah 2 baris + tambah 2 baris baru (1 sengaja salah); Impor → lihat <strong>pratinjau</strong> → jalankan.</td><td>Pratinjau menandai Baru / Diperbarui / Tidak berubah / Error dengan alasan; hanya baris valid diimpor. Impor ulang berkas yang sama → semua "Tidak berubah". Ekspor→impor tanpa edit → nol perubahan.</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
+<tr><td class="id">O9</td><td><strong>Telusuri detail ONT</strong> (VIEWER): tab Overview, Parameter, Histori Event, Task, Timeline Audit, Redaman Optik.</td><td>Data terbaca &amp; konsisten dengan ONT (versi firmware, uptime, WiFi). Tab tanpa data menampilkan keadaan kosong yang jelas, bukan error.</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
+<tr><td class="id">O10</td><td><strong>Reboot</strong> (NOC): Detail → <strong>Reboot</strong> → konfirmasi.</td><td>Task <code>COMPLETED</code>; ONT benar-benar restart (lampu/ping putus ±1–2 menit) lalu Inform dengan event <code>1 BOOT</code>. Tercatat di Timeline Audit atas nama pengguna.</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
+<tr><td class="id">O11</td><td><strong>Baca &amp; ubah parameter</strong> (ADMIN): tab Parameter → baca SSID; ubah SSID ke nama uji (mis. <code>UAT-Rabu-01</code>).</td><td>Task <code>COMPLETED</code> dan <strong>SSID di ONT benar-benar berubah</strong> (cek dari HP/GUI ONT, bukan hanya status task). Bila Fault 9005/9006/9007 → catat path, model, firmware (§7).</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
+<tr><td class="id">O12</td><td><strong>Provisioning Profile</strong> (ADMIN): buat profil kecil (<em>hanya SSID uji</em>), "Terapkan Provisioning Profile" ke satu ONT.</td><td>Task selesai, SSID berubah di ONT. Mengubah isi profil kemudian <strong>tidak</strong> otomatis mendorong ulang ke ONT yang sudah dipakai (disengaja).</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
+<tr><td class="id">O13</td><td><strong>Zero-Touch Rule</strong> (ADMIN): aturan untuk OUI/vendor ONT uji, pemicu <code>BOOTSTRAP_OR_BOOT</code>, aksi: terapkan profil O12 (ubah SSID profil agar perubahannya terlihat). Lalu <strong>reboot</strong> ONT uji.</td><td>Setelah ONT Inform dengan event <code>1 BOOT</code>, profil diterapkan <strong>otomatis</strong> tanpa klik operator. (Pemicu <code>BOOTSTRAP_ONLY</code> hanya menembak pada event <code>0 BOOTSTRAP</code> untuk perangkat yang belum pernah diprovisioning — dicoba di G1.)</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
+<tr><td class="id">O14</td><td><strong>Preset drift-heal</strong> (ADMIN): preset <code>enforce</code> untuk SSID; ubah SSID manual di ONT; tunggu Inform berikutnya.</td><td>ACS mengantre koreksi dan SSID kembali ke nilai preset. <em>Ada cooldown 15 menit antar upaya — jangan simpulkan gagal terlalu cepat.</em></td><td class="res">☐ Lulus ☐ Gagal</td></tr>
+<tr><td class="id">O15</td><td><strong>Tag &amp; filter</strong> (ADMIN): buat tag, pasang ke ONT, filter daftar perangkat.</td><td>Filter bekerja; VIEWER hanya melihat.</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
+<tr><td class="id">O16</td><td><strong>Hak akses / RBAC.</strong> Login sebagai VIEWER, NOC, lalu ADMIN; coba tombol/menu yang seharusnya tidak ada.</td><td>VIEWER: hanya baca + ekspor. NOC: + Connection Req, Reboot, Edit. ADMIN: + tambah/hapus/impor/profil/preset. ADMIN tenant <strong>tidak</strong> melihat data tenant lain. Akses langsung URL terlarang → 403/ditolak.</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
+<tr><td class="id">O17</td><td><strong>User baru</strong> (ADMIN): Administrasi → Users → tambah user.</td><td>User terbentuk; email selamat datang masuk (tanpa password di dalamnya); user baru bisa login lewat "Lupa password" bila tak diberi password.</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
+<tr><td class="id">O18</td><td><strong>Audit Trail</strong> (ADMIN): periksa aksi O5–O17; Ekspor.</td><td>Tiap aksi tercatat (siapa, kapan, apa). Ekspor menghasilkan berkas; tidak ada password/secret di dalamnya.</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
+<tr><td class="id">O19</td><td><strong>Impor/ekspor modul lain</strong> (sampling): Tag, Preset, Provisioning, Task (ekspor).</td><td>Pratinjau → eksekusi bekerja; ekspor Preset/Profil <strong>mengosongkan nilai rahasia</strong>; impor ulang tidak menghapus rahasia tersimpan.</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
+<tr><td class="id">O20</td><td><strong>(Opsional)</strong> Diagnostics (Ping/Traceroute), Webhook ke penerima uji, portal "WiFi Saya" (ENDUSER).</td><td>Berfungsi bila ONT/penerima mendukung; catat hasil. Tidak lulus pada ONT tertentu bisa karena firmware, bukan ACS.</td><td class="res">☐ Lulus ☐ Gagal ☐ Lewat</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="s6"><span class="num">6</span> Bagian C — Skenario gabungan (Network + Operasional)</h2>
+<p>Inilah gambaran pekerjaan nyata: dari ONT di kotak sampai terkonfigurasi, tanpa kunjungan teknisi untuk konfigurasi WiFi.</p>
+
+<div class="lane">
+  <div class="st net"><b>1 · NET</b>Authorize ONT baru di OLT; pastikan jalur manajemen &amp; URL ACS siap.</div><div class="ar">›</div>
+  <div class="st net"><b>2 · NET</b>Nyalakan ONT; konfirmasi mendapat IP manajemen.</div><div class="ar">›</div>
+  <div class="st acs"><b>3 · ACS</b>Inform diterima; perangkat dibuat; aturan Zero-Touch jalan.</div><div class="ar">›</div>
+  <div class="st ops"><b>4 · OPS</b>Verifikasi di Perangkat; cek parameter &amp; task selesai.</div><div class="ar">›</div>
+  <div class="st ops"><b>5 · OPS</b>Reboot &amp; ubah SSID; cek hasil di ONT.</div>
+</div>
+
+<table class="gab">
+<tr><th>ID</th><th>Skenario</th><th>Hasil yang diharapkan</th><th>Hasil</th></tr>
+<tr><td class="id">G1</td><td><strong>ONT baru end-to-end.</strong> Ops menyiapkan Zero-Touch Rule (O13; untuk ONT yang <em>belum pernah diberi profil</em> boleh memakai <code>BOOTSTRAP_ONLY</code>) dan, bila perlu, pra-registrasi serial ONT (O5). Network authorize &amp; nyalakan ONT yang belum pernah terdaftar. Ops memantau.</td><td>Tanpa klik operator setelah ONT online: perangkat muncul, vendor benar, profil standar terterapkan (SSID standar tampil di ONT). Waktu dari ONT online sampai terkonfigurasi dicatat: <span class="blank" style="min-width:2.5cm"></span> menit.</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
+<tr><td class="id">G2</td><td><strong>Keluhan pelanggan (simulasi).</strong> "WiFi tidak bisa tersambung." NOC mengikuti alur: cari serial → cek status/event terakhir → baca parameter WiFi → ubah SSID/password uji → reboot bila perlu → verifikasi.</td><td>NOC menyelesaikan dari Console dalam waktu wajar tanpa bantuan developer; seluruh langkah tercatat di Timeline Audit. Waktu penyelesaian: <span class="blank" style="min-width:2.5cm"></span> menit.</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="s7"><span class="num">7</span> Yang sudah diketahui belum lengkap (bukan temuan baru)</h2>
+<p>Daftar ini ditulis jujur agar waktu UAT tidak terbuang. Bila menemui salah satunya, cukup beri tanda "diketahui" di lembar hasil; tetap catat bila <em>dampaknya</em> lebih besar dari yang dijelaskan.</p>
+
+<table>
+<tr><th style="width:30%">Batasan</th><th>Dampak &amp; cara menyikapi</th></tr>
+<tr><td><strong>Belum pernah diuji pada ONT fisik</strong></td><td>Inilah gunanya UAT. Perilaku per-firmware bisa berbeda; catat vendor, model, firmware persis.</td></tr>
+<tr><td><strong>ACS tidak mengatur OLT</strong></td><td>Registrasi ONT, VLAN, profil bandwidth, level optik di OLT: tetap di sistem OLT. Modul OLT Controller dijadwalkan <em>setelah</em> UAT.</td></tr>
+<tr><td><strong>CWMP via HTTP</strong> (acsd tanpa TLS)</td><td>Kredensial Inform lewat Basic Auth tanpa enkripsi bila tanpa reverse proxy TLS. OK di LAN uji tertutup.</td></tr>
+<tr><td><strong>Semua nilai SetParameterValues bertipe <code>xsd:string</code></strong></td><td>Firmware ketat bisa menolak boolean/angka dengan Fault 9006/9007. Catat parameter+model+firmware.</td></tr>
+<tr><td><strong>Parameter per-band &amp; optik belum dipetakan</strong></td><td>Katalog bawaan hanya radio utama instance 1 (SSID, passphrase), PPPoE, info perangkat. SSID 2,4/5 GHz terpisah, IP WAN, redaman optik: path beda tiap vendor — catat path asli bila ditemukan.</td></tr>
+<tr><td><strong>Fault 9005 (parameter tidak ada)</strong></td><td>Tidak di-retry (memang disengaja). Path mapping tidak cocok dengan firmware itu.</td></tr>
+<tr><td><strong>Rate limit CWMP 5 req/dtk per IP</strong></td><td>Banyak ONT di balik satu IP publik bisa kena HTTP 429 saat boot bersamaan; ONT mencoba lagi sendiri.</td></tr>
+<tr><td><strong>Connection Request ke ONT di balik CGNAT</strong></td><td>ACS mencoba HTTP lalu fallback UDP (STUN) — belum teruji lapangan. 502 = tidak terjangkau; task tetap menunggu Inform berikutnya.</td></tr>
+<tr><td><strong>Realtime (WebSocket) belum tersambung</strong></td><td>Dashboard menampilkan "Polling"; data diperbarui berkala, bukan seketika.</td></tr>
+<tr><td><strong>Sesi berstatus <code>TIMEOUT</code></strong></td><td>Normal: sesi tanpa POST penutup ditutup otomatis setelah 15 menit.</td></tr>
+<tr><td><strong>Email ke domain uji (<code>*.local</code>, <code>example.*</code>) tidak dikirim</strong></td><td>Disengaja. Pakai alamat email nyata untuk uji email.</td></tr>
+<tr><td><strong>Firmware upgrade belum pernah diuji ke ONT fisik</strong></td><td>Tidak termasuk UAT ini (§1).</td></tr>
+<tr><td><strong>Nilai rahasia di Preset/Profil tersimpan apa adanya</strong></td><td>Hanya ekspor CSV yang mengosongkannya. Gunakan kredensial uji; keputusan enkripsi at-rest menunggu.</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="s8"><span class="num">8</span> Kriteria lulus &amp; tingkat keparahan</h2>
+
+<table>
+<tr><th style="width:14%">Tingkat</th><th>Definisi</th><th style="width:30%">Contoh</th></tr>
+<tr><td><strong>S1 — Blocker</strong></td><td>Alur inti tidak jalan, data bocor antar tenant, kehilangan/rusaknya data, atau masalah keamanan.</td><td>ONT tak pernah muncul padahal jaringan benar; ADMIN tenant A melihat tenant B; password terlihat di ekspor.</td></tr>
+<tr><td><strong>S2 — Mayor</strong></td><td>Fitur penting gagal tetapi ada jalan pintas.</td><td>Reboot gagal pada 1 vendor; impor gagal untuk berkas tertentu.</td></tr>
+<tr><td><strong>S3 — Minor</strong></td><td>Gangguan kecil, tidak menghalangi pekerjaan.</td><td>Pesan kurang jelas, urutan kolom, istilah.</td></tr>
+<tr><td><strong>S4 — Kosmetik</strong></td><td>Tampilan.</td><td>Spasi, warna, label terpotong.</td></tr>
+</table>
+
+<div class="callout ok"><span class="label">Usulan kriteria GO untuk lanjut ke pilot terbatas</span>
+<ul>
+  <li>Minimal <strong>1 ONT pada ≥ 1 vendor</strong> lulus: N1, N2, N3, N6, O5, O10, O11, G1.</li>
+  <li><strong>Tidak ada S1 terbuka.</strong> S2 boleh ada bila punya jalan pintas &amp; tiket perbaikan.</li>
+  <li>RBAC (O16) dan isolasi tenant lulus penuh.</li>
+  <li>Semua temuan path/OUI/firmware tercatat untuk pembaruan katalog.</li>
+</ul>
+<p><strong>NO-GO / tahan</strong> bila: satu S1 terbuka, atau Inform dari ONT fisik tidak berhasil sama sekali setelah jaringan dipastikan benar (perlu analisis interoperabilitas dulu).</p></div>
+
+<p>Setelah UAT: hasil dipakai memperbarui katalog (<code>vendor_ouis</code>, <code>device_models</code>, <code>vendor_parameter_mappings</code> — operasi data lewat Katalog Vendor/impor CSV) dan daftar perbaikan. Keputusan lanjutan (TLS, WebSocket, enkripsi rahasia preset, OLT Controller) diambil dari temuan ini.</p>
+
+<!-- ============================================================ -->
+<h2 id="s9"><span class="num">9</span> Lembar lingkungan, bug, &amp; sign-off</h2>
+
+<h3>9.1 Lingkungan UAT <span style="font-weight:400;color:var(--faint)">(isi sebelum hari-H; jangan tulis password)</span></h3>
+<table>
+<tr><td style="width:34%"><strong>Alamat Console web</strong></td><td class="fill"></td></tr>
+<tr><td><strong>ACS URL untuk ONT</strong> (skema://host:port/cwmp)</td><td class="fill"></td></tr>
+<tr><td><strong>Tenant pilot</strong> (kode &amp; nama)</td><td class="fill"></td></tr>
+<tr><td><strong>Username CWMP tenant</strong> (password dikirim terpisah)</td><td class="fill"></td></tr>
+<tr><td><strong>Versi aplikasi</strong> (commit)</td><td class="fill"></td></tr>
+<tr><td><strong>Berkas backup DB sebelum UAT</strong></td><td class="fill"></td></tr>
+<tr><td><strong>Cara ONT mengetahui ACS URL</strong> (OMCI / Opt.43 / bawaan / manual)</td><td class="fill"></td></tr>
+</table>
+
+<h3>9.2 Daftar ONT uji</h3>
+<table>
+<tr><th>#</th><th>Vendor · Model</th><th>Firmware</th><th>Serial</th><th>MAC</th><th>Mode (router/bridge)</th></tr>
+<tr><td class="fill">1</td><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><td class="fill">2</td><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><td class="fill">3</td><td></td><td></td><td></td><td></td><td></td></tr>
+</table>
+
+<h3>9.3 Templat laporan temuan (satu per temuan)</h3>
+<table>
+<tr><td style="width:30%"><strong>ID temuan / tanggal / pelapor</strong></td><td class="fill"></td></tr>
+<tr><td><strong>ID kasus uji</strong> (mis. N6, O11)</td><td class="fill"></td></tr>
+<tr><td><strong>Tingkat</strong> (S1–S4)</td><td class="fill"></td></tr>
+<tr><td><strong>Vendor · model · firmware · serial ONT</strong></td><td class="fill"></td></tr>
+<tr><td><strong>Langkah yang dilakukan</strong></td><td class="fill" style="height:1.6cm"></td></tr>
+<tr><td><strong>Hasil diharapkan vs. nyata</strong></td><td class="fill" style="height:1.4cm"></td></tr>
+<tr><td><strong>Jam kejadian (untuk dicocokkan dengan log)</strong></td><td class="fill"></td></tr>
+<tr><td><strong>Bukti</strong> (tangkapan layar / nama berkas / ekspor audit)</td><td class="fill"></td></tr>
+<tr><td><strong>Diketahui? (§7)</strong></td><td class="fill"></td></tr>
+</table>
+
+<h3>9.4 Rekap hasil &amp; keputusan</h3>
+<table>
+<tr><th>Bagian</th><th>Lulus</th><th>Gagal</th><th>Lewat</th><th>Temuan S1 / S2 / S3 / S4</th></tr>
+<tr><td>A — Network</td><td class="fill"></td><td></td><td></td><td></td></tr>
+<tr><td>B — Operasional</td><td class="fill"></td><td></td><td></td><td></td></tr>
+<tr><td>C — Gabungan</td><td class="fill"></td><td></td><td></td><td></td></tr>
+</table>
+<p><strong>Keputusan:</strong> ☐ GO &nbsp; ☐ GO bersyarat &nbsp; ☐ NO-GO &nbsp;&nbsp;&nbsp; <strong>Catatan/syarat:</strong> <span class="blank" style="min-width:9cm"></span></p>
+
+<table>
+<tr><th style="width:34%">Peran</th><th>Nama</th><th style="width:22%">Tanda tangan</th><th style="width:16%">Tanggal</th></tr>
+<tr><td>Perwakilan Tim Operasional</td><td class="fill"></td><td></td><td></td></tr>
+<tr><td>Perwakilan Tim Network</td><td class="fill"></td><td></td><td></td></tr>
+<tr><td>Tim Pengembang</td><td class="fill"></td><td></td><td></td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="s10"><span class="num">10</span> Pemulihan &amp; bantuan cepat</h2>
+
+<h3>Backup &amp; pemulihan database</h3>
+<pre># SEBELUM UAT (dari folder proyek, Bash)
+docker compose exec mariadb sh -c 'mariadb-dump -uacs -p"$MARIADB_PASSWORD" acs' &gt; backup_sebelum_uat_$(date +%Y%m%d).sql
+
+# Pemulihan bila data berantakan
+docker compose exec -T mariadb sh -c 'mariadb -uacs -p"$MARIADB_PASSWORD" acs' &lt; backup_sebelum_uat_YYYYMMDD.sql</pre>
+
+<h3>Gejala di lapangan → cek tercepat</h3>
+<table>
+<tr><th style="width:36%">Gejala</th><th>Kemungkinan penyebab &amp; tindakan</th></tr>
+<tr><td>ONT online di OLT tetapi tidak muncul di ACS</td><td>Jalur manajemen/VLAN, ACS URL/port, atau kredensial. Ulangi N1 dari segmen ONT; samakan username/password dengan Kredensial CWMP tenant; pastikan tenant aktif; lihat log <code>acsd</code>.</td></tr>
+<tr><td>ONT log "HTTP 401"</td><td>Username/password ACS di ONT ≠ secret tenant (periksa spasi/karakter khusus).</td></tr>
+<tr><td>HTTP 429</td><td>Rate limit 5 req/dtk per IP; nyalakan ONT bergantian, tunggu retry.</td></tr>
+<tr><td>Perangkat muncul, vendor "belum diketahui"</td><td>OUI belum terdaftar: tambah di Katalog Vendor → OUI (Superadmin); sembuh sendiri di Inform berikutnya.</td></tr>
+<tr><td>Task <code>PENDING</code> tak kunjung terkirim</td><td>ONT belum membuka sesi. Tekan Connection Req; 502 = ONT tak terjangkau, tunggu periodic inform.</td></tr>
+<tr><td>Task selesai tapi nilai di ONT tak berubah</td><td>ONT menerima tetapi butuh reboot/apply, atau path salah. Cek dari sisi ONT; catat model+firmware.</td></tr>
+<tr><td>Task FAILED Fault 9005 / 9006 / 9007</td><td>Path tidak ada / tipe tidak cocok — batasan §7; catat parameter+firmware.</td></tr>
+<tr><td>Akun terkunci</td><td>Tunggu 15 menit atau gunakan "Lupa password?"; ADMIN dapat mereset password pengguna.</td></tr>
+<tr><td>Email tidak datang</td><td>Cek spam; pastikan SMTP terkonfigurasi; domain uji (<code>*.local</code>) sengaja tidak dikirimi.</td></tr>
+</table>
+
+<p>Dokumen rujukan: <em>Buku Panduan ACS</em> (BUKU_PANDUAN_ACS.pdf), <em>LOGIN.md</em>, <em>PENGUJIAN_LAPANGAN.md</em> (gladi jaringan §3a, tabel gejala §8), <em>PENGUJIAN_E2E.md</em>, <em>RUNBOOK.md</em>.</p>
+
+<footer>
+Panduan UAT ACS v1.0 — disusun 16 Oktober 2026 untuk pelaksanaan Rabu, 21 Oktober 2026.
+</footer>
+
+</div>
+</body>
+</html>
