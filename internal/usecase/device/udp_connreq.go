@@ -51,9 +51,14 @@ func randomHex(n int) string {
 	return hex.EncodeToString(b)
 }
 
-// WakeUpViaUDP mengirim UDP Connection Request ke address ("host:port").
+// WakeUpViaUDP mengirim UDP Connection Request ke address ("host:port") TANPA penjaga SSRF
+// (dipakai alat/uji). Jalur produksi memakai wakeUpViaUDP dengan netguard.SafeDialer.
 func WakeUpViaUDP(address, username, password string) error {
-	conn, err := net.DialTimeout("udp", address, 5*time.Second)
+	return wakeUpViaUDP(&net.Dialer{Timeout: 5 * time.Second}, address, username, password)
+}
+
+func wakeUpViaUDP(dialer *net.Dialer, address, username, password string) error {
+	conn, err := dialer.Dial("udp", address)
 	if err != nil {
 		return fmt.Errorf("gagal membuka koneksi udp: %w", err)
 	}

@@ -104,6 +104,8 @@ services:
       # Reverse proxy/LB tepercaya (IP/CIDR, pisahkan koma). WAJIB diisi bila ACS di belakang
       # proxy agar IP klien benar; kosong = X-Forwarded-For diabaikan.
       ACS_TRUSTED_PROXIES: ${ACS_TRUSTED_PROXIES:-}
+      # SaaS publik: tolak target webhook di jaringan privat (RFC1918/ULA/CGNAT). Bawaan false (LAN diizinkan).
+      ACS_WEBHOOK_BLOCK_PRIVATE: ${ACS_WEBHOOK_BLOCK_PRIVATE:-false}
       # Batas request/detik PER IP di endpoint CWMP (naikkan bila banyak CPE berbagi satu IP/CGNAT).
       ACS_CWMP_RATE_LIMIT: ${ACS_CWMP_RATE_LIMIT:-5}
       # Endpoint /usp (TR-369) masih kerangka tanpa auth: default mati.

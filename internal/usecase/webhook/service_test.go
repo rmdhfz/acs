@@ -240,6 +240,8 @@ func newTestService(t *testing.T) (*Service, *fakeSubRepo, *fakeDeliveryRepo) {
 	// resolvable — lewati SSRF guard di sini. Guard-nya sendiri diuji di
 	// pkg/netguard.
 	svc.guardURL = func(string) error { return nil }
+	// ...dan penjaga sambungan juga harus dilepas: httptest berada di loopback.
+	svc.http.Transport = nil
 	return svc, subs, del
 }
 
@@ -512,5 +514,23 @@ func TestBackoffMonotonicCapped(t *testing.T) {
 	}
 	if backoff(99) != maxBackoff {
 		t.Fatalf("backoff(99) = %v, want cap %v", backoff(99), maxBackoff)
+	}
+}
+
+// SaaS publik: WithBlockPrivate menolak target webhook di jaringan privat, bawaan mengizinkan.
+func TestWithBlockPrivate_TargetPrivat(t *testing.T) {
+	enc, _ := cryptoutil.NewEncryptor(make([]byte, 32))
+	def := NewService(newFakeSubRepo(), newFakeDeliveryRepo(), &fakeRefRepo{}, fakeActivityRepo{}, enc, nil)
+	if err := def.guardURL("http://10.1.2.3/hook"); err != nil {
+		t.Fatalf("bawaan harus mengizinkan jaringan privat: %v", err)
+	}
+	strict := NewService(newFakeSubRepo(), newFakeDeliveryRepo(), &fakeRefRepo{}, fakeActivityRepo{}, enc, nil).WithBlockPrivate(true)
+	for _, u := range []string{"http://10.1.2.3/hook", "https://192.168.0.5/h", "http://100.64.1.1/h", "http://127.0.0.1/h"} {
+		if err := strict.guardURL(u); err == nil {
+			t.Errorf("blockPrivate harus menolak %s", u)
+		}
+	}
+	if err := strict.guardURL("https://8.8.8.8/hook"); err != nil {
+		t.Errorf("alamat publik harus lolos: %v", err)
 	}
 }

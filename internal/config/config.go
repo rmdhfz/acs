@@ -57,6 +57,10 @@ type Config struct {
 	// (juga mitigasi brute-force shared secret Inform).
 	CWMPRatePerIP float64
 
+	// WebhookBlockPrivate — tolak target webhook di jaringan privat (RFC1918/ULA/CGNAT). Aktifkan pada
+	// SaaS publik di mana admin tenant tidak tepercaya; matikan bila receiver webhook ada di LAN yang sama.
+	WebhookBlockPrivate bool
+
 	// LogRetentionDays — umur maksimum (hari) tabel log volume tinggi (event, sesi CWMP,
 	// metrik optik, riwayat webhook). 0 = tanpa pemangkasan. activity_logs (audit) tidak dipangkas.
 	LogRetentionDays int
@@ -193,6 +197,10 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("config: ACS_USP_ENABLED tidak valid: %w", err)
 	}
 	cfg.USPEnabled = uspEnabled
+	cfg.WebhookBlockPrivate, err = strconv.ParseBool(getEnv("ACS_WEBHOOK_BLOCK_PRIVATE", "false"))
+	if err != nil {
+		return nil, fmt.Errorf("config: ACS_WEBHOOK_BLOCK_PRIVATE tidak valid: %w", err)
+	}
 	cfg.CWMPRatePerIP, err = strconv.ParseFloat(getEnv("ACS_CWMP_RATE_LIMIT", "5"), 64)
 	if err != nil || cfg.CWMPRatePerIP < 1 || cfg.CWMPRatePerIP > 1_000_000 {
 		return nil, fmt.Errorf("config: ACS_CWMP_RATE_LIMIT harus angka 1..1000000 (request/detik per IP)")

@@ -165,7 +165,7 @@ func main() {
 	// webhookSvc dikonstruksi lebih dulu -- session & task memakainya lewat
 	// domain.WebhookEnqueuer (interface sempit, tanpa import cycle), worker
 	// dispatch-nya dijalankan runSweepers.
-	webhookSvc := webhook.NewService(webhookSubRepo, webhookDeliveryRepo, refRepo, activityLogRepo, enc, logger)
+	webhookSvc := webhook.NewService(webhookSubRepo, webhookDeliveryRepo, refRepo, activityLogRepo, enc, logger).WithBlockPrivate(cfg.WebhookBlockPrivate)
 
 	wsHub := ws.NewHub()
 	go wsHub.Run()

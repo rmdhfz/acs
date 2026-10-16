@@ -650,6 +650,9 @@ func (s *Service) TriggerConnectionRequest(ctx context.Context, actor domain.Act
 	// alamat internal (bypass guard di atas).
 	client := &http.Client{
 		Timeout: 10 * time.Second,
+		// Penjaga SAMBUNGAN: IP yang benar-benar dihubungi diperiksa setelah DNS di-resolve
+		// (menutup DNS rebinding); jaringan privat tetap boleh (CPE biasanya ber-IP privat/CGNAT).
+		Transport: netguard.SafeTransport(false),
 		CheckRedirect: func(*http.Request, []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
@@ -728,7 +731,7 @@ func (s *Service) sendUDPConnectionRequest(ctx context.Context, udpURL, username
 		return fmt.Errorf("UDP connection request address ditolak: %w", err)
 	}
 
-	return WakeUpViaUDP(host, username, password)
+	return wakeUpViaUDP(netguard.SafeDialer(false), host, username, password)
 }
 
 func (s *Service) Reboot(ctx context.Context, actor domain.Actor, deviceID uint64) error {

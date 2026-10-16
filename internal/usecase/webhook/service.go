@@ -71,6 +71,8 @@ func NewService(
 		subs: subs, deliveries: deliveries, refs: refs, activity: activity, enc: enc,
 		http: &http.Client{
 			Timeout: deliveryHTTPTimeout,
+			// Penjaga SAMBUNGAN: memeriksa IP yang benar-benar dihubungi (menutup DNS rebinding).
+			Transport: netguard.SafeTransport(false),
 			// Jangan ikuti redirect — target sah yang me-redirect ke alamat
 			// internal akan mem-bypass SSRF guard di validateTargetURL.
 			CheckRedirect: func(*http.Request, []*http.Request) error {
@@ -80,6 +82,16 @@ func NewService(
 		logger:   logger,
 		guardURL: netguard.CheckURL,
 	}
+}
+
+// WithBlockPrivate — untuk SaaS publik: target webhook wajib alamat publik, jadi RFC1918/ULA/CGNAT
+// juga ditolak (baik saat validasi maupun saat menyambung). Bawaan: jaringan privat diizinkan.
+func (s *Service) WithBlockPrivate(block bool) *Service {
+	if block {
+		s.guardURL = func(raw string) error { return netguard.CheckURLPolicy(raw, true) }
+		s.http.Transport = netguard.SafeTransport(true)
+	}
+	return s
 }
 
 // ---- Subscription CRUD ----
