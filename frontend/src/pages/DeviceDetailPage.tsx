@@ -665,6 +665,9 @@ const DIAGNOSTIC_TYPES = [
   { code: 'SPEED_TEST', label: 'Speed Test' },
 ]
 
+// Backend mengembalikan 501 untuk trigger diagnostic sampai fiturnya selesai.
+const DIAGNOSTICS_AVAILABLE = Boolean(import.meta.env.VITE_DIAGNOSTICS_ENABLED)
+
 function DiagnosticsTab({ deviceId, canTrigger }: { deviceId: number; canTrigger: boolean }) {
   const { data, isLoading } = useDeviceDiagnostics(deviceId)
   const [diagnosticType, setDiagnosticType] = useState('PING')
@@ -689,7 +692,12 @@ function DiagnosticsTab({ deviceId, canTrigger }: { deviceId: number; canTrigger
 
   return (
     <div className="space-y-4">
-      {canTrigger && (
+      {canTrigger && !DIAGNOSTICS_AVAILABLE && (
+        <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+          Diagnostics (Ping/Traceroute dari ONT) belum tersedia pada versi ini: pemetaan parameter diagnostik dan pengambilan hasilnya masih dalam pengembangan. Untuk uji konektivitas, gunakan tab Parameter atau alat di sisi jaringan.
+        </div>
+      )}
+      {DIAGNOSTICS_AVAILABLE && canTrigger && (
         <Card>
           <div className="flex flex-wrap items-end gap-3 p-4">
             <div>

@@ -1577,8 +1577,18 @@ paths:
       summary: Membuat task RPC CWMP baru untuk sebuah device
       description: |
         ADMIN/NOC/SUPERADMIN. Non-superadmin hanya bisa membuat task untuk
-        device milik tenant-nya sendiri. `priority` default 5 bila 0 dikirim
-        (1 = tertinggi, 9 = terendah), `max_retries` default 3 bila 0. Ditolak
+        device milik tenant-nya sendiri. **NOC hanya boleh** tipe
+        `GET_PARAMETER_VALUES`, `GET_PARAMETER_NAMES`, `REBOOT`, `SCHEDULE_INFORM`
+        (tipe lain `403`; ADMIN/SUPERADMIN bebas). `parameters` divalidasi sesuai
+        tipe (`400`): mis. `GET_PARAMETER_VALUES` butuh `names` (array string),
+        `SET_PARAMETER_VALUES` butuh `values` (objek nama→string) dan opsional
+        `types` (nama→tipe XSD: string/int/unsignedInt/boolean/dateTime/base64;
+        bila tak diberikan dipakai tipe yang pernah dilaporkan CPE, default
+        `xsd:string`), `DOWNLOAD` butuh `url` http(s). `storage_key` tidak boleh
+        diisi lewat API. Tipe `SET_PARAMETER_ATTRIBUTES`/`GET_PARAMETER_ATTRIBUTES`
+        belum didukung (`400`). `priority` 1–9 (default 5 bila 0; 1 = tertinggi),
+        `max_retries` 0–10 (default 3 bila 0). Retry memakai backoff 1m, 2m, 4m…
+        maks 30m. Ditolak
         `429` bila tenant pemilik device sudah mencapai `max_pending_tasks`
         (kuota task queue tenant, lihat `PATCH /tenants/:id/task-quota`).
       security: [{ bearerAuth: [] }]
@@ -3594,7 +3604,9 @@ paths:
       tags: [Diagnostics]
       summary: Trigger diagnostic test TR-069 pada device
       description: |
-        ADMIN/NOC/SUPERADMIN. Mengantre task `SET_PARAMETER_VALUES` yang
+        **BELUM DIDUKUNG — selalu `501`.** (Fitur diagnostics belum berfungsi
+        penuh: pemetaan parameter diagnostik & pengambilan hasil belum ada.)
+        Deskripsi rencana: ADMIN/NOC/SUPERADMIN. Mengantre task `SET_PARAMETER_VALUES` yang
         menyalakan object diagnostic TR-069 terkait (path parameter dikirim di
         `parameters`, sebagai logical key ATAU raw TR-069 path). Hasil final
         diambil terpisah dan async — polling lewat
