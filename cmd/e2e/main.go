@@ -121,6 +121,7 @@ func main() {
 		{"S11-crud-lengkap", scenarioCRUDLengkap},
 		{"S12-auth-email-reset", scenarioAuthEmailReset},
 		{"S13-device-provision-import", scenarioDeviceProvision},
+		{"S14-diagnostics", scenarioDiagnostics},
 	}
 
 	var results []result

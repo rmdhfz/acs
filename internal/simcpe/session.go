@@ -87,6 +87,10 @@ func RunSession(ctx context.Context, hc *http.Client, d *Device, o SessionOpts) 
 	defer func() { rep.DurationMS = time.Since(start).Milliseconds() }()
 
 	ns := d.Profile.Namespace
+	if d.TakeDiagnosticsDone() {
+		events = append(append([]string{}, events...), "8 DIAGNOSTICS COMPLETE")
+		rep.Events = events
+	}
 	evStructs := make([]cwmpxml.EventStruct, 0, len(events))
 	for _, e := range events {
 		evStructs = append(evStructs, cwmpxml.EventStruct{EventCode: e})

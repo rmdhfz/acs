@@ -41,4 +41,11 @@ type DeviceDiagnosticRepository interface {
 	GetByTaskID(ctx context.Context, taskID uint64) (*DeviceDiagnostic, error)
 	ListByDevice(ctx context.Context, deviceID uint64, p Pagination) ([]DeviceDiagnostic, int, error)
 	UpdateResult(ctx context.Context, id uint64, status string, result JSONRawMessage, executedAt time.Time) error
+	// UpdateTask mengarahkan diagnostik ke task berikutnya (mis. GetParameterValues hasil) + status.
+	UpdateTask(ctx context.Context, id, taskID uint64, status string) error
+	UpdateStatus(ctx context.Context, id uint64, status string) error
+	// ListOpenByDevice — diagnostik PENDING/RUNNING milik device.
+	ListOpenByDevice(ctx context.Context, deviceID uint64) ([]DeviceDiagnostic, error)
+	// TimeoutStale menandai FAILED diagnostik terbuka yang dibuat sebelum 'before'.
+	TimeoutStale(ctx context.Context, before time.Time) (int64, error)
 }

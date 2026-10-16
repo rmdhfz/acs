@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { NotificationAttributesModal } from './NotificationAttributesModal'
 import {
   ChevronRight,
   ChevronDown,
@@ -233,6 +234,7 @@ export function ParameterTree({ deviceId, parameters, onRefresh, isLoading }: Pa
   const { hasRole } = useAuth()
   const canEdit = hasRole('ADMIN', 'SUPERADMIN')
   
+  const [showNotif, setShowNotif] = useState(false)
   const getParamNamesMut = useGetParameterNames()
   const refreshTreeMut = useRefreshParameterTree()
   const getParamValsMut = useGetParameterValues()
@@ -327,6 +329,14 @@ export function ParameterTree({ deviceId, parameters, onRefresh, isLoading }: Pa
           <RefreshCw className={`w-4 h-4 ${(isMutating || isLoading) ? 'animate-spin' : ''}`} />
           Refresh Root
         </button>
+        <button
+          onClick={() => setShowNotif(true)}
+          disabled={!canEdit}
+          className="ml-2 flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg text-sm text-slate-300 hover:text-white transition-colors disabled:opacity-50"
+        >
+          Notifikasi
+        </button>
+        {showNotif && <NotificationAttributesModal deviceId={deviceId} onClose={() => setShowNotif(false)} />}
       </div>
 
       <div className="flex-1 overflow-auto p-2">

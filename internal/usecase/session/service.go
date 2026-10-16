@@ -258,6 +258,13 @@ func (s *Service) HandleInform(ctx context.Context, in InformInput) (*InformResu
 			prevBootAt := dev.LastBootEventAt
 			_ = s.deviceSvc.TouchLastBootEvent(ctx, dev, occurredAt)
 			s.detectAnomalyBoot(ctx, dev, prevBootAt, occurredAt)
+		case domain.EventCodeDiagnosticsComplete:
+			// CPE selesai menjalankan diagnostik (Ping/Traceroute): ambil hasilnya.
+			if s.diagnosticsSvc != nil {
+				if err := s.diagnosticsSvc.OnDiagnosticsComplete(ctx, dev.ID); err != nil {
+					s.log().Warn("cwmp: gagal mengambil hasil diagnostik", "device_id", dev.ID, "error", err)
+				}
+			}
 		case domain.EventCodeValueChange:
 			hasValueChange = true
 		}
@@ -584,10 +591,18 @@ func (s *Service) HandleRPCResponse(ctx context.Context, resp RPCResponse) error
 		}
 		_ = s.deviceParams.UpsertBatch(ctx, params)
 
-		// Coba korelasikan ke DeviceDiagnostic (bila task ini memang task
-		// pengambilan hasil diagnostic) — abaikan bila tidak ada korelasi.
-		if err := s.diagnosticsSvc.HandleResult(ctx, t.ID, domain.JSONRawMessage(resp.RawResponse), true); err != nil && !errors.Is(err, domain.ErrNotFound) {
-			_ = err
+		// Korelasikan ke DeviceDiagnostic (bila task ini task pengambilan hasil diagnostik).
+		vals := make(map[string]string, len(resp.ParameterValues))
+		for _, p := range resp.ParameterValues {
+			vals[p.Name] = p.Value
+		}
+		if err := s.diagnosticsSvc.HandleParameterValues(ctx, t.ID, vals); err != nil && !errors.Is(err, domain.ErrNotFound) {
+			s.log().Warn("cwmp: gagal memproses hasil diagnostik", "task_id", t.ID, "error", err)
+		}
+	} else if s.diagnosticsSvc != nil {
+		// Respons non-GPV (mis. SetParameterValues pemicu): maju ke fase menunggu hasil.
+		if err := s.diagnosticsSvc.HandleResult(ctx, t.ID, nil, true); err != nil && !errors.Is(err, domain.ErrNotFound) {
+			s.log().Warn("cwmp: gagal memajukan diagnostik", "task_id", t.ID, "error", err)
 		}
 	}
 	return nil
@@ -612,6 +627,16 @@ func (s *Service) paramTypeID(ctx context.Context, xsd string) *uint64 {
 	s.typeIDs.Store(code, ref.ID)
 	id := ref.ID
 	return &id
+}
+
+// failDiagnostic menandai diagnostik terkait task ini FAILED (bila ada).
+func (s *Service) failDiagnostic(ctx context.Context, taskID uint64) {
+	if s.diagnosticsSvc == nil {
+		return
+	}
+	if err := s.diagnosticsSvc.HandleResult(ctx, taskID, nil, false); err != nil && !errors.Is(err, domain.ErrNotFound) {
+		s.log().Warn("cwmp: gagal menandai diagnostik gagal", "task_id", taskID, "error", err)
+	}
 }
 
 // recordAppliedValues menyimpan values task SET_PARAMETER_VALUES (yang sudah
@@ -691,9 +716,11 @@ func (s *Service) handleFault(ctx context.Context, deviceID uint64, cwmpID strin
 
 	switch f.Code {
 	case domain.FaultCodeACSBuild:
+		s.failDiagnostic(ctx, t.ID)
 		return s.taskSvc.FailPermanently(ctx, t, msg)
 
 	case domain.FaultCodeInvalidParameterName:
+		s.failDiagnostic(ctx, t.ID)
 		s.log().Warn("cwmp: fault 9005 Invalid Parameter Name -> task FAILED permanen (parameter tidak didukung device ini)",
 			"device_id", deviceID, "task_id", t.ID)
 		return s.taskSvc.FailPermanently(ctx, t, msg+" (parameter tidak didukung/tidak dikenal device ini)")

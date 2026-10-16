@@ -17,6 +17,9 @@ type Device struct {
 
 	mu     sync.Mutex
 	params map[string]string
+	// diagDone: ada diagnostik yang baru selesai -> Inform berikutnya membawa event
+	// "8 DIAGNOSTICS COMPLETE" (perilaku CPE standar).
+	diagDone bool
 }
 
 // NewDevice membangun data model awal sesuai profil vendor. Parameter yang
@@ -42,6 +45,22 @@ func NewDevice(p Profile, serial string) *Device {
 	set("ManagementServer.PeriodicInformEnable", "true")
 	set("ManagementServer.PeriodicInformInterval", "300")
 	set("ManagementServer.ConnectionRequestUsername", "acs-"+serial)
+
+	// Objek diagnostik standar (IPPing & TraceRoute), root sesuai data model profil.
+	pingRoot, traceRoot := "IPPingDiagnostics.", "TraceRouteDiagnostics."
+	if p.DataModel == TR181 {
+		pingRoot, traceRoot = "IP.Diagnostics.IPPing.", "IP.Diagnostics.TraceRoute."
+	}
+	for _, k := range []string{"DiagnosticsState", "Host"} {
+		set(pingRoot+k, map[string]string{"DiagnosticsState": "None", "Host": ""}[k])
+		set(traceRoot+k, map[string]string{"DiagnosticsState": "None", "Host": ""}[k])
+	}
+	for _, k := range []string{"NumberOfRepetitions", "Timeout", "DataBlockSize", "SuccessCount", "FailureCount", "AverageResponseTime", "MinimumResponseTime", "MaximumResponseTime"} {
+		set(pingRoot+k, "0")
+	}
+	for _, k := range []string{"NumberOfTries", "Timeout", "DataBlockSize", "MaxHopCount", "ResponseTime"} {
+		set(traceRoot+k, "0")
+	}
 
 	if p.DataModel == TR181 {
 		set("WiFi.SSID.1.SSID", "Home-"+shortSerial(serial))
@@ -145,6 +164,47 @@ func (d *Device) Get(names []string) ([]NameValue, error) {
 	return out, nil
 }
 
+// TakeDiagnosticsDone mengembalikan true sekali setelah diagnostik selesai (untuk event 8).
+func (d *Device) TakeDiagnosticsDone() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	v := d.diagDone
+	d.diagDone = false
+	return v
+}
+
+// runDiagnostics mensimulasikan CPE menjalankan diagnostik begitu DiagnosticsState=Requested.
+// Dipanggil dengan d.mu terkunci.
+func (d *Device) runDiagnostics() {
+	for k, v := range d.params {
+		if !strings.HasSuffix(k, "DiagnosticsState") || v != "Requested" {
+			continue
+		}
+		base := strings.TrimSuffix(k, "DiagnosticsState")
+		if strings.HasSuffix(base, "IPPingDiagnostics.") || strings.HasSuffix(base, "IPPing.") {
+			reps := d.params[base+"NumberOfRepetitions"]
+			if reps == "" {
+				reps = "4"
+			}
+			d.params[base+"SuccessCount"] = reps
+			d.params[base+"FailureCount"] = "0"
+			d.params[base+"AverageResponseTime"] = "12"
+			d.params[base+"MinimumResponseTime"] = "9"
+			d.params[base+"MaximumResponseTime"] = "20"
+		} else {
+			d.params[base+"ResponseTime"] = "15"
+			d.params[base+"RouteHops.1.Host"] = "gw.sim"
+			d.params[base+"RouteHops.1.HostAddress"] = "10.0.0.1"
+			d.params[base+"RouteHops.1.RTTimes"] = "3,4,3"
+			d.params[base+"RouteHops.2.Host"] = d.params[base+"Host"]
+			d.params[base+"RouteHops.2.HostAddress"] = "203.0.113.50"
+			d.params[base+"RouteHops.2.RTTimes"] = "14,15,15"
+		}
+		d.params[k] = "Complete"
+		d.diagDone = true
+	}
+}
+
 // Set menerapkan SetParameterValues. Parameter baru diterima (device nyata
 // umumnya mengizinkan set pada parameter writable walau belum pernah dibaca).
 func (d *Device) Set(values map[string]string) {
@@ -153,6 +213,7 @@ func (d *Device) Set(values map[string]string) {
 	for k, v := range values {
 		d.params[k] = v
 	}
+	d.runDiagnostics()
 }
 
 // ParameterNames untuk GetParameterNamesResponse.

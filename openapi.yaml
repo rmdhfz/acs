@@ -2273,6 +2273,148 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  /devices/{id}/tasks/set-parameter-attributes:
+    post:
+      operationId: setParameterAttributesDevice
+      tags: [Devices]
+      summary: Eksekusi RPC SetParameterAttributes (aktifkan notifikasi perubahan nilai)
+      description: |
+        ADMIN/SUPERADMIN. Mengatur atribut notifikasi parameter (`notification`: 0 off, 1 passive,
+        2 active) agar CPE melaporkan event `4 VALUE CHANGE` saat nilainya berubah. `name` boleh
+        logical key (di-resolve per vendor/data model) atau raw path. Maks. 200 item.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/deviceIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [attributes]
+              properties:
+                attributes:
+                  type: array
+                  minItems: 1
+                  maxItems: 200
+                  items:
+                    type: object
+                    required: [name]
+                    properties:
+                      name: { type: string, maxLength: 256 }
+                      notification_change: { type: boolean }
+                      notification: { type: integer, minimum: 0, maximum: 2 }
+                      access_list_change: { type: boolean }
+                      access_list: { type: array, items: { type: string } }
+      responses:
+        '202':
+          description: Task SetParameterAttributes dimasukkan ke antrean.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageResponse' }
+        '400':
+          description: "Payload tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role tidak cukup, atau device milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /devices/{id}/tasks/get-parameter-attributes:
+    post:
+      operationId: getParameterAttributesDevice
+      tags: [Devices]
+      summary: Eksekusi RPC GetParameterAttributes (baca konfigurasi notifikasi)
+      description: ADMIN/NOC/SUPERADMIN. `names` boleh logical key atau raw path (1–200 item).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/deviceIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [names]
+              properties:
+                names:
+                  type: array
+                  minItems: 1
+                  maxItems: 200
+                  items: { type: string }
+      responses:
+        '202':
+          description: Task GetParameterAttributes dimasukkan ke antrean.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageResponse' }
+        '400':
+          description: "Payload tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role tidak cukup, atau device milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /devices/{id}/refresh:
+    post:
+      operationId: refreshDeviceTree
+      tags: [Devices]
+      summary: Telusuri pohon parameter perangkat secara rekursif
+      description: |
+        ADMIN/NOC/SUPERADMIN. Mengantre GetParameterNames per level (sampai `depth`, anggaran
+        300 task) lalu GetParameterValues untuk daun. `path` kosong = root data model yang
+        terdeteksi (TR-098/TR-181). Nama parameter dicatat tanpa menimpa nilai yang sudah ada.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/deviceIdPath'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                path: { type: string, maxLength: 256, description: "Awalan objek, mis. `InternetGatewayDevice.`; kosong = root terdeteksi." }
+                depth: { type: integer, minimum: 1, maximum: 8, default: 3 }
+      responses:
+        '202':
+          description: Penelusuran diantrekan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageResponse' }
+        '400':
+          description: "Payload tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role tidak cukup, atau device milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   /devices/{id}/tasks/set-parameter-values:
     post:
       operationId: setParameterValuesDevice
@@ -3604,15 +3746,14 @@ paths:
       tags: [Diagnostics]
       summary: Trigger diagnostic test TR-069 pada device
       description: |
-        **BELUM DIDUKUNG — selalu `501`.** (Fitur diagnostics belum berfungsi
-        penuh: pemetaan parameter diagnostik & pengambilan hasil belum ada.)
-        Deskripsi rencana: ADMIN/NOC/SUPERADMIN. Mengantre task `SET_PARAMETER_VALUES` yang
-        menyalakan object diagnostic TR-069 terkait (path parameter dikirim di
-        `parameters`, sebagai logical key ATAU raw TR-069 path). Hasil final
-        diambil terpisah dan async — polling lewat
-        `GET /devices/:id/diagnostics` setelah CPE mengirim event
-        `8 DIAGNOSTICS COMPLETE`. Ditolak `429` bila kuota task queue tenant
-        sudah tercapai.
+        ADMIN/NOC/SUPERADMIN. Menjalankan diagnostik standar TR-069 di CPE: `PING` atau `TRACEROUTE`
+        (tipe lain `400`). `parameters`: `host` (wajib; hostname/IP), opsional `timeout` (ms),
+        `block_size`, `repetitions` (ping 1–20) atau `tries`/`max_hops` (traceroute). Alur:
+        SetParameterValues pemicu (logical key `diag.*` di-resolve per vendor/data model) →
+        status `PENDING` → CPE menjalankan → event `8 DIAGNOSTICS COMPLETE` (atau poll cadangan 90 dtk)
+        → GetParameterValues hasil → `COMPLETED`/`FAILED` dengan `result` terstruktur
+        (`state`, `summary`, `hops`). Diagnostik yang menggantung >15 menit ditandai `FAILED`.
+        Ditolak `429` bila kuota task queue tenant tercapai.
       security: [{ bearerAuth: [] }]
       parameters:
         - $ref: '#/components/parameters/deviceIdPath'
@@ -6142,7 +6283,7 @@ components:
           type: object
           additionalProperties: { type: string }
           nullable: true
-          description: "Map logical key/raw TR-069 path -> nilai yang di-set untuk menjalankan diagnostic (mis. `{\"InternetGatewayDevice.IPPingDiagnostics.Host\": \"8.8.8.8\"}`)."
+          description: "Parameter diagnostik: `host` (wajib), opsional `timeout`, `block_size`, `repetitions` (PING), `tries`/`max_hops` (TRACEROUTE)."
       required: [diagnostic_type]
 
     # ---------- Generik tambahan ----------

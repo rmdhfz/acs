@@ -293,7 +293,7 @@ func main() {
 	}()
 
 	stop := make(chan struct{})
-	go runSweepers(deviceSvc, taskSvc, firmwareSvc, webhookSvc, sessionSvc, mysql.NewRetentionRepository(db), cfg.LogRetentionDays, stop)
+	go runSweepers(deviceSvc, taskSvc, firmwareSvc, webhookSvc, sessionSvc, diagnosticsSvc, mysql.NewRetentionRepository(db), cfg.LogRetentionDays, stop)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
@@ -384,7 +384,7 @@ func redactingRequestLogger(logger *slog.Logger) echo.MiddlewareFunc {
 // karena app server stateless (TECH.md §9). Dispatch webhook pakai ticker
 // terpisah yang lebih cepat (15 dtk) supaya event fault/value-change sampai
 // ke sistem pihak ketiga dengan latensi rendah.
-func runSweepers(deviceSvc *device.Service, taskSvc *task.Service, firmwareSvc *firmware.Service, webhookSvc *webhook.Service, sessionSvc *session.Service, retention domain.RetentionRepository, retentionDays int, stop <-chan struct{}) {
+func runSweepers(deviceSvc *device.Service, taskSvc *task.Service, firmwareSvc *firmware.Service, webhookSvc *webhook.Service, sessionSvc *session.Service, diagSvc *diagnostics.Service, retention domain.RetentionRepository, retentionDays int, stop <-chan struct{}) {
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
 	// Pemangkasan log: tiap 6 jam (data menahun dihapus bertahap per batch).
@@ -422,6 +422,11 @@ func runSweepers(deviceSvc *device.Service, taskSvc *task.Service, firmwareSvc *
 				log.Printf("sweeper: timeout stale sent gagal: %v", err)
 			} else if n > 0 {
 				log.Printf("sweeper: %d task ditandai timeout", n)
+			}
+			if n, err := diagSvc.ExpireStale(ctx); err != nil {
+				log.Printf("sweeper: kedaluwarsa diagnostik gagal: %v", err)
+			} else if n > 0 {
+				log.Printf("sweeper: %d diagnostik menggantung ditandai gagal", n)
 			}
 			// Reap sesi CWMP yang ditinggalkan CPE tanpa POST-kosong penutup.
 			// Ambang 15 menit: jauh di atas durasi sesi CWMP normal (detik s/d

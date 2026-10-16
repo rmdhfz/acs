@@ -1133,6 +1133,15 @@ export function useGetParameterNames() {
   })
 }
 
+export function useSetParameterAttributes() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ deviceId, attributes }: { deviceId: number; attributes: { name: string; notification_change: boolean; notification: number }[] }) =>
+      api.post<void>(`/devices/${deviceId}/tasks/set-parameter-attributes`, { attributes }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+  })
+}
+
 // Penelusuran rekursif pohon parameter (GetParameterNames per level + GetParameterValues daun).
 export function useRefreshParameterTree() {
   const qc = useQueryClient()

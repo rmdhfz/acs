@@ -43,6 +43,7 @@ import {
   useRemoveDeviceTag,
 } from '../lib/hooks'
 import { formatJSONField, formatDateTime, formatRelativeTime } from '../lib/format'
+import type { DeviceDiagnostic } from '../lib/types'
 
 type Tab = 'overview' | 'parameters' | 'optical' | 'events' | 'tasks' | 'diagnostics' | 'firmware' | 'timeline' | 'config'
 
@@ -665,8 +666,35 @@ const DIAGNOSTIC_TYPES = [
   { code: 'SPEED_TEST', label: 'Speed Test' },
 ]
 
-// Backend mengembalikan 501 untuk trigger diagnostic sampai fiturnya selesai.
-const DIAGNOSTICS_AVAILABLE = Boolean(import.meta.env.VITE_DIAGNOSTICS_ENABLED)
+interface DiagSummary { state?: string; summary?: Record<string, string | number>; hops?: { hop: string; host: string; address: string; rtt: string; error_code: string }[]; error?: string }
+
+const SUMMARY_LABELS: Record<string, string> = { success_count: 'Berhasil', failure_count: 'Gagal', avg_rtt_ms: 'RTT rata-rata (ms)', min_rtt_ms: 'RTT min (ms)', max_rtt_ms: 'RTT maks (ms)', response_time_ms: 'Waktu respons (ms)' }
+
+function DiagnosticResult({ d, fallback }: { d: DeviceDiagnostic; fallback: string | null }) {
+  if (d.status === 'PENDING' || d.status === 'RUNNING') {
+    return <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">Menunggu perangkat menjalankan pengujian… (perangkat harus Inform; paling lama ±15 menit sebelum dianggap gagal)</p>
+  }
+  const r = d.result as DiagSummary | null
+  if (r && typeof r === 'object' && (r.summary || r.hops || r.error)) {
+    if (r.error) return <p className="mt-2 text-xs text-red-600">{r.error}</p>
+    return (
+      <div className="mt-2 space-y-2 text-xs">
+        {r.summary && Object.keys(r.summary).length > 0 && (
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-3">
+            {Object.entries(r.summary).map(([k, v]) => (
+              <div key={k} className="flex justify-between gap-2"><dt className="text-slate-500 dark:text-slate-400">{SUMMARY_LABELS[k] ?? k}</dt><dd className="font-mono font-medium">{String(v)}</dd></div>
+            ))}
+          </dl>
+        )}
+        {r.hops && r.hops.length > 0 && (
+          <table className="w-full text-left"><thead className="text-slate-500"><tr><th className="py-1 pr-3">Hop</th><th className="pr-3">Host</th><th className="pr-3">Alamat</th><th>RTT (ms)</th></tr></thead>
+            <tbody>{r.hops.map((h) => (<tr key={h.hop} className="border-t border-slate-100 dark:border-slate-800"><td className="py-1 pr-3 font-mono">{h.hop}</td><td className="pr-3">{h.host || '-'}</td><td className="pr-3 font-mono">{h.address || '-'}</td><td className="font-mono">{h.rtt || '-'}</td></tr>))}</tbody></table>
+        )}
+      </div>
+    )
+  }
+  return fallback ? <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-slate-900 p-3 text-xs text-slate-200">{fallback}</pre> : null
+}
 
 function DiagnosticsTab({ deviceId, canTrigger }: { deviceId: number; canTrigger: boolean }) {
   const { data, isLoading } = useDeviceDiagnostics(deviceId)
@@ -683,7 +711,7 @@ function DiagnosticsTab({ deviceId, canTrigger }: { deviceId: number; canTrigger
       await triggerMutation.mutateAsync({
         deviceId,
         diagnosticType,
-        parameters: host ? { host } : undefined,
+        parameters: { host },
       })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Gagal memicu diagnostic')
@@ -692,31 +720,25 @@ function DiagnosticsTab({ deviceId, canTrigger }: { deviceId: number; canTrigger
 
   return (
     <div className="space-y-4">
-      {canTrigger && !DIAGNOSTICS_AVAILABLE && (
-        <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
-          Diagnostics (Ping/Traceroute dari ONT) belum tersedia pada versi ini: pemetaan parameter diagnostik dan pengambilan hasilnya masih dalam pengembangan. Untuk uji konektivitas, gunakan tab Parameter atau alat di sisi jaringan.
-        </div>
-      )}
-      {DIAGNOSTICS_AVAILABLE && canTrigger && (
+
+      {canTrigger && (
         <Card>
           <div className="flex flex-wrap items-end gap-3 p-4">
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Tipe Diagnostic</label>
               <select value={diagnosticType} onChange={(e) => setDiagnosticType(e.target.value)} className={`${inputCls} w-48`}>
-                {DIAGNOSTIC_TYPES.map((d) => (
+                {DIAGNOSTIC_TYPES.filter((d) => d.code === 'PING' || d.code === 'TRACEROUTE').map((d) => (
                   <option key={d.code} value={d.code}>
                     {d.label}
                   </option>
                 ))}
               </select>
             </div>
-            {(diagnosticType === 'PING' || diagnosticType === 'TRACEROUTE') && (
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Host</label>
-                <input value={host} onChange={(e) => setHost(e.target.value)} placeholder="8.8.8.8" className={`${inputCls} w-48`} />
-              </div>
-            )}
-            <button onClick={handleTrigger} disabled={triggerMutation.isPending} className={primaryBtnCls}>
+            <div>
+              <label htmlFor="diag-host" className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Host / IP tujuan</label>
+              <input id="diag-host" value={host} onChange={(e) => setHost(e.target.value.trim())} maxLength={255} pattern="[A-Za-z0-9._:-]{1,255}" title="Hostname atau IP (huruf, angka, titik, titik dua, strip)" placeholder="8.8.8.8" className={`${inputCls} w-56`} />
+            </div>
+            <button onClick={handleTrigger} disabled={triggerMutation.isPending || !host} className={primaryBtnCls}>
               <Activity className="h-4 w-4" /> Jalankan
             </button>
           </div>
@@ -727,7 +749,7 @@ function DiagnosticsTab({ deviceId, canTrigger }: { deviceId: number; canTrigger
       {isLoading ? (
         <PageSpinner />
       ) : diagnostics.length === 0 ? (
-        <EmptyState icon={Activity} title="Belum ada diagnostic" description="Trigger test PING/TRACEROUTE/WiFi Scan bawaan TR-069 di atas." />
+        <EmptyState icon={Activity} title="Belum ada diagnostic" description="Jalankan Ping atau Traceroute dari ONT ke host tujuan. Hasil muncul setelah perangkat Inform dan menyelesaikan pengujian." />
       ) : (
         <Card>
           <ul className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -741,7 +763,7 @@ function DiagnosticsTab({ deviceId, canTrigger }: { deviceId: number; canTrigger
                     </div>
                     <span className="shrink-0 text-xs text-slate-400 dark:text-slate-500">{formatDateTime(d.executed_at ?? d.created_at)}</span>
                   </div>
-                  {result && <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-slate-900 p-3 text-xs text-slate-200">{result}</pre>}
+                  <DiagnosticResult d={d} fallback={result} />
                 </li>
               )
             })}
