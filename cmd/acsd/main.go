@@ -293,7 +293,7 @@ func main() {
 	}()
 
 	stop := make(chan struct{})
-	go runSweepers(deviceSvc, taskSvc, firmwareSvc, webhookSvc, sessionSvc, stop)
+	go runSweepers(deviceSvc, taskSvc, firmwareSvc, webhookSvc, sessionSvc, mysql.NewRetentionRepository(db), cfg.LogRetentionDays, stop)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
@@ -384,15 +384,27 @@ func redactingRequestLogger(logger *slog.Logger) echo.MiddlewareFunc {
 // karena app server stateless (TECH.md §9). Dispatch webhook pakai ticker
 // terpisah yang lebih cepat (15 dtk) supaya event fault/value-change sampai
 // ke sistem pihak ketiga dengan latensi rendah.
-func runSweepers(deviceSvc *device.Service, taskSvc *task.Service, firmwareSvc *firmware.Service, webhookSvc *webhook.Service, sessionSvc *session.Service, stop <-chan struct{}) {
+func runSweepers(deviceSvc *device.Service, taskSvc *task.Service, firmwareSvc *firmware.Service, webhookSvc *webhook.Service, sessionSvc *session.Service, retention domain.RetentionRepository, retentionDays int, stop <-chan struct{}) {
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
+	// Pemangkasan log: tiap 6 jam (data menahun dihapus bertahap per batch).
+	retentionTicker := time.NewTicker(6 * time.Hour)
+	defer retentionTicker.Stop()
 	webhookTicker := time.NewTicker(15 * time.Second)
 	defer webhookTicker.Stop()
 	for {
 		select {
 		case <-stop:
 			return
+		case <-retentionTicker.C:
+			if retentionDays > 0 {
+				cutoff := time.Now().AddDate(0, 0, -retentionDays)
+				if res, err := retention.PruneLogs(context.Background(), cutoff); err != nil {
+					log.Printf("sweeper: retensi log gagal: %v", err)
+				} else {
+					log.Printf("sweeper: retensi log (> %d hari) dipangkas: %v", retentionDays, res)
+				}
+			}
 		case <-webhookTicker.C:
 			if n, err := webhookSvc.DispatchDue(context.Background()); err != nil {
 				log.Printf("sweeper: dispatch webhook gagal: %v", err)

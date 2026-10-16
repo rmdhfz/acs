@@ -52,6 +52,10 @@ type Config struct {
 	// kerangka & tanpa autentikasi. Default MATI.
 	USPEnabled bool
 
+	// LogRetentionDays — umur maksimum (hari) tabel log volume tinggi (event, sesi CWMP,
+	// metrik optik, riwayat webhook). 0 = tanpa pemangkasan. activity_logs (audit) tidak dipangkas.
+	LogRetentionDays int
+
 	OIDCIssuer       string
 	OIDCClientID     string
 	OIDCClientSecret string
@@ -180,6 +184,10 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("config: ACS_USP_ENABLED tidak valid: %w", err)
 	}
 	cfg.USPEnabled = uspEnabled
+	cfg.LogRetentionDays, err = strconv.Atoi(getEnv("ACS_LOG_RETENTION_DAYS", "90"))
+	if err != nil || cfg.LogRetentionDays < 0 || (cfg.LogRetentionDays > 0 && cfg.LogRetentionDays < 7) {
+		return nil, fmt.Errorf("config: ACS_LOG_RETENTION_DAYS harus 0 (nonaktif) atau >= 7")
+	}
 
 	cfg.OIDCIssuer = os.Getenv("ACS_OIDC_ISSUER")
 	cfg.OIDCClientID = os.Getenv("ACS_OIDC_CLIENT_ID")

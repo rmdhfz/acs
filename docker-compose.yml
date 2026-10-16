@@ -106,6 +106,8 @@ services:
       ACS_TRUSTED_PROXIES: ${ACS_TRUSTED_PROXIES:-}
       # Endpoint /usp (TR-369) masih kerangka tanpa auth: default mati.
       ACS_USP_ENABLED: ${ACS_USP_ENABLED:-false}
+      # Retensi tabel log (hari); 0 = tanpa pemangkasan. activity_logs (audit) tidak dipangkas.
+      ACS_LOG_RETENTION_DAYS: ${ACS_LOG_RETENTION_DAYS:-90}
       # Email (reset password & notifikasi keamanan). Kosongkan ACS_SMTP_HOST
       # untuk menonaktifkan. Kredensial HANYA dari .env (tidak di-commit).
       ACS_SMTP_HOST: ${ACS_SMTP_HOST:-}
