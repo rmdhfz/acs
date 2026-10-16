@@ -111,7 +111,7 @@ func TestUpsertParameterMapping(t *testing.T) {
 	svc, _, _, maps, _, _ := createRig()
 	ctx := context.Background()
 	mk := func(vendor uint64, model *uint64) *domain.VendorParameterMapping {
-		return &domain.VendorParameterMapping{VendorID: vendor, DeviceModelID: model, LogicalKey: "wifi.ssid", TR069Path: "X.SSID"}
+		return &domain.VendorParameterMapping{VendorID: vendor, DeviceModelID: model, LogicalKey: "wifi.ssid", TR069Path: "Device.X.SSID"}
 	}
 	u := func(v uint64) *uint64 { return &v }
 
@@ -163,5 +163,26 @@ func TestUpdateDeviceModel_GuardDataModelBilaDipakaiDevice(t *testing.T) {
 	usage.model = []domain.UsageCount{{Kind: "firmware", Count: 1}}
 	if _, err := svc.UpdateDeviceModel(ctx, superadmin, 5, UpdateDeviceModelInput{DataModelVersionID: &newDMV}); err != nil {
 		t.Fatalf("tanpa device boleh: %v", err)
+	}
+}
+
+func TestFormatOUIDanPathMapping(t *testing.T) {
+	for _, p := range []string{"bukan path!!", "X.SSID", "InternetGatewayDevice", "Device.A B"} {
+		if tr069PathFormat.MatchString(p) {
+			t.Errorf("path %q harus ditolak", p)
+		}
+	}
+	for _, p := range []string{"InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID", "Device.WiFi.SSID.1.SSID", "Device.X_ZTE-COM_WanInterface."} {
+		if !tr069PathFormat.MatchString(p) {
+			t.Errorf("path %q harus diterima", p)
+		}
+	}
+	for _, o := range []string{"zz", "12345", "1234567", "00D0D!"} {
+		if ouiFormat.MatchString(o) {
+			t.Errorf("OUI %q harus ditolak", o)
+		}
+	}
+	if !ouiFormat.MatchString("00D0D0") {
+		t.Error("OUI 00D0D0 harus diterima")
 	}
 }

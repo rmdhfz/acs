@@ -254,11 +254,11 @@ func TestCreateSubscription_TenantScope(t *testing.T) {
 	admin := domain.Actor{UserID: 5, TenantID: ptr(uint64(1)), Roles: []string{domain.RoleAdmin}}
 	superadmin := domain.Actor{UserID: 1, Roles: []string{domain.RoleSuperadmin}}
 
-	// ADMIN tidak boleh membuat subscription global.
-	if _, err := svc.CreateSubscription(ctx, admin, CreateSubscriptionInput{
+	// ADMIN tanpa tenant_id => tenant sendiri (BUKAN global): UI ADMIN tidak mengirim tenant_id.
+	if sub, err := svc.CreateSubscription(ctx, admin, CreateSubscriptionInput{
 		EventCode: domain.WebhookEventDeviceFault, Name: "g", TargetURL: "https://x.test/h",
-	}); err != domain.ErrForbidden {
-		t.Fatalf("ADMIN global: want ErrForbidden, got %v", err)
+	}); err != nil || sub.TenantID == nil || *sub.TenantID != 1 {
+		t.Fatalf("ADMIN tanpa tenant_id harus jadi tenant sendiri, got sub=%v err=%v", sub, err)
 	}
 
 	// ADMIN tidak boleh membuat untuk tenant lain.

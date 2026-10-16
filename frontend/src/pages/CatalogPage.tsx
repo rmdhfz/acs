@@ -460,7 +460,7 @@ function AddOUIModal({ vendorId, onClose }: { vendorId: number; onClose: () => v
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">OUI (6 hex digit)</label>
-          <input required maxLength={LIMITS.vendor.oui} value={oui} onChange={(e) => setOui(e.target.value.toUpperCase())} placeholder="mis. 3C6A9D" className={`${inputCls} font-mono`} />
+          <input required maxLength={LIMITS.vendor.oui} minLength={6} pattern="[0-9A-Za-z]{6}" title="Tepat 6 karakter huruf/angka (umumnya heksadesimal), mis. 3C6A9D" value={oui} onChange={(e) => setOui(e.target.value.toUpperCase())} placeholder="mis. 3C6A9D" className={`${inputCls} font-mono`} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Catatan (opsional)</label>
@@ -948,6 +948,8 @@ function CreateMappingModal({ vendorId, onClose }: { vendorId: number; onClose: 
           <input
             required
             maxLength={LIMITS.mapping.tr069Path}
+            pattern="(InternetGatewayDevice|Device)[.][\w.\-]*"
+            title="Harus berawalan InternetGatewayDevice. atau Device."
             value={tr069Path}
             onChange={(e) => setTr069Path(e.target.value)}
             placeholder="mis. InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.SSID"

@@ -42,7 +42,8 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     if (!pending) return
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') settle(false)
-      if (e.key === 'Enter') settle(true)
+      // Enter di tombol (mis. "Batal" yang sedang fokus) = aksi tombol itu, BUKAN konfirmasi.
+      if (e.key === 'Enter' && !(e.target instanceof HTMLButtonElement)) settle(true)
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)

@@ -97,6 +97,9 @@ type CreateSubscriptionInput struct {
 // boleh SUPERADMIN — pola sama dgn resource lintas-tenant lain (mis. rollout
 // batch global, provisioning profile global).
 func (s *Service) CreateSubscription(ctx context.Context, actor domain.Actor, in CreateSubscriptionInput) (*domain.WebhookSubscription, error) {
+	if in.TenantID == nil && !actor.IsSuperadmin() {
+		in.TenantID = actor.TenantID
+	}
 	if in.TenantID == nil {
 		if !actor.IsSuperadmin() {
 			return nil, domain.ErrForbidden

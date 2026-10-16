@@ -67,6 +67,16 @@ func (s *Service) CreateTenant(ctx context.Context, actor domain.Actor, in Creat
 	if err := auth.RequireRole(actor, domain.RoleSuperadmin); err != nil {
 		return nil, err
 	}
+	in.Code, in.Name = strings.TrimSpace(in.Code), strings.TrimSpace(in.Name)
+	if in.Code == "" || in.Name == "" {
+		return nil, fmt.Errorf("%w: code dan name tenant wajib diisi", domain.ErrInvalidInput)
+	}
+	if strings.ContainsAny(in.Code, " \t") {
+		return nil, fmt.Errorf("%w: code tenant tidak boleh mengandung spasi", domain.ErrInvalidInput)
+	}
+	if (in.CWMPInformPassword != nil) != (in.CWMPInformUsername != nil) {
+		return nil, fmt.Errorf("%w: username dan password Inform CWMP harus diisi bersamaan", domain.ErrInvalidInput)
+	}
 	var passwordEnc []byte
 	if in.CWMPInformPassword != nil {
 		if len(*in.CWMPInformPassword) < minCWMPInformPasswordLen {
@@ -345,6 +355,9 @@ func (s *Service) CreateUser(ctx context.Context, actor domain.Actor, in CreateU
 	if !actor.IsSuperadmin() {
 		if err := auth.RequireRole(actor, domain.RoleAdmin); err != nil {
 			return nil, err
+		}
+		if in.TenantID == nil {
+			in.TenantID = actor.TenantID
 		}
 		if in.TenantID == nil || actor.TenantID == nil || *in.TenantID != *actor.TenantID {
 			return nil, domain.ErrForbidden

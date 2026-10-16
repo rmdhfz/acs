@@ -9,6 +9,7 @@ package catalog
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"acs/internal/domain"
@@ -57,14 +58,20 @@ func (s *Service) requireActiveVendor(ctx context.Context, vendorID uint64) (*do
 	return s.vendors.GetByID(ctx, vendorID)
 }
 
+var (
+	ouiFormat       = regexp.MustCompile(`^[0-9A-Z]{6}$`)
+	tr069PathFormat = regexp.MustCompile(`^(InternetGatewayDevice|Device)\.[A-Za-z0-9_.{}\-]*$`)
+)
+
 // AddVendorOUI mendaftarkan OUI untuk vendor. OUI yang pernah dihapus
 // dihidupkan kembali oleh repository (lihat vendorOUIRepository.Create).
 func (s *Service) AddVendorOUI(ctx context.Context, actor domain.Actor, vendorID uint64, oui string, notes *string) (*domain.VendorOUI, error) {
 	if err := auth.RequireRole(actor, domain.RoleSuperadmin); err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(oui) == "" {
-		return nil, fmt.Errorf("%w: oui wajib diisi", domain.ErrInvalidInput)
+	oui = strings.ToUpper(strings.TrimSpace(oui))
+	if !ouiFormat.MatchString(oui) {
+		return nil, fmt.Errorf("%w: oui harus tepat 6 karakter huruf/angka (umumnya heksadesimal, mis. 00D0D0)", domain.ErrInvalidInput)
 	}
 	if _, err := s.requireActiveVendor(ctx, vendorID); err != nil {
 		return nil, err
@@ -107,8 +114,15 @@ func (s *Service) UpsertParameterMapping(ctx context.Context, actor domain.Actor
 	if err := auth.RequireRole(actor, domain.RoleSuperadmin); err != nil {
 		return err
 	}
+	m.LogicalKey = strings.TrimSpace(m.LogicalKey)
+	m.TR069Path = strings.TrimSpace(m.TR069Path)
 	if m.LogicalKey == "" || m.TR069Path == "" {
 		return fmt.Errorf("%w: logical_key dan tr069_path wajib diisi", domain.ErrInvalidInput)
+	}
+	// Data referensi GLOBAL: path salah merusak provisioning semua tenant (CPE membalas
+	// fault 9005). Root data model hanya TR-098 atau TR-181 dan tanpa spasi/karakter aneh.
+	if !tr069PathFormat.MatchString(m.TR069Path) {
+		return fmt.Errorf("%w: tr069_path harus berawalan InternetGatewayDevice. atau Device. dan hanya berisi huruf, angka, titik, _ , -", domain.ErrInvalidInput)
 	}
 	if _, err := s.requireActiveVendor(ctx, m.VendorID); err != nil {
 		return err

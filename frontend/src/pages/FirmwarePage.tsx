@@ -68,7 +68,7 @@ export function FirmwarePage() {
         <TabButton active={tab === 'rollout'} onClick={() => setTab('rollout')} icon={Rocket} label="Rollout Batch" />
       </div>
 
-      {tab === 'catalog' ? <CatalogTab canManage={canManage} /> : <RolloutTab canManage={canManage} />}
+      {tab === 'catalog' ? <CatalogTab /> : <RolloutTab canManage={canManage} />}
     </div>
   )
 }
@@ -89,7 +89,7 @@ function TabButton({ active, onClick, icon: Icon, label }: { active: boolean; on
 
 // ---- Katalog ----
 
-function CatalogTab({ canManage }: { canManage: boolean }) {
+function CatalogTab() {
   const { data: vendorsResp } = useVendors()
   const vendors = vendorsResp?.data ?? []
   const [vendorId, setVendorId] = useState<string>('')
@@ -138,7 +138,7 @@ function CatalogTab({ canManage }: { canManage: boolean }) {
             </option>
           ))}
         </select>
-        {canManage && (
+        {hasRole('SUPERADMIN') && (
           <button onClick={() => setShowUpload(true)} className={primaryBtnCls}>
             <Plus className="h-4 w-4" /> Daftarkan Firmware
           </button>

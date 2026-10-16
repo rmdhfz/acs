@@ -27,6 +27,10 @@ function writeRemembered(username: string | null) {
   }
 }
 
+// Tombol SSO hanya tampil bila OIDC dikonfigurasi (VITE_SSO_URL = URL lengkap endpoint login OIDC di API).
+const SSO_URL = (import.meta.env.VITE_SSO_URL as string | undefined) ?? ''
+const SSO_ENABLED = SSO_URL !== ''
+
 export function LoginPage() {
   const { login, isAuthenticated } = useAuth()
   const { t } = useI18n()
@@ -198,6 +202,7 @@ export function LoginPage() {
         </button>
       </form>
 
+      {SSO_ENABLED && (
       <div className="relative my-6">
         <div className="absolute inset-0 flex items-center">
           <div className="w-full border-t border-slate-200 dark:border-slate-800" />
@@ -206,15 +211,20 @@ export function LoginPage() {
           <span className="bg-white px-3 text-slate-400 dark:bg-slate-950 dark:text-slate-500">{t('login.or')}</span>
         </div>
       </div>
+      )}
 
+      {SSO_ENABLED && (
+      <>
       <a
-        href="/api/v1/auth/oidc/login"
+        href={SSO_URL}
         className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
       >
         <KeyRound className="h-4 w-4 text-slate-400" />
         {t('login.sso')}
       </a>
       <p className="mt-2 text-center text-xs text-slate-400 dark:text-slate-500">{t('login.ssoHint')}</p>
+      </>
+      )}
 
       <p className="mt-8 text-center text-xs text-slate-400 dark:text-slate-500">
         {t('login.needHelp')}{' '}

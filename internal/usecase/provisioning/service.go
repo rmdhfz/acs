@@ -87,6 +87,9 @@ type CreateProfileInput struct {
 }
 
 func (s *Service) CreateProfile(ctx context.Context, actor domain.Actor, in CreateProfileInput) (*domain.ProvisioningProfile, error) {
+	if !actor.IsSuperadmin() && in.TenantID == nil {
+		in.TenantID = actor.TenantID
+	}
 	if err := auth.RequireTenantScope(actor, in.TenantID); err != nil {
 		return nil, err
 	}
@@ -637,6 +640,9 @@ func (s *Service) GetZeroTouchRule(ctx context.Context, actor domain.Actor, id u
 func (s *Service) CreateZeroTouchRule(ctx context.Context, actor domain.Actor, r *domain.ZeroTouchRule) error {
 	if err := validateMatchParameterPair(r); err != nil {
 		return err
+	}
+	if !actor.IsSuperadmin() && r.TenantID == nil {
+		r.TenantID = actor.TenantID
 	}
 	if err := auth.RequireTenantScope(actor, r.TenantID); err != nil {
 		return err

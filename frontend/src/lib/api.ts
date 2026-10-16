@@ -2,12 +2,25 @@ export const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined
 
 const TOKEN_STORAGE_KEY = 'acs_token'
 
-let authToken: string | null = localStorage.getItem(TOKEN_STORAGE_KEY)
+// localStorage bisa melempar (mode privat/storage diblokir) — jangan sampai halaman putih.
+function readStoredToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
+
+let authToken: string | null = readStoredToken()
 
 export function setAuthToken(token: string | null) {
   authToken = token
-  if (token) localStorage.setItem(TOKEN_STORAGE_KEY, token)
-  else localStorage.removeItem(TOKEN_STORAGE_KEY)
+  try {
+    if (token) localStorage.setItem(TOKEN_STORAGE_KEY, token)
+    else localStorage.removeItem(TOKEN_STORAGE_KEY)
+  } catch {
+    // token tetap di memori untuk sesi ini
+  }
 }
 
 export function getAuthToken() {

@@ -3,9 +3,13 @@ package tag
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"strings"
 
 	"acs/internal/domain"
 )
+
+var tagColorFormat = regexp.MustCompile(`^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$`)
 
 type Service struct {
 	tags     domain.TagRepository
@@ -17,8 +21,15 @@ func NewService(tags domain.TagRepository, activity domain.ActivityLogRepository
 }
 
 func (s *Service) Create(ctx context.Context, actor domain.Actor, in domain.Tag) (*domain.Tag, error) {
+	in.Name = strings.TrimSpace(in.Name)
 	if in.Name == "" {
 		return nil, fmt.Errorf("%w: nama tag wajib diisi", domain.ErrInvalidInput)
+	}
+	if in.Color != nil && strings.TrimSpace(*in.Color) == "" {
+		in.Color = nil
+	}
+	if in.Color != nil && !tagColorFormat.MatchString(*in.Color) {
+		return nil, fmt.Errorf("%w: color harus heksadesimal (#RGB atau #RRGGBB)", domain.ErrInvalidInput)
 	}
 
 	in.TenantID = actor.TenantID

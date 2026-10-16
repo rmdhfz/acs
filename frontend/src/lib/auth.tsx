@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { api, getAuthToken, setAuthToken, setUnauthorizedHandler } from './api'
 import type { AuthUser } from './types'
 
@@ -22,6 +23,7 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 const USER_STORAGE_KEY = 'acs_user'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient()
   const [user, setUser] = useState<AuthUser | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
@@ -39,14 +41,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUnauthorizedHandler(() => {
       setAuthToken(null)
       localStorage.removeItem(USER_STORAGE_KEY)
+      queryClient.clear() // jangan sisakan data pengguna sebelumnya di cache
       setUser(null)
     })
     return () => setUnauthorizedHandler(null)
-  }, [])
+  }, [queryClient])
 
   async function login(identifier: string, password: string) {
     const body = identifier.includes('@') ? { email: identifier, password } : { username: identifier, password }
     const resp = await api.post<LoginResponse>('/auth/login', body)
+    queryClient.clear() // cache milik sesi/pengguna sebelumnya tidak boleh terlihat
     setAuthToken(resp.access_token)
     localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(resp.user))
     setUser(resp.user)
@@ -55,6 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   function logout() {
     setAuthToken(null)
     localStorage.removeItem(USER_STORAGE_KEY)
+    queryClient.clear()
     setUser(null)
   }
 

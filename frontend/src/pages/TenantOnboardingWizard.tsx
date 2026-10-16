@@ -236,7 +236,7 @@ function AdminUserStep({ tenant, onCreated, onBack }: { tenant: Tenant; onCreate
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Password</label>
-          <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className={inputCls} />
+          <input type="password" required minLength={8} maxLength={128} autoComplete="new-password" placeholder="8–128 karakter" value={password} onChange={(e) => setPassword(e.target.value)} className={inputCls} />
         </div>
         {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
         <div className="flex justify-between pt-2">

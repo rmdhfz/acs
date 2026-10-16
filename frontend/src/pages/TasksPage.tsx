@@ -335,7 +335,7 @@ function CreateTaskModal({
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Max Retries</label>
-            <input type="number" min={0} value={maxRetries} onChange={(e) => setMaxRetries(e.target.value)} className={inputCls} />
+            <input type="number" min={0} max={10} value={maxRetries} onChange={(e) => setMaxRetries(e.target.value)} className={inputCls} />
           </div>
         </div>
         <div>

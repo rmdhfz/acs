@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { EmptyState } from '../components/EmptyState'
 import { StatusBadge } from '../components/StatusBadge'
 import { Modal } from '../components/Modal'
+import { CopyButton } from '../components/CopyButton'
 import { ExportMenu } from '../components/ExportMenu'
 import { ImportWizard } from '../components/ImportWizard'
 import { loadUserExportRows, userAdapter, userExportColumns } from '../imports/users'
@@ -389,7 +390,7 @@ function CreateUserModal({
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Password</label>
-          <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className={inputCls} />
+          <input type="password" required minLength={8} maxLength={128} autoComplete="new-password" placeholder="8–128 karakter" value={password} onChange={(e) => setPassword(e.target.value)} className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Role</label>
@@ -492,6 +493,10 @@ function ResetPasswordModal({ user, onClose }: { user: User; onClose: () => void
           <input
             required
             type="password"
+            minLength={8}
+            maxLength={128}
+            autoComplete="new-password"
+            placeholder="8–128 karakter"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             className={inputCls}
@@ -665,15 +670,16 @@ function IssueApiTokenModal({ onClose }: { onClose: () => void }) {
 
   if (issued) {
     return (
-      <Modal title="Token diterbitkan" onClose={onClose}>
+      <Modal title="Token diterbitkan" onClose={onClose} dismissable={false}>
         <div className="space-y-3">
           <p className="text-sm text-slate-700 dark:text-slate-300">
             Salin sekarang — nilai ini <strong>hanya ditampilkan satu kali</strong> dan tidak bisa diambil lagi setelah
             modal ini ditutup.
           </p>
-          <code className="block break-all rounded-lg border border-slate-200 bg-slate-50 p-3 font-mono text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
-            {issued}
-          </code>
+          <div className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800">
+            <code className="block min-w-0 flex-1 break-all font-mono text-xs text-slate-900 dark:text-slate-100">{issued}</code>
+            <CopyButton value={issued} label="Salin token" />
+          </div>
           <div className="flex justify-end pt-1">
             <button type="button" onClick={onClose} className={primaryBtnCls}>
               Sudah disalin
@@ -1025,8 +1031,11 @@ function CreateTenantModal({ onClose }: { onClose: () => void }) {
               className={`${inputCls} font-mono text-xs`}
             />
             <input
-              placeholder="Password Inform"
+              placeholder="Password Inform (min. 16 karakter)"
               type="password"
+              minLength={16}
+              maxLength={128}
+              autoComplete="new-password"
               value={cwmpPassword}
               onChange={(e) => setCwmpPassword(e.target.value)}
               className={`${inputCls} font-mono text-xs`}
@@ -1072,7 +1081,7 @@ function RotateCWMPCredentialsModal({ tenant, onClose }: { tenant: Tenant; onClo
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Password Baru</label>
-          <input required type="password" value={password} onChange={(e) => setPassword(e.target.value)} className={`${inputCls} font-mono text-xs`} />
+          <input required type="password" minLength={16} maxLength={128} autoComplete="new-password" placeholder="min. 16 karakter" value={password} onChange={(e) => setPassword(e.target.value)} className={`${inputCls} font-mono text-xs`} />
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
         <button type="submit" disabled={setCredsMutation.isPending} className={`${primaryBtnCls} w-full`}>
