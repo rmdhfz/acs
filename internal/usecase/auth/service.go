@@ -164,6 +164,11 @@ func (s *Service) Login(ctx context.Context, identifier, password string) (*doma
 	// menebak akun tidak bisa memakai respons ini utk memastikan akun tsb valid.
 	if (u.LockedUntil != nil && u.LockedUntil.After(time.Now())) || !u.IsActive {
 		passwordhash.DummyVerify(password)
+		reason := "akun_terkunci"
+		if !u.IsActive {
+			reason = "akun_nonaktif"
+		}
+		s.auditLoginFailure(ctx, u, reason)
 		return nil, "", ErrInvalidCredentials
 	}
 	ok, needsRehash, verr := passwordhash.Verify(password, u.PasswordHash)
@@ -179,6 +184,10 @@ func (s *Service) Login(ctx context.Context, identifier, password string) (*doma
 		// TOCTOU, temuan acs-security-reviewer). Kegagalan mencatat di sini
 		// sengaja tidak menggagalkan respons login.
 		locked, _ := s.users.RecordFailedLogin(ctx, u.ID, maxFailedLoginAttempts, time.Now().Add(lockoutDuration))
+		s.auditLoginFailure(ctx, u, "password_salah")
+		if locked {
+			_ = s.activity.Record(ctx, &domain.ActivityLog{UserID: &u.ID, TenantID: u.TenantID, Action: "ACCOUNT_LOCKED", EntityType: "user", EntityID: &u.ID})
+		}
 		if s.mail != nil && locked {
 			// Pemanggilan INI yang mengunci akun (repo membandingkan locked_until
 			// dgn nilai yang ia set): beri tahu pemilik akun SEKALI, bukan tiap
@@ -396,6 +405,16 @@ func (s *Service) checkSession(ctx context.Context, claims *Claims) error {
 	return nil
 }
 
+// auditLoginFailure mencatat percobaan login gagal untuk akun YANG ADA (terikat lockout, jadi
+// jumlah baris dibatasi). Identifier tak dikenal TIDAK dicatat ke DB (cegah banjir baris oleh
+// penyerang); hanya IP+alasan di log aplikasi. Tidak pernah memuat password.
+func (s *Service) auditLoginFailure(ctx context.Context, u *domain.User, reason string) {
+	_ = s.activity.Record(ctx, &domain.ActivityLog{
+		UserID: &u.ID, TenantID: u.TenantID, Action: "LOGIN_FAILED", EntityType: "user", EntityID: &u.ID,
+		Details: map[string]any{"reason": reason},
+	})
+}
+
 // ---- API Token ----
 
 // MaxAPITokenTTL — umur maksimum (dan default) API token. Token tanpa batas
@@ -453,6 +472,10 @@ func (s *Service) IssueAPIToken(ctx context.Context, actor domain.Actor, name st
 	if err := s.tokens.Create(ctx, rec); err != nil {
 		return "", nil, err
 	}
+	_ = s.activity.Record(ctx, &domain.ActivityLog{
+		UserID: actor.UserIDPtr(), TenantID: tenantID, Action: "ISSUE_API_TOKEN", EntityType: "api_token", EntityID: &rec.ID,
+		Details: map[string]any{"name": name},
+	})
 	return plain, rec, nil
 }
 
@@ -514,7 +537,13 @@ func (s *Service) RevokeAPIToken(ctx context.Context, actor domain.Actor, id uin
 	if err := RequireTenantScope(actor, tok.TenantID); err != nil {
 		return err
 	}
-	return s.tokens.Revoke(ctx, id)
+	if err := s.tokens.Revoke(ctx, id); err != nil {
+		return err
+	}
+	_ = s.activity.Record(ctx, &domain.ActivityLog{
+		UserID: actor.UserIDPtr(), TenantID: tok.TenantID, Action: "REVOKE_API_TOKEN", EntityType: "api_token", EntityID: &id,
+	})
+	return nil
 }
 
 // ---- RBAC helpers ----

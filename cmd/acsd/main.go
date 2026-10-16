@@ -205,6 +205,15 @@ func main() {
 	restEcho.Use(middleware.Recover())
 	setClientIPExtractor(restEcho, cfg.TrustedProxies)
 	restEcho.Use(redactingRequestLogger(logger))
+	// IP & user agent klien ke konteks permintaan -> activity_logs.ip_address terisi.
+	restEcho.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c *echo.Context) error {
+			req := c.Request()
+			ctx := domain.WithRequestMeta(req.Context(), domain.RequestMeta{IP: c.RealIP(), UserAgent: req.UserAgent()})
+			c.SetRequest(req.WithContext(ctx))
+			return next(c)
+		}
+	})
 	// Batas ukuran body: `c.Bind()` di /auth/login (anonim) & endpoint lain
 	// membaca body ke memori tanpa batas -> satu POST raksasa = memory
 	// exhaustion. 2 MB cukup longgar untuk semua payload JSON REST. Upload

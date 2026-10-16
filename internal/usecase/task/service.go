@@ -709,7 +709,13 @@ func (s *Service) Cancel(ctx context.Context, actor domain.Actor, id uint64) err
 			return fmt.Errorf("%w: task sudah berstatus %s dan tidak dapat dibatalkan", domain.ErrConflict, st.Code)
 		}
 	}
-	return s.tasks.Cancel(ctx, id, actor.UserIDPtr())
+	if err := s.tasks.Cancel(ctx, id, actor.UserIDPtr()); err != nil {
+		return err
+	}
+	_ = s.activity.Record(ctx, &domain.ActivityLog{
+		UserID: actor.UserIDPtr(), TenantID: actor.TenantID, Action: "CANCEL_TASK", EntityType: "task", EntityID: &id,
+	})
+	return nil
 }
 
 // ---- Dipanggil dari usecase/session selama sesi CWMP berlangsung ----

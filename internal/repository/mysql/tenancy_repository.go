@@ -484,6 +484,16 @@ func (r *activityLogRepository) Record(ctx context.Context, log *domain.Activity
 			log.Description = &s
 		}
 	}
+	// IP klien dari konteks permintaan (diisi middleware HTTP) bila belum diisi eksplisit.
+	if log.IPAddress == nil {
+		if m, ok := domain.RequestMetaFrom(ctx); ok && m.IP != "" {
+			ip := m.IP
+			if len(ip) > 45 {
+				ip = ip[:45]
+			}
+			log.IPAddress = &ip
+		}
+	}
 	const q = `INSERT INTO activity_logs (user_id, tenant_id, action, entity_type, entity_id, description, ip_address)
 		VALUES (:user_id, :tenant_id, :action, :entity_type, :entity_id, :description, :ip_address)`
 	_, err := r.db.NamedExecContext(ctx, q, log)
@@ -516,7 +526,9 @@ func (r *activityLogRepository) ListByTenant(ctx context.Context, tenantID *uint
 	where := []string{"1=1"}
 	args := []any{}
 	if tenantID != nil {
-		where = append(where, "(al.tenant_id = ? OR al.tenant_id IS NULL)")
+		// HANYA baris tenant itu: baris tenant_id NULL (aksi superadmin/sistem, mis. LOGIN
+		// superadmin, CREATE_TENANT) memuat data tenant lain dan tidak boleh terlihat ADMIN tenant.
+		where = append(where, "al.tenant_id = ?")
 		args = append(args, *tenantID)
 	}
 	if f.Action != "" {

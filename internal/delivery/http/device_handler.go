@@ -140,6 +140,9 @@ func (r *Router) createConfigSnapshot(c *echo.Context) error {
 	if err := r.Devices.CreateConfigSnapshot(c.Request().Context(), id); err != nil {
 		return handleErr(c, err)
 	}
+	_ = r.Activity.Record(c.Request().Context(), &domain.ActivityLog{
+		UserID: actor.UserIDPtr(), TenantID: actor.TenantID, Action: "CREATE_CONFIG_SNAPSHOT", EntityType: "device", EntityID: &id,
+	})
 	return c.JSON(http.StatusOK, map[string]string{"message": "snapshot created"})
 }
 

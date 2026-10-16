@@ -32,7 +32,7 @@ func TestCancel_HanyaTaskYangBelumBerakhir(t *testing.T) {
 	super := domain.Actor{UserID: 1, Roles: []string{domain.RoleSuperadmin}}
 	for status, wantOK := range map[uint64]bool{1: true, 2: true, 3: false, 4: false, 5: false, 6: false} {
 		repo := &cancelRepo{task: &domain.Task{ID: 9, DeviceID: 1, TaskStatusID: status}}
-		s := &Service{tasks: repo, refs: statusRefs{}}
+		s := &Service{tasks: repo, refs: statusRefs{}, activity: &fakeActivityRepo{}}
 		err := s.Cancel(context.Background(), super, 9)
 		if wantOK && (err != nil || !repo.cancelled) {
 			t.Errorf("status %d harus bisa dibatalkan: err=%v cancelled=%v", status, err, repo.cancelled)
