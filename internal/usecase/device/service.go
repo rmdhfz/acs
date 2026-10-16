@@ -645,16 +645,22 @@ func (s *Service) TriggerConnectionRequest(ctx context.Context, actor domain.Act
 	// Digest (TR-069 §3.2.2) atau Basic — dipilih sesuai tantangan CPE.
 	resp, err := doConnectionRequest(ctx, client, *d.ConnectionRequestURL, username, password)
 
-	// Jika gagal via TCP (mis. timeout karena NAT), fallback ke STUN UDP (TR-111).
+	// Jika gagal via TCP (mis. timeout karena NAT), fallback ke UDP Connection Request (Annex G).
 	if err != nil || resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		if resp != nil {
 			resp.Body.Close()
 		}
 
-		// Fallback ke UDP Connection Request (STUN/NAT Traversal)
-		udpParam, paramErr := s.deviceParams.Get(ctx, deviceID, "InternetGatewayDevice.ManagementServer.UDPConnectionRequestAddress")
-		if paramErr == nil && udpParam != nil && udpParam.ParameterValue != nil && *udpParam.ParameterValue != "" {
-			udpErr := s.sendUDPConnectionRequest(ctx, *udpParam.ParameterValue, username, password)
+		// Alamat UDP bisa di bawah root TR-098 maupun TR-181 (jangan diasumsikan satu root).
+		var udpAddr string
+		for _, root := range []string{"InternetGatewayDevice.", "Device."} {
+			if p, perr := s.deviceParams.Get(ctx, deviceID, root+domainUDPParam); perr == nil && p != nil && p.ParameterValue != nil && *p.ParameterValue != "" {
+				udpAddr = *p.ParameterValue
+				break
+			}
+		}
+		if udpAddr != "" {
+			udpErr := s.sendUDPConnectionRequest(ctx, udpAddr, username, password)
 			if udpErr == nil {
 				_ = s.activity.Record(ctx, &domain.ActivityLog{
 					UserID: actor.UserIDPtr(), TenantID: actor.TenantID,
@@ -662,7 +668,7 @@ func (s *Service) TriggerConnectionRequest(ctx context.Context, actor domain.Act
 				})
 				return nil
 			}
-			s.log().Warn("cwmp: UDP Connection Request (STUN fallback) gagal", "device_id", deviceID, "error", udpErr)
+			s.log().Warn("cwmp: UDP Connection Request gagal", "device_id", deviceID, "error", udpErr)
 		}
 
 		if err != nil {
@@ -691,7 +697,10 @@ func (s *Service) TriggerConnectionRequest(ctx context.Context, actor domain.Act
 	return nil
 }
 
-// sendUDPConnectionRequest mengirim TR-111 UDP Connection Request (STUN Binding Request)
+// domainUDPParam — akhiran nama parameter alamat UDP CR (tanpa root).
+const domainUDPParam = UDPAddressParamSuffix
+
+// sendUDPConnectionRequest mengirim UDP Connection Request Annex G (lihat udp_connreq.go)
 func (s *Service) sendUDPConnectionRequest(ctx context.Context, udpURL, username, password string) error {
 	u, err := url.Parse(udpURL)
 	var host string
@@ -707,7 +716,6 @@ func (s *Service) sendUDPConnectionRequest(ctx context.Context, udpURL, username
 		return fmt.Errorf("UDP connection request address ditolak: %w", err)
 	}
 
-	// Gunakan WakeUpViaUDP dari stun_client.go untuk mem-format STUN Request yang valid (RFC 3489)
 	return WakeUpViaUDP(host, username, password)
 }
 
