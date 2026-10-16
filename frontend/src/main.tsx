@@ -20,7 +20,10 @@ const queryClient = new QueryClient({
   },
 })
 
-createRoot(document.getElementById('root')!).render(
+const rootEl = document.getElementById('root')!
+// Beranda statis (SEO) disembunyikan di route non-beranda sebelum React mengambil alih; tampilkan kembali.
+rootEl.style.visibility = ''
+createRoot(rootEl).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>

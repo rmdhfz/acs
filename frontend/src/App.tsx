@@ -1,4 +1,7 @@
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { useEffect } from 'react'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { LandingPage } from './pages/LandingPage'
+import { META_TITLE } from './landing/content'
 import { Layout } from './components/Layout'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { LoginPage } from './pages/LoginPage'
@@ -30,7 +33,30 @@ function HomeRedirect() {
   return <Navigate to={onlyEndUser ? '/self-service' : '/dashboard'} replace />
 }
 
+// Beranda publik: pengunjung anonim melihat landing page (SEO); yang sudah login langsung ke aplikasi.
+function PublicHome() {
+  const { isAuthenticated, isLoading } = useAuth()
+  if (isLoading || !isAuthenticated) return <LandingPage />
+  return <HomeRedirect />
+}
+
+// Hanya beranda yang boleh diindeks mesin pencari; halaman aplikasi di-noindex (selain di robots.txt).
+function useRouteSeo() {
+  const { pathname } = useLocation()
+  useEffect(() => {
+    const robots = document.querySelector<HTMLMetaElement>('meta[name="robots"]')
+    if (pathname === '/') {
+      robots?.setAttribute('content', 'index,follow,max-image-preview:large,max-snippet:-1')
+      document.title = META_TITLE
+    } else {
+      robots?.setAttribute('content', 'noindex,nofollow')
+      document.title = 'ACS Console'
+    }
+  }, [pathname])
+}
+
 function App() {
+  useRouteSeo()
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
@@ -60,8 +86,8 @@ function App() {
         <Route path="/catalog" element={<CatalogPage />} />
         <Route path="/administration" element={<AdministrationPage />} />
         <Route path="/administration/onboarding" element={<TenantOnboardingWizard />} />
-        <Route path="/" element={<HomeRedirect />} />
       </Route>
+      <Route path="/" element={<PublicHome />} />
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

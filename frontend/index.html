@@ -2,15 +2,53 @@
 <html lang="id">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ACS Console — ACS TR-069 Multi-Vendor &amp; Multi-Tenant untuk ISP</title>
+    <meta name="description" content="Kelola ribuan ONT/ONU/router dari satu konsol berbasis TR-069 (CWMP): provisioning otomatis, firmware canary rollout, preset, multi-tenant, RBAC, audit trail, dan REST API. Mendukung ZTE, Huawei, FiberHome, Nokia, Cdata." />
+    <meta name="keywords" content="ACS, TR-069, CWMP, auto configuration server, manajemen ONT, manajemen ONU, ISP, fiber optik, zero touch provisioning, firmware rollout, multi tenant, GenieACS alternatif" />
+    <meta name="author" content="ACS Console" />
+    <!-- Halaman aplikasi (login, dashboard, dst.) di-set noindex oleh App.tsx saat route berubah. -->
+    <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1" />
+    <meta name="theme-color" content="#0b1020" />
+    <link rel="canonical" href="%VITE_SITE_URL%/" />
+    <link rel="alternate" hreflang="id" href="%VITE_SITE_URL%/" />
+    <link rel="alternate" hreflang="x-default" href="%VITE_SITE_URL%/" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="ACS Console" />
+    <meta property="og:locale" content="id_ID" />
+    <meta property="og:title" content="ACS Console — ACS TR-069 Multi-Vendor &amp; Multi-Tenant untuk ISP" />
+    <meta property="og:description" content="Provisioning otomatis, firmware canary rollout, preset, multi-tenant, dan audit trail untuk armada ONT/ONU Anda." />
+    <meta property="og:url" content="%VITE_SITE_URL%/" />
+    <meta property="og:image" content="%VITE_SITE_URL%/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="ACS Console — ACS TR-069 multi-vendor untuk ISP" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="ACS Console — ACS TR-069 Multi-Vendor &amp; Multi-Tenant untuk ISP" />
+    <meta name="twitter:description" content="Provisioning otomatis, firmware canary rollout, preset, multi-tenant, dan audit trail untuk armada ONT/ONU Anda." />
+    <meta name="twitter:image" content="%VITE_SITE_URL%/og-image.png" />
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <!-- Font dimuat non-blocking (tidak menghambat render pertama / LCP); fallback sistem tersedia. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-    <title>ACS Console</title>
+    <link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" />
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" /></noscript>
+
+    <!--seo-jsonld-->
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><!--ssr-landing--></div>
+    <!-- Beranda statis hanya untuk "/": di route lain disembunyikan sebelum React mengambil alih (tanpa kedip). -->
+    <script>
+      if (location.pathname !== '/') {
+        var r = document.getElementById('root');
+        if (r) r.style.visibility = 'hidden';
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

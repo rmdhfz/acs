@@ -260,6 +260,7 @@ New-NetFirewallRule -DisplayName "ACS UAT" -Direction Inbound -Protocol TCP -Loc
 VITE_API_BASE_URL=http://&lt;IP-server&gt;:18080/api/v1 npm run build
 # Windows PowerShell:   $env:VITE_API_BASE_URL="http://&lt;IP-server&gt;:18080/api/v1"; npm run build
 npx vite preview --host 0.0.0.0 --port 5173     # biarkan berjalan (tmux/screen/service)</pre>
+<p><em>Beranda publik (landing page SEO)</em> ikut terbangun pada perintah yang sama: isi juga <code>VITE_SITE_URL</code> (URL publik, tanpa slash akhir) dan opsional <code>VITE_CONTACT_EMAIL</code>; lihat <code>frontend/.env.example</code>. Pengunjung anonim yang membuka alamat dasar melihat beranda; tombol <strong>Masuk</strong> menuju <code>/login</code>.</p>
 <p>Uji dari PC lain: buka <code>http://&lt;IP-server&gt;:5173/login</code>, login. Bila halaman terbuka tetapi login gagal dengan galat jaringan/CORS → periksa <code>ACS_CORS_ALLOW_ORIGINS</code> (harus <em>persis</em> sama dengan alamat di peramban) dan firewall port 18080. <em>Catatan:</em> <code>vite preview</code> bukan server produksi — cukup untuk UAT di LAN tertutup.</p>
 
 <h3>3.4 Menyiapkan data awal di ACS</h3>
