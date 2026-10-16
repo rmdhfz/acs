@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"time"
 
@@ -250,6 +251,25 @@ func (r *vendorParameterMappingRepository) Upsert(ctx context.Context, m *domain
 	// yang BENAR baik saat INSERT baru maupun saat meng-update baris yang sudah
 	// ada — tanpanya respons POST /vendor-parameter-mappings membawa id 0 dan
 	// klien tak bisa mereferensikan mapping (GET/DELETE by id).
+	// UNIQUE KEY MariaDB tidak menganggap NULL sama: untuk scope generik
+	// (device_model_id / software_version_pattern NULL — kasus paling umum) ON DUPLICATE
+	// KEY TIDAK pernah memicu dan tiap POST membuat baris baru yang bersaing. Cari baris
+	// yang sama secara null-safe (<=>) dan perbarui itu.
+	var existingID uint64
+	if gerr := r.db.GetContext(ctx, &existingID, `SELECT id FROM vendor_parameter_mappings
+		WHERE vendor_id = ? AND data_model_version_id = ? AND device_model_id <=> ? AND logical_key = ?
+		  AND software_version_pattern <=> ? ORDER BY is_deleted ASC, id DESC LIMIT 1`,
+		m.VendorID, m.DataModelVersionID, m.DeviceModelID, m.LogicalKey, m.SoftwareVersionPattern); gerr == nil {
+		if _, uerr := r.db.ExecContext(ctx, `UPDATE vendor_parameter_mappings SET tr069_path = ?, parameter_type_id = ?, description = ?,
+			updated_at = ?, is_deleted = 0, deleted_at = NULL, deleted_by = NULL WHERE id = ?`,
+			m.TR069Path, m.ParameterTypeID, m.Description, m.UpdatedAt, existingID); uerr != nil {
+			return translateErr(uerr)
+		}
+		m.ID = existingID
+		return nil
+	} else if !errors.Is(gerr, sql.ErrNoRows) {
+		return translateErr(gerr)
+	}
 	res, err := r.db.NamedExecContext(ctx, q, m)
 	if err != nil {
 		return translateErr(err)
@@ -294,7 +314,8 @@ func (r *vendorParameterMappingRepository) Resolve(ctx context.Context, vendorID
 			err = r.db.GetContext(ctx, &m,
 				`SELECT * FROM vendor_parameter_mappings
 				 WHERE vendor_id = ? AND data_model_version_id = ? AND device_model_id <=> ?
-				   AND logical_key = ? AND software_version_pattern IS NULL AND is_deleted = 0`,
+				   AND logical_key = ? AND software_version_pattern IS NULL AND is_deleted = 0
+				 ORDER BY id DESC LIMIT 1`,
 				vendorID, dataModelVersionID, modelID, logicalKey)
 		}
 		if err != nil {
