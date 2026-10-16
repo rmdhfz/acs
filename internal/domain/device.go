@@ -110,6 +110,9 @@ type DeviceParameterRepository interface {
 	// HasPrefix: apakah device punya parameter berawalan prefix (deteksi root data model
 	// TR-098/TR-181 dari parameter yang pernah dilaporkan CPE).
 	HasPrefix(ctx context.Context, deviceID uint64, prefix string) (bool, error)
+	// UpsertNames mencatat NAMA parameter (+ writable) hasil GetParameterNames TANPA menimpa
+	// nilai yang sudah ada (INSERT baru bernilai NULL).
+	UpsertNames(ctx context.Context, ps []DeviceParameter) error
 	ListByDevice(ctx context.Context, deviceID uint64, prefix string) ([]DeviceParameter, error)
 	Get(ctx context.Context, deviceID uint64, name string) (*DeviceParameter, error)
 }

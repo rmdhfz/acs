@@ -18,6 +18,7 @@ import {
 import type { DeviceParameter } from '../lib/types'
 import {
   useGetParameterNames,
+  useRefreshParameterTree,
   useGetParameterValues,
   useSetParameterValues,
   useAddObject,
@@ -233,6 +234,7 @@ export function ParameterTree({ deviceId, parameters, onRefresh, isLoading }: Pa
   const canEdit = hasRole('ADMIN', 'SUPERADMIN')
   
   const getParamNamesMut = useGetParameterNames()
+  const refreshTreeMut = useRefreshParameterTree()
   const getParamValsMut = useGetParameterValues()
   const setParamValsMut = useSetParameterValues()
   const addObjectMut = useAddObject()
@@ -241,7 +243,7 @@ export function ParameterTree({ deviceId, parameters, onRefresh, isLoading }: Pa
   const toast = useToast()
   const confirm = useConfirm()
 
-  const isMutating = getParamNamesMut.isPending || getParamValsMut.isPending || setParamValsMut.isPending || addObjectMut.isPending || deleteObjectMut.isPending
+  const isMutating = refreshTreeMut.isPending || getParamNamesMut.isPending || getParamValsMut.isPending || setParamValsMut.isPending || addObjectMut.isPending || deleteObjectMut.isPending
 
   const queued = (what: string) => toast.success(`${what} diantre — hasilnya muncul setelah device Inform berikutnya.`, 'Task ditambahkan')
   const failed = (e: unknown) => toast.error(e instanceof Error ? e.message : 'Gagal menambahkan task')
@@ -286,9 +288,9 @@ export function ParameterTree({ deviceId, parameters, onRefresh, isLoading }: Pa
   }
 
   const handleGlobalRefresh = () => {
-    getParamNamesMut.mutate({ deviceId, path: rootPrefix, nextLevel: false }, {
+    refreshTreeMut.mutate({ deviceId, path: rootPrefix, depth: 3 }, {
       onSuccess: () => {
-        queued(`Baca ulang parameter tree (${rootPrefix})`)
+        queued(`Penelusuran parameter tree (${rootPrefix}, 3 tingkat)`)
         onRefresh()
       },
       onError: failed,

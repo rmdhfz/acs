@@ -106,6 +106,7 @@ func fmtUint(v uint64) string {
 	return string(digits)
 }
 func (f *fakeDeviceParamRepoPV) Upsert(context.Context, *domain.DeviceParameter) error { return nil }
+func (f *fakeDeviceParamRepoPV) UpsertNames(context.Context, []domain.DeviceParameter) error { return nil }
 func (f *fakeDeviceParamRepoPV) HasPrefix(context.Context, uint64, string) (bool, error) { return false, nil }
 func (f *fakeDeviceParamRepoPV) UpsertBatch(context.Context, []domain.DeviceParameter) error {
 	return nil

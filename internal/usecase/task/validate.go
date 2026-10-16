@@ -67,9 +67,16 @@ func ValidateTaskInput(taskType string, params map[string]interface{}) error {
 		var p struct {
 			Path      string `json:"path"`
 			NextLevel bool   `json:"next_level"`
+			Discover  *struct {
+				Depth  int `json:"depth"`
+				Budget int `json:"budget"`
+			} `json:"discover"`
 		}
 		if err := json.Unmarshal(raw, &p); err != nil {
 			return bad("parameters harus {path: string, next_level: bool}")
+		}
+		if p.Discover != nil && (p.Discover.Depth < 1 || p.Discover.Depth > 8 || p.Discover.Budget < 0 || p.Discover.Budget > 300) {
+			return bad("parameters.discover: depth 1-8, budget 0-300")
 		}
 		if len(p.Path) > 256 {
 			return bad("parameters.path lebih dari 256 karakter")

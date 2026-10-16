@@ -192,6 +192,7 @@ func (r *Router) Register(e *echo.Echo) {
 	authed.POST("/devices/:id/tasks/get-parameter-names", r.getParameterNamesDevice, RequireRoles(adminOrNOC...))
 	authed.POST("/devices/:id/tasks/get-parameter-values", r.getParameterValuesDevice, RequireRoles(adminOrNOC...))
 	authed.POST("/devices/:id/tasks/set-parameter-values", r.setParameterValuesDevice, RequireRoles(admin...))
+	authed.POST("/devices/:id/refresh", r.refreshDeviceTree, RequireRoles(adminOrNOC...))
 	authed.POST("/devices/:id/tasks/set-parameter-attributes", r.setParameterAttributesDevice, RequireRoles(admin...))
 	authed.POST("/devices/:id/tasks/get-parameter-attributes", r.getParameterAttributesDevice, RequireRoles(adminOrNOC...))
 

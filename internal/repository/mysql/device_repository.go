@@ -320,6 +320,36 @@ func upsertDeviceParameterChunk(ctx context.Context, tx *sqlx.Tx, chunk []domain
 	return translateErr(err)
 }
 
+func (r *deviceParameterRepository) UpsertNames(ctx context.Context, ps []domain.DeviceParameter) error {
+	if len(ps) == 0 {
+		return nil
+	}
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return translateErr(err)
+	}
+	for start := 0; start < len(ps); start += deviceParameterUpsertChunk {
+		end := start + deviceParameterUpsertChunk
+		if end > len(ps) {
+			end = len(ps)
+		}
+		chunk := ps[start:end]
+		ph := make([]string, len(chunk))
+		args := make([]interface{}, 0, len(chunk)*3)
+		for i, p := range chunk {
+			ph[i] = "(?, ?, ?)"
+			args = append(args, p.DeviceID, p.ParameterName, p.Writable)
+		}
+		q := `INSERT INTO device_parameters (device_id, parameter_name, writable) VALUES ` + strings.Join(ph, ",") +
+			` ON DUPLICATE KEY UPDATE writable = VALUES(writable)`
+		if _, err := tx.ExecContext(ctx, q, args...); err != nil {
+			_ = tx.Rollback()
+			return translateErr(err)
+		}
+	}
+	return tx.Commit()
+}
+
 func (r *deviceParameterRepository) HasPrefix(ctx context.Context, deviceID uint64, prefix string) (bool, error) {
 	var n int
 	err := r.db.GetContext(ctx, &n,

@@ -917,6 +917,44 @@ func (s *Service) SaveOpticalMetric(ctx context.Context, metric *domain.DeviceOp
 	return s.opticalMetrics.Create(ctx, metric)
 }
 
+// RefreshTree menelusuri pohon parameter perangkat secara rekursif (GetParameterNames per
+// level, lalu GetParameterValues untuk daun) sampai kedalaman tertentu. path kosong =
+// root data model yang terdeteksi dari parameter perangkat (TR-098/TR-181).
+func (s *Service) RefreshTree(ctx context.Context, actor domain.Actor, deviceID uint64, path string, depth int) error {
+	d, err := s.Get(ctx, actor, deviceID)
+	if err != nil {
+		return err
+	}
+	if depth < 1 || depth > 8 {
+		return fmt.Errorf("%w: depth harus 1-8", domain.ErrInvalidInput)
+	}
+	if path == "" {
+		for _, root := range []string{"InternetGatewayDevice.", "Device."} {
+			if ok, herr := s.deviceParams.HasPrefix(ctx, deviceID, root); herr == nil && ok {
+				path = root
+				break
+			}
+		}
+	}
+	_, err = s.tasks.CreateTask(ctx, actor, domain.CreateTaskInput{
+		DeviceID: d.ID,
+		TaskType: domain.TaskTypeGetParameterNames,
+		Priority: 6,
+		Parameters: map[string]interface{}{
+			"path": path, "next_level": true,
+			"discover": map[string]int{"depth": depth, "budget": 300},
+		},
+	})
+	if err == nil {
+		_ = s.activity.Record(ctx, &domain.ActivityLog{
+			UserID: actor.UserIDPtr(), TenantID: actor.TenantID,
+			Action: "REFRESH_PARAMETER_TREE", EntityType: "device", EntityID: &deviceID,
+			Details: map[string]interface{}{"path": path, "depth": depth},
+		})
+	}
+	return err
+}
+
 // ParameterAttribute — satu entri SetParameterAttributes (notifikasi perubahan nilai).
 type ParameterAttribute struct {
 	Name               string   `json:"name"`

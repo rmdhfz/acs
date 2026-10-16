@@ -380,6 +380,34 @@ func (r *Router) setParameterValuesDevice(c *echo.Context) error {
 	})
 }
 
+type refreshTreeRequest struct {
+	Path  string `json:"path"`
+	Depth int    `json:"depth"`
+}
+
+// refreshDeviceTree — POST /devices/:id/refresh: penelusuran rekursif pohon parameter.
+func (r *Router) refreshDeviceTree(c *echo.Context) error {
+	actor := ActorFrom(c)
+	id, err := parseUint64Param(c, "id")
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "id tidak valid")
+	}
+	var req refreshTreeRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "payload tidak valid")
+	}
+	if req.Depth == 0 {
+		req.Depth = 3
+	}
+	if len(req.Path) > 256 {
+		return echo.NewHTTPError(http.StatusBadRequest, "path maksimum 256 karakter")
+	}
+	if err := r.Devices.RefreshTree(c.Request().Context(), actor, id, req.Path, req.Depth); err != nil {
+		return handleErr(c, err)
+	}
+	return c.JSON(http.StatusAccepted, map[string]string{"message": "Penelusuran pohon parameter diantrekan; hasil muncul bertahap setelah perangkat Inform."})
+}
+
 type setParameterAttributesRequest struct {
 	Attributes []device.ParameterAttribute `json:"attributes"`
 }

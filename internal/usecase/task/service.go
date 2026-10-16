@@ -928,16 +928,29 @@ func (s *Service) handleAutoDiscoveryResponse(ctx context.Context, t *domain.Tas
 		return
 	}
 
+	// Konfigurasi penelusuran rekursif (diisi endpoint refresh): kedalaman & anggaran task.
+	var dp struct {
+		Discover *struct {
+			Depth  int `json:"depth"`
+			Budget int `json:"budget"`
+		} `json:"discover"`
+	}
+	_ = json.Unmarshal(t.Parameters, &dp)
+
 	params := make([]domain.DeviceParameter, 0, len(b.ParameterList.Items))
 	var namesToGet []string
+	var childObjects []string
 	for _, item := range b.ParameterList.Items {
-		// Simpan nama parameter dengan nilai kosong sebagai placeholder
-		val := ""
+		// Hanya nama + writable; NILAI yang sudah ada tidak ditimpa (sebelumnya placeholder
+		// kosong menimpa nilai nyata sampai GetParameterValues berikutnya selesai).
 		params = append(params, domain.DeviceParameter{
-			DeviceID:       t.DeviceID,
-			ParameterName:  item.Name,
-			ParameterValue: &val, // Harus pointer ke string sesuai skema
+			DeviceID:      t.DeviceID,
+			ParameterName: item.Name,
+			Writable:      item.Writable,
 		})
+		if strings.HasSuffix(item.Name, ".") && item.Name != "" && dp.Discover != nil {
+			childObjects = append(childObjects, item.Name)
+		}
 
 		// Kumpulkan leaf nodes (yang bukan parent object) untuk GetParameterValues
 		// Biasanya leaf nodes tidak berakhiran dengan "."
@@ -947,7 +960,26 @@ func (s *Service) handleAutoDiscoveryResponse(ctx context.Context, t *domain.Tas
 	}
 
 	if len(params) > 0 {
-		_ = s.deviceParams.UpsertBatch(ctx, params)
+		_ = s.deviceParams.UpsertNames(ctx, params)
+	}
+
+	// Telusuri anak-anak objek (maks. depth & budget) sebagai task GetParameterNames berantai.
+	if dp.Discover != nil && dp.Discover.Depth > 1 && dp.Discover.Budget > 0 && len(childObjects) > 0 {
+		perChild := (dp.Discover.Budget - len(childObjects)) / len(childObjects)
+		if perChild >= 0 {
+			sys := domain.Actor{Roles: []string{domain.RoleSuperadmin}}
+			for _, obj := range childObjects {
+				_, _ = s.CreateTask(ctx, sys, domain.CreateTaskInput{
+					DeviceID: t.DeviceID,
+					TaskType: domain.TaskTypeGetParameterNames,
+					Priority: 8,
+					Parameters: map[string]interface{}{
+						"path": obj, "next_level": true,
+						"discover": map[string]int{"depth": dp.Discover.Depth - 1, "budget": perChild},
+					},
+				})
+			}
+		}
 	}
 
 	// Queue task GetParameterValues untuk leaf nodes yang ditemukan (untuk mengisi nilainya)

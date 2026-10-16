@@ -1133,6 +1133,16 @@ export function useGetParameterNames() {
   })
 }
 
+// Penelusuran rekursif pohon parameter (GetParameterNames per level + GetParameterValues daun).
+export function useRefreshParameterTree() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ deviceId, path, depth }: { deviceId: number; path?: string; depth?: number }) =>
+      api.post<void>(`/devices/${deviceId}/refresh`, { path: path ?? '', depth: depth ?? 3 }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+  })
+}
+
 export function useGetParameterValues() {
   const qc = useQueryClient()
   return useMutation({
