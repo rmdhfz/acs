@@ -155,6 +155,8 @@ func main() {
 	if cfg.SMTPHost != "" {
 		authSvc.WithPasswordReset(passwordResetRepo, mailNotifier, mailBuilder, cfg.PasswordResetTTL)
 	}
+	// MFA TOTP: rahasia dienkripsi dengan kunci kredensial yang sama (AES-GCM).
+	authSvc.WithMFA(mysql.NewMFARepository(db), enc, "ACS")
 	iamSvc := iam.NewService(tenantRepo, userRepo, refRepo, activityLogRepo, enc, usageRepo)
 	if cfg.SMTPHost != "" {
 		iamSvc.WithEmail(mailNotifier, mailBuilder, passwordResetRepo)
@@ -253,6 +255,7 @@ func main() {
 		WSHub:       wsHub,
 
 		WSAllowedOrigins: cfg.CORSAllowOrigins,
+		PublicURL:        cfg.PublicURL,
 	}
 	router.Register(restEcho)
 

@@ -62,10 +62,31 @@ type User struct {
 	// PasswordChangedAt — JWT sesi dengan iat lebih awal dari ini ditolak
 	// (migrations/0024): mencabut sesi lama setelah password berubah.
 	PasswordChangedAt *time.Time `db:"password_changed_at" json:"-"`
+	// MFA TOTP (migrations/0027). Rahasia terenkripsi tak pernah diekspos; MFAEnabled ditampilkan
+	// supaya admin tahu akun mana yang sudah ber-MFA.
+	TOTPSecretEnc       []byte  `db:"totp_secret_enc" json:"-"`
+	TOTPEnabled         bool    `db:"totp_enabled" json:"mfa_enabled"`
+	TOTPLastStep        *uint64 `db:"totp_last_step" json:"-"`
 	FailedLoginAttempts uint32     `db:"failed_login_attempts" json:"-"`
 	LockedUntil         *time.Time `db:"locked_until" json:"-"`
 	Roles               []string   `db:"-" json:"roles"`
 	Audit
+}
+
+// MFARepository — penyimpanan MFA TOTP & kode pemulihan (migrations/0027). Dipisah dari
+// UserRepository karena hanya dipakai alur MFA.
+type MFARepository interface {
+	// SaveSecret menyimpan rahasia (terenkripsi) hasil setup dan menandai MFA belum aktif.
+	SaveSecret(ctx context.Context, userID uint64, secretEnc []byte) error
+	// Enable mengaktifkan MFA & mengganti seluruh kode pemulihan dalam satu transaksi.
+	Enable(ctx context.Context, userID, step uint64, codeHashes []string) error
+	// Disable mematikan MFA (rahasia & kode pemulihan dihapus).
+	Disable(ctx context.Context, userID uint64) error
+	// AdvanceStep compare-and-swap anti-replay: true hanya bila step lebih baru dari yang pernah dipakai.
+	AdvanceStep(ctx context.Context, userID, step uint64) (bool, error)
+	// UseRecoveryCode menandai kode terpakai; true bila kode ada & belum dipakai.
+	UseRecoveryCode(ctx context.Context, userID uint64, codeHash string) (bool, error)
+	CountRecoveryCodes(ctx context.Context, userID uint64) (int, error)
 }
 
 // UserAuthState — subset kecil user untuk validasi sesi per-request.

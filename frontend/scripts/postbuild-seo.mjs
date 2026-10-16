@@ -44,6 +44,7 @@ await writeFile(
     'Allow: /favicon.svg',
     '# Halaman aplikasi (butuh login) tidak untuk diindeks',
     'Disallow: /login',
+    'Disallow: /sso',
     'Disallow: /forgot-password',
     'Disallow: /reset-password',
     'Disallow: /dashboard',

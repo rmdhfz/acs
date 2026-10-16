@@ -43,7 +43,8 @@ export function setUnauthorizedHandler(fn: (() => void) | null) {
   onUnauthorized = fn
 }
 
-const CREDENTIAL_CHECK_PATHS = ['/auth/login', '/auth/password']
+// /auth/mfa/verify & /auth/mfa/disable: 401 = kode/password salah, bukan sesi berakhir.
+const CREDENTIAL_CHECK_PATHS = ['/auth/login', '/auth/password', '/auth/mfa/verify', '/auth/mfa/disable']
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers)

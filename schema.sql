@@ -233,6 +233,9 @@ CREATE TABLE users (
     email           VARCHAR(191)    NOT NULL,
     password_hash   VARCHAR(255)    NOT NULL,
     password_changed_at DATETIME    NULL COMMENT 'Waktu terakhir password diganti; JWT dengan iat lebih awal ditolak (migrations/0024)',
+    totp_secret_enc VARBINARY(512)  NULL COMMENT 'Rahasia TOTP terenkripsi AES-GCM; NULL = belum enrol (migrations/0027)',
+    totp_enabled    TINYINT(1)      NOT NULL DEFAULT 0 COMMENT '1 = login butuh kode TOTP',
+    totp_last_step  BIGINT UNSIGNED NULL COMMENT 'Langkah TOTP terakhir yang diterima (anti-replay)',
     full_name       VARCHAR(128)    NOT NULL,
     is_active       TINYINT(1)      NOT NULL DEFAULT 1,
     last_login_at   DATETIME        NULL,
@@ -257,6 +260,21 @@ CREATE TABLE users (
     KEY idx_users_tenant (tenant_id),
     CONSTRAINT fk_users_tenant FOREIGN KEY (tenant_id) REFERENCES tenants (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Kode pemulihan MFA sekali pakai (migrations/0027). Pengecualian audit 7-kolom: tabel kredensial
+-- sekali pakai volume rendah yang diganti utuh saat MFA diaktifkan/dimatikan; jejak audit ada di
+-- activity_logs (MFA_ENABLED/MFA_DISABLED/MFA_RESET).
+CREATE TABLE user_recovery_codes (
+    id          BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id     BIGINT UNSIGNED NOT NULL,
+    code_hash   CHAR(64)        NOT NULL COMMENT 'SHA-256 heksadesimal dari kode pemulihan',
+    used_at     DATETIME        NULL,
+    created_at  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_urc_user (user_id),
+    UNIQUE KEY uq_urc_hash (code_hash),
+    CONSTRAINT fk_urc_user FOREIGN KEY (user_id) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Kode pemulihan MFA sekali pakai (hash saja)';
 
 CREATE TABLE user_roles (
     id              BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

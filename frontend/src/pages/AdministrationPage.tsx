@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Building2, Gauge, KeyRound, Pencil, Palette, Plus, Shield, Trash2, Upload, Users as UsersIcon, Wand2 } from 'lucide-react'
+import { Building2, Gauge, KeyRound, Pencil, Palette, Plus, Shield, ShieldOff, Trash2, Upload, Users as UsersIcon, Wand2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { EmptyState } from '../components/EmptyState'
 import { StatusBadge } from '../components/StatusBadge'
@@ -22,6 +22,7 @@ import {
   useDeleteUser,
   useRefs,
   useReplaceUserRoles,
+  useResetUserMfa,
   useResetUserPassword,
   useSetTenantCWMPCredentials,
   useSetTenantTaskQuota,
@@ -127,8 +128,25 @@ function UsersTab({ isSuperadmin }: { isSuperadmin: boolean }) {
   const { data, isLoading } = useUsers(tenantFilter ? Number(tenantFilter) : undefined)
   const users = data?.data ?? []
   const deleteMutation = useDeleteUser()
+  const resetMfaMutation = useResetUserMfa()
   const toast = useToast()
   const confirm = useConfirm()
+
+  async function handleResetMfa(u: User) {
+    const ok = await confirm({
+      title: 'Lepas verifikasi dua langkah',
+      message: <>MFA akun <strong>{u.username}</strong> akan dilepas dan sesinya dicabut. Gunakan hanya bila pemilik akun kehilangan perangkat authenticator dan kode pemulihannya. Aksi tercatat di audit trail.</>,
+      confirmLabel: 'Lepas MFA',
+      tone: 'danger',
+    })
+    if (!ok) return
+    try {
+      await resetMfaMutation.mutateAsync(u.id)
+      toast.success(`MFA akun "${u.username}" dilepas.`)
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Gagal melepas MFA')
+    }
+  }
 
   async function handleDelete(u: User) {
     const ok = await confirm({
@@ -240,6 +258,16 @@ function UsersTab({ isSuperadmin }: { isSuperadmin: boolean }) {
                         >
                           <KeyRound className="h-3.5 w-3.5" /> Reset Password
                         </button>
+                        {u.mfa_enabled && (
+                          <button
+                            onClick={() => handleResetMfa(u)}
+                            disabled={resetMfaMutation.isPending}
+                            className="flex items-center gap-1 whitespace-nowrap text-xs font-medium text-amber-700 hover:text-amber-900 disabled:opacity-50 dark:text-amber-400 dark:hover:text-amber-300"
+                            title="Lepas MFA (pemilik kehilangan perangkat authenticator)"
+                          >
+                            <ShieldOff className="h-3.5 w-3.5" /> Lepas MFA
+                          </button>
+                        )}
                         <button
                           onClick={() => setRolesTarget(u)}
                           className="flex items-center gap-1 whitespace-nowrap text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"

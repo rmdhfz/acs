@@ -123,6 +123,7 @@ func main() {
 		{"S13-device-provision-import", scenarioDeviceProvision},
 		{"S14-diagnostics", scenarioDiagnostics},
 		{"S15-optical-poll", scenarioOpticalPoll},
+		{"S16-mfa-totp", scenarioMFA},
 	}
 
 	var results []result

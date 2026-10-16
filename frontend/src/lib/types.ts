@@ -19,6 +19,8 @@ export interface User {
   is_active: boolean
   last_login_at: string | null
   roles: string[]
+  /** MFA TOTP aktif (migrations/0027). */
+  mfa_enabled?: boolean
   created_at: string
   updated_at: string
 }

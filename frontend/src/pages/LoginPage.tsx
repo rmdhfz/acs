@@ -3,7 +3,7 @@ import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { AlertCircle, ArrowRight, Eye, EyeOff, Info, KeyRound, Lock, Mail } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { useI18n } from '../lib/i18n'
-import { ApiError } from '../lib/api'
+import { API_BASE, ApiError } from '../lib/api'
 import { Spinner } from '../components/Spinner'
 import { AuthShell } from '../components/AuthShell'
 import { authInputCls, authPrimaryBtnCls } from '../components/authStyles'
@@ -27,17 +27,23 @@ function writeRemembered(username: string | null) {
   }
 }
 
-// Tombol SSO hanya tampil bila OIDC dikonfigurasi (VITE_SSO_URL = URL lengkap endpoint login OIDC di API).
-const SSO_URL = (import.meta.env.VITE_SSO_URL as string | undefined) ?? ''
-const SSO_ENABLED = SSO_URL !== ''
+// Tombol SSO tampil hanya bila backend melaporkan OIDC terkonfigurasi (GET /auth/config).
+const SSO_URL = `${API_BASE}/auth/oidc/login`
 
 export function LoginPage() {
-  const { login, isAuthenticated } = useAuth()
+  const { login, completeMfa, isAuthenticated } = useAuth()
   const { t } = useI18n()
   const navigate = useNavigate()
   const location = useLocation()
   const from = (location.state as { from?: string } | null)?.from
 
+  const [ssoEnabled, setSsoEnabled] = useState(false)
+  const ssoFailed = new URLSearchParams(location.search).get('sso') === 'error'
+  useEffect(() => {
+    let alive = true
+    fetch(`${API_BASE}/auth/config`).then((r) => (r.ok ? r.json() : null)).then((c) => alive && setSsoEnabled(Boolean(c?.sso_enabled))).catch(() => undefined)
+    return () => { alive = false }
+  }, [])
   const [email, setEmail] = useState(readRemembered)
   const [remember, setRemember] = useState(() => readRemembered() !== '')
   const [password, setPassword] = useState('')
@@ -45,6 +51,10 @@ export function LoginPage() {
   const [capsLock, setCapsLock] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  // Langkah kedua MFA: token pendek dari backend (BUKAN sesi) + kode TOTP/pemulihan.
+  const [mfaToken, setMfaToken] = useState<string | null>(null)
+  const [mfaCode, setMfaCode] = useState('')
+  const mfaRef = useRef<HTMLInputElement>(null)
   const emailRef = useRef<HTMLInputElement>(null)
   const passwordRef = useRef<HTMLInputElement>(null)
 
@@ -66,8 +76,14 @@ export function LoginPage() {
     setIsSubmitting(true)
     const id = email.trim()
     try {
-      await login(id, password)
+      const pending = await login(id, password)
       writeRemembered(remember ? id : null)
+      if (pending) {
+        setMfaToken(pending)
+        setPassword('')
+        setTimeout(() => mfaRef.current?.focus(), 0)
+        return
+      }
       navigate(from && from !== '/login' ? from : '/', { replace: true })
     } catch (err) {
       setPassword('')
@@ -86,8 +102,94 @@ export function LoginPage() {
     }
   }
 
+  async function handleMfaSubmit(e: FormEvent) {
+    e.preventDefault()
+    if (isSubmitting || !mfaToken) return
+    setError(null)
+    setIsSubmitting(true)
+    try {
+      await completeMfa(mfaToken, mfaCode.trim())
+      navigate(from && from !== '/login' ? from : '/', { replace: true })
+    } catch (err) {
+      setMfaCode('')
+      mfaRef.current?.focus()
+      if (err instanceof ApiError) {
+        if (err.status === 429) setError(t('login.errRate'))
+        else if (err.message.includes('token tidak valid')) {
+          // token tahap-2 kedaluwarsa (5 menit): ulangi dari awal
+          setMfaToken(null)
+          setError(t('login.mfaExpired'))
+        } else if (err.message.includes('kode verifikasi salah')) setError(t('login.mfaWrong'))
+        else setError(err.message.replace(/^auth:\s*/, '') || t('login.error'))
+      } else {
+        setError(t('login.errNetwork'))
+      }
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   // Sudah login (mis. buka /login lewat bookmark) → tidak perlu form lagi.
   if (isAuthenticated && !isSubmitting) return <Navigate to={from && from !== '/login' ? from : '/'} replace />
+
+  if (mfaToken) {
+    return (
+      <AuthShell>
+        <div className="mb-8">
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">{t('login.mfaTitle')}</h1>
+          <p className="mt-1.5 text-sm text-slate-500 dark:text-slate-400">{t('login.mfaDesc')}</p>
+        </div>
+        <form onSubmit={handleMfaSubmit} noValidate className="space-y-5">
+          <div>
+            <label htmlFor="mfa-code" className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
+              {t('login.mfaCode')}
+            </label>
+            <input
+              id="mfa-code"
+              ref={mfaRef}
+              value={mfaCode}
+              onChange={(e) => setMfaCode(e.target.value)}
+              inputMode="text"
+              autoComplete="one-time-code"
+              autoCapitalize="none"
+              spellCheck={false}
+              placeholder="123456"
+              minLength={6}
+              maxLength={16}
+              required
+              aria-invalid={!!error}
+              aria-describedby={error ? 'login-error' : undefined}
+              className={`${authInputCls} text-center font-mono text-lg tracking-widest`}
+            />
+          </div>
+          {error && (
+            <div id="login-error" role="alert" className="flex items-start gap-2 rounded-lg bg-red-50 px-3.5 py-2.5 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-400">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} />
+              <span>{error}</span>
+            </div>
+          )}
+          <button type="submit" disabled={isSubmitting || mfaCode.trim().length < 6} className={authPrimaryBtnCls}>
+            {isSubmitting ? (
+              <>
+                <Spinner className="h-4 w-4 text-white" /> {t('login.checking')}
+              </>
+            ) : (
+              <>
+                {t('login.mfaSubmit')} <ArrowRight className="h-4 w-4" />
+              </>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setMfaToken(null); setMfaCode(''); setError(null) }}
+            className="w-full text-center text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+          >
+            {t('login.mfaBack')}
+          </button>
+        </form>
+      </AuthShell>
+    )
+  }
 
   return (
     <AuthShell>
@@ -182,6 +284,13 @@ export function LoginPage() {
           {t('login.rememberEmail')}
         </label>
 
+        {ssoFailed && !error && (
+          <div role="alert" className="flex items-start gap-2 rounded-lg bg-red-50 px-3.5 py-2.5 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-400">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} />
+            <span>Login SSO gagal atau akun Anda belum terdaftar. Hubungi admin atau masuk dengan email dan password.</span>
+          </div>
+        )}
+
         {error && (
           <div id="login-error" role="alert" className="flex items-start gap-2 rounded-lg bg-red-50 px-3.5 py-2.5 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-400">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} />
@@ -202,7 +311,7 @@ export function LoginPage() {
         </button>
       </form>
 
-      {SSO_ENABLED && (
+      {ssoEnabled && (
       <div className="relative my-6">
         <div className="absolute inset-0 flex items-center">
           <div className="w-full border-t border-slate-200 dark:border-slate-800" />
@@ -213,7 +322,7 @@ export function LoginPage() {
       </div>
       )}
 
-      {SSO_ENABLED && (
+      {ssoEnabled && (
       <>
       <a
         href={SSO_URL}

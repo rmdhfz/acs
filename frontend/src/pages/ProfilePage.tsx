@@ -25,6 +25,7 @@ import { useApiTokens, useCurrentTenant } from '../lib/hooks'
 import { formatDuration, useSessionRemaining } from '../lib/session'
 import { ChangePasswordModal } from '../components/ChangePasswordModal'
 import { CopyButton } from '../components/CopyButton'
+import { MfaCard } from '../components/MfaCard'
 
 const cardCls = 'rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900'
 const sectionTitleCls = 'flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100'
@@ -181,19 +182,7 @@ export default function ProfilePage() {
               ))}
             </ul>
 
-            <div className="mt-5 flex items-start gap-3 rounded-lg border border-dashed border-slate-300 p-3.5 dark:border-slate-700">
-              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-              <div>
-                <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
-                  {t('profile.2fa')}
-                  <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
-                    Soon
-                  </span>
-                </p>
-                <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{t('profile.2faDesc')}</p>
-                <p className="mt-1.5 text-xs text-slate-400 dark:text-slate-500">{t('profile.2faSoon')}</p>
-              </div>
-            </div>
+            <MfaCard />
           </section>
 
           {/* Hak akses */}

@@ -38,7 +38,8 @@ info:
 
     Empat endpoint publik tanpa autentikasi, semuanya READ-ONLY atau titik masuk
     login (tidak ada endpoint MUTASI tanpa autentikasi): `POST /auth/login`
-    (untuk mendapatkan token, rate-limit khusus per-IP), `GET /auth/oidc/login`
+    dan `POST /auth/mfa/verify` (untuk mendapatkan token, rate-limit khusus per-IP),
+    `GET /auth/config` (konfigurasi publik tanpa rahasia), `GET /auth/oidc/login`
     dan `GET /auth/oidc/callback` (alur login OIDC — identitas dibawa oleh
     `code` dari IdP, bukan Bearer), serta `GET /metrics` (scrape Prometheus
     read-only, lihat catatan di endpoint tsb soal kenapa ini pengecualian yang
@@ -154,6 +155,10 @@ paths:
         terbit, atau akun dinonaktifkan/dihapus. Saat server sedang padat
         (antrean hashing Argon2 penuh) login menjawab 503 — bukan kredensial salah
         dan TIDAK dihitung sebagai percobaan gagal.
+
+        **MFA:** bila akun mengaktifkan MFA TOTP, password yang benar belum memberi
+        sesi — respons `200` berisi `{ "mfa_required": true, "mfa_token": "..." }`
+        dan login diselesaikan lewat `POST /auth/mfa/verify`.
       security: []
       requestBody:
         required: true
@@ -163,11 +168,13 @@ paths:
               $ref: '#/components/schemas/LoginRequest'
       responses:
         '200':
-          description: Login berhasil.
+          description: Login berhasil (`LoginResponse`), atau langkah kedua dibutuhkan (`MfaRequiredResponse`).
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LoginResponse'
+                oneOf:
+                  - $ref: '#/components/schemas/LoginResponse'
+                  - $ref: '#/components/schemas/MfaRequiredResponse'
         '400':
           description: Email (atau username) / password kosong.
           content:
@@ -429,6 +436,303 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '401':
           description: Tidak terautentikasi, atau `current_password` salah.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /auth/config:
+    get:
+      operationId: getAuthConfig
+      tags: [Auth]
+      summary: Konfigurasi publik halaman login (SSO / MFA tersedia?)
+      description: |
+        Endpoint publik read-only tanpa rahasia — dipakai Console untuk memutuskan
+        apakah tombol "Masuk dengan SSO" ditampilkan (`sso_enabled`: OIDC
+        dikonfigurasi, walau IdP sesaat tak terjangkau) dan apakah MFA TOTP tersedia
+        di instalasi ini (`mfa_available`).
+      security: []
+      responses:
+        '200':
+          description: Konfigurasi publik.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sso_enabled: { type: boolean }
+                  mfa_available: { type: boolean }
+                required: [sso_enabled, mfa_available]
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [Auth]
+      summary: Profil akun yang sedang login
+      description: |
+        Semua role (termasuk ENDUSER). Dipakai SPA setelah login SSO, yang hanya
+        membawa token (di fragment URL), untuk memuat profil.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Profil akun.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer, format: int64 }
+                  uuid: { type: string, format: uuid }
+                  username: { type: string }
+                  email: { type: string, format: email }
+                  full_name: { type: string }
+                  roles: { type: array, items: { type: string } }
+                  tenant_id: { type: integer, format: int64, nullable: true }
+                  mfa_enabled: { type: boolean }
+                required: [id, uuid, username, roles]
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /auth/mfa/verify:
+    post:
+      operationId: verifyMfaLogin
+      tags: [Auth]
+      summary: Login tahap kedua — verifikasi kode TOTP / kode pemulihan
+      description: |
+        Endpoint publik (rate-limit per-IP seperti login). Kredensialnya adalah
+        `mfa_token` dari respons `POST /auth/login` (berlaku 5 menit, BUKAN token
+        sesi: ditolak di semua endpoint lain) ditambah `code`: 6 digit TOTP
+        (RFC 6238, toleransi ±30 detik, tiap kode hanya berlaku SEKALI — replay
+        ditolak) ATAU satu kode pemulihan sekali pakai (`XXXXX-XXXXX`).
+        Kode salah dihitung ke lockout akun yang SAMA dengan password salah
+        (5 kali → terkunci 15 menit); lockout TIDAK direset oleh tahap pertama.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mfa_token: { type: string }
+                code: { type: string, minLength: 6, maxLength: 16, description: "6 digit TOTP atau kode pemulihan." }
+              required: [mfa_token, code]
+      responses:
+        '200':
+          description: Login berhasil — bentuk sama dengan `POST /auth/login`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '400':
+          description: Field kosong / payload tidak valid.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Kode salah, `mfa_token` tidak valid/kedaluwarsa, akun terkunci/nonaktif, atau tenant nonaktif.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /auth/mfa:
+    get:
+      operationId: getMfaStatus
+      tags: [Auth]
+      summary: Status MFA akun sendiri
+      description: Hanya sesi login (JWT); API token ditolak 403.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Status MFA.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available: { type: boolean, description: "Fitur MFA aktif di instalasi ini." }
+                  enabled: { type: boolean }
+                  recovery_codes_left: { type: integer }
+                required: [available, enabled, recovery_codes_left]
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Dipanggil dengan API token.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /auth/mfa/setup:
+    post:
+      operationId: setupMfa
+      tags: [Auth]
+      summary: Mulai enrol MFA — buat rahasia TOTP baru
+      description: |
+        Membuat rahasia TOTP (disimpan terenkripsi AES-GCM) dan mengembalikan
+        `secret` (base32) + `otpauth_uri` (untuk QR di aplikasi authenticator).
+        MFA belum aktif sampai `POST /auth/mfa/enable`. Memanggil ulang sebelum
+        aktif mengganti rahasia lama. Hanya sesi login.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Rahasia untuk diimpor ke aplikasi authenticator (jangan disimpan di sisi klien).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  secret: { type: string }
+                  otpauth_uri: { type: string }
+                required: [secret, otpauth_uri]
+        '400':
+          description: Fitur MFA tidak diaktifkan di instalasi ini.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Dipanggil dengan API token.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: MFA sudah aktif.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /auth/mfa/enable:
+    post:
+      operationId: enableMfa
+      tags: [Auth]
+      summary: Aktifkan MFA dengan membuktikan kode TOTP pertama
+      description: |
+        Memverifikasi kode 6 digit dari aplikasi authenticator, mengaktifkan MFA, dan
+        mengembalikan 10 kode pemulihan sekali pakai — **hanya ditampilkan sekali**
+        (server hanya menyimpan hash-nya).
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code: { type: string, minLength: 6, maxLength: 6, pattern: '^[0-9]{6}$' }
+              required: [code]
+      responses:
+        '200':
+          description: MFA aktif.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  recovery_codes: { type: array, items: { type: string }, example: ["K7M2P-9XQ4R"] }
+                required: [recovery_codes]
+        '400':
+          description: Kode salah, belum setup, atau fitur tidak aktif.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Dipanggil dengan API token.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: MFA sudah aktif.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /auth/mfa/disable:
+    post:
+      operationId: disableMfa
+      tags: [Auth]
+      summary: Nonaktifkan MFA akun sendiri
+      description: |
+        Wajib password DAN kode kedua (TOTP atau kode pemulihan) — token sesi curian
+        saja tidak cukup untuk melucuti MFA. Sesi lain dicabut; respons membawa JWT
+        baru. Kesalahan password/kode dihitung ke lockout akun.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                password: { type: string, format: password }
+                code: { type: string, minLength: 6, maxLength: 16 }
+              required: [password, code]
+      responses:
+        '200':
+          description: MFA nonaktif; JWT baru menggantikan token lama.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenResponse' }
+        '400':
+          description: Field kosong atau kode salah.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi atau password salah.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Dipanggil dengan API token.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: MFA belum aktif.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /users/{id}/mfa:
+    delete:
+      operationId: resetUserMfa
+      tags: [Users]
+      summary: Admin melepas MFA akun lain
+      description: |
+        ADMIN (tenant yang sama) / SUPERADMIN. Untuk pemilik akun yang kehilangan
+        perangkat dan kode pemulihan: rahasia & kode pemulihan dihapus, sesi akun
+        dicabut, dan aksi tercatat di audit trail (`MFA_RESET`).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/userIdPath'
+      responses:
+        '204':
+          description: MFA dilepas.
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Bukan ADMIN/SUPERADMIN atau user di luar tenant pemanggil.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: User tidak ditemukan.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -3894,11 +4198,11 @@ paths:
         authorization `code` menjadi ID token, lalu menautkan/menerbitkan user
         lokal. Tanpa autentikasi Bearer (identitas dibawa oleh `code`).
 
-        Status implementasi saat ini (POC, lihat komentar di `oidcCallback`):
-        handler mengembalikan **`200` JSON dengan bentuk yang SAMA PERSIS
-        seperti `POST /auth/login`** (`access_token` + `user`), BUKAN redirect
-        `302` — frontend menyimpan token lalu berpindah halaman sendiri.
-        Parameter `state` WAJIB cocok (perbandingan konstan-waktu) dengan cookie
+        Hasil: **redirect `302`** ke Console — sukses ke `{PUBLIC_URL}/sso#token=<JWT>`
+        (token di FRAGMENT sehingga tidak ikut permintaan HTTP/log/Referer; respons
+        `Cache-Control: no-store`), gagal ke `{PUBLIC_URL}/login?sso=error` (detail
+        kegagalan hanya di log server). Akun dipetakan lewat **email** (bukan username),
+        tidak ada auto-provisioning, dan SSO mengandalkan MFA di sisi IdP. Parameter `state` WAJIB cocok (perbandingan konstan-waktu) dengan cookie
         `acs_oidc_state` yang dipasang `GET /auth/oidc/login`, dan `nonce` di
         ID token wajib cocok dengan cookie `acs_oidc_nonce`; cookie dihapus di
         callback (berhasil maupun gagal). Klaim `email_verified` yang eksplisit
@@ -3908,18 +4212,10 @@ paths:
         - { name: code, in: query, required: true, description: "Authorization code dari IdP.", schema: { type: string } }
         - { name: state, in: query, required: true, description: "Nilai `state` yang dikembalikan IdP; harus sama dengan cookie `acs_oidc_state`.", schema: { type: string } }
       responses:
-        '200':
-          description: Login OIDC berhasil — bentuk response identik `POST /auth/login`.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '302':
+          description: "Redirect ke Console: `/sso#token=...` (sukses) atau `/login?sso=error` (gagal verifikasi/pemetaan akun)."
         '400':
           description: "Query `code` kosong/tidak ada, atau `state` tidak valid/kedaluwarsa/cookie hilang (pesan sengaja tidak membedakan penyebabnya)."
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
-        '401':
-          description: "`code` invalid, ID token gagal diverifikasi, nonce tidak cocok, email IdP belum terverifikasi, atau user tidak bisa ditautkan."
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -5263,6 +5559,14 @@ components:
             roles: { type: array, items: { type: string } }
             tenant_id: { type: integer, format: int64, nullable: true }
       required: [access_token, token_type, user]
+
+    MfaRequiredResponse:
+      type: object
+      description: Password benar tetapi akun ber-MFA; lanjutkan ke `POST /auth/mfa/verify`.
+      properties:
+        mfa_required: { type: boolean, enum: [true] }
+        mfa_token: { type: string, description: "Berlaku 5 menit; BUKAN token sesi." }
+      required: [mfa_required, mfa_token]
 
     TokenResponse:
       type: object

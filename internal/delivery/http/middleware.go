@@ -134,6 +134,9 @@ func handleErr(c *echo.Context, err error) error {
 	// pesan login gagal biasa) -- dicek terpisah di sini, sebelum default 500.
 	case errors.Is(err, auth.ErrInvalidCredentials):
 		return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
+	case errors.Is(err, auth.ErrInvalidMFACode):
+		// 400 (bukan 401): pada endpoint ber-sesi, kode salah bukan berarti sesi habis.
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	case errors.Is(err, domain.ErrNotFound):
 		return echo.NewHTTPError(http.StatusNotFound, err.Error())
 	case errors.Is(err, domain.ErrForbidden):

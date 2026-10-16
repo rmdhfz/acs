@@ -824,6 +824,50 @@ export function useResetPassword() {
   })
 }
 
+// ---- MFA TOTP (migrations/0027) ----
+export interface MfaStatus {
+  available: boolean
+  enabled: boolean
+  recovery_codes_left: number
+}
+
+export function useMfaStatus() {
+  return useQuery({ queryKey: ['mfa-status'], queryFn: () => api.get<MfaStatus>('/auth/mfa') })
+}
+
+export function useSetupMfa() {
+  return useMutation({
+    mutationFn: () => api.post<{ secret: string; otpauth_uri: string }>('/auth/mfa/setup', {}),
+  })
+}
+
+export function useEnableMfa() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (code: string) => api.post<{ recovery_codes: string[] }>('/auth/mfa/enable', { code }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['mfa-status'] }),
+  })
+}
+
+export function useDisableMfa() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { password: string; code: string }) =>
+      // Sesi lain dicabut server; balasan berisi JWT baru.
+      api.post<{ access_token: string; token_type: string }>('/auth/mfa/disable', body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['mfa-status'] }),
+  })
+}
+
+// Admin melepas MFA akun lain (kehilangan perangkat & kode pemulihan).
+export function useResetUserMfa() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (userId: number) => api.del<void>(`/users/${userId}/mfa`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  })
+}
+
 export function useChangeOwnPassword() {
   return useMutation({
     mutationFn: (body: { current_password: string; new_password: string }) =>

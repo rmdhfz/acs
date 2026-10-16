@@ -61,6 +61,8 @@ type Router struct {
 	// WSAllowedOrigins = origin Console yang boleh membuka WebSocket (sama
 	// dengan ACS_CORS_ALLOW_ORIGINS).
 	WSAllowedOrigins []string
+	// PublicURL = origin Console (tujuan redirect login SSO), tanpa slash akhir.
+	PublicURL string
 }
 
 func (r *Router) Register(e *echo.Echo) {
@@ -81,6 +83,9 @@ func (r *Router) Register(e *echo.Echo) {
 	api.POST("/auth/forgot-password", r.forgotPassword, middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(0.2)))
 	api.POST("/auth/reset-password", r.resetPassword, middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(0.5)))
 
+	// Tahap kedua login MFA: publik tetapi dibatasi laju & lockout akun yang sama dengan login.
+	api.POST("/auth/mfa/verify", r.mfaVerify, middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(2)))
+	api.GET("/auth/config", r.authConfig)
 	api.GET("/auth/oidc/login", r.oidcLogin)
 	api.GET("/auth/oidc/callback", r.oidcCallback)
 
@@ -117,6 +122,12 @@ func (r *Router) Register(e *echo.Echo) {
 	// target :id, jadi semua role yang sudah login boleh, TERMASUK ENDUSER
 	// (karena itu di authedSelf, bukan authed yang di-gate staffOnly).
 	authedSelf.PATCH("/auth/password", r.changeOwnPassword)
+	authedSelf.GET("/auth/me", r.me)
+	// MFA TOTP akun sendiri (hanya sesi login, bukan API token).
+	authedSelf.GET("/auth/mfa", r.mfaStatus)
+	authedSelf.POST("/auth/mfa/setup", r.mfaSetup)
+	authedSelf.POST("/auth/mfa/enable", r.mfaEnable)
+	authedSelf.POST("/auth/mfa/disable", r.mfaDisable)
 
 	authed.GET("/refs/:table", r.listRefs)
 
@@ -154,6 +165,7 @@ func (r *Router) Register(e *echo.Echo) {
 	authed.GET("/users/:id", r.getUser, RequireRoles(admin...))
 	authed.PATCH("/users/:id", r.updateUser, RequireRoles(admin...))
 	authed.PATCH("/users/:id/password", r.resetUserPassword, RequireRoles(admin...))
+	authed.DELETE("/users/:id/mfa", r.adminResetMFA, RequireRoles(admin...))
 	authed.PATCH("/users/:id/roles", r.replaceUserRoles, RequireRoles(admin...))
 	authed.DELETE("/users/:id", r.deleteUser, RequireRoles(admin...))
 

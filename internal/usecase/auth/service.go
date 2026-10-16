@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -68,10 +69,17 @@ type Claims struct {
 	UserID   uint64   `json:"uid"`
 	TenantID *uint64  `json:"tid,omitempty"`
 	Roles    []string `json:"roles"`
+	// Purpose kosong = token sesi. Nilai lain (mis. "mfa" — tahap kedua login) BUKAN sesi dan
+	// ditolak oleh ResolveActor/ParseJWT.
+	Purpose string `json:"pur,omitempty"`
 	jwt.RegisteredClaims
 }
 
 type Service struct {
+	oidcMu      sync.Mutex
+	oidcCfg     *oidcSettings
+	oidcLastTry time.Time
+
 	users     domain.UserRepository
 	tokens    domain.APITokenRepository
 	tenants   domain.TenantRepository
@@ -85,6 +93,11 @@ type Service struct {
 	// Reset password lewat email & notifikasi keamanan — opsional (lihat
 	// WithPasswordReset); tanpa ini fitur tersebut nonaktif dan Service
 	// berperilaku persis seperti sebelumnya.
+	// MFA TOTP — opsional (WithMFA).
+	mfa       domain.MFARepository
+	cipher    secretCipher
+	mfaIssuer string
+
 	resets   domain.PasswordResetRepository
 	notifier mailer.Notifier
 	mail     *notify.Builder
@@ -109,20 +122,34 @@ func (s *Service) notify(m mailer.Message) {
 func NewService(users domain.UserRepository, tokens domain.APITokenRepository, tenants domain.TenantRepository, activity domain.ActivityLogRepository, jwtSecret []byte, jwtExpiry time.Duration, issuer, clientID, clientSecret, redirectURL string) *Service {
 	s := &Service{users: users, tokens: tokens, tenants: tenants, activity: activity, jwtSecret: jwtSecret, jwtExpiry: jwtExpiry}
 	if issuer != "" && clientID != "" {
-		ctx := context.Background()
-		provider, err := oidc.NewProvider(ctx, issuer)
-		if err == nil {
-			s.oidcProvider = provider
-			s.oauth2Config = &oauth2.Config{
-				ClientID:     clientID,
-				ClientSecret: clientSecret,
-				RedirectURL:  redirectURL,
-				Endpoint:     provider.Endpoint(),
-				Scopes:       []string{oidc.ScopeOpenID, "profile", "email"},
-			}
-		}
+		s.oidcCfg = &oidcSettings{issuer: issuer, clientID: clientID, clientSecret: clientSecret, redirectURL: redirectURL}
+		s.initOIDC(context.Background()) // best-effort; bila IdP belum terjangkau dicoba lagi saat dipakai
 	}
 	return s
+}
+
+type oidcSettings struct{ issuer, clientID, clientSecret, redirectURL string }
+
+// initOIDC melakukan discovery IdP. Sebelumnya kegagalan sesaat saat startup (IdP belum siap)
+// mematikan SSO permanen sampai restart; kini dicoba lagi (maks. tiap 30 detik) saat SSO dipakai.
+func (s *Service) initOIDC(ctx context.Context) {
+	s.oidcMu.Lock()
+	defer s.oidcMu.Unlock()
+	if s.oidcProvider != nil || s.oidcCfg == nil || time.Since(s.oidcLastTry) < 30*time.Second {
+		return
+	}
+	s.oidcLastTry = time.Now()
+	dctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	provider, err := oidc.NewProvider(dctx, s.oidcCfg.issuer)
+	if err != nil {
+		return
+	}
+	s.oauth2Config = &oauth2.Config{
+		ClientID: s.oidcCfg.clientID, ClientSecret: s.oidcCfg.clientSecret, RedirectURL: s.oidcCfg.redirectURL,
+		Endpoint: provider.Endpoint(), Scopes: []string{oidc.ScopeOpenID, "profile", "email"},
+	}
+	s.oidcProvider = provider
 }
 
 // HashPassword menghasilkan hash Argon2id (lihat pkg/passwordhash). Hash bcrypt
@@ -206,13 +233,23 @@ func (s *Service) Login(ctx context.Context, identifier, password string) (*doma
 		}
 	}
 
-	// Password benar -- reset lockout counter, percobaan gagal sebelumnya
-	// tidak relevan lagi setelah otentikasi berhasil.
-	_ = s.users.ResetLoginLockout(ctx, u.ID)
-
 	if err := s.checkTenantActive(ctx, u.TenantID); err != nil {
 		return nil, "", err
 	}
+	// Akun ber-MFA: password benar baru tahap pertama. Lockout TIDAK direset di sini (kalau
+	// direset, penyerang yang tahu password bisa menebak kode 6 digit tanpa batas dengan
+	// login ulang); reset terjadi setelah tahap kedua lolos (MFAVerifyLogin).
+	if u.TOTPEnabled && s.MFAEnabledFeature() {
+		mt, err := s.issueMFAToken(u)
+		if err != nil {
+			return nil, "", err
+		}
+		return u, mt, ErrMFARequired
+	}
+
+	// Password benar -- reset lockout counter, percobaan gagal sebelumnya
+	// tidak relevan lagi setelah otentikasi berhasil.
+	_ = s.users.ResetLoginLockout(ctx, u.ID)
 
 	token, err := s.issueJWT(u)
 	if err != nil {
@@ -329,6 +366,9 @@ func (s *Service) ParseJWT(tokenStr string) (*domain.Actor, error) {
 	if err != nil {
 		return nil, err
 	}
+	if claims.Purpose != "" {
+		return nil, ErrInvalidToken
+	}
 	return &domain.Actor{UserID: claims.UserID, TenantID: claims.TenantID, Roles: claims.Roles}, nil
 }
 
@@ -363,7 +403,9 @@ func (s *Service) ResolveActor(ctx context.Context, tokenStr string) (*domain.Ac
 		actor, err = s.AuthenticateAPIToken(ctx, tokenStr)
 	} else {
 		var claims *Claims
-		if claims, err = s.parseClaims(tokenStr); err == nil {
+		if claims, err = s.parseClaims(tokenStr); err == nil && claims.Purpose != "" {
+			err = errors.New("token bukan token sesi")
+		} else if err == nil {
 			actor = &domain.Actor{UserID: claims.UserID, TenantID: claims.TenantID, Roles: claims.Roles}
 			err = s.checkSession(ctx, claims)
 		}
@@ -595,7 +637,19 @@ func ScopedTenantFilter(actor domain.Actor) (*uint64, error) {
 // ---- OIDC Integration ----
 
 func (s *Service) HasOIDC() bool {
+	s.initOIDC(context.Background())
+	s.oidcMu.Lock()
+	defer s.oidcMu.Unlock()
 	return s.oidcProvider != nil && s.oauth2Config != nil
+}
+
+// OIDCConfigured — SSO dikonfigurasi (issuer+client id) walau IdP sedang tak terjangkau;
+// dipakai untuk menampilkan tombol SSO.
+func (s *Service) OIDCConfigured() bool { return s.oidcCfg != nil }
+
+// Me — profil akun yang sedang login (untuk SPA setelah login SSO yang hanya membawa token).
+func (s *Service) Me(ctx context.Context, actor domain.Actor) (*domain.User, error) {
+	return s.users.GetByID(ctx, actor.UserID)
 }
 
 // ErrOIDCNonceMismatch — nonce di id_token tidak sama dengan yang diikat ke
@@ -670,9 +724,12 @@ func (s *Service) OIDCLogin(ctx context.Context, code, expectedNonce string) (*d
 	}
 
 	// Cek apakah user ada berdasarkan email
-	u, err := s.users.GetByUsername(ctx, claims.Email) // Kita asumsikan username = email untuk OIDC
+	// Dipetakan lewat EMAIL (unik, ditegakkan sistem), BUKAN username: username bisa dipilih
+	// admin tenant mana pun sehingga memetakan lewat username memungkinkan pengambilalihan
+	// akun dengan membuat username = email korban.
+	u, err := s.users.GetByEmail(ctx, strings.ToLower(strings.TrimSpace(claims.Email)))
 	if err != nil {
-		// Jika belum ada, auto-provisioning bisa dilakukan di sini, tapi untuk saat ini:
+		// Auto-provisioning sengaja tidak ada: akun harus dibuat admin (multi-tenant).
 		return nil, "", errors.New("auth: akun OIDC belum terdaftar, hubungi admin")
 	}
 

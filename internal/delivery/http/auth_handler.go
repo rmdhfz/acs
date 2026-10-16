@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -41,6 +42,11 @@ func (r *Router) login(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "email dan password wajib diisi")
 	}
 	u, token, err := r.Auth.Login(c.Request().Context(), identifier, req.Password)
+	if errors.Is(err, auth.ErrMFARequired) {
+		// Password benar, tahap kedua dibutuhkan: token ini BUKAN sesi (hanya untuk /auth/mfa/verify).
+		c.Response().Header().Set("Cache-Control", "no-store")
+		return c.JSON(http.StatusOK, map[string]interface{}{"mfa_required": true, "mfa_token": token})
+	}
 	if err != nil {
 		switch {
 		case errors.Is(err, auth.ErrInvalidCredentials), errors.Is(err, auth.ErrTenantInactive):
@@ -186,22 +192,32 @@ func (r *Router) oidcCallback(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "kode OIDC tidak ditemukan")
 	}
 
-	u, token, err := r.Auth.OIDCLogin(c.Request().Context(), code, nonce)
+	_, token, err := r.Auth.OIDCLogin(c.Request().Context(), code, nonce)
+	c.Response().Header().Set("Cache-Control", "no-store")
 	if err != nil {
-		// Pesan asli bisa memuat respons IdP, atau membedakan "akun belum
-		// terdaftar" (enumerasi email) — detail hanya ke log, klien dapat pesan generik.
+		// Pesan asli bisa memuat respons IdP, atau membedakan "akun belum terdaftar"
+		// (enumerasi email) — detail hanya ke log; pengguna dikembalikan ke halaman login.
 		log.Printf("oidc callback: login gagal: %v", err)
-		return echo.NewHTTPError(http.StatusUnauthorized, "login OIDC gagal")
+		return c.Redirect(http.StatusFound, r.PublicURL+"/login?sso=error")
 	}
+	// Token dikirim lewat FRAGMENT (#token=) ke Console: tidak ikut permintaan HTTP/log/Referer.
+	return c.Redirect(http.StatusFound, r.PublicURL+"/sso#token="+url.QueryEscape(token))
+}
 
-	// Sebagai POC, kembalikan JSON sama seperti normal login.
-	// Di frontend nanti bisa simpan token dan pindah ke /dashboard
+// authConfig — konfigurasi publik untuk halaman login (tanpa rahasia).
+func (r *Router) authConfig(c *echo.Context) error {
+	return c.JSON(http.StatusOK, map[string]any{"sso_enabled": r.Auth.OIDCConfigured(), "mfa_available": r.Auth.MFAEnabledFeature()})
+}
+
+// me — profil akun yang sedang login.
+func (r *Router) me(c *echo.Context) error {
+	u, err := r.Auth.Me(c.Request().Context(), ActorFrom(c))
+	if err != nil {
+		return handleErr(c, err)
+	}
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"access_token": token,
-		"token_type":   "Bearer",
-		"user": map[string]interface{}{
-			"id": u.ID, "uuid": u.UserUUID, "username": u.Username, "roles": u.Roles, "tenant_id": u.TenantID,
-		},
+		"id": u.ID, "uuid": u.UserUUID, "username": u.Username, "roles": u.Roles, "tenant_id": u.TenantID,
+		"email": u.Email, "full_name": u.FullName, "mfa_enabled": u.TOTPEnabled,
 	})
 }
 
