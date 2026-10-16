@@ -232,9 +232,13 @@ openssl rand -base64 32   # → ACS_CREDENTIAL_ENC_KEY
 # juga: ACS_DB_ROOT_PASSWORD, ACS_DB_PASSWORD, ACS_MINIO_ACCESS_KEY, ACS_MINIO_SECRET_KEY (acak, kuat)
 ACS_PUBLIC_URL=http://&lt;IP-server&gt;:5173            # alamat Console; dipakai di tautan email
 ACS_CORS_ALLOW_ORIGINS=http://&lt;IP-server&gt;:5173    # origin Console, tanpa slash akhir
+ACS_REDIS_PASSWORD=&lt;acak, kuat&gt;                  # disarankan; kosong = Redis tanpa auth
+ACS_TRUSTED_PROXIES=                           # isi IP/CIDR reverse proxy bila ada; kosong = X-Forwarded-For diabaikan
+ACS_LOG_RETENTION_DAYS=90                      # retensi tabel log (hari); 0 = nonaktif
 # email: ACS_SMTP_HOST / PORT / USERNAME / PASSWORD / FROM  (App Password BARU, bukan yang lama)</pre>
   <div class="callout danger" style="margin:6px 0"><span class="label">Penting</span>
   <p><code>ACS_CREDENTIAL_ENC_KEY</code> mengenkripsi kredensial tersimpan (secret CWMP tenant, kredensial Connection Request). <strong>Jangan diganti setelah data terisi</strong> — data lama jadi tak terbaca. Untuk UAT, buat sekali di database baru lalu simpan di pengelola rahasia. <code>.env</code> jangan di-commit atau dikirim lewat chat.</p></div></li>
+  <li><strong>Catatan port:</strong> database, Redis, konsol MinIO, Prometheus, Grafana, dan Alertmanager hanya terbuka di <code>127.0.0.1</code> server (sengaja). Yang terbuka ke jaringan: REST (18080), CWMP (17547), dan MinIO API (19000, hanya perlu bila firmware diunduh CPE — tidak dipakai pada UAT ini; boleh diblok firewall). Untuk melihat Grafana dari PC lain gunakan SSH tunnel.</li>
   <li><strong>Jalankan stack.</strong>
 <pre>docker compose up -d --build
 docker compose ps                    # migrate: Exited (0); mariadb, redis, minio: healthy; acsd: Up
@@ -445,7 +449,7 @@ Lakukan O5–O12 pada ONT yang sudah online dari Bagian A.</p>
 <tr><td class="id">O1</td><td><strong>Login email</strong> (ADMIN). Coba juga password salah satu kali (pakai akun cadangan — 5 kali salah mengunci akun 15 menit).</td><td>Masuk dengan email + password. Salah → pesan seragam "Email atau password salah". Tidak ada pesan yang membocorkan apakah email terdaftar.</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
 <tr><td class="id">O2</td><td><strong>Lupa password.</strong> "Lupa password?" → isi email.</td><td>Layar selalu sama (generik). Email tautan datang ≤ 1 menit; tautan <code>/reset-password#…</code> berfungsi sekali, password baru diterima, email konfirmasi datang, tautan yang sama tidak bisa dipakai lagi. <em>Lewati bila SMTP belum disiapkan.</em></td><td class="res">☐ Lulus ☐ Gagal ☐ Lewat</td></tr>
 <tr><td class="id">O3</td><td><strong>Profil &amp; ganti password</strong> (semua peran).</td><td>Profil menampilkan identitas &amp; hak akses. Ganti password dengan password lama salah → ditolak <em>tanpa</em> logout; benar → berhasil dan sesi tetap aktif.</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
-<tr><td class="id">O4</td><td><strong>Dashboard</strong> (VIEWER).</td><td>KPI (jumlah perangkat, status, task) sesuai kenyataan; klik kartu → daftar terfilter. (Indikator "Polling" normal, realtime belum aktif — §10.)</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
+<tr><td class="id">O4</td><td><strong>Dashboard</strong> (VIEWER).</td><td>KPI (jumlah perangkat, status, task) sesuai kenyataan; klik kartu → daftar terfilter. (Indikator realtime seharusnya "Live".)</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
 <tr><td class="id">O5</td><td><strong>Tambah perangkat manual</strong> (ADMIN): Perangkat → Tambah Perangkat (OUI 6 karakter + serial; isi vendor/lokasi/catatan).</td><td>Perangkat tampil dengan status <code>UNREGISTERED</code>. Setelah ONT dengan serial/OUI itu Inform, baris <strong>yang sama</strong> dipakai (tidak ada duplikat, catatan tetap).</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
 <tr><td class="id">O6</td><td><strong>Edit perangkat</strong> (NOC): pensil di daftar atau tombol Edit di detail; ubah catatan/lokasi.</td><td>Perubahan tersimpan. VIEWER <strong>tidak</strong> melihat tombol Edit.</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
 <tr><td class="id">O7</td><td><strong>Hapus perangkat</strong> (ADMIN): satu per satu lalu hapus massal untuk perangkat <em>uji buatan sendiri</em> (bukan ONT UAT utama).</td><td>Hilang dari daftar; task terbuka menjadi <code>CANCELLED</code>. NOC tidak melihat tombol hapus. Bila ONT-nya Inform lagi, catatan hidup kembali.</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
@@ -461,7 +465,7 @@ Lakukan O5–O12 pada ONT yang sudah online dari Bagian A.</p>
 <tr><td class="id">O17</td><td><strong>User baru</strong> (ADMIN): Administrasi → Users → tambah user.</td><td>User terbentuk; email selamat datang masuk (tanpa password di dalamnya); user baru bisa login lewat "Lupa password" bila tak diberi password.</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
 <tr><td class="id">O18</td><td><strong>Audit Trail</strong> (ADMIN): periksa aksi O5–O17; Ekspor.</td><td>Tiap aksi tercatat (siapa, kapan, apa). Ekspor menghasilkan berkas; tidak ada password/secret di dalamnya.</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
 <tr><td class="id">O19</td><td><strong>Impor/ekspor modul lain</strong> (sampling): Tag, Preset, Provisioning, Task (ekspor).</td><td>Pratinjau → eksekusi bekerja; ekspor Preset/Profil <strong>mengosongkan nilai rahasia</strong>; impor ulang tidak menghapus rahasia tersimpan.</td><td class="res">☐ Lulus ☐ Gagal</td></tr>
-<tr><td class="id">O20</td><td><strong>(Opsional)</strong> Diagnostics (Ping/Traceroute), Webhook ke penerima uji, portal "WiFi Saya" (ENDUSER).</td><td>Berfungsi bila ONT/penerima mendukung; catat hasil. Tidak lulus pada ONT tertentu bisa karena firmware, bukan ACS.</td><td class="res">☐ Lulus ☐ Gagal ☐ Lewat</td></tr>
+<tr><td class="id">O20</td><td><strong>(Opsional)</strong> Webhook ke penerima uji (alamat harus bisa di-resolve & bukan localhost), portal "WiFi Saya" (ENDUSER). <em>Diagnostics belum tersedia — lewati.</em></td><td>Berfungsi bila ONT/penerima mendukung; catat hasil. Tidak lulus pada ONT tertentu bisa karena firmware, bukan ACS.</td><td class="res">☐ Lulus ☐ Gagal ☐ Lewat</td></tr>
 </table>
 
 <!-- ============================================================ -->
@@ -496,7 +500,8 @@ Lakukan O5–O12 pada ONT yang sudah online dari Bagian A.</p>
 <tr><td><strong>Fault 9005 (parameter tidak ada)</strong></td><td>Tidak di-retry (memang disengaja). Path mapping tidak cocok dengan firmware itu.</td></tr>
 <tr><td><strong>Rate limit CWMP 5 req/dtk per IP</strong></td><td>Banyak ONT di balik satu IP publik bisa kena HTTP 429 saat boot bersamaan; ONT mencoba lagi sendiri.</td></tr>
 <tr><td><strong>Connection Request ke ONT di balik CGNAT</strong></td><td>ACS mencoba HTTP lalu fallback UDP (STUN) — belum teruji lapangan. 502 = tidak terjangkau; task tetap menunggu Inform berikutnya.</td></tr>
-<tr><td><strong>Realtime (WebSocket) belum tersambung</strong></td><td>Dashboard menampilkan "Polling"; data diperbarui berkala, bukan seketika.</td></tr>
+<tr><td><strong>Diagnostics (Ping/Traceroute dari ONT) belum tersedia</strong></td><td>Tab Diagnostics menampilkan pemberitahuan dan API membalas 501. Uji konektivitas lewat alat di sisi jaringan. Bukan temuan baru.</td></tr>
+<tr><td><strong>Realtime (WebSocket)</strong></td><td>Sudah tersambung (indikator "Live"; task/perangkat ter-refresh seketika). Bila indikator tidak "Live", periksa <code>ACS_CORS_ALLOW_ORIGINS</code> (origin Console harus persis sama) dan firewall port API. Data tetap ter-refresh berkala sebagai cadangan.</td></tr>
 <tr><td><strong>Sesi berstatus <code>TIMEOUT</code></strong></td><td>Normal: sesi tanpa POST penutup ditutup otomatis setelah 15 menit.</td></tr>
 <tr><td><strong>Email ke domain uji (<code>*.local</code>, <code>example.*</code>) tidak dikirim</strong></td><td>Disengaja. Pakai alamat email nyata untuk uji email.</td></tr>
 <tr><td><strong>Firmware upgrade belum pernah diuji ke ONT fisik</strong></td><td>Tidak termasuk UAT ini (§1).</td></tr>

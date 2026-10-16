@@ -306,7 +306,7 @@ pemilik pekerjaannya</em>.</p>
 <tr><td class="ont">ONT via ACS</td><td>SSID, password &amp; keamanan WiFi (2,4/5 GHz), channel</td><td>ACS: tab Parameter, Task, Profile, Preset</td></tr>
 <tr><td class="ont">ONT via ACS</td><td>Akun WAN: PPPoE username/password, mode DHCP/statik, VLAN WAN internet (bila diizinkan firmware)</td><td>ACS: Provisioning Profile / Zero-Touch</td></tr>
 <tr><td class="ont">ONT via ACS</td><td>LAN &amp; DHCP server, DNS, port forwarding (parameter yang diekspos firmware)</td><td>ACS: Set Parameter</td></tr>
-<tr><td class="ont">ONT via ACS</td><td>Reboot, factory reset, upgrade firmware, diagnostik (ping/traceroute dari ONT), periodic inform</td><td>ACS: Task, Firmware, Diagnostics</td></tr>
+<tr><td class="ont">ONT via ACS</td><td>Reboot, factory reset, upgrade firmware, periodic inform; membaca status &amp; parameter</td><td>ACS: Task, Firmware, Diagnostics</td></tr>
 <tr><td class="ont">ONT via ACS</td><td>Membaca status: uptime, versi firmware, daftar perangkat LAN/WiFi, redaman optik RX/TX <em>sebagaimana dilaporkan ONT</em></td><td>ACS: tab Parameter, Redaman Optik</td></tr>
 <tr><td class="both">Terpisah</td><td>Melihat <em>sisi OLT</em> dari redaman/alarm (level optik di port PON, ONT offline karena putus serat)</td><td>Sistem manajemen OLT. ACS hanya melihat ONT <em>kalau ONT masih bisa menjangkau ACS</em></td></tr>
 </table>
@@ -815,7 +815,7 @@ vendor &gt; 10. Prosedur operasional insiden: <strong>RUNBOOK.md</strong>.</p>
 <tr><td>HTTP 401 "token ditolak" mendadak untuk semua user satu tenant</td><td>Tenant dinonaktifkan. Aktifkan kembali via Administrasi → Tenants.</td></tr>
 <tr><td>Impor: banyak baris "Error"</td><td>Buka kolom alasan di pratinjau (mis. OUI bukan 6 karakter, vendor tidak dikenal, serial duplikat di berkas). Perbaiki di CSV atau unduh laporan pratinjau; baris valid tetap bisa diimpor.</td></tr>
 <tr><td>Rollout batch PAUSED</td><td>Failure rate wave melebihi ambang, atau 0 perangkat berhasil dijadwalkan (kuota task queue penuh). Periksa <code>activity_logs</code>, perbaiki penyebab, lalu Advance manual.</td></tr>
-<tr><td>Dashboard menunjukkan "Polling", bukan realtime</td><td>Koneksi WebSocket belum berfungsi pada UI (diketahui, lihat Bab 17); data tetap ter-refresh berkala.</td></tr>
+<tr><td>Dashboard menunjukkan "Polling", bukan "Live"</td><td>WebSocket tidak tersambung: periksa <code>ACS_CORS_ALLOW_ORIGINS</code> (harus persis sama dengan alamat Console di peramban) dan firewall port API. Data tetap ter-refresh berkala.</td></tr>
 </table>
 
 <p>Untuk diagnosis gejala CPE yang lebih dalam (rantai Inform → sesi → task →
@@ -831,8 +831,10 @@ pemetaan parameter), gunakan panduan diagnostik di <strong>PENGUJIAN_LAPANGAN.md
 <tr><td>RPC: GetParameterValues, SetParameterValues, GetParameterNames, AddObject, DeleteObject, Reboot, FactoryReset, Download, Upload, ScheduleInform; Fault; TransferComplete</td><td>Didukung, diuji e2e</td><td>Set selalu <code>xsd:string</code></td></tr>
 <tr><td>Connection Request (HTTP Digest &amp; Basic) + fallback UDP STUN (TR-111)</td><td>Didukung</td><td>Digest dibuktikan e2e (S7)</td></tr>
 <tr><td>Data model TR-098 (<code>InternetGatewayDevice.*</code>) &amp; TR-181 (<code>Device.*</code>)</td><td>Didukung</td><td>Resolve per perangkat</td></tr>
-<tr><td>Diagnostics (ping/traceroute dsb.), Preset, Zero-Touch, firmware canary</td><td>Didukung</td><td></td></tr>
-<tr><td>REST/OpenAPI, WebSocket, webhook, Prometheus, OIDC</td><td>Didukung*</td><td>*WebSocket UI belum tersambung (lihat 17.2)</td></tr>
+<tr><td>Preset, Zero-Touch, firmware canary</td><td>Didukung</td><td></td></tr>
+<tr><td>Diagnostics (ping/traceroute dari ONT)</td><td>Belum</td><td>Pemetaan parameter diagnostik &amp; pengambilan hasil belum ada; API membalas 501</td></tr>
+<tr><td>REST/OpenAPI, WebSocket realtime, webhook, Prometheus</td><td>Didukung</td><td>WebSocket memakai token via subprotocol</td></tr>
+<tr><td>OIDC / SSO</td><td>Belum siap</td><td>Callback masih POC; tombol SSO disembunyikan kecuali <code>VITE_SSO_URL</code> diisi</td></tr>
 <tr><td>USP / TR-369</td><td>Kerangka saja</td><td>Belum operasional (JSON, bukan protobuf)</td></tr>
 <tr><td>GetRPCMethods, SetParameterAttributes dari sisi ACS</td><td>Belum</td><td></td></tr>
 <tr><td><strong>SNMP, SSH/Telnet, NETCONF, driver OLT/router</strong></td><td><strong>Belum ada</strong></td><td>Itulah jalur manajemen OLT — lihat 17.3</td></tr>
@@ -847,9 +849,9 @@ pemetaan parameter), gunakan panduan diagnostik di <strong>PENGUJIAN_LAPANGAN.md
   1–2 unit per vendor sebelum rollout lebar.</li>
   <li><strong>CWMP dilayani via HTTP</strong> oleh <code>acsd</code>; TLS harus
   dari reverse proxy.</li>
-  <li><strong>WebSocket <code>/ws</code> belum tersambung</strong> dari UI (backend menuntut
-  header Bearer, browser mengirim token lewat query) — fitur realtime belum aktif.</li>
-  <li><strong>Rate limit</strong> per-IP &amp; per-instance; di belakang reverse proxy perlu trusted proxy.</li>
+  <li><strong>Rate limit</strong> per-IP &amp; per-instance; di belakang reverse proxy isi <code>ACS_TRUSTED_PROXIES</code> agar IP klien benar.</li>
+  <li><strong>Diagnostics (ping/traceroute) belum tersedia</strong> dan <strong>OIDC/SSO belum siap</strong> (lihat tabel 17.1).</li>
+  <li><strong>Retensi log:</strong> tabel event/sesi/optik/riwayat webhook dipangkas otomatis setelah <code>ACS_LOG_RETENTION_DAYS</code> (default 90); audit trail tidak dipangkas.</li>
   <li><strong>Load test kapasitas puncak</strong> belum dilakukan (butuh rig multi-IP).</li>
   <li><strong>Ekspresivitas provisioning</strong> sengaja dibatasi ke data
   terstruktur (bukan skrip bebas seperti GenieACS) demi auditability.</li>
