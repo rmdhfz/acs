@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import { FileText, Upload, Trash2, AlertCircle, Package } from 'lucide-react'
-import { useFiles, useUploadFile, useDeleteFile } from '../lib/hooks'
+import { useFiles, useUploadFile, useDeleteFile, useVendors } from '../lib/hooks'
+import { DataTools } from '../components/DataTools'
+import { fileExportColumns, loadFileExportRows } from '../imports/exports'
 import { Modal } from '../components/Modal'
 import { EmptyState } from '../components/EmptyState'
 import { PageSpinner } from '../components/Spinner'
@@ -37,6 +39,8 @@ export default function FilesPage() {
   const uploadMut = useUploadFile()
   const deleteMut = useDeleteFile()
   const toast = useToast()
+  const { data: vendorsResp } = useVendors()
+  const vendors = vendorsResp?.data ?? []
 
   const [uploadOpen, setUploadOpen] = useState(false)
   const [toDelete, setToDelete] = useState<GenericFile | null>(null)
@@ -63,9 +67,19 @@ export default function FilesPage() {
             Firmware image, konfigurasi vendor, dan file lain yang bisa di-push / di-pull dari CPE.
           </p>
         </div>
-        <button onClick={() => setUploadOpen(true)} className={primaryBtnCls}>
-          <Upload className="h-4 w-4" /> Upload File
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <DataTools
+            exportCfg={{
+              filename: 'file',
+              columns: fileExportColumns(),
+              hint: 'Hanya metadata daftar file — bukan isi berkas.',
+              getRows: (c) => loadFileExportRows(vendors, c),
+            }}
+          />
+          <button onClick={() => setUploadOpen(true)} className={primaryBtnCls}>
+            <Upload className="h-4 w-4" /> Upload File
+          </button>
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">

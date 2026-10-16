@@ -8,6 +8,8 @@ import { useAuth } from '../lib/auth'
 import { ApiError } from '../lib/api'
 import { useToast } from '../lib/toast'
 import { useTags, useCreateTag, useDeleteTag, useUpdateTag } from '../lib/hooks'
+import { DataTools } from '../components/DataTools'
+import { loadTagExportRows, tagAdapter, tagExportColumns } from '../imports/tags'
 import { formatDateTime } from '../lib/format'
 import { LIMITS } from '../lib/limits'
 import type { Tag } from '../lib/types'
@@ -53,11 +55,17 @@ export default function TagsPage() {
             Kelola label dinamis untuk mengelompokkan perangkat CPE.
           </p>
         </div>
-        {canManage && (
-          <button onClick={() => setShowCreate(true)} className={primaryBtnCls}>
-            <Plus className="h-4 w-4" /> Tag Baru
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <DataTools
+            exportCfg={{ filename: 'tag', columns: tagExportColumns(), getRows: (c) => loadTagExportRows(c) }}
+            importCfg={canManage ? { title: 'Impor Tag', makeAdapter: () => tagAdapter({ isSuper: isSuperadmin }), invalidate: ['tags'] } : undefined}
+          />
+          {canManage && (
+            <button onClick={() => setShowCreate(true)} className={primaryBtnCls}>
+              <Plus className="h-4 w-4" /> Tag Baru
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">

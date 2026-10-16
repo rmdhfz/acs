@@ -25,6 +25,8 @@ import {
   type CreateRolloutBatchInput,
   type UploadFirmwareInput,
 } from '../lib/hooks'
+import { DataTools } from '../components/DataTools'
+import { firmwareExportColumns, loadFirmwareExportRows } from '../imports/exports'
 import { formatDateTime } from '../lib/format'
 import type { FirmwareFile } from '../lib/types'
 
@@ -39,14 +41,26 @@ export function FirmwarePage() {
   const [tab, setTab] = useState<Tab>('catalog')
   const { hasRole } = useAuth()
   const canManage = hasRole('ADMIN')
+  const { data: vendorsResp } = useVendors()
+  const vendors = vendorsResp?.data ?? []
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Firmware</h1>
-        <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
-          Katalog firmware per vendor & canary/staged rollout ke populasi device
-        </p>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Firmware</h1>
+          <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
+            Katalog firmware per vendor & canary/staged rollout ke populasi device
+          </p>
+        </div>
+        <DataTools
+          exportCfg={{
+            filename: 'firmware',
+            columns: firmwareExportColumns(),
+            hint: 'Hanya metadata (versi, ukuran, checksum, catatan rilis) — bukan berkas biner.',
+            getRows: (c) => loadFirmwareExportRows(vendors, c),
+          }}
+        />
       </div>
 
       <div className="mb-4 flex gap-1 border-b border-slate-200 dark:border-slate-800">

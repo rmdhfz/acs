@@ -8,6 +8,8 @@ import { ApiError } from '../lib/api'
 import { useToast } from '../lib/toast'
 import { useConfirm } from '../lib/confirm'
 import { findRefById, useCancelTask, useCreateTask, useRefs, useTasks, type TaskFilters } from '../lib/hooks'
+import { DataTools } from '../components/DataTools'
+import { loadTaskExportRows, taskExportColumns } from '../imports/exports'
 import { formatJSONField, formatDateTime, formatRelativeTime } from '../lib/format'
 import { useStatusParam } from '../lib/useStatusParam'
 
@@ -68,11 +70,26 @@ export function TasksPage() {
           <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Tasks</h1>
           <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Antrean RPC CWMP (SetParameterValues, Reboot, dst) ke seluruh device</p>
         </div>
-        {canManage && (
-          <button onClick={() => setShowCreate(true)} className={primaryBtnCls}>
-            <Plus className="h-4 w-4" /> Buat Task
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <DataTools
+            exportCfg={{
+              filename: 'task',
+              columns: taskExportColumns(),
+              hint: 'Mengekspor semua task sesuai filter yang aktif (bukan hanya halaman ini).',
+              getRows: (c) =>
+                loadTaskExportRows(
+                  { device_id: filters.device_id, task_status_id: filters.task_status_id, task_type: filters.task_type },
+                  { statuses: statusRefs ?? [], types: typeRefs ?? [] },
+                  c,
+                ),
+            }}
+          />
+          {canManage && (
+            <button onClick={() => setShowCreate(true)} className={primaryBtnCls}>
+              <Plus className="h-4 w-4" /> Buat Task
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">

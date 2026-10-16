@@ -28,6 +28,8 @@ import {
   type ProfileFormInput,
   type ZTRuleFormInput,
 } from '../lib/hooks'
+import { DataTools } from '../components/DataTools'
+import { loadProfileExportRows, loadZtpExportRows, profileAdapter, profileExportColumns, ztpAdapter, ztpExportColumns } from '../imports/provisioning'
 import { LIMITS } from '../lib/limits'
 import type { ProvisioningProfileParameter } from '../lib/types'
 
@@ -42,12 +44,34 @@ export function ProvisioningPage() {
   const [tab, setTab] = useState<Tab>('profiles')
   const { hasRole } = useAuth()
   const canManage = hasRole('ADMIN')
+  const { user } = useAuth()
+  const { data: vendorsResp } = useVendors()
+  const vendors = vendorsResp?.data ?? []
+  const env = { isSuper: hasRole('SUPERADMIN'), tenantId: user?.tenant_id ?? null, vendors }
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Provisioning</h1>
-        <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Profil parameter default & aturan zero-touch provisioning</p>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Provisioning</h1>
+          <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Profil parameter default & aturan zero-touch provisioning</p>
+        </div>
+        {tab === 'profiles' ? (
+          <DataTools
+            exportCfg={{
+              filename: 'provisioning-profile',
+              columns: profileExportColumns(),
+              hint: 'Nilai parameter berkunci rahasia (password/psk/…) dikosongkan.',
+              getRows: (c) => loadProfileExportRows(vendors, c),
+            }}
+            importCfg={canManage ? { title: 'Impor Provisioning Profile', makeAdapter: () => profileAdapter(env), invalidate: ['provisioning-profiles', 'provisioning-profile'] } : undefined}
+          />
+        ) : (
+          <DataTools
+            exportCfg={{ filename: 'zero-touch-rule', columns: ztpExportColumns(), getRows: (c) => loadZtpExportRows(vendors, c) }}
+            importCfg={canManage ? { title: 'Impor Zero-Touch Rule', makeAdapter: () => ztpAdapter(env), invalidate: ['zero-touch-rules'] } : undefined}
+          />
+        )}
       </div>
 
       <div className="mb-4 flex gap-1 border-b border-slate-200">

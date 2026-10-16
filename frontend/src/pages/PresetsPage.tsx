@@ -8,6 +8,8 @@ import { useAuth } from '../lib/auth'
 import { ApiError } from '../lib/api'
 import { useToast } from '../lib/toast'
 import { usePresets, usePreset, useCreatePreset, useUpdatePreset, useDeletePreset } from '../lib/hooks'
+import { DataTools } from '../components/DataTools'
+import { loadPresetExportRows, presetAdapter, presetExportColumns } from '../imports/presets'
 import { formatDateTime } from '../lib/format'
 import { LIMITS } from '../lib/limits'
 import type { Preset } from '../lib/types'
@@ -52,11 +54,22 @@ export default function PresetsPage() {
             Desired-state config gaya GenieACS. Preset ber-<em>enforcement</em> dijaga otomatis tiap device menyimpang.
           </p>
         </div>
-        {canManage && (
-          <button onClick={() => setCreating(true)} className={primaryBtnCls}>
-            <Plus className="h-4 w-4" /> Preset Baru
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <DataTools
+            exportCfg={{
+              filename: 'preset',
+              columns: presetExportColumns(),
+              getRows: (c) => loadPresetExportRows(c),
+              hint: 'Nilai konfigurasi berkunci rahasia (password/psk/secret…) dikosongkan.',
+            }}
+            importCfg={canManage ? { title: 'Impor Preset', makeAdapter: () => presetAdapter({ isSuper: isSuperadmin }), invalidate: ['presets'] } : undefined}
+          />
+          {canManage && (
+            <button onClick={() => setCreating(true)} className={primaryBtnCls}>
+              <Plus className="h-4 w-4" /> Preset Baru
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="mb-5 flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
