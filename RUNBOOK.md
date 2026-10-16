@@ -178,3 +178,53 @@ server {
 
 ### E. Maintenance dan Observabilitas Terusan
 Sistem ACS mengekspos rute Prometheus di `GET /api/v1/metrics`. Tambahkan url server `acsd` ke *target scrape* `prometheus.yml` di infrastruktur *monitoring* Anda (Alertmanager/Grafana) agar bisa mendapatkan peringatan jika *latency inform TR-069* melesat atau penggunaan koneksi membengkak.
+
+
+### F. Reverse proxy TLS siap pakai (Caddy, HTTPS otomatis)
+Alternatif contoh NGINX di atas: overlay Compose yang sudah diuji fungsional (API, WebSocket `/api/v1/ws`, `/cwmp`, Console statis, HSTS, aset 404 sungguhan, health).
+
+1. Bangun Console untuk dilayani di origin yang sama:
+   `cd frontend && VITE_API_BASE_URL=/api/v1 VITE_SITE_URL=https://$ACS_DOMAIN npm ci && npm run build`
+2. Isi `.env`: `ACS_DOMAIN=acs.contoh.id`, `ACS_TLS_EMAIL=noc@contoh.id` (notifikasi kedaluwarsa Let's Encrypt, wajib), `ACS_PUBLIC_URL=https://acs.contoh.id`, `ACS_CORS_ALLOW_ORIGINS=https://acs.contoh.id`.
+3. Prasyarat: DNS A/AAAA `ACS_DOMAIN` → server; port 80, 443/tcp, 443/udp terbuka dari internet.
+4. `docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d`
+
+Hasil: Console di `https://<domain>/`, REST di `https://<domain>/api/v1`, **ACS URL untuk CPE: `https://<domain>/cwmp`**. Port `acsd` tidak lagi dipublikasikan ke host. `ACS_TRUSTED_PROXIES` otomatis diisi subnet privat Docker agar IP klien/CPE asli terbaca (rate limit, audit). Catatan: sertifikat Let's Encrypt butuh domain publik; untuk LAN tertutup tanpa domain, sertifikat internal Caddy tidak dipercaya CPE → gunakan HTTP. Belum diuji dengan CPE fisik.
+
+### G. Health & readiness
+- `GET /healthz` — liveness (selalu 200 selama proses hidup; tanpa dependensi, jangan dipakai untuk memutuskan restart karena DB).
+- `GET /readyz` — readiness: `200 {"status":"ready","checks":{"database":"ok","redis":"ok"}}`; **503** bila DB mati (kritis). Redis hanya dilaporkan (cache opsional). Tanpa teks error (aman dipublikasikan). Dipakai healthcheck Compose (`acsd` → *healthy*) dan layak untuk probe Kubernetes/load balancer: `livenessProbe: /healthz`, `readinessProbe: /readyz`.
+
+### H. Beberapa instance `acsd` (HA)
+Set `ACS_HA=true` pada **semua** instance (butuh Redis bersama; tanpa Redis HA otomatis mati + peringatan di log). Efek: (1) event WebSocket di-fan-out via Redis pub/sub — klien tersambung ke instance mana pun menerima event dari instance mana pun (tepat satu salinan); (2) rate limit REST/CWMP/login dihitung bersama lintas instance; (3) sweeper berkala (stale offline, timeout task, kedaluwarsa diagnostik, wave firmware, retensi) berjalan di satu instance per tick via kunci Redis ber-TTL (tahan crash); dispatcher webhook sudah berbasis klaim DB. Semua instance wajib memakai `ACS_JWT_SECRET` dan `ACS_CREDENTIAL_ENC_KEY` **yang sama**. Load balancer: sticky session **tidak diperlukan** — state sesi CWMP ada di DB (cookie `acs_session` hanya token). Terbukti dengan proxy round-robin per-request di depan dua `acsd`: satu sesi dibuka (Inform) di instance A dan diselesaikan (respons RPC Reboot + penutupan) di instance B tanpa galat. Redis down ≠ ACS berhenti: semuanya fail-open ke perilaku per-instance.
+Diuji dengan dua `acsd` nyata berbagi MariaDB+Redis: event dari A sampai ke klien WS di B dan sebaliknya; 12 login bergantian A/B hanya meloloskan batas bersama (2).
+
+### I. Enkripsi nilai rahasia at-rest (Preset/Profil)
+Nilai parameter bernama sensitif (`password|passphrase|psk|secret|token|key`) di `provisioning_profile_parameters` dan `presets.configurations` disimpan AES-GCM (`enc:v1:…`, kunci `ACS_CREDENTIAL_ENC_KEY`); API/engine selalu melihat plaintext. Setelah upgrade, enkripsi data lama sekali jalan (idempoten):
+`docker compose run --rm --no-deps --entrypoint /app/seal-secrets acsd`
+**Backup DB dulu.** Setelah itu jangan menjalankan `acsd` versi lama pada DB yang sama (akan mengirim ciphertext ke CPE), dan **jangan kehilangan/ganti `ACS_CREDENTIAL_ENC_KEY`** (nilai tak terbaca; acsd gagal-tertutup, bukan mengirim sampah). Nilai yang dilaporkan CPE (`device_parameters`) tidak dienkripsi tetapi disamarkan di API untuk non-admin.
+
+### J. Variabel lingkungan operasional (ringkas)
+| Variabel | Bawaan | Fungsi |
+|---|---|---|
+| `ACS_CWMP_RATE_LIMIT` | 5 | request/detik **per IP** di `/cwmp`; naikkan bila banyak CPE berbagi IP (CGNAT) |
+| `ACS_TRUSTED_PROXIES` | kosong | CIDR proxy yang boleh menentukan IP klien lewat `X-Forwarded-For` (wajib di belakang proxy) |
+| `ACS_WEBHOOK_BLOCK_PRIVATE` | false | SaaS publik: tolak target webhook di RFC1918/ULA/CGNAT (validasi **dan** saat menyambung — menutup DNS rebinding) |
+| `ACS_HA` | false | mode multi-instance (§H) |
+| `ACS_OPTICAL_POLL_MINUTES` | 360 | interval polling redaman optik per perangkat (0 = mati, minimum 15) |
+| `ACS_LOG_RETENTION_DAYS` | 90 | pangkas tabel log lama (audit `activity_logs` tidak dipangkas); 0 = mati |
+| `ACS_OIDC_*` | kosong | SSO OIDC (issuer, client id/secret, redirect URL) — akun dipetakan lewat **email** |
+
+### K. MFA (TOTP) & pemulihan akun
+Pengguna mengaktifkan sendiri di Profil → Keamanan (QR + 10 kode pemulihan sekali pakai). Kehilangan perangkat **dan** kode pemulihan: ADMIN tenant yang sama atau SUPERADMIN memakai tombol **Lepas MFA** (Administrasi → Users) atau `DELETE /api/v1/users/{id}/mfa` — rahasia & kode dihapus, sesi akun dicabut, tercatat `MFA_RESET`. Kode TOTP salah ikut lockout akun (5× → 15 menit). Rahasia TOTP terenkripsi dengan `ACS_CREDENTIAL_ENC_KEY`. SSO tidak menambah MFA lokal.
+
+### L. Hasil uji beban (lab, bukan jaminan produksi)
+`cmd/loadtest`, instance + DB terpisah, `ACS_CWMP_RATE_LIMIT=100000`, Inform minimal tanpa RPC lanjutan, Docker Desktop di laptop, 5.000 sesi:
+
+| concurrency | sesi/dtk | p50 | p95 | p99 | galat |
+|---:|---:|---:|---:|---:|---:|
+| 50 | 554 | 64 ms | 99 ms | 129 ms | 0 |
+| 200 | 580 | 256 ms | 406 ms | 504 ms | 0 |
+| 500 | 623 | 609 ms | 926 ms | 1,09 s | 0 |
+
+Throughput jenuh ≈ 600 sesi/dtk (latensi naik linear = antrean). 15.000 perangkat unik terbentuk, seluruh sesi tertutup, tanpa error di log. Inform nyata (puluhan parameter, RPC lanjutan) jauh lebih berat — ulangi dengan profil Inform realistis & CPE fisik sebelum menjanjikan kapasitas.

@@ -20,12 +20,12 @@ nyata dan tidak punya kuirk per-firmware. Gunanya:
 
 ---
 
-## 1. Yang Diuji (13 skenario)
+## 1. Yang Diuji (16 skenario)
 
 | # | Skenario | Yang dibuktikan |
 |---|---|---|
 | S1 | Onboarding multi-vendor | 5 profil vendor kirim Inform `0 BOOTSTRAP` → device tercatat, `tenant_id` ter-assign dari shared secret CWMP, `vendor_id` ter-resolve dari OUI, event tersimpan |
-| S2 | Provisioning push | Buat provisioning profile → `apply-profile` → sesi berikutnya CPE menerima `SetParameterValues`, data model CPE berubah, task `COMPLETED` |
+| S2 | Provisioning push | Buat provisioning profile → `apply-profile` → sesi berikutnya CPE menerima `SetParameterValues`, data model CPE berubah, task `COMPLETED`. Profil memuat parameter **sensitif** (`KeyPassphrase`): tersegel AES-GCM di DB, tetapi CPE menerima **plaintext** |
 | S3 | Reboot RPC | `POST /devices/:id/reboot` → CPE menerima `Reboot`, task `COMPLETED` |
 | S4 | GetParameterValues ad-hoc | NOC minta baca parameter → CPE menjawab → nilai tersimpan di `device_parameters` |
 | S5 | Fault 9005 tidak di-retry | CPE membalas `cwmp:Fault` 9005 (Invalid Parameter Name) → task `FAILED` permanen dalam 1 percobaan, TIDAK dikirim ulang di sesi berikutnya |
@@ -37,8 +37,11 @@ nyata dan tidak punya kuirk per-firmware. Gunanya:
 | S11 | CRUD lengkap | Katalog (vendor/OUI/model/mapping) get·patch·delete + **guard 409** bila masih dipakai (vendor ZTE nyata), **revive OUI** yang pernah dihapus, device delete → task terbuka **CANCELLED** → Inform berikutnya **revive** (id sama, task lama tidak jalan), tenant get/delete (guard user/device) + scope, GET user by id + scope, firmware get/patch/delete (identitas isi file tak berubah), tag patch (+ tag global hanya superadmin), preset get (scope), ZTP get 404 |
 | S12 | Auth email & reset | Login dengan **email** (tak peka huruf besar, spasi dipangkas) + kompatibilitas username; pesan 401 **seragam** (salah password vs email tak dikenal); `forgot-password` 202 generik untuk email tak terdaftar + **429** rate limit; `reset-password` token ngawur → 400; **admin reset** → password baru berlaku, lama ditolak, dan **JWT lama dicabut (401)**. Tidak mengirim email ke alamat nyata (domain `@e2e.local` dibuang mailer). Alur token email→tautan→password baru dibuktikan di test unit + integrasi MariaDB (`ACS_TEST_DSN`) + uji manual |
 | S13 | Pra-registrasi & impor perangkat | `POST /devices` (ADMIN dikunci ke tenant sendiri; duplikat/tenant lain 409; OUI/MAC/koordinat/vendor salah 400; superadmin wajib tenant), **PATCH menyimpan notes/MAC/lokasi/vendor** (regresi: repository dulu tidak menulis latitude/longitude), `POST /devices/import` — **dry-run mengklasifikasi tanpa menulis**, eksekusi = pratinjau, impor ulang idempoten, mode skip, tenant lain ditolak tanpa membocorkan pemilik; **Inform pertama CPE pra-registrasi memakai baris yang sama** (id sama, catatan terjaga, status berubah, vendor ter-resolve) sementara tenant LAIN ditolak |
+| S14 | Diagnostics Ping & Traceroute | `POST /devices/:id/diagnostics` (host/tipe divalidasi: host terlarang & tipe salah → 400) → task terstruktur via logical key `diag.*` (mapping, bukan percabangan vendor) → CPE menjalankan dan mengirim Inform berevent **`8 DIAGNOSTICS COMPLETE`** → ACS membaca hasil → status `COMPLETED` + hasil terstruktur; diuji pada dua vendor/data model berbeda (ZTE Ping, Nokia Traceroute) |
+| S15 | Redaman optik berbasis mapping | Device TR-181 (Nokia, model belum terdaftar): ACS mendeteksi data model dari parameter, me-resolve `optical.*` (standar `Device.Optical.Interface`, `value_scale` 0,001), mengantre GetParameterValues; hasil disimpan sebagai metrik dBm (−23500 → −23,5; 2100 → +2,1) |
+| S16 | MFA TOTP | Enrol (setup→enable, kode salah 400, 10 kode pemulihan) → login dua tahap (`mfa_required` tanpa `access_token`) → token tahap-2 **bukan sesi** (401 di endpoint lain) → kode salah 401 → kode benar → sesi sah → **replay kode ditolak** → kode pemulihan sekali pakai → ADMIN tenant lain mereset MFA 403, ADMIN tenant sama berhasil, sesi lama dicabut, login kembali satu tahap |
 
-Status terakhir: **11/11 PASS**, stabil pada 3 run berturut-turut (2026-10-15).
+Status terakhir: **16/16 PASS** (2026-10-16), termasuk run ulang penuh setelah penambahan MFA, enkripsi rahasia at-rest, penjaga SSRF saat sambungan, dan mode HA.
 
 ---
 

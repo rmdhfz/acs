@@ -1123,3 +1123,37 @@ Volume Go cache yang dibuat sesi ini: `acs-go-mod-cache`, `acs-go-build-cache`
 (aman ditinggal; ada juga `acs-gocache`/`acs-gomod` dari sesi lama). Semua
 container/network throwaway migrasi sudah dihapus; volume dev persisten
 (`acs_acs-mariadb-data`, `acs_acs-minio-data`) TIDAK disentuh.
+
+### LANJUTAN 9: Protokol/akses/keamanan/operasi hingga tuntas — 2026-10-16
+
+Permintaan: "lengkapi Protokol & Inti ACS, Multi-tenant & akses, Keamanan hingga 100%, lalu sisanya". Catatan jujur: yang dapat
+diverifikasi di lab sudah ditutup; yang butuh dunia nyata (CPE fisik, pentest independen, keputusan bisnis) **tidak** bisa diklaim selesai.
+
+**Protokol & inti**: diagnostics Ping/Traceroute end-to-end (event 8, logical key `diag.*`), redaman optik berbasis mapping
+(`value_scale`, polling terjadwal per Inform), refresh pohon parameter rekursif, SetParameterAttributes/notifikasi,
+GetRPCMethods/TransferCompleteResponse, UDP Connection Request mengikuti Annex G. e2e S14/S15.
+
+**Multi-tenant & akses**: SSO OIDC dipetakan lewat **email** (bukan username — celah pengambilalihan akun ditutup), callback redirect
+`/sso#token`, discovery IdP dicoba ulang, diuji dengan IdP tiruan RS256 sungguhan; **MFA TOTP** RFC 6238 (migrasi 0027, rahasia
+AES-GCM, anti-replay lewat CAS langkah, 10 kode pemulihan ber-HMAC, token tahap-2 tak berlaku sebagai sesi, lockout bersama &
+tidak direset oleh tahap pertama, nonaktifkan butuh password+kode, reset admin + cabut sesi, audit). UI: langkah kode di login, kartu MFA di
+Profil (QR), "Lepas MFA" di Administrasi. e2e S16, integrasi MariaDB (CAS paralel 20 goroutine → 1 pemenang), tes komponen.
+
+**Keamanan**: enkripsi at-rest nilai rahasia Preset/Profil (`enc:v1:`, fail-closed, alat backfill `seal-secrets`; e2e S2 membuktikan CPE
+menerima plaintext sementara DB menyimpan ciphertext); penjaga SSRF **saat sambungan** (DNS rebinding/redirect ditutup untuk webhook,
+Connection Request HTTP & UDP) + opsi `ACS_WEBHOOK_BLOCK_PRIVATE`; audit trail lengkap (LOGIN_FAILED, ACCOUNT_LOCKED, token, IP klien).
+
+**Operasi**: `/healthz` & `/readyz` + healthcheck compose; overlay TLS Caddy (`docker-compose.tls.yml`) diuji fungsional; mode HA
+(`ACS_HA`): fan-out WebSocket via Redis, rate limit terdistribusi, kunci leader sweeper — diuji dengan **dua acsd nyata**, termasuk satu
+sesi CWMP yang dibuka di instance A dan diselesaikan di B; `ACS_CWMP_RATE_LIMIT` (CGNAT/uji beban); **uji beban nyata** ~550–620 sesi/dtk,
+p95 99 ms @50 koneksi, 15.000 perangkat tanpa galat (RUNBOOK §L).
+
+**Kualitas**: audit UI otomatis (Chrome + axe-core, `npm run audit:ui`) atas 12 halaman × terang/gelap × desktop/mobile + modal: sebelum
+558 node kontras / 84 label / 116 tombol tanpa nama / overflow mobile 598 px; **sesudah 0 pelanggaran WCAG A/AA, 0 overflow, 0 galat konsol**.
+Bug nyata yang ditemukan: filter, kartu header detail device, dropdown notifikasi & palette berlatar putih di mode gelap; tab detail device
+melebarkan halaman di mobile. Galat pemuatan data kini toast (sebelumnya daftar gagal tampak "kosong"). Vitest + Testing Library 14 tes; CI
+menjalankan `npm test`. Go: `go test -race` seluruh paket + integrasi MariaDB/Redis; e2e 16/16; OpenAPI 137 request Postman.
+
+**Belum/tidak bisa diselesaikan di sini** (jujur): uji CPE fisik (UAT Rabu), pentest independen, SSO terhadap IdP organisasi nyata, kapasitas dengan
+Inform realistis, plan/metering/penagihan, ToS/privasi/DPA (butuh keputusan bisnis & hukum), pendaftaran tenant mandiri (keputusan model bisnis),
+orkestrasi Kubernetes/autoscaling, status page/helpdesk.
