@@ -20,7 +20,7 @@ export const FEATURES: Feature[] = [
   {
     icon: 'layers',
     title: 'Multi-vendor tanpa ubah kode',
-    body: 'Perbedaan path parameter tiap merek ditangani lewat katalog data (vendor, OUI, model, pemetaan parameter), bukan percabangan kode. Katalog bawaan mencakup ZTE, Huawei, FiberHome, Nokia, dan Cdata; menambah merek baru adalah operasi data. Root TR-098 (InternetGatewayDevice.*) maupun TR-181 (Device.*) ditentukan per perangkat.',
+    body: 'Perbedaan path parameter tiap merek ditangani lewat katalog data (vendor, OUI, model, pemetaan parameter), bukan percabangan kode. Katalog memuat 30+ merek (ZTE, Huawei, FiberHome, Nokia, C-Data, TP-Link, Tenda, VSOL, Sagemcom, Zyxel, dan lainnya) beserta ribuan OUI, ditambah pemetaan standar TR-098/TR-181 sebagai cadangan untuk merek yang belum dikenal. Menambah merek baru adalah operasi data. Root TR-098 (InternetGatewayDevice.*) maupun TR-181 (Device.*) ditentukan per perangkat.',
   },
   {
     icon: 'zap',
@@ -60,7 +60,22 @@ export const FEATURES: Feature[] = [
   {
     icon: 'shield',
     title: 'Keamanan sebagai standar',
-    body: 'Login email dengan hash Argon2id, reset password lewat email sekali pakai, pembatasan percobaan, kredensial terenkripsi di database, pencabutan sesi, dan perlindungan SSRF pada Connection Request.',
+    body: 'Login email dengan hash Argon2id, verifikasi dua langkah (TOTP), reset password lewat email sekali pakai, pembatasan percobaan, kredensial terenkripsi di database, pencabutan sesi, dan perlindungan SSRF pada Connection Request.',
+  },
+  {
+    icon: 'zap',
+    title: 'Diagnostik & redaman optik',
+    body: 'Jalankan ping dan traceroute dari ONT, serta baca level optik (RX/TX) berbasis pemetaan data. Hasil tampil terstruktur di Console dan ikut menjadi riwayat perangkat.',
+  },
+  {
+    icon: 'building',
+    title: 'Konsol operator SaaS',
+    body: 'Laporan platform per tenant (KPI, tren 30 hari, ekspor CSV), masuk-sebagai untuk dukungan yang teraudit, serta batas perangkat dan kuota task per tenant.',
+  },
+  {
+    icon: 'wifi',
+    title: 'Portal pelanggan (WiFi Saya)',
+    body: 'Pelanggan mengganti SSID dan password WiFi atau me-restart ONT miliknya sendiri. Akses dibatasi pada perangkat yang ditautkan admin, dengan validasi input dan jeda antar-perubahan.',
   },
 ]
 
@@ -87,7 +102,7 @@ export const FAQS: Faq[] = [
   },
   {
     q: 'Merek perangkat apa saja yang didukung?',
-    a: 'Katalog bawaan memuat ZTE, Huawei, FiberHome, Nokia, dan Cdata dengan pemetaan parameter dasar untuk TR-098 dan TR-181. Vendor atau model lain dapat ditambahkan sebagai data (OUI, model, pemetaan parameter) tanpa rilis perangkat lunak, kecuali vendor itu memiliki kuirk protokol nonstandar.',
+    a: 'Katalog memuat 30+ merek (ZTE, Huawei, FiberHome, Nokia, C-Data, TP-Link, Tenda, VSOL, Sagemcom, Zyxel, dan lainnya) dengan ribuan OUI dari registry IEEE. Perangkat yang mengikuti standar TR-098/TR-181 tetap bisa dikelola lewat pemetaan standar meski mereknya belum dikenal. Pemetaan awal ini belum diuji pada semua firmware, jadi uji dengan perangkat Anda sebelum rollout; vendor atau model lain dapat ditambahkan sebagai data tanpa rilis perangkat lunak, kecuali vendor itu memiliki kuirk protokol nonstandar.',
   },
   {
     q: 'Bagaimana ONT mengetahui alamat ACS?',
@@ -99,7 +114,7 @@ export const FAQS: Faq[] = [
   },
   {
     q: 'Bagaimana dengan keamanan data dan akses?',
-    a: 'Password disimpan dengan Argon2id, token reset sekali pakai dan kedaluwarsa, sesi dicabut saat password atau peran berubah, kredensial perangkat dienkripsi di database, nilai rahasia disamarkan untuk peran non-admin, dan setiap perubahan tercatat di audit trail. Endpoint CWMP sebaiknya dipasang di belakang TLS.',
+    a: 'Password disimpan dengan Argon2id, verifikasi dua langkah (TOTP) tersedia, token reset sekali pakai dan kedaluwarsa, sesi dicabut saat password atau peran berubah, kredensial perangkat dienkripsi di database, nilai rahasia disamarkan untuk peran non-admin, dan setiap perubahan tercatat di audit trail. Endpoint CWMP sebaiknya dipasang di belakang TLS.',
   },
   {
     q: 'Apakah bisa diintegrasikan dengan BSS/OSS atau sistem pemantauan?',

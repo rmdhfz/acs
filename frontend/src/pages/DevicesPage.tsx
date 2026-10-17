@@ -1,3 +1,4 @@
+import { useI18n } from '../lib/i18n'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -64,6 +65,7 @@ const primaryBtnCls =
   'flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white'
 
 export function DevicesPage() {
+  const { t: tl } = useI18n()
   const navigate = useNavigate()
   const { hasRole } = useAuth()
   const canBulkAct = hasRole('ADMIN', 'NOC')
@@ -176,7 +178,7 @@ export function DevicesPage() {
   }
 
   function vendorName(vendorId: number | null) {
-    if (vendorId == null) return '-'
+    if (vendorId == null) return 'Belum dikenal'
     return vendors.find((v) => v.id === vendorId)?.name ?? `#${vendorId}`
   }
 
@@ -201,7 +203,7 @@ export function DevicesPage() {
     <div className="mx-auto max-w-7xl px-6 py-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Devices</h1>
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">{tl('nav.devices')}</h1>
           <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Monitor status koneksi perangkat CPE secara real-time</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -288,7 +290,7 @@ export function DevicesPage() {
             setStatusFilter(e.target.value)
             resetToFirstPage()
           }}
-          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-500"
+          className="min-w-[140px] flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 sm:flex-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-500"
         >
           <option value="">Semua status</option>
           {statusRefs?.map((s) => (
@@ -304,7 +306,7 @@ export function DevicesPage() {
             setVendorFilter(e.target.value)
             resetToFirstPage()
           }}
-          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-500"
+          className="min-w-[140px] flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 sm:flex-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-500"
         >
           <option value="">Semua vendor</option>
           {vendors.map((v) => (
@@ -321,7 +323,7 @@ export function DevicesPage() {
               setTagFilter(e.target.value)
               resetToFirstPage()
             }}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-500"
+            className="min-w-[140px] flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 sm:flex-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-500"
           >
             <option value="">Semua tag</option>
             {tags.map((t) => (
@@ -430,12 +432,45 @@ export function DevicesPage() {
           </EmptyState>
         ) : (
           <>
-            <div className="overflow-x-auto">
+            <ul className="divide-y divide-slate-100 md:hidden dark:divide-slate-800" aria-label="Daftar perangkat">
+              {devices.map((d) => {
+                const status = findRefById(statusRefs, d.device_status_id)
+                return (
+                  <li key={d.id} className="flex items-start gap-3 px-4 py-3.5">
+                    {canBulkAct && (
+                      <input
+                        type="checkbox"
+                        checked={selected.has(d.id)}
+                        aria-label={`Pilih device ${d.serial_number}`}
+                        onChange={() => toggleSelected(d.id)}
+                        className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300"
+                      />
+                    )}
+                    <button type="button" onClick={() => navigate(`/devices/${d.id}`)} className="min-w-0 flex-1 text-left">
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="truncate font-mono text-xs font-medium text-slate-900 dark:text-slate-100">{d.serial_number}</span>
+                        <StatusBadge code={status?.code} label={status?.name ?? '-'} pulse={status?.code === 'ONLINE'} />
+                      </span>
+                      <span className="mt-1 block truncate text-sm text-slate-600 dark:text-slate-400">
+                        {vendorName(d.vendor_id)}
+                        {d.software_version ? ` · ${d.software_version}` : ''}
+                      </span>
+                      <span className="mt-0.5 block truncate font-mono text-xs text-slate-500 dark:text-slate-400">
+                        {d.ip_address ?? '-'}
+                        {d.mac_address ? ` · ${d.mac_address}` : ''}
+                      </span>
+                      <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">Terhubung {formatRelativeTime(d.last_inform_at)}</span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+            <div className="hidden overflow-x-auto md:block">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                   {canBulkAct && (
-                    <th className="w-10 px-5 py-3">
+                    <th className="w-10 px-4 py-3">
                       <input
                         type="checkbox"
                         checked={devices.length > 0 && selected.size === devices.length}
@@ -446,14 +481,13 @@ export function DevicesPage() {
                       />
                     </th>
                   )}
-                  <th className="px-5 py-3">Status</th>
-                  <th className="px-5 py-3">Vendor</th>
-                  <th className="px-5 py-3">Serial Number</th>
-                  <th className="px-5 py-3">MAC Address</th>
-                  <th className="px-5 py-3">IP Address</th>
-                  <th className="px-5 py-3">Firmware</th>
-                  <th className="px-5 py-3">Terakhir Terhubung</th>
-                  {canBulkAct && <th className="w-24 px-5 py-3 text-right">Aksi</th>}
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Vendor</th>
+                  <th className="px-4 py-3">Serial Number</th>
+                  <th className="px-4 py-3">IP / MAC</th>
+                  <th className="px-4 py-3">Firmware</th>
+                  <th className="px-4 py-3">Terakhir Terhubung</th>
+                  {canBulkAct && <th className="w-24 px-4 py-3 text-right">Aksi</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -466,7 +500,7 @@ export function DevicesPage() {
                       className="cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50"
                     >
                       {canBulkAct && (
-                        <td className="px-5 py-3.5" onClick={(e) => e.stopPropagation()}>
+                        <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
                           <input
                             type="checkbox"
                             checked={selected.has(d.id)}
@@ -476,17 +510,19 @@ export function DevicesPage() {
                           />
                         </td>
                       )}
-                      <td className="px-5 py-3.5">
+                      <td className="px-4 py-3.5">
                         <StatusBadge code={status?.code} label={status?.name ?? '-'} pulse={status?.code === 'ONLINE'} />
                       </td>
-                      <td className="px-5 py-3.5 text-slate-600 dark:text-slate-400">{vendorName(d.vendor_id)}</td>
-                      <td className="whitespace-nowrap px-5 py-3.5 font-mono text-xs text-slate-900 dark:text-slate-100">{d.serial_number}</td>
-                      <td className="px-5 py-3.5 font-mono text-xs text-slate-500 dark:text-slate-400">{d.mac_address ?? '-'}</td>
-                      <td className="px-5 py-3.5 font-mono text-xs text-slate-500 dark:text-slate-400">{d.ip_address ?? '-'}</td>
-                      <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{d.software_version ?? '-'}</td>
-                      <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{formatRelativeTime(d.last_inform_at)}</td>
+                      <td className="max-w-[11rem] truncate px-4 py-3.5 text-slate-600 dark:text-slate-400" title={vendorName(d.vendor_id)}>{vendorName(d.vendor_id)}</td>
+                      <td className="whitespace-nowrap px-4 py-3.5 font-mono text-xs text-slate-900 dark:text-slate-100">{d.serial_number}</td>
+                      <td className="whitespace-nowrap px-4 py-3.5 font-mono text-xs text-slate-600 dark:text-slate-300">
+                        <div>{d.ip_address ?? '-'}</div>
+                        {d.mac_address && <div className="text-slate-400 dark:text-slate-500">{d.mac_address}</div>}
+                      </td>
+                      <td className="max-w-[10rem] truncate px-4 py-3.5 text-slate-500 dark:text-slate-400" title={d.software_version ?? undefined}>{d.software_version ?? '-'}</td>
+                      <td className="whitespace-nowrap px-4 py-3.5 text-slate-500 dark:text-slate-400">{formatRelativeTime(d.last_inform_at)}</td>
                       {canBulkAct && (
-                        <td className="px-5 py-3.5" onClick={(e) => e.stopPropagation()}>
+                        <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-1">
                             <button
                               type="button"

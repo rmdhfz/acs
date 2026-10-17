@@ -175,6 +175,23 @@ for (const theme of THEMES) {
     await page.keyboard.press('Escape')
     await sleep(250)
   }
+  // menu aksi baris (RowMenu): buka pada tabel Users/Tenants & detail perangkat, lalu audit isinya
+  for (const route of ['/administration', '/devices/' + (dev ? dev.id : '')]) {
+    await page.goto(APP + route, { waitUntil: 'networkidle2', timeout: 25000 }).catch(() => {})
+    await sleep(600)
+    const opened = await page.evaluate(() => {
+      const b = document.querySelector('button[aria-haspopup="menu"]')
+      if (!b) return false
+      b.click()
+      return true
+    })
+    if (!opened) continue
+    await sleep(300)
+    views++
+    for (const v of (await axeRun(page, '[role="menu"]')) ?? []) findings.push({ where: `rowmenu/${theme}${route}`, kind: `axe:${v.id}`, detail: `${v.n} node (${v.impact}) ${v.nodes[0]}` })
+    await page.keyboard.press('Escape')
+    await sleep(200)
+  }
   await page.goto(APP + '/dashboard', { waitUntil: 'networkidle2' }).catch(() => {})
   await sleep(500)
   await page.keyboard.down('Control')
@@ -183,6 +200,32 @@ for (const theme of THEMES) {
   await sleep(400)
   views++
   for (const v of (await axeRun(page, '[class*="max-w-lg"]')) ?? []) findings.push({ where: `palette/${theme}`, kind: `axe:${v.id}`, detail: `${v.n} node (${v.impact}) ${v.nodes[0]}` })
+  await ctx.close()
+}
+// 3) halaman publik ANONIM (tanpa token): landing, login, lupa password — terang/gelap × desktop/mobile
+for (const vp of VIEWPORTS) for (const theme of THEMES) {
+  if (!keep(vp.name, theme)) continue
+  const ctx = await browser.createBrowserContext()
+  const page = await ctx.newPage()
+  await page.setViewport({ width: vp.width, height: vp.height, isMobile: vp.mobile, hasTouch: vp.mobile })
+  await page.evaluateOnNewDocument((th) => {
+    localStorage.setItem('acs_theme', th)
+    localStorage.setItem('acs_lang', 'id')
+  }, theme)
+  const errors = []
+  page.on('console', (m) => m.type() === 'error' && !/401|Failed to load resource/.test(m.text()) && errors.push(m.text().slice(0, 160)))
+  page.on('pageerror', (e) => errors.push('PAGEERROR ' + String(e).slice(0, 160)))
+  for (const route of ['/', '/login', '/forgot-password']) {
+    errors.length = 0
+    const where = 'anon/' + vp.name + '/' + theme + route
+    await page.goto(APP + route, { waitUntil: 'networkidle2', timeout: 25000 }).catch((e) => findings.push({ where, kind: 'navigasi', detail: e.message }))
+    await sleep(600)
+    views++
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+    if (overflow > 1) findings.push({ where, kind: 'overflow-horizontal', detail: '+' + overflow + 'px' })
+    if (errors.length) findings.push({ where, kind: 'galat-konsol', detail: errors[0] })
+    for (const v of (await axeRun(page, null)) ?? []) findings.push({ where, kind: 'axe:' + v.id, detail: v.n + ' node (' + v.impact + ') ' + v.nodes[0] })
+  }
   await ctx.close()
 }
 await browser.close()

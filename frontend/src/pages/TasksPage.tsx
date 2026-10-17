@@ -1,3 +1,4 @@
+import { useI18n } from '../lib/i18n'
 import { Fragment, useMemo, useState, type FormEvent } from 'react'
 import { ChevronLeft, ChevronRight, ListChecks, Plus, X } from 'lucide-react'
 import { StatusBadge } from '../components/StatusBadge'
@@ -20,6 +21,7 @@ const primaryBtnCls =
   'flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white'
 
 export function TasksPage() {
+  const { t: tl } = useI18n()
   const { hasRole } = useAuth()
   const canManage = hasRole('ADMIN', 'NOC')
 
@@ -67,7 +69,7 @@ export function TasksPage() {
     <div className="mx-auto max-w-7xl px-6 py-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Tasks</h1>
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">{tl('nav.tasks')}</h1>
           <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Antrean RPC CWMP (SetParameterValues, Reboot, dst) ke seluruh device</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

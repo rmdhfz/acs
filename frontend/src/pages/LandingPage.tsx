@@ -147,7 +147,7 @@ export function LandingPage() {
                   Lihat cara kerja
                 </a>
               </div>
-              <p className="mt-6 text-sm text-slate-400">Katalog bawaan: ZTE · Huawei · FiberHome · Nokia · Cdata</p>
+              <p className="mt-6 text-sm text-slate-400">Katalog 30+ merek: ZTE · Huawei · FiberHome · Nokia · C-Data · TP-Link · VSOL · Tenda · Sagemcom · dan lainnya</p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4 shadow-2xl sm:p-6">
               <ArchitectureDiagram />

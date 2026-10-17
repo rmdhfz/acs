@@ -1,3 +1,4 @@
+import { useI18n } from '../lib/i18n'
 import { useState } from 'react'
 import { Bell, BellOff, Check, ChevronDown, ChevronRight, Copy, Globe, Plus, RefreshCw, Send, TestTube, Trash2, Zap } from 'lucide-react'
 import {
@@ -383,6 +384,7 @@ import { ExportMenu } from '../components/ExportMenu'
 import { loadWebhookExportRows, webhookExportColumns } from '../imports/webhooks'
 
 export function WebhooksPage() {
+  const { t: tl } = useI18n()
   const [showCreate, setShowCreate] = useState(false)
   const { data: eventRefs } = useRefs('ref_webhook_event_types')
   const { data, isLoading } = useWebhooks()
@@ -397,7 +399,7 @@ export function WebhooksPage() {
       {/* Header */}
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Webhooks</h1>
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">{tl('nav.webhooks')}</h1>
           <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
             Kelola langganan webhook keluar — event ACS dikirim otomatis ke sistem BSS/OSS/NMS Anda.
           </p>

@@ -279,7 +279,7 @@ export function DashboardPage() {
         ))}
 
       {/* KPI */}
-      <div className={`mb-6 grid grid-cols-2 gap-4 sm:grid-cols-3 ${canOps ? 'xl:grid-cols-6' : 'xl:grid-cols-5'}`}>
+      <div className={`mb-6 grid grid-cols-2 gap-4 sm:grid-cols-3 ${canOps ? 'xl:grid-cols-3 2xl:grid-cols-6' : 'xl:grid-cols-5'}`}>
         <StatCard label={t('dash.kpi.total')} value={totalDevices} icon={Router} tone="default" loading={deviceStatsLoading} to="/devices" />
         <StatCard
           label={t('dash.kpi.online')}

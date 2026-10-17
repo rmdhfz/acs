@@ -1,3 +1,4 @@
+import { useI18n } from '../lib/i18n'
 import { useEffect, useState, type FormEvent } from 'react'
 import { HardDrive, Plus, Rocket } from 'lucide-react'
 import { EmptyState } from '../components/EmptyState'
@@ -38,6 +39,7 @@ const primaryBtnCls =
 type Tab = 'catalog' | 'rollout'
 
 export function FirmwarePage() {
+  const { t: tl } = useI18n()
   const [tab, setTab] = useState<Tab>('catalog')
   const { hasRole } = useAuth()
   const canManage = hasRole('ADMIN')
@@ -48,7 +50,7 @@ export function FirmwarePage() {
     <div className="mx-auto max-w-7xl px-6 py-8">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Firmware</h1>
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">{tl('nav.firmware')}</h1>
           <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
             Katalog firmware per vendor & canary/staged rollout ke populasi device
           </p>

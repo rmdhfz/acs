@@ -1,3 +1,4 @@
+import { useI18n } from '../lib/i18n'
 import { useState, type FormEvent } from 'react'
 import { Tag as TagIcon, Plus, AlertCircle } from 'lucide-react'
 import { EditButton } from '../components/RecordActions'
@@ -20,6 +21,7 @@ const primaryBtnCls =
   'flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white'
 
 export default function TagsPage() {
+  const { t: tl } = useI18n()
   const { hasRole } = useAuth()
   const canManage = hasRole('ADMIN')
   const isSuperadmin = hasRole('SUPERADMIN')
@@ -50,7 +52,7 @@ export default function TagsPage() {
     <div className="mx-auto max-w-7xl px-6 py-8">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Tags</h1>
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">{tl('nav.tags')}</h1>
           <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
             Kelola label dinamis untuk mengelompokkan perangkat CPE.
           </p>

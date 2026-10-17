@@ -1,6 +1,7 @@
+import { useI18n } from '../lib/i18n'
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Building2, Gauge, KeyRound, Link2, LogIn, Pencil, Palette, Plus, Shield, ShieldOff, Trash2, Upload, Users as UsersIcon, Wand2 } from 'lucide-react'
+import { Building2, Gauge, KeyRound, Link2, LogIn, Palette, Plus, Shield, ShieldOff, Trash2, Upload, Users as UsersIcon, Wand2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { EmptyState } from '../components/EmptyState'
 import { StatusBadge } from '../components/StatusBadge'
@@ -12,6 +13,7 @@ import { ImportWizard } from '../components/ImportWizard'
 import { loadUserExportRows, userAdapter, userExportColumns } from '../imports/users'
 import { loadTenantExportRows, tenantAdapter, tenantExportColumns } from '../imports/tenants'
 import { PageSpinner } from '../components/Spinner'
+import { RowMenu } from '../components/RowMenu'
 import { useAuth } from '../lib/auth'
 import { ApiError } from '../lib/api'
 import { useToast } from '../lib/toast'
@@ -46,7 +48,7 @@ import {
 } from '../lib/hooks'
 import { formatDateTime } from '../lib/format'
 import { LIMITS } from '../lib/limits'
-import { DeleteButton, DetailButton, DetailModal } from '../components/RecordActions'
+import { DetailButton, DetailModal, EditButton } from '../components/RecordActions'
 import type { ApiToken, Tenant, User } from '../lib/types'
 
 const inputCls =
@@ -63,6 +65,7 @@ const outlineBtnCls =
 type Tab = 'users' | 'tenants' | 'branding' | 'tokens'
 
 export function AdministrationPage() {
+  const { t: tl } = useI18n()
   const { hasRole } = useAuth()
   const isSuperadmin = hasRole('SUPERADMIN')
   const isAdmin = hasRole('ADMIN')
@@ -71,7 +74,7 @@ export function AdministrationPage() {
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Administration</h1>
+        <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">{tl('nav.administration')}</h1>
         <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Kelola user dan tenant platform</p>
       </div>
 
@@ -263,66 +266,35 @@ function UsersTab({ isSuperadmin }: { isSuperadmin: boolean }) {
                     </td>
                     <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{formatDateTime(u.last_login_at)}</td>
                     <td className="px-5 py-3.5 text-right">
-                      <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5">
+                      <div className="flex items-center justify-end gap-3">
                         <DetailButton onClick={() => setDetailUserId(u.id)} title={`Detail user ${u.username}`} />
-                        <button
-                          onClick={() => setEditTarget(u)}
-                          className="flex items-center gap-1 whitespace-nowrap text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
-                          title="Edit nama/email/status aktif"
-                        >
-                          <Pencil className="h-3.5 w-3.5" /> Edit
-                        </button>
-                        <button
-                          onClick={() => setPasswordTarget(u)}
-                          className="flex items-center gap-1 whitespace-nowrap text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
-                          title="Reset password user ini"
-                        >
-                          <KeyRound className="h-3.5 w-3.5" /> Reset Password
-                        </button>
-                        {canImpersonate && !isSelf && u.is_active && u.tenant_id !== null && !u.roles.includes('SUPERADMIN') && (
-                          <button
-                            onClick={() => handleImpersonate(u)}
-                            className="flex items-center gap-1 whitespace-nowrap text-xs font-medium text-indigo-700 hover:text-indigo-900 dark:text-indigo-300 dark:hover:text-indigo-200"
-                            title="Masuk sebagai pengguna ini (dukungan; teraudit)"
-                          >
-                            <LogIn className="h-3.5 w-3.5" /> Masuk sebagai
-                          </button>
-                        )}
-                        {u.roles.includes('ENDUSER') && (
-                          <button
-                            onClick={() => setDevicesTarget(u)}
-                            className="flex items-center gap-1 whitespace-nowrap text-xs font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
-                            title="Perangkat yang terlihat di portal WiFi Saya"
-                          >
-                            <Link2 className="h-3.5 w-3.5" /> Perangkat
-                          </button>
-                        )}
-                        {u.mfa_enabled && (
-                          <button
-                            onClick={() => handleResetMfa(u)}
-                            disabled={resetMfaMutation.isPending}
-                            className="flex items-center gap-1 whitespace-nowrap text-xs font-medium text-amber-700 hover:text-amber-900 disabled:opacity-50 dark:text-amber-400 dark:hover:text-amber-300"
-                            title="Lepas MFA (pemilik kehilangan perangkat authenticator)"
-                          >
-                            <ShieldOff className="h-3.5 w-3.5" /> Lepas MFA
-                          </button>
-                        )}
-                        <button
-                          onClick={() => setRolesTarget(u)}
-                          className="flex items-center gap-1 whitespace-nowrap text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
-                          title="Kelola role user ini"
-                        >
-                          <Shield className="h-3.5 w-3.5" /> Kelola Role
-                        </button>
-                        {!isSelf && (
-                          <button
-                            onClick={() => handleDelete(u)}
-                            className="flex items-center gap-1 text-xs font-medium text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
-                            title="Hapus user ini"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" /> Hapus
-                          </button>
-                        )}
+                        <EditButton onClick={() => setEditTarget(u)} title="Edit nama/email/status aktif" />
+                        <RowMenu
+                          label={`Aksi lainnya untuk ${u.username}`}
+                          items={[
+                            { label: 'Reset password', icon: KeyRound, onClick: () => setPasswordTarget(u), title: 'Reset password user ini' },
+                            { label: 'Kelola role', icon: Shield, onClick: () => setRolesTarget(u), title: 'Kelola role user ini' },
+                            { label: 'Perangkat portal', icon: Link2, onClick: () => setDevicesTarget(u), hidden: !u.roles.includes('ENDUSER'), title: 'Perangkat yang terlihat di portal WiFi Saya' },
+                            {
+                              label: 'Masuk sebagai',
+                              icon: LogIn,
+                              tone: 'brand',
+                              onClick: () => handleImpersonate(u),
+                              hidden: !(canImpersonate && !isSelf && u.is_active && u.tenant_id !== null && !u.roles.includes('SUPERADMIN')),
+                              title: 'Masuk sebagai pengguna ini (dukungan; teraudit)',
+                            },
+                            {
+                              label: 'Lepas MFA',
+                              icon: ShieldOff,
+                              tone: 'warn',
+                              onClick: () => handleResetMfa(u),
+                              hidden: !u.mfa_enabled,
+                              disabled: resetMfaMutation.isPending,
+                              title: 'Lepas MFA (pemilik kehilangan perangkat authenticator)',
+                            },
+                            { label: 'Hapus user', icon: Trash2, tone: 'danger', onClick: () => handleDelete(u), hidden: isSelf, title: 'Hapus user ini' },
+                          ]}
+                        />
                       </div>
                     </td>
                   </tr>
@@ -899,37 +871,18 @@ function TenantsTab() {
                   </td>
                   <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{formatDateTime(t.created_at)}</td>
                   <td className="px-5 py-3.5 text-right">
-                    <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5">
+                    <div className="flex items-center justify-end gap-3">
                       <DetailButton onClick={() => setDetailTenantId(t.id)} title={`Detail tenant ${t.code}`} />
-                      <button
-                        onClick={() => setEditTarget(t)}
-                        className="flex items-center gap-1 whitespace-nowrap text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
-                        title="Ubah code/nama tenant, atau aktif/nonaktifkan"
-                      >
-                        <Pencil className="h-3.5 w-3.5" /> Edit
-                      </button>
-                      <button
-                        onClick={() => setBrandingTarget(t)}
-                        className="flex items-center gap-1 whitespace-nowrap text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
-                        title="Edit branding (nama, logo, warna aksen)"
-                      >
-                        <Palette className="h-3.5 w-3.5" /> Branding
-                      </button>
-                      <button
-                        onClick={() => setRotateTarget(t)}
-                        className="flex items-center gap-1 whitespace-nowrap text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
-                        title="Set/rotate shared secret Inform CWMP"
-                      >
-                        <KeyRound className="h-3.5 w-3.5" /> Kredensial CWMP
-                      </button>
-                      <button
-                        onClick={() => setQuotaTarget(t)}
-                        className="flex items-center gap-1 whitespace-nowrap text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
-                        title="Atur kuota task queue tenant (superadmin only)"
-                      >
-                        <Gauge className="h-3.5 w-3.5" /> Kuota Task
-                      </button>
-                      <DeleteButton onClick={() => handleDeleteTenant(t)} title={`Hapus tenant ${t.code}`} disabled={deleteTenantMutation.isPending} />
+                      <EditButton onClick={() => setEditTarget(t)} title="Ubah code/nama tenant, atau aktif/nonaktifkan" />
+                      <RowMenu
+                        label={`Aksi lainnya untuk tenant ${t.code}`}
+                        items={[
+                          { label: 'Kuota & paket', icon: Gauge, onClick: () => setQuotaTarget(t), title: 'Batas perangkat dan kuota task tenant (superadmin)' },
+                          { label: 'Kredensial CWMP', icon: KeyRound, onClick: () => setRotateTarget(t), title: 'Set/rotate shared secret Inform CWMP' },
+                          { label: 'Branding', icon: Palette, onClick: () => setBrandingTarget(t), title: 'Edit branding (nama, logo, warna aksen)' },
+                          { label: 'Hapus tenant', icon: Trash2, tone: 'danger', onClick: () => handleDeleteTenant(t), disabled: deleteTenantMutation.isPending, title: `Hapus tenant ${t.code}` },
+                        ]}
+                      />
                     </div>
                   </td>
                 </tr>

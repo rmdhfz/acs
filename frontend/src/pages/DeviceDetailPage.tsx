@@ -8,6 +8,7 @@ import { PageSpinner } from '../components/Spinner'
 import { ParameterTree } from '../components/ParameterTree'
 import { ConfigHistory } from '../components/ConfigHistory'
 import { Modal } from '../components/Modal'
+import { RowMenu } from '../components/RowMenu'
 import { DeviceFormModal } from '../components/DeviceFormModal'
 import { useAuth } from '../lib/auth'
 import { useTheme } from '../lib/theme'
@@ -51,12 +52,12 @@ const TABS: { key: Tab; label: string; icon: typeof Cpu }[] = [
   { key: 'overview', label: 'Overview', icon: Cpu },
   { key: 'parameters', label: 'Parameter', icon: SlidersHorizontal },
   { key: 'optical', label: 'Redaman Optik', icon: Gauge },
-  { key: 'events', label: 'Histori Event', icon: History },
+  { key: 'events', label: 'Event', icon: History },
   { key: 'tasks', label: 'Task', icon: ListChecks },
   { key: 'diagnostics', label: 'Diagnostics', icon: Activity },
-  { key: 'firmware', label: 'Firmware & Files', icon: HardDrive },
-  { key: 'timeline', label: 'Timeline Audit', icon: ScrollText },
-  { key: 'config', label: 'Config History', icon: FileUp },
+  { key: 'firmware', label: 'Firmware', icon: HardDrive },
+  { key: 'timeline', label: 'Audit', icon: ScrollText },
+  { key: 'config', label: 'Konfigurasi', icon: FileUp },
 ]
 
 const ACTIVITY_LABELS: Record<string, string> = {
@@ -199,7 +200,7 @@ export function DeviceDetailPage() {
               onClick={() => setShowApplyProfile(true)}
               className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 font-medium text-slate-700 dark:text-slate-300 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50"
             >
-              <Sparkles className="h-4 w-4" /> Terapkan Provisioning Profile
+              <Sparkles className="h-4 w-4" /> Terapkan Profile
             </button>
           )}
           {hasRole('ADMIN', 'NOC') && (
@@ -211,15 +212,6 @@ export function DeviceDetailPage() {
               <RefreshCcw className="h-4 w-4" /> Reboot
             </button>
           )}
-          {hasRole('ADMIN') && (
-            <button
-              onClick={handleFactoryReset}
-              disabled={factoryResetMutation.isPending}
-              className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 dark:bg-red-900/30 dark:border-red-800 dark:text-red-400 transition-colors hover:bg-red-100 dark:hover:bg-red-900/50"
-            >
-              <AlertTriangle className="h-4 w-4" /> Factory Reset
-            </button>
-          )}
           {hasRole('ADMIN', 'NOC') && (
             <button
               onClick={() => setShowEditDevice(true)}
@@ -229,14 +221,13 @@ export function DeviceDetailPage() {
             </button>
           )}
           {hasRole('ADMIN') && (
-            <button
-              onClick={handleDeleteDevice}
-              disabled={deleteDeviceMutation.isPending}
-              title="Hapus device dari daftar (soft delete)"
-              className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-red-400 dark:hover:bg-red-900/20"
-            >
-              <Trash2 className="h-4 w-4" /> Hapus Device
-            </button>
+            <RowMenu
+              label="Aksi lainnya untuk perangkat ini"
+              items={[
+                { label: 'Factory reset', icon: AlertTriangle, tone: 'danger', onClick: handleFactoryReset, disabled: factoryResetMutation.isPending, title: 'Kembalikan perangkat ke pengaturan pabrik (menghapus konfigurasi pelanggan)' },
+                { label: 'Hapus device', icon: Trash2, tone: 'danger', onClick: handleDeleteDevice, disabled: deleteDeviceMutation.isPending, title: 'Hapus device dari daftar (soft delete)' },
+              ]}
+            />
           )}
         </div>
       </div>
@@ -252,6 +243,11 @@ export function DeviceDetailPage() {
             {vendor?.name ?? 'Vendor belum diketahui'}
             {device.product_class ? ` · ${device.product_class}` : ''}
           </p>
+          {!vendor && (
+            <p className="mt-1 max-w-xl text-xs text-amber-700 dark:text-amber-400">
+              OUI perangkat belum ada di katalog — ACS memakai pemetaan standar TR-098/TR-181. Tambahkan OUI di Katalog Vendor bila perlu pemetaan khusus.
+            </p>
+          )}
         </div>
         <dl className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm sm:grid-cols-4">
           <InfoItem label="IP Address" value={device.ip_address ?? '-'} mono />
@@ -269,14 +265,14 @@ export function DeviceDetailPage() {
       {showEditDevice && <DeviceFormModal mode="edit" device={device} onClose={() => setShowEditDevice(false)} />}
 
       {/* Baris tab dapat digulir: di layar sempit 9 tab tidak muat (sebelumnya melebarkan seluruh halaman). */}
-      <div role="tablist" aria-label="Bagian detail device" className="mb-4 flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-800">
+      <div role="tablist" aria-label="Bagian detail device" className="mb-4 flex gap-0.5 overflow-x-auto border-b border-slate-200 dark:border-slate-800">
         {TABS.map((t) => (
           <button
             key={t.key}
             role="tab"
             aria-selected={tab === t.key}
             onClick={() => setTab(t.key)}
-            className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
+            className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-2.5 py-2.5 text-sm font-medium transition-colors ${
               tab === t.key
                 ? 'border-slate-900 text-slate-900 dark:border-slate-100 dark:text-slate-100'
                 : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800'

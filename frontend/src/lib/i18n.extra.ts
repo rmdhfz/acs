@@ -8,7 +8,7 @@ export const ID_EXTRA: Dict = {
   // ---- auth shell (panel brand)
   'auth.brand.tagline': 'Kelola ribuan perangkat CPE dari satu konsol.',
   'auth.brand.sub': 'ACS multi-vendor berbasis TR-069/CWMP untuk operator ISP.',
-  'auth.feat.multivendor': 'Multi-vendor: ZTE, Huawei, FiberHome, Nokia, C-Data',
+  'auth.feat.multivendor': 'Multi-vendor: 30+ merek (ZTE, Huawei, FiberHome, TP-Link, VSOL, …)',
   'auth.feat.zerotouch': 'Zero-touch provisioning & preset otomatis',
   'auth.feat.firmware': 'Rollout firmware bertahap (canary) dengan batas gagal',
   'auth.feat.realtime': 'Monitoring realtime & Connection Request instan',
@@ -180,7 +180,7 @@ export const ID_EXTRA: Dict = {
 export const EN_EXTRA: Dict = {
   'auth.brand.tagline': 'Manage thousands of CPE devices from a single console.',
   'auth.brand.sub': 'A multi-vendor TR-069/CWMP ACS built for ISP operators.',
-  'auth.feat.multivendor': 'Multi-vendor: ZTE, Huawei, FiberHome, Nokia, C-Data',
+  'auth.feat.multivendor': 'Multi-vendor: 30+ brands (ZTE, Huawei, FiberHome, TP-Link, VSOL, …)',
   'auth.feat.zerotouch': 'Zero-touch provisioning & automatic presets',
   'auth.feat.firmware': 'Staged (canary) firmware rollout with failure thresholds',
   'auth.feat.realtime': 'Realtime monitoring & instant Connection Request',

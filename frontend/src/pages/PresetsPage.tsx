@@ -1,3 +1,4 @@
+import { useI18n } from '../lib/i18n'
 import { useState, type FormEvent } from 'react'
 import { SlidersHorizontal, Plus, AlertCircle, AlertTriangle, ShieldCheck } from 'lucide-react'
 import { EmptyState } from '../components/EmptyState'
@@ -29,6 +30,7 @@ const CONFIG_PLACEHOLDER = `[
 ]`
 
 export default function PresetsPage() {
+  const { t: tl } = useI18n()
   const { hasRole } = useAuth()
   const canManage = hasRole('ADMIN')
   const isSuperadmin = hasRole('SUPERADMIN')
@@ -49,7 +51,7 @@ export default function PresetsPage() {
     <div className="mx-auto max-w-5xl px-6 py-8">
       <div className="mb-4 flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Preset</h1>
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">{tl('nav.presets')}</h1>
           <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
             Desired-state config gaya GenieACS. Preset ber-<em>enforcement</em> dijaga otomatis tiap device menyimpang.
           </p>

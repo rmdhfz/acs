@@ -1,3 +1,4 @@
+import { useI18n } from '../lib/i18n'
 import { useMemo, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
@@ -34,6 +35,7 @@ export function ReportsPage() {
 }
 
 function ReportsContent() {
+  const { t: tl } = useI18n()
   const { data, isLoading, isError, refetch, isFetching } = useSaaSReport()
   const { resolvedTheme } = useTheme()
   const toast = useToast()
@@ -89,7 +91,7 @@ function ReportsContent() {
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Laporan SaaS</h1>
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">{tl('nav.reports')}</h1>
           <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-400">
             Ukuran pelanggan, pemakaian, dan kesehatan tenant · dibuat {formatDateTime(data.generated_at)}
           </p>

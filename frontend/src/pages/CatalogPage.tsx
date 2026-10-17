@@ -1,3 +1,4 @@
+import { useI18n } from '../lib/i18n'
 import { useState, type FormEvent } from 'react'
 import { Cable, Cpu, Plus, Route, X } from 'lucide-react'
 import { DeleteButton, DetailButton, DetailModal, EditButton } from '../components/RecordActions'
@@ -48,13 +49,14 @@ const secondaryBtnCls =
   'rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
 
 export function CatalogPage() {
+  const { t: tl } = useI18n()
   const [tab, setTab] = useState<Tab>('vendors')
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Catalog Vendor</h1>
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">{tl('nav.catalog')}</h1>
           <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
             Menambah vendor/model baru adalah operasi data, bukan kode (TECH.md §5.1) — kelola di sini
           </p>
