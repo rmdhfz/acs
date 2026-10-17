@@ -57,6 +57,9 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
                // Invalidate device specific tasks
                queryClient.invalidateQueries({ queryKey: ['tasks', data.payload.device_id] })
              }
+          } else if (data.type === 'NOTIFICATION') {
+             // Notifikasi persisten baru untuk pengguna ini: NotificationProvider menyegarkan daftar & menampilkan toast.
+             window.dispatchEvent(new CustomEvent('acs:notification', { detail: data.payload }))
           } else if (data.type === 'DEVICE_ONLINE') {
              // Invalidate daftar device
              queryClient.invalidateQueries({ queryKey: ['devices'] })

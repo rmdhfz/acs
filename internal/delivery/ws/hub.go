@@ -24,6 +24,8 @@ type Client struct {
 	Send     chan []byte
 	TenantID *uint64
 	Role     string
+	// UserID — pemilik koneksi (dari actor); dipakai BroadcastToUser untuk notifikasi per pengguna. 0 = tidak diketahui.
+	UserID uint64
 	// Revalidate (opsional) dipanggil tiap siklus ping. false = kredensial sudah tak berlaku (token
 	// kedaluwarsa, user/tenant dinonaktifkan) -> koneksi ditutup. Audit OWASP A07: tanpa ini koneksi
 	// WebSocket tetap menerima event tenant setelah sesi HTTP-nya berakhir.
@@ -53,8 +55,9 @@ type Bus interface {
 // busMessage — amplop di Bus. Origin dipakai agar instance tidak mengirim ulang pesannya sendiri.
 type busMessage struct {
 	Origin string          `json:"o"`
-	Scope  string          `json:"s"` // "all" | "tenant"
+	Scope  string          `json:"s"` // "all" | "tenant" | "user"
 	Tenant uint64          `json:"t,omitempty"`
+	User   uint64          `json:"u,omitempty"`
 	Data   json.RawMessage `json:"d"`
 }
 
@@ -67,11 +70,11 @@ func (h *Hub) WithBus(ctx context.Context, bus Bus) *Hub {
 	return h
 }
 
-func (h *Hub) publish(scope string, tenant uint64, data []byte) {
+func (h *Hub) publish(scope string, tenant, user uint64, data []byte) {
 	if h.bus == nil {
 		return
 	}
-	msg, err := json.Marshal(busMessage{Origin: h.origin, Scope: scope, Tenant: tenant, Data: data})
+	msg, err := json.Marshal(busMessage{Origin: h.origin, Scope: scope, Tenant: tenant, User: user, Data: data})
 	if err != nil {
 		return
 	}
@@ -92,6 +95,26 @@ func (h *Hub) deliverRemote(raw []byte) {
 		h.Broadcast <- []byte(m.Data)
 	case "tenant":
 		h.deliverToTenant(m.Tenant, []byte(m.Data))
+	case "user":
+		if m.User != 0 {
+			h.deliverToUser(m.User, []byte(m.Data))
+		}
+	}
+}
+
+// deliverToUser mengirim ke klien lokal milik satu pengguna (semua tab/perangkatnya). Berbeda dari tenant,
+// SUPERADMIN lain TIDAK ikut menerima: notifikasi bersifat pribadi.
+func (h *Hub) deliverToUser(userID uint64, data []byte) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for client := range h.Clients {
+		if client.UserID == userID {
+			select {
+			case client.Send <- data:
+			default:
+				// buffer penuh: lewati (lihat catatan deliverToTenant soal tidak menutup di dalam RLock)
+			}
+		}
 	}
 }
 
@@ -169,7 +192,7 @@ func (h *Hub) BroadcastEvent(eventType string, payload interface{}) {
 		return
 	}
 	h.Broadcast <- data
-	h.publish("all", 0, data)
+	h.publish("all", 0, 0, data)
 }
 
 // BroadcastToTenant mengirim event hanya ke client yang terhubung dengan TenantID yang sesuai (atau superadmin)
@@ -185,7 +208,22 @@ func (h *Hub) BroadcastToTenant(tenantID uint64, eventType string, payload inter
 	}
 
 	h.deliverToTenant(tenantID, data)
-	h.publish("tenant", tenantID, data)
+	h.publish("tenant", tenantID, 0, data)
+}
+
+// BroadcastToUser mengirim event hanya ke koneksi milik satu pengguna (di instance ini dan, bila bus HA aktif,
+// di instance lain). userID 0 diabaikan.
+func (h *Hub) BroadcastToUser(userID uint64, eventType string, payload interface{}) {
+	if userID == 0 {
+		return
+	}
+	data, err := json.Marshal(Event{Type: eventType, Payload: payload})
+	if err != nil {
+		log.Printf("WS Broadcast Error: %v", err)
+		return
+	}
+	h.deliverToUser(userID, data)
+	h.publish("user", 0, userID, data)
 }
 
 // pingPeriod — jeda ping sekaligus siklus Revalidate. Variabel agar bisa dipercepat di test.

@@ -1,16 +1,106 @@
+/* Font bergaya Google, di-host sendiri (tanpa CDN: CSP tetap ketat). Hanya subset latin yang dimuat. */
+@import "@fontsource/google-sans/latin-400.css";
+@import "@fontsource/google-sans/latin-500.css";
+@import "@fontsource/google-sans/latin-700.css";
+@import "@fontsource/google-sans-code/latin-400.css";
+@import "@fontsource/google-sans-code/latin-500.css";
 @import "tailwindcss";
 
 /* Dark mode class-based (toggle manual via lib/theme.tsx), bukan cuma
    prefers-color-scheme -- lihat html.dark di bawah. */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ===== Sistem desain bergaya Google (Material 3) =====
+   Seluruh aplikasi memakai kelas Tailwind slate/indigo/emerald/red/amber. Alih-alih menulis ulang ratusan
+   kelas, skala warna itu DIPETAKAN ulang ke palet Google di sini:
+     slate   -> abu-abu Google (#f8f9fa … #202124), teks sekunder #5f6368 (kontras 6:1 di atas putih)
+     indigo  -> biru Google (#1a73e8 sebagai aksen/tombol utama; #e8f0fe untuk latar aktif)
+     emerald -> hijau Google (#188038), red -> merah Google (#d93025), amber -> kuning/oranye Google
+   Mode gelap memakai permukaan #202124/#17181a seperti produk Google. Bentuk: kartu 16px, tombol pil. */
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-sans: "Google Sans", "Product Sans", Roboto, ui-sans-serif, system-ui, "Segoe UI", Arial, sans-serif;
+  --font-mono: "Google Sans Code", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --color-slate-50: #f8f9fa;
+  --color-slate-100: #f1f3f4;
+  --color-slate-200: #e8eaed;
+  --color-slate-300: #dadce0;
+  --color-slate-400: #9aa0a6;
+  --color-slate-500: #5f6368;
+  --color-slate-600: #4d5156;
+  --color-slate-700: #3c4043;
+  --color-slate-800: #303134;
+  --color-slate-900: #202124;
+  --color-slate-950: #17181a;
+
+  --color-indigo-50: #e8f0fe;
+  --color-indigo-100: #d2e3fc;
+  --color-indigo-200: #aecbfa;
+  --color-indigo-300: #8ab4f8;
+  --color-indigo-400: #669df6;
+  --color-indigo-500: #4285f4;
+  --color-indigo-600: #1a73e8;
+  --color-indigo-700: #185abc;
+  --color-indigo-800: #174ea6;
+  --color-indigo-900: #174ea6;
+  --color-indigo-950: #0b2a63;
+  --color-blue-50: #e8f0fe;
+  --color-blue-100: #d2e3fc;
+  --color-blue-200: #aecbfa;
+  --color-blue-300: #8ab4f8;
+  --color-blue-400: #669df6;
+  --color-blue-500: #4285f4;
+  --color-blue-600: #1a73e8;
+  --color-blue-700: #185abc;
+  --color-blue-800: #174ea6;
+  --color-blue-900: #174ea6;
+  --color-blue-950: #0b2a63;
+  --color-violet-500: #4285f4;
+  --color-violet-600: #1a73e8;
+
+  --color-emerald-50: #e6f4ea;
+  --color-emerald-100: #ceead6;
+  --color-emerald-200: #a8dab5;
+  --color-emerald-300: #81c995;
+  --color-emerald-400: #5bb974;
+  --color-emerald-500: #34a853;
+  --color-emerald-600: #188038;
+  --color-emerald-700: #137333;
+  --color-emerald-800: #0d652d;
+  --color-emerald-900: #0b5126;
+
+  --color-red-50: #fce8e6;
+  --color-red-100: #fad2cf;
+  --color-red-200: #f6aea9;
+  --color-red-300: #f28b82;
+  --color-red-400: #ee675c;
+  --color-red-500: #ea4335;
+  --color-red-600: #d93025;
+  --color-red-700: #a8100f;
+  --color-red-800: #8a0b0b;
+  --color-red-900: #8a0b0b;
+
+  --color-amber-50: #fef7e0;
+  --color-amber-100: #feefc3;
+  --color-amber-200: #fde293;
+  --color-amber-300: #fdd663;
+  --color-amber-400: #fcc934;
+  --color-amber-500: #f9ab00;
+  --color-amber-600: #ea8600;
+  --color-amber-700: #965100;
+  --color-amber-800: #7a4100;
+  --color-amber-900: #653600;
+
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+  --shadow-sm: 0 1px 2px 0 rgb(60 64 67 / 0.18), 0 1px 3px 1px rgb(60 64 67 / 0.1);
+  --shadow-md: 0 1px 3px 0 rgb(60 64 67 / 0.2), 0 4px 8px 3px rgb(60 64 67 / 0.12);
+  --shadow-xl: 0 4px 8px 3px rgb(60 64 67 / 0.15), 0 1px 3px rgb(60 64 67 / 0.25);
 }
 
 html {
   color-scheme: light;
+  font-feature-settings: "cv11", "ss01";
 }
 html.dark {
   color-scheme: dark;
@@ -19,28 +109,61 @@ html.dark {
 body {
   @apply bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100;
   font-family: var(--font-sans);
+  letter-spacing: 0;
+}
+
+h1,
+h2,
+h3 {
+  letter-spacing: -0.005em;
+}
+
+/* Fokus terlihat konsisten (aksesibilitas) bila komponen tak mendefinisikannya sendiri */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-indigo-600);
+  outline-offset: 2px;
+}
+html.dark :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline-color: var(--color-indigo-300);
+}
+
+/* Gerak dikurangi bila pengguna memintanya */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Scrollbar tipis, konsisten dengan tampilan clean/minimalist */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background-color: theme(colors.slate.300);
+  background-color: var(--color-slate-300);
   border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background-color: theme(colors.slate.400);
+  background-color: var(--color-slate-400);
+  background-clip: content-box;
 }
 html.dark ::-webkit-scrollbar-thumb {
-  background-color: theme(colors.slate.700);
+  background-color: var(--color-slate-600);
+  background-clip: content-box;
 }
 html.dark ::-webkit-scrollbar-thumb:hover {
-  background-color: theme(colors.slate.600);
+  background-color: var(--color-slate-500);
+  background-clip: content-box;
 }
 
 /* Toast masuk dari kanan-bawah (lib/toast.tsx). Dibungkus motion-safe di

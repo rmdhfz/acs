@@ -80,6 +80,8 @@ func (s *Service) Impersonate(ctx context.Context, actor domain.Actor, targetID 
 		UserID: actor.UserIDPtr(), TenantID: target.TenantID, Action: "IMPERSONATE_START", EntityType: "user", EntityID: &target.ID,
 		Details: map[string]any{"target_username": target.Username, "ttl_minutes": int(ttl.Minutes())},
 	})
+	s.alert(ctx, target.ID, target.TenantID, "Akses dukungan ke akun Anda",
+		fmt.Sprintf("Seorang SUPERADMIN platform masuk sebagai akun Anda untuk keperluan dukungan (maksimal %d menit).", int(ttl.Minutes())), false)
 	return &ImpersonationResult{Token: tok, User: target, ExpiresAt: exp}, nil
 }
 

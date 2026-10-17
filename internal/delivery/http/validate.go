@@ -59,6 +59,8 @@ const (
 	maxSerialPattern     = 255 // zero_touch_rules.serial_pattern VARCHAR(255)
 	maxMatchParamName    = 512 // zero_touch_rules.match_parameter_name VARCHAR(512)
 	maxMatchParamValPatt = 255 // zero_touch_rules.match_parameter_value_pattern VARCHAR(255)
+	// notifikasi (batas isi/judul/link: usecase/notification, = lebar kolom notifications)
+	maxNotificationTypeCode = 48 // ref_notification_types.code VARCHAR(48)
 	// webhooks
 	maxWebhookName      = 128 // webhook_subscriptions.name VARCHAR(128) NOT NULL
 	maxWebhookTargetURL = 500 // webhook_subscriptions.target_url VARCHAR(500) NOT NULL

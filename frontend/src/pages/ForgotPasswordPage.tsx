@@ -74,7 +74,7 @@ export function ForgotPasswordPage() {
             <button
               onClick={() => void send(sentTo)}
               disabled={cooldown > 0 || mut.isPending}
-              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              className="rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
             >
               {cooldown > 0 ? t('forgot.resendIn', { s: cooldown }) : t('forgot.resend')}
             </button>

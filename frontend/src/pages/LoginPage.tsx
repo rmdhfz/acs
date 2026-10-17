@@ -6,6 +6,7 @@ import { useI18n } from '../lib/i18n'
 import { API_BASE, ApiError } from '../lib/api'
 import { Spinner } from '../components/Spinner'
 import { AuthShell } from '../components/AuthShell'
+import { GoogleSignInButton } from '../components/GoogleSignInButton'
 import { authInputCls, authPrimaryBtnCls } from '../components/authStyles'
 
 const REMEMBER_KEY = 'acs_login_email'
@@ -38,6 +39,8 @@ export function LoginPage() {
   const from = (location.state as { from?: string } | null)?.from
 
   const [ssoEnabled, setSsoEnabled] = useState(false)
+  // 'google' bila ACS_OIDC_ISSUER = accounts.google.com (tombol resmi Google); 'oidc' = IdP lain (Azure/Keycloak/Okta).
+  const [ssoProvider, setSsoProvider] = useState<'google' | 'oidc'>('oidc')
   const [signupEnabled, setSignupEnabled] = useState(false)
   const ssoFailed = new URLSearchParams(location.search).get('sso') === 'error'
   useEffect(() => {
@@ -45,6 +48,7 @@ export function LoginPage() {
     fetch(`${API_BASE}/auth/config`).then((r) => (r.ok ? r.json() : null)).then((c) => {
       if (!alive) return
       setSsoEnabled(Boolean(c?.sso_enabled))
+      setSsoProvider(c?.sso_provider === 'google' ? 'google' : 'oidc')
       setSignupEnabled(Boolean(c?.self_signup_enabled))
     }).catch(() => undefined)
     return () => { alive = false }
@@ -198,15 +202,39 @@ export function LoginPage() {
 
   return (
     <AuthShell>
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">{t('login.welcome')}</h1>
-        <p className="mt-1.5 text-sm text-slate-500 dark:text-slate-400">{t('login.welcomeSub')}</p>
+      <div className="mb-7 text-center">
+        <h1 className="text-[1.75rem] font-normal leading-tight text-slate-900 dark:text-slate-100">{t('login.welcome')}</h1>
+        <p className="mt-2 text-base text-slate-600 dark:text-slate-400">{t('login.welcomeSub')}</p>
       </div>
 
       {from && from !== '/login' && from !== '/' && (
         <div className="mb-5 flex items-start gap-2 rounded-lg bg-indigo-50 px-3.5 py-2.5 text-sm text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300" role="status">
           <Info className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{t('login.sessionNotice')}</span>
+        </div>
+      )}
+
+      {ssoEnabled && (
+        <div className="mb-6">
+          {ssoProvider === 'google' ? (
+            <GoogleSignInButton href={SSO_URL} label={t('login.google')} />
+          ) : (
+            <a
+              href={SSO_URL}
+              className="flex h-12 w-full items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+            >
+              <KeyRound className="h-4 w-4 text-slate-600 dark:text-slate-300" aria-hidden="true" />
+              {t('login.sso')}
+            </a>
+          )}
+          <div className="relative mt-6" role="separator" aria-label={t('login.or')}>
+            <div className="absolute inset-0 flex items-center" aria-hidden="true">
+              <div className="w-full border-t border-slate-200 dark:border-slate-700" />
+            </div>
+            <div className="relative flex justify-center text-xs">
+              <span className="bg-white px-3 text-slate-600 dark:bg-slate-900 dark:text-slate-400">{t('login.orEmail')}</span>
+            </div>
+          </div>
         </div>
       )}
 
@@ -292,7 +320,7 @@ export function LoginPage() {
         {ssoFailed && !error && (
           <div role="alert" className="flex items-start gap-2 rounded-lg bg-red-50 px-3.5 py-2.5 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-400">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} />
-            <span>Login SSO gagal atau akun Anda belum terdaftar. Hubungi admin atau masuk dengan email dan password.</span>
+            <span>{ssoProvider === 'google' ? 'Masuk dengan Google gagal. Pastikan email akun Google Anda sama dengan email akun ACS Anda dan sudah diverifikasi, atau minta admin mendaftarkannya.' : 'Login SSO gagal atau akun Anda belum terdaftar. Hubungi admin atau masuk dengan email dan password.'}</span>
           </div>
         )}
 
@@ -316,30 +344,6 @@ export function LoginPage() {
         </button>
       </form>
 
-      {ssoEnabled && (
-      <div className="relative my-6">
-        <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t border-slate-200 dark:border-slate-800" />
-        </div>
-        <div className="relative flex justify-center text-xs">
-          <span className="bg-white px-3 text-slate-500 dark:bg-slate-950 dark:text-slate-400">{t('login.or')}</span>
-        </div>
-      </div>
-      )}
-
-      {ssoEnabled && (
-      <>
-      <a
-        href={SSO_URL}
-        className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-      >
-        <KeyRound className="h-4 w-4 text-slate-500 dark:text-slate-400" />
-        {t('login.sso')}
-      </a>
-      <p className="mt-2 text-center text-xs text-slate-500 dark:text-slate-400">{t('login.ssoHint')}</p>
-      </>
-      )}
-
       {signupEnabled && (
         <p className="mt-6 text-center text-sm text-slate-600 dark:text-slate-400">
           Belum punya akun?{' '}
@@ -349,12 +353,6 @@ export function LoginPage() {
         </p>
       )}
 
-      <p className="mt-8 text-center text-xs text-slate-500 dark:text-slate-400">
-        {t('login.needHelp')}{' '}
-        <Link to="/forgot-password" className="font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400">
-          {t('login.forgotLink')}
-        </Link>
-      </p>
     </AuthShell>
   )
 }

@@ -15,6 +15,19 @@ interface MfaRequiredResponse {
   mfa_token: string
 }
 
+const STAFF_RANK: Record<string, number> = { VIEWER: 1, NOC: 2, ADMIN: 3, SUPERADMIN: 4 }
+
+// Hierarki staf: SUPERADMIN > ADMIN > NOC > VIEWER. roleSatisfies(roles, ['X']) berarti "X atau lebih tinggi" (sebelumnya
+// pencocokan persis: ADMIN tak lolos hasRole('VIEWER') sehingga menu Dashboard/Perangkat/Task tak tampil untuk ADMIN & NOC).
+// ENDUSER (portal pelanggan) di luar hierarki: hanya cocok persis.
+export function roleSatisfies(userRoles: string[], required: string[]): boolean {
+  if (userRoles.length === 0) return false
+  if (userRoles.includes('SUPERADMIN')) return true
+  const need = Math.min(...required.map((r) => STAFF_RANK[r] ?? Infinity))
+  const have = Math.max(0, ...userRoles.map((r) => STAFF_RANK[r] ?? 0))
+  return have >= need || required.some((r) => !(r in STAFF_RANK) && userRoles.includes(r))
+}
+
 interface AuthContextValue {
   user: AuthUser | null
   isAuthenticated: boolean
@@ -141,8 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   function hasRole(...roles: string[]) {
-    if (!user) return false
-    return user.roles.includes('SUPERADMIN') || roles.some((r) => user.roles.includes(r))
+    return roleSatisfies(user?.roles ?? [], roles)
   }
 
   return (

@@ -41,6 +41,14 @@ type Service struct {
 	notifier mailer.Notifier
 	mail     *notify.Builder
 	resets   domain.PasswordResetRepository
+
+	alerts domain.Notifier // notifikasi in-app SECURITY_ALERT (opsional, WithNotifier)
+}
+
+// WithNotifier memasang notifikasi persisten untuk kejadian keamanan akun (password direset admin).
+func (s *Service) WithNotifier(n domain.Notifier) *Service {
+	s.alerts = n
+	return s
 }
 
 // WithEmail mengaktifkan email notifikasi (akun baru, password direset admin)
@@ -573,6 +581,11 @@ func (s *Service) ResetUserPassword(ctx context.Context, actor domain.Actor, tar
 	_ = s.activity.Record(ctx, &domain.ActivityLog{UserID: actor.UserIDPtr(), TenantID: target.TenantID, Action: "RESET_USER_PASSWORD", EntityType: "user", EntityID: &target.ID})
 	if s.notifier != nil && s.mail != nil {
 		s.notifier.Notify(s.mail.PasswordResetByAdmin(target.Email, target.FullName))
+	}
+	if s.alerts != nil {
+		// Email transaksional (di atas) sudah ada bila SMTP aktif -> notifikasi tanpa email ganda.
+		_ = s.alerts.Notify(ctx, domain.SecurityAlertEvent(target.ID, target.TenantID, "Password Anda direset administrator",
+			"Administrator mereset password akun Anda. Ganti password sementara itu setelah masuk.", s.notifier != nil && s.mail != nil))
 	}
 	return nil
 }

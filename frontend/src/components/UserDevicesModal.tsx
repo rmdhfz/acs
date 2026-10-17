@@ -8,7 +8,7 @@ import { useDevices, useLinkUserDevice, useUnlinkUserDevice, useUserDevices } fr
 import type { User } from '../lib/types'
 
 const inputCls =
-  'w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm text-slate-900 outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
+  'w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
 
 // Tautan akun pelanggan (ENDUSER) ↔ perangkat: menentukan perangkat apa yang muncul di portal "WiFi Saya".
 // Aturan ditegakkan backend (tenant sama, role ENDUSER, maks 20); UI hanya memandu.
@@ -115,7 +115,7 @@ export function UserDevicesModal({ user, onClose }: { user: User; onClose: () =>
                       type="button"
                       onClick={() => doLink(d.id, d.serial_number)}
                       disabled={!sameTenant || already || link.isPending}
-                      className="flex shrink-0 items-center gap-1 rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                      className="flex shrink-0 items-center gap-1 rounded-full border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
                     >
                       <Link2 className="h-3.5 w-3.5" /> {already ? 'Tertaut' : 'Tautkan'}
                     </button>

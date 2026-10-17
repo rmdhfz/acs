@@ -324,7 +324,7 @@ export function ParameterTree({ deviceId, parameters, onRefresh, isLoading }: Pa
         <button
           onClick={handleGlobalRefresh}
           disabled={isMutating || isLoading || !canEdit}
-          className="ml-3 flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg text-sm text-slate-300 hover:text-white transition-colors disabled:opacity-50"
+          className="ml-3 flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-full text-sm text-slate-300 hover:text-white transition-colors disabled:opacity-50"
         >
           <RefreshCw className={`w-4 h-4 ${(isMutating || isLoading) ? 'animate-spin' : ''}`} />
           Refresh Root
@@ -332,7 +332,7 @@ export function ParameterTree({ deviceId, parameters, onRefresh, isLoading }: Pa
         <button
           onClick={() => setShowNotif(true)}
           disabled={!canEdit}
-          className="ml-2 flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg text-sm text-slate-300 hover:text-white transition-colors disabled:opacity-50"
+          className="ml-2 flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-full text-sm text-slate-300 hover:text-white transition-colors disabled:opacity-50"
         >
           Notifikasi
         </button>

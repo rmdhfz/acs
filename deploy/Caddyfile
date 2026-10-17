@@ -56,7 +56,7 @@
 		# CSP SPA: token sesi ada di localStorage, jadi XSS apa pun = pencurian sesi; skrip hanya dari origin sendiri
 		# (tanpa 'unsafe-inline'). style 'unsafe-inline' dibutuhkan atribut style React/Recharts; gambar https: untuk
 		# logo tenant & tile peta OSM; font Google Fonts. API & WebSocket satu origin ('self').
-		header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: https:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 		file_server
 	}
 

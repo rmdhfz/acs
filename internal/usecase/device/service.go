@@ -73,6 +73,30 @@ type Service struct {
 	vendors domain.VendorRepository
 	tenants domain.TenantRepository
 	quota   domain.TenantQuotaRepository // opsional (WithQuota): batas perangkat per tenant
+
+	notifier domain.Notifier // opsional (WithNotifier): notifikasi DEVICE_LIMIT_REACHED
+}
+
+// WithNotifier memasang notifikasi persisten saat Inform perangkat baru ditolak karena batas perangkat tenant.
+func (s *Service) WithNotifier(n domain.Notifier) *Service {
+	s.notifier = n
+	return s
+}
+
+// notifyDeviceLimit — ADMIN tenant + SUPERADMIN diberi tahu (maks sekali per 24 jam per tenant). Isi sengaja tidak
+// memuat serial/OUI perangkat penolak: data itu dikirim CPE (belum tentu tepercaya).
+func (s *Service) notifyDeviceLimit(ctx context.Context, tenantID *uint64) {
+	if s.notifier == nil || tenantID == nil {
+		return
+	}
+	_ = s.notifier.Notify(ctx, domain.NotificationEvent{
+		TypeCode: domain.NotifDeviceLimitReached, TenantID: tenantID,
+		Title:        "Batas perangkat tercapai",
+		Body:         "Perangkat baru ditolak karena batas perangkat tenant sudah penuh. Hubungi operator platform untuk menaikkan paket, atau hapus perangkat yang sudah tidak dipakai.",
+		Link:         "/devices",
+		DedupeKey:    "device-limit",
+		DedupeWindow: 24 * time.Hour,
+	})
 }
 
 func NewService(
@@ -470,6 +494,9 @@ func (s *Service) FindOrCreateFromInform(ctx context.Context, info InformDeviceI
 	s.resolveVendorModel(ctx, d, info.OUI, info.ProductClass)
 
 	if err := s.requireDeviceCapacity(ctx, d.TenantID); err != nil {
+		if errors.Is(err, domain.ErrQuotaExceeded) {
+			s.notifyDeviceLimit(ctx, d.TenantID)
+		}
 		return nil, false, err
 	}
 	if err := s.devices.Create(ctx, d); err != nil {

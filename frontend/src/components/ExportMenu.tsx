@@ -83,7 +83,7 @@ export function ExportMenu<T>({ filename, columns, getRows, disabled, hint, labe
         aria-haspopup="menu"
         aria-expanded={open}
         title={busy ? 'Klik untuk membatalkan' : undefined}
-        className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+        className="flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
       >
         {busy ? <Spinner className="h-4 w-4" /> : <Download className="h-4 w-4" />}
         {busy ? (progress ? `Mengambil ${progress.done.toLocaleString('id-ID')}/${progress.total.toLocaleString('id-ID')}…` : 'Menyiapkan…') : label}

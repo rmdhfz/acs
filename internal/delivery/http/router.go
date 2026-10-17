@@ -18,6 +18,7 @@ import (
 	"acs/internal/usecase/file"
 	"acs/internal/usecase/firmware"
 	"acs/internal/usecase/iam"
+	"acs/internal/usecase/notification"
 	"acs/internal/usecase/preset"
 	"acs/internal/usecase/provisioning"
 	"acs/internal/usecase/report"
@@ -61,6 +62,7 @@ type Router struct {
 	Tags           *tag.Service
 	Presets        *preset.Service
 	SelfService    *selfservice.Service
+	Notifications  *notification.Service
 	WSHub          *ws.Hub
 	// WSAllowedOrigins = origin Console yang boleh membuka WebSocket (sama
 	// dengan ACS_CORS_ALLOW_ORIGINS).
@@ -152,6 +154,16 @@ func (r *Router) Register(e *echo.Echo) {
 	authedSelf.POST("/auth/mfa/setup", r.mfaSetup)
 	authedSelf.POST("/auth/mfa/enable", r.mfaEnable)
 	authedSelf.POST("/auth/mfa/disable", r.mfaDisable)
+
+	// Notifikasi persisten (in-app + email). Semua milik pengguna yang login (tanpa :id numerik; id = UUID).
+	// Menandai-baca & mengubah preferensi ditolak selama impersonate: SUPERADMIN yang "masuk sebagai" pengguna tidak
+	// boleh menghapus jejak peringatan keamanan (mis. notifikasi impersonate itu sendiri). Pengumuman: SUPERADMIN saja.
+	authed.GET("/notifications", r.listNotifications)
+	authed.GET("/notifications/unread-count", r.notificationUnreadCount)
+	authed.GET("/notifications/preferences", r.listNotificationPreferences)
+	authed.POST("/notifications/read", r.markNotificationsRead, denyImpersonation)
+	authed.PUT("/notifications/preferences", r.updateNotificationPreferences, denyImpersonation)
+	authed.POST("/notifications/announce", r.announceNotification, RequireRoles(superadminOnly...), denyImpersonation)
 
 	authed.GET("/refs/:table", r.listRefs)
 

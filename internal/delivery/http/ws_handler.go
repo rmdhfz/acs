@@ -67,6 +67,7 @@ func (r *Router) serveWs(c *echo.Context) error {
 		Send:     make(chan []byte, 256),
 		TenantID: actor.TenantID,
 		Role:     role,
+		UserID:   actor.UserID,
 		// Cek ulang kredensial tiap siklus ping: token kedaluwarsa / user atau tenant dinonaktifkan -> tutup.
 		// Galat SISTEM (DB sesaat) tidak memutus koneksi (fail-open); hanya penolakan kredensial yang memutus.
 		Revalidate: func() bool {

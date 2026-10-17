@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -104,6 +105,23 @@ type Service struct {
 	notifier mailer.Notifier
 	mail     *notify.Builder
 	resetTTL time.Duration
+
+	// Notifikasi in-app SECURITY_ALERT (opsional, lihat WithNotifier); nil = tidak ada.
+	alerts domain.Notifier
+}
+
+// WithNotifier memasang notifikasi persisten untuk kejadian keamanan akun. Kegagalan notifikasi diabaikan.
+func (s *Service) WithNotifier(n domain.Notifier) *Service {
+	s.alerts = n
+	return s
+}
+
+// alert mengirim SECURITY_ALERT ke pemilik akun. noEmail=true bila email transaksional kejadian ini sudah ada.
+func (s *Service) alert(ctx context.Context, userID uint64, tenantID *uint64, title, body string, noEmail bool) {
+	if s.alerts == nil || userID == 0 {
+		return
+	}
+	_ = s.alerts.Notify(ctx, domain.SecurityAlertEvent(userID, tenantID, title, body, noEmail))
 }
 
 // WithPasswordReset mengaktifkan reset password lewat email + email notifikasi
@@ -130,7 +148,48 @@ func NewService(users domain.UserRepository, tokens domain.APITokenRepository, t
 	return s
 }
 
-type oidcSettings struct{ issuer, clientID, clientSecret, redirectURL string }
+type oidcSettings struct {
+	issuer, clientID, clientSecret, redirectURL string
+	allowedDomains                              []string
+}
+
+// WithOIDCAllowedDomains membatasi login SSO ke email berdomain tertentu (kosong = tanpa batas). Berlaku untuk
+// semua IdP; untuk Google Workspace ini mencegah akun Gmail pribadi dengan email yang sama masuk.
+func (s *Service) WithOIDCAllowedDomains(domains []string) *Service {
+	if s.oidcCfg != nil {
+		s.oidcCfg.allowedDomains = domains
+	}
+	return s
+}
+
+// OIDCProvider menamai IdP untuk tampilan tombol login: "google" bila issuer accounts.google.com, selain itu "oidc".
+func (s *Service) OIDCProvider() string {
+	if s.oidcCfg == nil {
+		return ""
+	}
+	if u, err := url.Parse(s.oidcCfg.issuer); err == nil && strings.EqualFold(u.Host, "accounts.google.com") {
+		return "google"
+	}
+	return "oidc"
+}
+
+// emailDomainAllowed — true bila tak ada pembatasan atau domain email ada di daftar.
+func emailDomainAllowed(email string, allowed []string) bool {
+	if len(allowed) == 0 {
+		return true
+	}
+	at := strings.LastIndex(email, "@")
+	if at < 0 {
+		return false
+	}
+	d := strings.ToLower(email[at+1:])
+	for _, a := range allowed {
+		if d == a {
+			return true
+		}
+	}
+	return false
+}
 
 // initOIDC melakukan discovery IdP. Sebelumnya kegagalan sesaat saat startup (IdP belum siap)
 // mematikan SSO permanen sampai restart; kini dicoba lagi (maks. tiap 30 detik) saat SSO dipakai.
@@ -216,6 +275,10 @@ func (s *Service) Login(ctx context.Context, identifier, password string) (*doma
 		s.auditLoginFailure(ctx, u, "password_salah")
 		if locked {
 			_ = s.activity.Record(ctx, &domain.ActivityLog{UserID: &u.ID, TenantID: u.TenantID, Action: "ACCOUNT_LOCKED", EntityType: "user", EntityID: &u.ID})
+		}
+		if locked {
+			s.alert(ctx, u.ID, u.TenantID, "Akun Anda dikunci sementara",
+				fmt.Sprintf("Akun dikunci %d menit karena terlalu banyak percobaan masuk dengan password salah.", int(lockoutDuration.Minutes())), s.mail != nil)
 		}
 		if s.mail != nil && locked {
 			// Pemanggilan INI yang mengunci akun (repo membandingkan locked_until
@@ -343,6 +406,7 @@ func (s *Service) ChangeOwnPassword(ctx context.Context, actor domain.Actor, cur
 	if s.mail != nil {
 		s.notify(s.mail.PasswordChanged(u.Email, u.FullName))
 	}
+	s.alert(ctx, u.ID, u.TenantID, "Password akun Anda diganti", "Password akun Anda baru saja diganti. Jika bukan Anda, segera hubungi administrator.", s.mail != nil)
 	// iat token baru >= password_changed_at (presisi detik) sehingga lolos cek sesi.
 	return s.issueJWT(u)
 }
@@ -523,6 +587,7 @@ func (s *Service) IssueAPIToken(ctx context.Context, actor domain.Actor, name st
 		UserID: actor.UserIDPtr(), TenantID: tenantID, Action: "ISSUE_API_TOKEN", EntityType: "api_token", EntityID: &rec.ID,
 		Details: map[string]any{"name": name},
 	})
+	s.alert(ctx, actor.UserID, tenantID, "Token API baru dibuat", fmt.Sprintf("Token API %q dibuat atas akun Anda. Jika bukan Anda, segera cabut token tersebut.", name), false)
 	return plain, rec, nil
 }
 
@@ -670,7 +735,12 @@ func (s *Service) GetOIDCAuthURL(state, nonce string) (string, error) {
 	if !s.HasOIDC() {
 		return "", errors.New("auth: OIDC tidak dikonfigurasi")
 	}
-	return s.oauth2Config.AuthCodeURL(state, oidc.Nonce(nonce)), nil
+	opts := []oauth2.AuthCodeOption{oidc.Nonce(nonce)}
+	if s.OIDCProvider() == "google" {
+		// Selalu tampilkan pemilih akun Google: pengguna dengan beberapa akun tak otomatis masuk dengan yang salah.
+		opts = append(opts, oauth2.SetAuthURLParam("prompt", "select_account"))
+	}
+	return s.oauth2Config.AuthCodeURL(state, opts...), nil
 }
 
 // validateOIDCIdentity memeriksa klaim id_token yang sudah lolos verifikasi
@@ -689,6 +759,36 @@ func validateOIDCIdentity(tokenNonce, expectedNonce string, emailVerified *bool,
 	}
 	if emailVerified != nil && !*emailVerified {
 		return errors.New("auth: email OIDC belum terverifikasi di Identity Provider")
+	}
+	return nil
+}
+
+// ErrOIDCSubjectMismatch — akun sudah terikat ke identitas IdP lain.
+var ErrOIDCSubjectMismatch = errors.New("auth: identitas IdP tidak cocok dengan akun")
+
+// verifyOIDCBinding mengikat/memverifikasi identitas IdP (issuer|sub): email saja tidak cukup — bila alamat email
+// berpindah tangan di IdP, sub-nya berbeda dan login ditolak. Ikatan dibuat pada login pertama (compare-and-set) dan
+// dikosongkan saat email pengguna diubah.
+func (s *Service) verifyOIDCBinding(ctx context.Context, u *domain.User, subject string) error {
+	if u.OIDCSubject != nil && *u.OIDCSubject != "" {
+		if subtle.ConstantTimeCompare([]byte(*u.OIDCSubject), []byte(subject)) != 1 {
+			_ = s.activity.Record(ctx, &domain.ActivityLog{UserID: &u.ID, TenantID: u.TenantID, Action: "OIDC_SUBJECT_MISMATCH", EntityType: "user", EntityID: &u.ID})
+			return ErrOIDCSubjectMismatch
+		}
+		return nil
+	}
+	bound, err := s.users.BindOIDCSubject(ctx, u.ID, subject)
+	if err != nil {
+		return err
+	}
+	if bound {
+		_ = s.activity.Record(ctx, &domain.ActivityLog{UserID: &u.ID, TenantID: u.TenantID, Action: "OIDC_BOUND", EntityType: "user", EntityID: &u.ID})
+		return nil
+	}
+	// kalah balapan dengan login lain: muat ulang dan cocokkan
+	cur, err := s.users.GetByID(ctx, u.ID)
+	if err != nil || cur.OIDCSubject == nil || subtle.ConstantTimeCompare([]byte(*cur.OIDCSubject), []byte(subject)) != 1 {
+		return ErrOIDCSubjectMismatch
 	}
 	return nil
 }
@@ -732,7 +832,11 @@ func (s *Service) OIDCLogin(ctx context.Context, code, expectedNonce string) (*d
 	// Dipetakan lewat EMAIL (unik, ditegakkan sistem), BUKAN username: username bisa dipilih
 	// admin tenant mana pun sehingga memetakan lewat username memungkinkan pengambilalihan
 	// akun dengan membuat username = email korban.
-	u, err := s.users.GetByEmail(ctx, strings.ToLower(strings.TrimSpace(claims.Email)))
+	email := strings.ToLower(strings.TrimSpace(claims.Email))
+	if !emailDomainAllowed(email, s.oidcCfg.allowedDomains) {
+		return nil, "", errors.New("auth: domain email tidak diizinkan untuk SSO")
+	}
+	u, err := s.users.GetByEmail(ctx, email)
 	if err != nil {
 		// Auto-provisioning sengaja tidak ada: akun harus dibuat admin (multi-tenant).
 		return nil, "", errors.New("auth: akun OIDC belum terdaftar, hubungi admin")
@@ -740,6 +844,13 @@ func (s *Service) OIDCLogin(ctx context.Context, code, expectedNonce string) (*d
 
 	if !u.IsActive {
 		return nil, "", ErrInvalidCredentials
+	}
+
+	if idToken.Subject == "" {
+		return nil, "", errors.New("auth: id_token tanpa sub")
+	}
+	if err := s.verifyOIDCBinding(ctx, u, s.oidcCfg.issuer+"|"+idToken.Subject); err != nil {
+		return nil, "", err
 	}
 
 	if err := s.checkTenantActive(ctx, u.TenantID); err != nil {
@@ -752,5 +863,6 @@ func (s *Service) OIDCLogin(ctx context.Context, code, expectedNonce string) (*d
 	}
 	_ = s.users.TouchLastLogin(ctx, u.ID, time.Now())
 	_ = s.activity.Record(ctx, &domain.ActivityLog{UserID: &u.ID, TenantID: u.TenantID, Action: "OIDC_LOGIN", EntityType: "user", EntityID: &u.ID})
+	s.alert(ctx, u.ID, u.TenantID, "Login dengan SSO", "Login dengan SSO (OIDC) berhasil pada akun Anda. Jika bukan Anda, segera ganti password dan hubungi administrator.", false)
 	return u, token, nil
 }

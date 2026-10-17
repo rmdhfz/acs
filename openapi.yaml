@@ -128,6 +128,8 @@ tags:
     description: Preset provisioning gaya GenieACS (precondition + configurations, migrations/0019).
   - name: SelfService
     description: Portal pelanggan (role `ENDUSER`) — hanya device yang dipetakan ke akun lewat `user_devices` (migrations/0020).
+  - name: Notifications
+    description: Notifikasi persisten (in-app + email) untuk staf Console — daftar, tandai baca, preferensi kanal, dan pengumuman SUPERADMIN (migrations/0030).
   - name: Metrics
     description: Endpoint observability format Prometheus (bukan JSON), tanpa autentikasi.
 
@@ -462,6 +464,7 @@ paths:
                   sso_enabled: { type: boolean }
                   mfa_available: { type: boolean }
                   self_signup_enabled: { type: boolean }
+                  sso_provider: { type: string, enum: ["", google, oidc], description: "Penyedia SSO: google = tombol resmi Masuk dengan Google; oidc = IdP lain; kosong = SSO tidak dikonfigurasi." }
                 required: [sso_enabled, mfa_available, self_signup_enabled]
 
   /auth/me:
@@ -4626,6 +4629,8 @@ paths:
         upgrade, server mem-push event JSON (task selesai/gagal, device
         online/offline, dsb.) yang ter-scope ke tenant actor. Autentikasi Bearer
         WAJIB pada request handshake. Tidak ada body response HTTP biasa.
+        Event `NOTIFICATION` (`{id, type, severity, title, link}`) dikirim HANYA ke koneksi milik pengguna
+        penerima (bukan seluruh tenant); detail lengkap diambil lewat `GET /notifications`.
       security: [{ bearerAuth: [] }]
       responses:
         '101':
@@ -5590,6 +5595,204 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  # ============================== NOTIFIKASI ==============================
+  /notifications:
+    get:
+      operationId: listNotifications
+      tags: [Notifications]
+      summary: Daftar notifikasi milik pengguna yang login
+      description: |
+        Hanya notifikasi MILIK pengguna pemanggil (tidak ada cara membaca milik orang lain), terbaru dulu.
+        Role staf (SUPERADMIN/ADMIN/NOC/VIEWER); `ENDUSER` ditolak **403**. Tiap item memakai `id` = UUID
+        notifikasi (PK numerik tidak pernah diekspos). `title`/`body` adalah **teks biasa**, bukan HTML —
+        klien wajib merendernya sebagai teks. `meta.unread` selalu jumlah belum-dibaca seluruhnya (tidak
+        terpengaruh filter `unread`). `link` adalah path internal Console (mis. `/devices`), bisa `null`.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: unread
+          in: query
+          description: "`true` = hanya yang belum dibaca."
+          schema: { type: boolean, default: false }
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: Daftar notifikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationListResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role bukan staf (mis. `ENDUSER`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /notifications/unread-count:
+    get:
+      operationId: getNotificationUnreadCount
+      tags: [Notifications]
+      summary: Jumlah notifikasi belum dibaca (untuk badge lonceng)
+      description: Milik pengguna pemanggil. Murah (satu query terindeks) — aman dipakai polling ringan. Pembaruan realtime juga datang lewat WebSocket (event `NOTIFICATION`).
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Jumlah belum dibaca.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CountResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role bukan staf (mis. `ENDUSER`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /notifications/read:
+    post:
+      operationId: markNotificationsRead
+      tags: [Notifications]
+      summary: Tandai notifikasi sebagai sudah dibaca
+      description: |
+        Isi `all: true` (semua milik pemanggil) ATAU `ids` (UUID notifikasi, maks 200). UUID milik pengguna lain
+        atau yang tidak ada **diabaikan diam-diam** (tidak membocorkan keberadaan). Idempoten. Ditolak **403**
+        selama sesi impersonate (jejak peringatan keamanan target tidak boleh dihapus oleh operator).
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MarkNotificationsReadRequest' }
+      responses:
+        '204':
+          description: Selesai (tanpa isi).
+        '400':
+          description: "Bukan `all` dan `ids` kosong, lebih dari 200 id, atau ada id yang bukan UUID."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role bukan staf, atau sesi impersonate.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /notifications/preferences:
+    get:
+      operationId: listNotificationPreferences
+      tags: [Notifications]
+      summary: Pengaturan kanal notifikasi per jenis (efektif)
+      description: |
+        Satu baris per jenis notifikasi. Nilai yang ditampilkan sudah efektif: bawaan jenis bila pengguna belum
+        pernah menyimpan pilihan. Jenis `mandatory: true` (mis. `SECURITY_ALERT`) selalu `in_app` dan `email`
+        aktif dan tidak bisa dimatikan. Kanal email hanya berlaku bila SMTP dikonfigurasi di server.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Daftar pengaturan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationPreferenceListResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role bukan staf (mis. `ENDUSER`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    put:
+      operationId: updateNotificationPreferences
+      tags: [Notifications]
+      summary: Simpan pengaturan kanal notifikasi
+      description: |
+        Hanya jenis yang disebut di `items` yang diubah. Permintaan **atomik**: bila ada jenis tak dikenal atau
+        ada upaya mematikan jenis `mandatory` (`in_app` atau `email` = false), seluruh permintaan ditolak **400**
+        dan tidak ada yang tersimpan. Ditolak **403** selama sesi impersonate.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateNotificationPreferencesRequest' }
+      responses:
+        '204':
+          description: Tersimpan.
+        '400':
+          description: "`items` kosong/terlalu banyak (maks 100), jenis tak dikenal, atau mencoba mematikan jenis wajib."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role bukan staf, atau sesi impersonate.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /notifications/announce:
+    post:
+      operationId: announceNotification
+      tags: [Notifications]
+      summary: Siarkan pengumuman ke staf (SUPERADMIN)
+      description: |
+        SUPERADMIN saja. Penerima = semua staf aktif (SUPERADMIN/ADMIN/NOC/VIEWER, **bukan** `ENDUSER`) dari
+        `tenant_id` yang dipilih, atau seluruh platform bila `tenant_id` kosong. `email: true` juga mengirim
+        email (bila SMTP aktif; dibatasi 1 email per pengguna per jenis per jam). `link` harus path internal:
+        diawali `/`, tanpa `//`, backslash, skema, atau spasi. Maks 10 pengumuman per jam per aktor. Isi
+        pengumuman di-escape di email dan diperlakukan sebagai teks biasa di JSON. Tercatat di audit trail.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AnnounceRequest' }
+      responses:
+        '202':
+          description: Diterima; `recipients` = jumlah penerima yang dibuatkan notifikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnnounceResponse' }
+        '400':
+          description: "Judul/isi kosong atau melebihi batas (160/1000 karakter), karakter kontrol, `link` tidak valid, atau `tenant_id` tidak ditemukan."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Bukan SUPERADMIN (atau sesi impersonate).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Batas 10 pengumuman per jam per aktor terlampaui.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   # ============================== SELF-SERVICE (portal pelanggan) ==============================
   /self-service/devices:
     get:
@@ -5882,6 +6085,113 @@ components:
       schema: { type: integer, format: int64 }
 
   schemas:
+    # ---------- Notifikasi (migrations/0030) ----------
+    Notification:
+      type: object
+      description: Satu notifikasi milik pengguna yang login. `title`/`body` adalah teks biasa (bukan HTML).
+      properties:
+        id: { type: string, format: uuid, description: "UUID notifikasi (identifier publik; PK numerik tidak diekspos)." }
+        type:
+          type: string
+          description: Kode jenis.
+          enum: [SECURITY_ALERT, DEVICE_OFFLINE_SPIKE, TASK_FAILURES, ROLLOUT_PAUSED, DEVICE_LIMIT_REACHED, NEW_TENANT_SIGNUP, ANNOUNCEMENT]
+        type_name: { type: string, example: Pengumuman }
+        severity: { type: string, enum: [INFO, WARNING, CRITICAL] }
+        title: { type: string, maxLength: 160 }
+        body: { type: string, maxLength: 1000 }
+        link:
+          type: string
+          nullable: true
+          description: Path internal Console (diawali `/`), mis. `/devices`.
+          example: /firmware
+        entity_type: { type: string, nullable: true, example: firmware_rollout_batch }
+        entity_id: { type: integer, format: int64, nullable: true }
+        read_at: { type: string, format: date-time, nullable: true, description: "`null` = belum dibaca." }
+        created_at: { type: string, format: date-time }
+      required: [id, type, type_name, severity, title, body, link, entity_type, entity_id, read_at, created_at]
+
+    NotificationListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Notification' }
+        meta:
+          type: object
+          properties:
+            total: { type: integer, description: "Jumlah notifikasi sesuai filter." }
+            unread: { type: integer, description: "Jumlah belum dibaca seluruhnya (tak terpengaruh filter)." }
+            page: { type: integer }
+            limit: { type: integer }
+          required: [total, unread, page, limit]
+      required: [data, meta]
+
+    MarkNotificationsReadRequest:
+      type: object
+      description: Isi `all` ATAU `ids`.
+      properties:
+        ids:
+          type: array
+          maxItems: 200
+          items: { type: string, format: uuid }
+        all: { type: boolean, default: false }
+
+    NotificationPreference:
+      type: object
+      properties:
+        type: { type: string, example: TASK_FAILURES }
+        name: { type: string }
+        description: { type: string }
+        severity: { type: string, enum: [INFO, WARNING, CRITICAL], description: Keparahan bawaan jenis. }
+        in_app: { type: boolean }
+        email: { type: boolean }
+        mandatory: { type: boolean, description: "`true` = tidak bisa dimatikan (selalu in-app dan email)." }
+      required: [type, name, description, severity, in_app, email, mandatory]
+
+    NotificationPreferenceListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/NotificationPreference' }
+      required: [data]
+
+    UpdateNotificationPreferencesRequest:
+      type: object
+      properties:
+        items:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: object
+            properties:
+              type: { type: string, maxLength: 48, example: TASK_FAILURES }
+              in_app: { type: boolean }
+              email: { type: boolean }
+            required: [type, in_app, email]
+      required: [items]
+
+    AnnounceRequest:
+      type: object
+      properties:
+        title: { type: string, minLength: 1, maxLength: 160 }
+        body: { type: string, minLength: 1, maxLength: 1000, description: "Teks biasa; baris baru diperbolehkan." }
+        link:
+          type: string
+          maxLength: 255
+          description: "Opsional. Path internal diawali `/`; tanpa `//`, backslash, skema, atau spasi."
+          example: /dashboard
+        tenant_id: { type: integer, format: int64, nullable: true, description: "Kosong = seluruh platform." }
+        email: { type: boolean, default: false, description: "Kirim juga lewat email (bila SMTP aktif)." }
+      required: [title, body]
+
+    AnnounceResponse:
+      type: object
+      properties:
+        recipients: { type: integer, description: Jumlah penerima yang dibuatkan notifikasi. }
+      required: [recipients]
+
     # ---------- Generik ----------
     ErrorResponse:
       type: object

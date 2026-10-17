@@ -1,6 +1,6 @@
 # CHECKLIST KEMATANGAN SaaS — ACS Console
 
-Tanggal: 17 Oktober 2026 (dihitung ulang setelah LANJUTAN 10) · Dasar: kode di branch `dev`, e2e 21/21, `go test -race` paket yang disentuh + integrasi MariaDB/Redis, audit UI otomatis (88 tampilan), 25 tes frontend, uji beban lab, uji dua instance.
+Tanggal: 17 Oktober 2026 (dihitung ulang setelah LANJUTAN 12) · Dasar: kode di branch `dev`, e2e 22/22, `go test -race` paket yang disentuh + integrasi MariaDB/Redis, audit UI otomatis (120 tampilan), 39 tes frontend, uji beban lab, uji dua instance.
 
 **Rubrik:** 1 = ada & teruji otomatis (unit/integrasi/e2e/uji browser) · 0,75 = ada & teruji sebagian (mis. unit/simulator tanpa skenario e2e, atau belum terhadap sistem nyata) · 0,5 = parsial · 0,25 = kerangka · 0 = belum ada. Skor kategori = rata-rata item × bobot. Rubrik ini **dibuat sendiri** dan mengukur *kelengkapan & verifikasi di lingkungan uji*, bukan bukti perilaku di perangkat/pengguna nyata.
 
@@ -9,18 +9,18 @@ Tanggal: 17 Oktober 2026 (dihitung ulang setelah LANJUTAN 10) · Dasar: kode di 
 | Kategori | Bobot | 16 Okt | Sekarang | Poin |
 |---|---:|---:|---:|---:|
 | A. Protokol & inti ACS (TR-069) | 25 | 92% | **95%** | 23.8 |
-| B. Aplikasi web & pengalaman pengguna | 15 | 82% | **88%** | 13.1 |
+| B. Aplikasi web & pengalaman pengguna | 15 | 82% | **90%** | 13.5 |
 | C. Multi-tenant & identitas/akses | 15 | 89% | **95%** | 14.3 |
-| D. Keamanan | 10 | 79% | **83%** | 8.3 |
+| D. Keamanan | 10 | 79% | **84%** | 8.4 |
 | E. Operasional & deployment | 15 | 87% | **87%** | 13.0 |
 | F. Kualitas & verifikasi | 10 | 82% | **82%** | 8.2 |
 | G. Aspek SaaS komersial | 10 | 50% | **63%** | 6.3 |
-| **TOTAL** | **100** | 82.6 | | **87.0** |
+| **TOTAL** | **100** | 82.6 | | **87.5** |
 
 ## Dua angka yang perlu dibedakan
 
-- **Kelengkapan fitur & verifikasi lab: ≈ 87%** (tabel di atas).
-- **Kesiapan go-live produksi berbayar: ≈ 75%** = 87% dikurangi 12 poin diskon ketidakpastian lapangan: seluruh skor A/B memakai simulator CPE; belum ada satu pun Inform dari CPE fisik, sehingga item bernilai 1 di A belum terbukti pada firmware nyata (risiko interoperabilitas per vendor). Potongan ini tidak menghitung ganda item yang sudah bernilai 0.
+- **Kelengkapan fitur & verifikasi lab: ≈ 88%** (tabel di atas).
+- **Kesiapan go-live produksi berbayar: ≈ 75%** = 88% dikurangi 12 poin diskon ketidakpastian lapangan: seluruh skor A/B memakai simulator CPE; belum ada satu pun Inform dari CPE fisik, sehingga item bernilai 1 di A belum terbukti pada firmware nyata (risiko interoperabilitas per vendor). Potongan ini tidak menghitung ganda item yang sudah bernilai 0.
 
 Untuk **pilot/UAT internal** (Rabu 21 Okt) angka relevan adalah kelengkapan fitur; untuk **menjual sebagai SaaS** yang relevan adalah kesiapan go-live.
 
@@ -70,7 +70,8 @@ Semua yang dapat diverifikasi di lab sudah ditutup. Sisanya **tidak bisa saya bu
 | Realtime WebSocket | ✅ 1 | diverifikasi browser; lintas instance (HA); **kredensial dicek ulang tiap siklus ping** (tes unit) |
 | Portal pelanggan (WiFi Saya) + penautan akun↔perangkat | 🟡 0,75 | e2e S18 (isolasi, validasi, SSID sampai ke CPE), tes komponen penautan; belum pengguna nyata, halaman portal tanpa tes UI sendiri |
 | Konsol Super Admin: laporan SaaS (KPI, tren 30 hari, CSV), impersonate, kuota & paket | ✅ 1 | e2e S19, S20; audit UI; token impersonate 30 menit, aksi sensitif diblokir, jejak `impersonated_by` |
-| Landing page publik SEO | ✅ 1 | prerender + JSON-LD |
+| Landing page publik SEO | ✅ 1 | prerender + JSON-LD (WebSite, SoftwareApplication, HowTo, FAQ), manifest, OG image, robots/sitemap, 404 sungguhan; desain Google/Material, teks ringkas |
+| Notifikasi in-app + email + preferensi | ✅ 1 | e2e S22, tes unit/integrasi/komponen; WebSocket realtime; **tampilan email belum dicek di klien email nyata** |
 | Validasi form (min/max/pattern) & pesan informatif | 🟡 0,75 | **gerbang vitest: 147 input semuanya ber-`maxLength`/`max`**; backend memetakan galat kolom ke 400; min/pattern belum seragam di semua form |
 | State galat/loading/empty | 🟡 0,75 | galat pemuatan = toast global; bug toast palsu superadmin diperbaiki + audit UI kini gagal bila ada toast galat; belum ada keadaan galat inline per halaman |
 | Aksesibilitas (label, nama tombol, kontras) | 🟡 0,75 | `npm run audit:ui`: **0 pelanggaran WCAG A/AA** pada 88 tampilan; jebakan fokus modal & navigasi keyboard penuh belum diuji |
@@ -89,7 +90,7 @@ Semua yang dapat diverifikasi di lab sudah ditutup. Sisanya **tidak bisa saya bu
 | API token per tenant | ✅ 1 | tak bisa beranak; mati bila user nonaktif; tak bisa kelola MFA. *Tidak otomatis dicabut saat password diganti (disengaja untuk integrasi)* |
 | Audit trail lengkap | ✅ 1 | LOGIN_FAILED, ACCOUNT_LOCKED, token, MFA_*, IMPERSONATE_*, IP klien; ADMIN tenant tak melihat baris NULL |
 | White-label/branding, kuota task & batas perangkat per tenant | ✅ 1 | e2e S20 (503 untuk Inform baru, 429 pra-registrasi) |
-| SSO OIDC | 🟡 0,75 | alur penuh teruji dengan IdP tiruan RS256; **belum IdP nyata**; pemetaan lewat email, belum `sub`; tanpa auto-provisioning (disengaja) |
+| SSO OIDC / Masuk dengan Google | 🟡 0,75 | alur penuh teruji dengan IdP tiruan RS256; tombol resmi Google, pembatasan domain, **ikatan ke `sub` IdP** (migrasi 0031); **belum diuji dengan Google nyata**; tanpa auto-provisioning (disengaja) |
 | MFA TOTP | ✅ 1 | unit (RFC 6238), integrasi MariaDB, e2e S16, tes komponen |
 | Pendaftaran tenant mandiri (self-signup, verifikasi email) | 🟡 0,75 | **bawaan MATI** (`ACS_SELF_SIGNUP`, butuh SMTP); unit + integrasi MariaDB (tenant dibuat atomik, token sekali pakai), e2e S20 hanya jalur "mati → 403"; jalur aktif end-to-end dengan email nyata belum diuji |
 

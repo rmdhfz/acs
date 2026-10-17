@@ -17,6 +17,7 @@ import { FirmwarePage } from './pages/FirmwarePage'
 import { CatalogPage } from './pages/CatalogPage'
 import { AdministrationPage } from './pages/AdministrationPage'
 import { ReportsPage } from './pages/ReportsPage'
+import { NotFoundPage } from './pages/NotFoundPage'
 import { SignupPage } from './pages/SignupPage'
 import { VerifySignupPage } from './pages/VerifySignupPage'
 import { PrivacyPage, TermsPage } from './pages/LegalPages'
@@ -26,6 +27,7 @@ import FilesPage from './pages/FilesPage'
 import TagsPage from './pages/TagsPage'
 import PresetsPage from './pages/PresetsPage'
 import ProfilePage from './pages/ProfilePage'
+import { NotificationsPage } from './pages/NotificationsPage'
 import AuditPage from './pages/AuditPage'
 import SelfServicePage from './pages/SelfServicePage'
 import { useAuth } from './lib/auth'
@@ -45,6 +47,32 @@ function PublicHome() {
   return <HomeRedirect />
 }
 
+// Judul tab per halaman (aplikasi di-noindex, tetapi judul yang jelas membantu pengguna & riwayat peramban).
+const PAGE_TITLES: Record<string, string> = {
+  '/login': 'Masuk — ACS Console',
+  '/signup': 'Daftar — ACS Console',
+  '/forgot-password': 'Lupa password — ACS Console',
+  '/reset-password': 'Buat password baru — ACS Console',
+  '/terms': 'Persyaratan layanan — ACS Console',
+  '/privacy': 'Kebijakan privasi — ACS Console',
+  '/dashboard': 'Dashboard — ACS Console',
+  '/devices': 'Perangkat — ACS Console',
+  '/tasks': 'Task — ACS Console',
+  '/provisioning': 'Provisioning — ACS Console',
+  '/presets': 'Preset — ACS Console',
+  '/firmware': 'Firmware — ACS Console',
+  '/files': 'File — ACS Console',
+  '/tags': 'Tag — ACS Console',
+  '/webhooks': 'Webhook — ACS Console',
+  '/audit': 'Audit Trail — ACS Console',
+  '/catalog': 'Katalog Vendor — ACS Console',
+  '/reports': 'Laporan SaaS — ACS Console',
+  '/administration': 'Administrasi — ACS Console',
+  '/profile': 'Profil — ACS Console',
+  '/notifications': 'Notifikasi — ACS Console',
+  '/self-service': 'WiFi Saya — ACS Console',
+}
+
 // Hanya beranda yang boleh diindeks mesin pencari; halaman aplikasi di-noindex (selain di robots.txt).
 function useRouteSeo() {
   const { pathname } = useLocation()
@@ -55,7 +83,7 @@ function useRouteSeo() {
       document.title = META_TITLE
     } else {
       robots?.setAttribute('content', 'noindex,nofollow')
-      document.title = 'ACS Console'
+      document.title = PAGE_TITLES[pathname] ?? 'ACS Console'
     }
   }, [pathname])
 }
@@ -91,6 +119,7 @@ function App() {
         <Route path="/presets" element={<PresetsPage />} />
         <Route path="/audit" element={<AuditPage />} />
         <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/self-service" element={<SelfServicePage />} />
         <Route path="/webhooks" element={<WebhooksPage />} />
         <Route path="/catalog" element={<CatalogPage />} />
@@ -100,7 +129,7 @@ function App() {
       </Route>
       <Route path="/" element={<PublicHome />} />
 
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<NotFoundPage />} />
     </Routes>
   )
 }

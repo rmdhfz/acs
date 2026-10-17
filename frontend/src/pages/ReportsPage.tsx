@@ -97,13 +97,13 @@ function ReportsContent() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2 print:hidden">
-          <button onClick={() => refetch()} disabled={isFetching} className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
+          <button onClick={() => refetch()} disabled={isFetching} className="flex items-center gap-1.5 rounded-full border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
             <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} /> Muat ulang
           </button>
-          <button onClick={downloadCsv} className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
+          <button onClick={downloadCsv} className="flex items-center gap-1.5 rounded-full border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
             <Download className="h-4 w-4" /> Unduh CSV
           </button>
-          <button onClick={() => window.print()} className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-500">
+          <button onClick={() => window.print()} className="flex items-center gap-1.5 rounded-full bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-500">
             <Printer className="h-4 w-4" /> Cetak / PDF
           </button>
         </div>

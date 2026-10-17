@@ -70,6 +70,14 @@ func (f *fakeUserRepoAuth) RehashPassword(_ context.Context, id uint64, oldHash,
 }
 
 func (f *fakeUserRepoAuth) RevokeSessions(_ context.Context, _ uint64) error { return nil }
+func (f *fakeUserRepoAuth) BindOIDCSubject(_ context.Context, id uint64, subject string) (bool, error) {
+	u, ok := f.byID[id]
+	if !ok || (u.OIDCSubject != nil && *u.OIDCSubject != "") {
+		return false, nil
+	}
+	u.OIDCSubject = &subject
+	return true, nil
+}
 func (f *fakeUserRepoAuth) AuthState(_ context.Context, id uint64) (*domain.UserAuthState, error) {
 	u, ok := f.byID[id]
 	if !ok {

@@ -20,7 +20,7 @@ nyata dan tidak punya kuirk per-firmware. Gunanya:
 
 ---
 
-## 1. Yang Diuji (21 skenario)
+## 1. Yang Diuji (22 skenario)
 
 | # | Skenario | Yang dibuktikan |
 |---|---|---|
@@ -45,8 +45,9 @@ nyata dan tidak punya kuirk per-firmware. Gunanya:
 | S19 | Operator SaaS | Laporan SaaS (hanya SUPERADMIN, 30 hari, CSV; ADMIN tenant 403). **Impersonate**: token ADMIN berumur pendek + jejak impersonator, isolasi tenant utuh, 6 aksi platform/sensitif 403 (laporan, tenant, impersonate ulang, ganti password, MFA, token API), ADMIN/diri sendiri ditolak, audit `IMPERSONATE_START/END` + `impersonated_by` pada aksi |
 | S20 | Paket & self-signup | Batas perangkat per tenant: Inform perangkat baru **503** tanpa membuat baris, pra-registrasi **429**, perangkat yang sudah ada tetap diterima, menaikkan batas memulihkan, ADMIN tenant 403. Self-signup **mati secara bawaan**: signup & verify → 403 (jalur aktif diuji di unit + integrasi MariaDB, bukan e2e, karena butuh SMTP) |
 | S21 | Vendor generik (semua ONT) | Migrasi 0029: CPE TR-098 ber-OUI TP-Link (OUI seed IEEE) → `vendor_id` ter-resolve; logical key `wifi.ssid` & `wan.pppoe.username` jatuh ke mapping standar vendor `GENERIC` dan nilainya berubah di CPE. CPE TR-181 ber-OUI **tak dikenal** (vendor NULL) → data model terdeteksi dari parameter Inform, logical key tetap ter-resolve ke path standar TR-181, task `COMPLETED` |
+| S22 | Notifikasi | Pengumuman SUPERADMIN ke tenant pilot → ADMIN pilot melihatnya (unread bertambah, id UUID, isi sebagai teks), tenant pilot2 **tidak**; ENDUSER 403; ADMIN tak bisa mengumumkan (403); link/judul tak sah & tenant tak ada → 400; mark-read menurunkan unread; jenis wajib tak bisa dimatikan |
 
-Status terakhir: **21/21 PASS** (2026-10-17), termasuk run ulang penuh setelah penambahan vendor generik/OUI, revalidasi WebSocket, hitungan sesi per tenant, dan batas laju REST yang dapat diatur. Catatan jujur: seluruh skenario memakai **simulator** — bukan bukti perilaku pada firmware nyata (lihat `PENGUJIAN_LAPANGAN.md`).
+Status terakhir: **22/22 PASS** (2026-10-17), termasuk run ulang penuh setelah penambahan vendor generik/OUI, revalidasi WebSocket, hitungan sesi per tenant, dan batas laju REST yang dapat diatur. Catatan jujur: seluruh skenario memakai **simulator** — bukan bukti perilaku pada firmware nyata (lihat `PENGUJIAN_LAPANGAN.md`).
 
 ---
 

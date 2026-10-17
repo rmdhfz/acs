@@ -166,6 +166,8 @@ func (s *Service) MFAVerifyLogin(ctx context.Context, mfaToken, code string) (*d
 		s.auditLoginFailure(ctx, u, "mfa_salah")
 		if locked {
 			_ = s.activity.Record(ctx, &domain.ActivityLog{UserID: &u.ID, TenantID: u.TenantID, Action: "ACCOUNT_LOCKED", EntityType: "user", EntityID: &u.ID})
+			s.alert(ctx, u.ID, u.TenantID, "Akun Anda dikunci sementara",
+				fmt.Sprintf("Akun dikunci %d menit karena terlalu banyak kode MFA salah.", int(lockoutDuration.Minutes())), s.mail != nil)
 			if s.mail != nil {
 				s.notify(s.mail.AccountLocked(u.Email, u.FullName, int(lockoutDuration.Minutes())))
 			}
@@ -260,6 +262,7 @@ func (s *Service) MFAEnable(ctx context.Context, actor domain.Actor, code string
 		return nil, err
 	}
 	_ = s.activity.Record(ctx, &domain.ActivityLog{UserID: actor.UserIDPtr(), TenantID: u.TenantID, Action: "MFA_ENABLED", EntityType: "user", EntityID: &u.ID})
+	s.alert(ctx, u.ID, u.TenantID, "MFA diaktifkan", "Verifikasi dua langkah (MFA) diaktifkan pada akun Anda.", false)
 	return plain, nil
 }
 
@@ -302,6 +305,7 @@ func (s *Service) MFADisable(ctx context.Context, actor domain.Actor, password, 
 	}
 	_ = s.users.RevokeSessions(ctx, u.ID)
 	_ = s.activity.Record(ctx, &domain.ActivityLog{UserID: actor.UserIDPtr(), TenantID: u.TenantID, Action: "MFA_DISABLED", EntityType: "user", EntityID: &u.ID})
+	s.alert(ctx, u.ID, u.TenantID, "MFA dinonaktifkan", "Verifikasi dua langkah (MFA) dinonaktifkan pada akun Anda. Jika bukan Anda, segera ganti password dan hubungi administrator.", false)
 	// Sesi lama (iat < password_changed_at) tercabut; JWT baru ini dikeluarkan setelahnya.
 	return s.issueJWT(u)
 }
@@ -327,5 +331,6 @@ func (s *Service) MFAAdminReset(ctx context.Context, actor domain.Actor, targetI
 	}
 	_ = s.users.RevokeSessions(ctx, u.ID)
 	_ = s.activity.Record(ctx, &domain.ActivityLog{UserID: actor.UserIDPtr(), TenantID: u.TenantID, Action: "MFA_RESET", EntityType: "user", EntityID: &u.ID})
+	s.alert(ctx, u.ID, u.TenantID, "MFA akun Anda di-reset administrator", "Administrator melepas verifikasi dua langkah (MFA) dari akun Anda. Aktifkan kembali lewat menu Profil.", false)
 	return nil
 }

@@ -64,7 +64,7 @@ function OptionButton({ active, onClick, children }: { active: boolean; onClick:
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+      className={`flex items-center justify-center gap-2 rounded-full border px-3 py-2 text-sm font-medium transition-colors ${
         active
           ? 'border-indigo-600 bg-indigo-50 text-indigo-700 dark:border-indigo-400 dark:bg-indigo-500/10 dark:text-indigo-300'
           : 'border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
@@ -164,7 +164,7 @@ export default function ProfilePage() {
               </div>
               <button
                 onClick={() => setPwOpen(true)}
-                className="shrink-0 rounded-lg bg-indigo-600 px-3.5 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-500"
+                className="shrink-0 rounded-full bg-indigo-600 px-3.5 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-500"
               >
                 {t('profile.change')}
               </button>
@@ -245,7 +245,7 @@ export default function ProfilePage() {
             </p>
             <button
               onClick={handleSignOut}
-              className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 dark:border-red-500/30 dark:text-red-400 dark:hover:bg-red-500/10"
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-full border border-red-200 px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 dark:border-red-500/30 dark:text-red-400 dark:hover:bg-red-500/10"
             >
               <LogOut className="h-4 w-4" /> {t('profile.signOut')}
             </button>

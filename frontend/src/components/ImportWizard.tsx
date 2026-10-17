@@ -55,9 +55,9 @@ const ACTION_ORDER: ImportAction[] = ['create', 'update', 'unchanged', 'skip', '
 const PAGE = 50
 
 const btnPrimary =
-  'inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50'
+  'inline-flex items-center justify-center gap-2 rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50'
 const btnGhost =
-  'inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
+  'inline-flex items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
 
 function detail(item: PlanItem): string {
   switch (item.action) {
@@ -395,7 +395,7 @@ export function ImportWizard({ adapter, title, onClose, onChanged }: ImportWizar
                         setPage(0)
                       }}
                       aria-pressed={active}
-                      className={`rounded-lg border px-3 py-2.5 text-left transition-colors ${
+                      className={`rounded-full border px-3 py-2.5 text-left transition-colors ${
                         active ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10' : 'border-slate-200 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50'
                       }`}
                     >

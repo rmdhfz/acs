@@ -6,76 +6,76 @@ export const SITE_NAME = 'ACS Console'
 export const TAGLINE = 'ACS multi-vendor TR-069 untuk ISP dan operator fiber optik'
 export const META_TITLE = 'ACS Console — ACS TR-069 Multi-Vendor & Multi-Tenant untuk ISP'
 export const META_DESCRIPTION =
-  'Kelola ribuan ONT/ONU/router dari satu konsol berbasis TR-069 (CWMP): provisioning otomatis, firmware canary rollout, preset, multi-tenant, RBAC, audit trail, dan REST API. Mendukung ZTE, Huawei, FiberHome, Nokia, Cdata.'
+  'Kelola ribuan ONT/ONU/router dari satu konsol TR-069 (CWMP): provisioning otomatis, firmware canary rollout, preset, notifikasi, multi-tenant, RBAC, login Google, audit trail, dan REST API. Katalog 30+ merek: ZTE, Huawei, FiberHome, Nokia, C-Data, TP-Link, VSOL.'
 export const KEYWORDS =
-  'ACS, TR-069, CWMP, auto configuration server, manajemen ONT, manajemen ONU, ISP, fiber optik, zero touch provisioning, firmware rollout, multi tenant, GenieACS alternatif'
+  'ACS, TR-069, CWMP, auto configuration server, manajemen ONT, manajemen ONU, ISP, fiber optik, zero touch provisioning, firmware rollout, multi tenant, ACS multi vendor, aplikasi manajemen router ISP, GenieACS alternatif'
 
 export interface Feature {
   title: string
   body: string
-  icon: 'layers' | 'zap' | 'rocket' | 'shield' | 'plug' | 'upload' | 'eye' | 'building' | 'wifi'
+  icon: 'layers' | 'zap' | 'rocket' | 'shield' | 'plug' | 'upload' | 'eye' | 'building' | 'wifi' | 'bell' | 'palette'
 }
 
 export const FEATURES: Feature[] = [
   {
     icon: 'layers',
     title: 'Multi-vendor tanpa ubah kode',
-    body: 'Perbedaan path parameter tiap merek ditangani lewat katalog data (vendor, OUI, model, pemetaan parameter), bukan percabangan kode. Katalog memuat 30+ merek (ZTE, Huawei, FiberHome, Nokia, C-Data, TP-Link, Tenda, VSOL, Sagemcom, Zyxel, dan lainnya) beserta ribuan OUI, ditambah pemetaan standar TR-098/TR-181 sebagai cadangan untuk merek yang belum dikenal. Menambah merek baru adalah operasi data. Root TR-098 (InternetGatewayDevice.*) maupun TR-181 (Device.*) ditentukan per perangkat.',
+    body: '30+ merek ONT/router lewat katalog data. Merek baru cukup ditambah sebagai data.',
   },
   {
     icon: 'zap',
     title: 'Zero-Touch Provisioning',
-    body: 'Aturan berprioritas mengenali ONT baru lewat OUI, serial, model, atau versi firmware lalu menerapkan profil, reboot, atau firmware secara otomatis saat Inform pertama masuk.',
+    body: 'ONT baru dikenali otomatis dan langsung dikonfigurasi saat pertama terhubung.',
   },
   {
     icon: 'wifi',
     title: 'Preset penegak konfigurasi',
-    body: 'Jaga SSID dan parameter standar operator. Bila pelanggan mengubahnya, ACS mengembalikan nilainya pada sesi berikutnya, dengan cooldown dan batas percobaan agar tidak berulang tanpa henti.',
+    body: 'SSID dan parameter standar operator dijaga, dikembalikan bila diubah pelanggan.',
   },
   {
     icon: 'rocket',
     title: 'Firmware canary rollout',
-    body: 'Naikkan firmware bertahap per gelombang dengan ambang kegagalan. Rollout berhenti otomatis bila tingkat gagal melewati batas, dan pembatalan ikut menghentikan unduhan yang belum terkirim.',
+    body: 'Upgrade bertahap per gelombang; berhenti otomatis bila tingkat gagal melewati batas.',
+  },
+  {
+    icon: 'eye',
+    title: 'Diagnostik & redaman optik',
+    body: 'Ping, traceroute, dan level optik RX/TX langsung dari ONT dengan hasil terstruktur.',
+  },
+  {
+    icon: 'bell',
+    title: 'Notifikasi in-app & email',
+    body: 'Lonceng realtime plus email untuk perangkat offline massal, task gagal, dan keamanan akun.',
   },
   {
     icon: 'building',
     title: 'Multi-tenant & RBAC',
-    body: 'Satu instalasi untuk banyak perusahaan atau anak usaha. Data terisolasi per tenant, dengan peran Superadmin, Admin, NOC, Viewer, dan portal pelanggan (End User).',
-  },
-  {
-    icon: 'eye',
-    title: 'Audit trail & observability',
-    body: 'Setiap perubahan tercatat (siapa, kapan, apa). Metrik Prometheus, aturan alert, dan timeline per perangkat membantu NOC menelusuri masalah dengan cepat.',
-  },
-  {
-    icon: 'upload',
-    title: 'Impor & ekspor dengan pratinjau',
-    body: 'Impor CSV massal dengan pratinjau yang sudah dicek terhadap data eksisting (baru, diperbarui, tidak berubah, error) sebelum dieksekusi. Ekspor CSV/JSON tanpa membocorkan rahasia.',
-  },
-  {
-    icon: 'plug',
-    title: 'REST API & webhook',
-    body: 'Kontrak OpenAPI 3 lengkap beserta koleksi Postman. Webhook bertanda tangan HMAC dengan retry untuk menghubungkan BSS/OSS dan sistem pemantauan Anda.',
+    body: 'Satu instalasi untuk banyak perusahaan; data terisolasi, peran dari Superadmin sampai Viewer.',
   },
   {
     icon: 'shield',
-    title: 'Keamanan sebagai standar',
-    body: 'Login email dengan hash Argon2id, verifikasi dua langkah (TOTP), reset password lewat email sekali pakai, pembatasan percobaan, kredensial terenkripsi di database, pencabutan sesi, dan perlindungan SSRF pada Connection Request.',
+    title: 'Login aman, termasuk Google',
+    body: 'Masuk dengan Google atau email + verifikasi dua langkah (TOTP); audit trail lengkap.',
   },
   {
-    icon: 'zap',
-    title: 'Diagnostik & redaman optik',
-    body: 'Jalankan ping dan traceroute dari ONT, serta baca level optik (RX/TX) berbasis pemetaan data. Hasil tampil terstruktur di Console dan ikut menjadi riwayat perangkat.',
+    icon: 'wifi',
+    title: 'Portal pelanggan',
+    body: 'Pelanggan mengganti SSID/password WiFi atau restart ONT sendiri, terbatas pada perangkatnya.',
   },
   {
     icon: 'building',
     title: 'Konsol operator SaaS',
-    body: 'Laporan platform per tenant (KPI, tren 30 hari, ekspor CSV), masuk-sebagai untuk dukungan yang teraudit, serta batas perangkat dan kuota task per tenant.',
+    body: 'Laporan per tenant, masuk-sebagai untuk dukungan yang teraudit, batas perangkat per paket.',
   },
   {
-    icon: 'wifi',
-    title: 'Portal pelanggan (WiFi Saya)',
-    body: 'Pelanggan mengganti SSID dan password WiFi atau me-restart ONT miliknya sendiri. Akses dibatasi pada perangkat yang ditautkan admin, dengan validasi input dan jeda antar-perubahan.',
+    icon: 'upload',
+    title: 'Impor & ekspor dengan pratinjau',
+    body: 'CSV massal dicek dulu (baru, diperbarui, error) sebelum dieksekusi.',
+  },
+  {
+    icon: 'plug',
+    title: 'REST API & webhook',
+    body: 'OpenAPI 3 + Postman; webhook bertanda tangan untuk integrasi BSS/OSS.',
   },
 ]
 
@@ -167,6 +167,13 @@ export function buildJsonLd(siteUrl: string, contactEmail: string) {
         url: `${siteUrl}/`,
         featureList: FEATURES.map((f) => f.title),
         publisher: { '@id': `${siteUrl}/#organization` },
+      },
+      {
+        '@type': 'HowTo',
+        '@id': `${siteUrl}/#howto`,
+        name: 'Dari ONT menyala sampai terkonfigurasi lewat ACS Console',
+        inLanguage: 'id-ID',
+        step: STEPS.map((s, i) => ({ '@type': 'HowToStep', position: i + 1, name: s.title, text: s.body })),
       },
       {
         '@type': 'FAQPage',

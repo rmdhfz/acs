@@ -9,7 +9,7 @@ import { useToast } from '../lib/toast'
 import { useDisableMfa, useEnableMfa, useMfaStatus, useSetupMfa } from '../lib/hooks'
 
 const inputCls =
-  'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
+  'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
 const labelCls = 'mb-1 block text-sm font-medium text-slate-600 dark:text-slate-400'
 const primaryBtn =
   'rounded-lg bg-indigo-600 px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 disabled:opacity-50'
@@ -248,7 +248,7 @@ function DisableModal({ onClose }: { onClose: () => void }) {
         {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
         <div className="flex justify-end gap-2.5 pt-1">
           <button type="button" onClick={onClose} className={ghostBtn}>Batal</button>
-          <button type="submit" disabled={!password || code.trim().length < 6 || disable.isPending} className="rounded-lg bg-red-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-50">
+          <button type="submit" disabled={!password || code.trim().length < 6 || disable.isPending} className="rounded-full bg-red-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-50">
             {disable.isPending ? 'Memproses…' : 'Nonaktifkan'}
           </button>
         </div>

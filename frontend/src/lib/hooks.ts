@@ -1586,3 +1586,99 @@ export function useZeroTouchRule(id: number | undefined) {
     enabled: id !== undefined,
   })
 }
+
+
+// ---- Notifikasi server (in-app + email) ----
+
+export type NotificationSeverity = 'INFO' | 'WARNING' | 'CRITICAL'
+
+export interface ServerNotification {
+  /** UUID publik (bukan PK internal). */
+  id: string
+  type: string
+  type_name: string
+  severity: NotificationSeverity
+  title: string
+  body: string
+  /** Path internal Console (mis. /devices/12) atau null. */
+  link: string | null
+  entity_type: string | null
+  entity_id: number | null
+  read_at: string | null
+  created_at: string
+}
+
+export interface NotificationListResponse {
+  data: ServerNotification[] | null
+  meta: { total: number; unread: number; page: number; limit: number }
+}
+
+export interface NotificationPreference {
+  type: string
+  name: string
+  description: string
+  severity: NotificationSeverity
+  in_app: boolean
+  email: boolean
+  /** true = tak bisa dimatikan (mis. peringatan keamanan akun). */
+  mandatory: boolean
+}
+
+export function useNotificationList(opts: { page: number; pageSize: number; unreadOnly?: boolean }) {
+  const qs = new URLSearchParams({ page: String(opts.page), page_size: String(opts.pageSize) })
+  if (opts.unreadOnly) qs.set('unread', 'true')
+  return useQuery({
+    queryKey: ['notifications', 'list', opts.page, opts.pageSize, Boolean(opts.unreadOnly)],
+    queryFn: async () => {
+      const r = await api.get<NotificationListResponse>(`/notifications?${qs}`)
+      return { data: r.data ?? [], meta: r.meta }
+    },
+    // WebSocket menyegarkan seketika; polling pelan hanya cadangan bila koneksi realtime putus.
+    refetchInterval: 60_000,
+  })
+}
+
+export function useUnreadCount() {
+  return useQuery({
+    queryKey: ['notifications', 'unread'],
+    queryFn: async () => (await api.get<{ count: number }>('/notifications/unread-count')).count,
+    refetchInterval: 60_000,
+  })
+}
+
+export function useMarkNotifications() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { ids?: string[]; all?: boolean }) => api.post<void>('/notifications/read', body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  })
+}
+
+export function useNotificationPreferences() {
+  return useQuery({
+    queryKey: ['notifications', 'preferences'],
+    queryFn: async () => (await api.get<{ data: NotificationPreference[] | null }>('/notifications/preferences')).data ?? [],
+  })
+}
+
+export function useUpdateNotificationPreferences() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (items: { type: string; in_app: boolean; email: boolean }[]) => api.put<void>('/notifications/preferences', { items }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications', 'preferences'] }),
+  })
+}
+
+export interface AnnounceInput {
+  title: string
+  body: string
+  link?: string
+  tenant_id?: number
+  email: boolean
+}
+
+export function useAnnounce() {
+  return useMutation({
+    mutationFn: (input: AnnounceInput) => api.post<{ recipients: number }>('/notifications/announce', input),
+  })
+}

@@ -60,9 +60,9 @@ import type { Device } from '../lib/types'
 
 const PAGE_SIZE = 20
 const inputCls =
-  'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
+  'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
 const primaryBtnCls =
-  'flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white'
+  'flex items-center justify-center gap-2 rounded-full bg-indigo-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-indigo-300 dark:text-slate-900 dark:hover:bg-indigo-200'
 
 export function DevicesPage() {
   const { t: tl } = useI18n()
@@ -229,14 +229,14 @@ export function DevicesPage() {
               <button
                 type="button"
                 onClick={() => setShowImport(true)}
-                className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                className="flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
               >
                 <Upload className="h-4 w-4" /> Impor
               </button>
               <button
                 type="button"
                 onClick={() => setShowCreate(true)}
-                className="flex items-center gap-2 rounded-lg bg-indigo-600 px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-500"
+                className="flex items-center gap-2 rounded-full bg-indigo-600 px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-500"
               >
                 <Plus className="h-4 w-4" /> Tambah Perangkat
               </button>
@@ -280,7 +280,7 @@ export function DevicesPage() {
               setSearch(e.target.value)
               resetToFirstPage()
             }}
-            aria-label="Cari device berdasarkan serial number atau MAC address" className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500"
+            aria-label="Cari device berdasarkan serial number atau MAC address" className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 outline-none transition-colors focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
           />
         </div>
         <select
@@ -290,7 +290,7 @@ export function DevicesPage() {
             setStatusFilter(e.target.value)
             resetToFirstPage()
           }}
-          className="min-w-[140px] flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 sm:flex-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-500"
+          className="min-w-[140px] flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 sm:flex-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
         >
           <option value="">Semua status</option>
           {statusRefs?.map((s) => (
@@ -306,7 +306,7 @@ export function DevicesPage() {
             setVendorFilter(e.target.value)
             resetToFirstPage()
           }}
-          className="min-w-[140px] flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 sm:flex-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-500"
+          className="min-w-[140px] flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 sm:flex-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
         >
           <option value="">Semua vendor</option>
           {vendors.map((v) => (
@@ -323,7 +323,7 @@ export function DevicesPage() {
               setTagFilter(e.target.value)
               resetToFirstPage()
             }}
-            className="min-w-[140px] flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 sm:flex-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-500"
+            className="min-w-[140px] flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 sm:flex-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
           >
             <option value="">Semua tag</option>
             {tags.map((t) => (
@@ -341,19 +341,19 @@ export function DevicesPage() {
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <button
               onClick={() => setBulkAction('profile')}
-              className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-white/20"
+              className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-white/20"
             >
               <Sparkles className="h-3.5 w-3.5" /> Terapkan Profile
             </button>
             <button
               onClick={() => setBulkAction('firmware')}
-              className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-white/20"
+              className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-white/20"
             >
               <HardDrive className="h-3.5 w-3.5" /> Firmware Upgrade
             </button>
             <button
               onClick={() => setBulkAction('reboot')}
-              className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-white/20"
+              className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-white/20"
             >
               <Power className="h-3.5 w-3.5" /> Reboot
             </button>
@@ -361,14 +361,14 @@ export function DevicesPage() {
               <button
                 onClick={() => void handleBulkDelete()}
                 disabled={deleteMut.isPending}
-                className="flex items-center gap-1.5 rounded-lg bg-red-500/90 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-red-500 disabled:opacity-60"
+                className="flex items-center gap-1.5 rounded-full bg-red-500/90 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-red-500 disabled:opacity-60"
               >
                 <Trash2 className="h-3.5 w-3.5" /> Hapus
               </button>
             )}
             <button
               onClick={() => setSelected(new Set())}
-              className="flex h-7 w-7 items-center justify-center rounded-md text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+              className="flex h-7 w-7 items-center justify-center rounded-full text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
               title="Batal pilih"
             >
               <X className="h-4 w-4" />
@@ -380,7 +380,7 @@ export function DevicesPage() {
       <div className="mb-4 flex items-center justify-end gap-2">
         <button
           onClick={() => setViewMode('table')}
-          className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+          className={`flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-medium transition-colors ${
             viewMode === 'table'
               ? 'border-blue-600 bg-blue-50 text-blue-700 dark:border-blue-500 dark:bg-blue-900/30 dark:text-blue-400'
               : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
@@ -390,7 +390,7 @@ export function DevicesPage() {
         </button>
         <button
           onClick={() => setViewMode('map')}
-          className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+          className={`flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-medium transition-colors ${
             viewMode === 'map'
               ? 'border-blue-600 bg-blue-50 text-blue-700 dark:border-blue-500 dark:bg-blue-900/30 dark:text-blue-400'
               : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
@@ -421,10 +421,10 @@ export function DevicesPage() {
           >
             {isAdmin && (
               <div className="mt-5 flex flex-wrap justify-center gap-2.5">
-                <button type="button" onClick={() => setShowCreate(true)} className="flex items-center gap-2 rounded-lg bg-indigo-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+                <button type="button" onClick={() => setShowCreate(true)} className="flex items-center gap-2 rounded-full bg-indigo-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
                   <Plus className="h-4 w-4" /> Tambah Perangkat
                 </button>
-                <button type="button" onClick={() => setShowImport(true)} className="flex items-center gap-2 rounded-lg border border-slate-300 px-3.5 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
+                <button type="button" onClick={() => setShowImport(true)} className="flex items-center gap-2 rounded-full border border-slate-300 px-3.5 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
                   <Upload className="h-4 w-4" /> Impor dari file
                 </button>
               </div>
@@ -529,7 +529,7 @@ export function DevicesPage() {
                               onClick={() => setEditDevice(d)}
                               title="Edit perangkat"
                               aria-label={`Edit ${d.serial_number}`}
-                              className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 dark:text-slate-400"
+                              className="flex h-7 w-7 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 dark:text-slate-400"
                             >
                               <Pencil className="h-4 w-4" />
                             </button>
@@ -539,7 +539,7 @@ export function DevicesPage() {
                                 onClick={() => void handleDelete(d)}
                                 title="Hapus perangkat"
                                 aria-label={`Hapus ${d.serial_number}`}
-                                className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-400 dark:text-slate-400"
+                                className="flex h-7 w-7 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-400 dark:text-slate-400"
                               >
                                 <Trash2 className="h-4 w-4" />
                               </button>
@@ -563,7 +563,7 @@ export function DevicesPage() {
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page <= 1}
                   aria-label="Halaman sebelumnya"
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 dark:text-slate-400 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 dark:text-slate-400 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </button>
@@ -574,7 +574,7 @@ export function DevicesPage() {
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={page >= totalPages}
                   aria-label="Halaman berikutnya"
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 dark:text-slate-400 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 dark:text-slate-400 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <ChevronRight className="h-4 w-4" />
                 </button>

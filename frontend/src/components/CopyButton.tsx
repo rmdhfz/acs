@@ -21,7 +21,7 @@ export function CopyButton({ value, label }: { value: string; label?: string }) 
       onClick={onClick}
       title={done ? t('profile.copied') : (label ?? t('profile.copy'))}
       aria-label={label ?? t('profile.copy')}
-      className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 dark:text-slate-400"
+      className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 dark:text-slate-400"
     >
       {done ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
     </button>

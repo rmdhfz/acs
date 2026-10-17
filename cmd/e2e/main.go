@@ -129,6 +129,7 @@ func main() {
 		{"S19-saas-operator", scenarioSaaSOperator},
 		{"S20-paket-signup", scenarioPlanAndSignup},
 		{"S21-vendor-generik", scenarioGenericVendor},
+		{"S22-notifikasi", scenarioNotify},
 	}
 
 	var results []result

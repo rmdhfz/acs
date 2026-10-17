@@ -38,6 +38,7 @@ import (
 	"acs/internal/usecase/file"
 	"acs/internal/usecase/firmware"
 	"acs/internal/usecase/iam"
+	"acs/internal/usecase/notification"
 	"acs/internal/usecase/notify"
 	"acs/internal/usecase/preset"
 	"acs/internal/usecase/provisioning"
@@ -154,6 +155,7 @@ func main() {
 	}
 
 	authSvc := auth.NewService(userRepo, apiTokenRepo, tenantRepo, activityLogRepo, cfg.JWTSecret, cfg.JWTExpiry, cfg.OIDCIssuer, cfg.OIDCClientID, cfg.OIDCClientSecret, cfg.OIDCRedirectURL)
+	authSvc.WithOIDCAllowedDomains(cfg.OIDCAllowedDomains)
 	if cfg.SMTPHost != "" {
 		authSvc.WithPasswordReset(passwordResetRepo, mailNotifier, mailBuilder, cfg.PasswordResetTTL)
 	}
@@ -225,6 +227,20 @@ func main() {
 	presetSvc := preset.NewService(presetRepo, activityLogRepo)
 	selfServiceSvc := selfservice.NewService(userDeviceRepo, deviceRepo, refRepo, taskSvc, activityLogRepo).WithUsers(userRepo)
 
+	// ---- Notifikasi persisten (in-app + email + push WebSocket per pengguna), migrations/0030 ----
+	// Satu notifSvc dipasang ke service pemicu lewat domain.Notifier (nil-safe; kegagalan notifikasi tidak
+	// pernah menggagalkan alur utama). Email hanya bila SMTP dikonfigurasi.
+	notifSvc := notification.NewService(mysql.NewNotificationRepository(db), tenantRepo, activityLogRepo,
+		notification.Config{OfflineRatio: cfg.NotifyOfflineRatio, FailedTasks: cfg.NotifyFailedTasks}, logger).WithPusher(wsHub)
+	if cfg.SMTPHost != "" {
+		notifSvc.WithEmail(mailNotifier, mailBuilder)
+	}
+	authSvc.WithNotifier(notifSvc)
+	iamSvc.WithNotifier(notifSvc)
+	signupSvc.WithNotifier(notifSvc)
+	deviceSvc.WithNotifier(notifSvc)
+	firmwareSvc.WithNotifier(notifSvc)
+
 	// ---- Observability: metrics Prometheus (TECH.md §10, ROADMAP.md Fase 2) ----
 	// Registry terpisah (bukan prometheus.DefaultRegisterer) supaya /metrics
 	// HANYA mengekspos metrik agregat ACS di atas — tidak ikut membocorkan
@@ -291,8 +307,9 @@ func main() {
 		MetricsHandler: metricsHandler,
 		Files:          fileSvc,
 		Tags:           tagSvc, Presets: presetSvc,
-		SelfService: selfServiceSvc,
-		WSHub:       wsHub,
+		SelfService:   selfServiceSvc,
+		Notifications: notifSvc,
+		WSHub:         wsHub,
 
 		WSAllowedOrigins: cfg.CORSAllowOrigins,
 		PublicURL:        cfg.PublicURL,
@@ -356,7 +373,7 @@ func main() {
 	}()
 
 	stop := make(chan struct{})
-	go runSweepers(deviceSvc, taskSvc, firmwareSvc, webhookSvc, sessionSvc, diagnosticsSvc, mysql.NewRetentionRepository(db), cfg.LogRetentionDays, signupSvc.Purge, lockSweeper, stop)
+	go runSweepers(deviceSvc, taskSvc, firmwareSvc, webhookSvc, sessionSvc, diagnosticsSvc, mysql.NewRetentionRepository(db), cfg.LogRetentionDays, signupSvc.Purge, notifSvc.Evaluate, lockSweeper, stop)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
@@ -447,7 +464,7 @@ func redactingRequestLogger(logger *slog.Logger) echo.MiddlewareFunc {
 // karena app server stateless (TECH.md §9). Dispatch webhook pakai ticker
 // terpisah yang lebih cepat (15 dtk) supaya event fault/value-change sampai
 // ke sistem pihak ketiga dengan latensi rendah.
-func runSweepers(deviceSvc *device.Service, taskSvc *task.Service, firmwareSvc *firmware.Service, webhookSvc *webhook.Service, sessionSvc *session.Service, diagSvc *diagnostics.Service, retention domain.RetentionRepository, retentionDays int, signupPurge func(context.Context) (int64, error), lock func(name string, ttl time.Duration) (func(), bool), stop <-chan struct{}) {
+func runSweepers(deviceSvc *device.Service, taskSvc *task.Service, firmwareSvc *firmware.Service, webhookSvc *webhook.Service, sessionSvc *session.Service, diagSvc *diagnostics.Service, retention domain.RetentionRepository, retentionDays int, signupPurge func(context.Context) (int64, error), notifyEval func(context.Context) (int, error), lock func(name string, ttl time.Duration) (func(), bool), stop <-chan struct{}) {
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
 	// Pemangkasan log: tiap 6 jam (data menahun dihapus bertahap per batch).
@@ -455,10 +472,24 @@ func runSweepers(deviceSvc *device.Service, taskSvc *task.Service, firmwareSvc *
 	defer retentionTicker.Stop()
 	webhookTicker := time.NewTicker(15 * time.Second)
 	defer webhookTicker.Stop()
+	// Evaluator notifikasi (lonjakan perangkat offline, task gagal beruntun): tiap 5 menit, satu instance per tick.
+	notifyTicker := time.NewTicker(5 * time.Minute)
+	defer notifyTicker.Stop()
 	for {
 		select {
 		case <-stop:
 			return
+		case <-notifyTicker.C:
+			release, ok := lock("notify", 4*time.Minute)
+			if !ok {
+				continue // instance lain yang mengevaluasi tick ini
+			}
+			if n, err := notifyEval(context.Background()); err != nil {
+				log.Printf("sweeper: evaluasi notifikasi gagal: %v", err)
+			} else if n > 0 {
+				log.Printf("sweeper: %d notifikasi dibuat oleh evaluator", n)
+			}
+			release()
 		case <-retentionTicker.C:
 			release, ok := lock("retention", 30*time.Minute)
 			if !ok {

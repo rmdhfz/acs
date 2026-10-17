@@ -82,6 +82,13 @@ type Config struct {
 	// metrik optik, riwayat webhook). 0 = tanpa pemangkasan. activity_logs (audit) tidak dipangkas.
 	LogRetentionDays int
 
+	// NotifyOfflineRatio — ambang rasio perangkat OFFLINE (0..1) untuk notifikasi DEVICE_OFFLINE_SPIKE
+	// (berlaku bila tenant punya >= 10 perangkat). Bawaan 0,30. ACS_NOTIFY_OFFLINE_RATIO.
+	NotifyOfflineRatio float64
+	// NotifyFailedTasks — jumlah task FAILED dalam 30 menit terakhir yang memicu notifikasi TASK_FAILURES.
+	// Bawaan 5. ACS_NOTIFY_FAILED_TASKS.
+	NotifyFailedTasks int
+
 	// OpticalPollMinutes — interval polling redaman optik per perangkat (menit); 0 = nonaktif.
 	// Hanya berlaku untuk vendor/model yang punya mapping optical.* di katalog.
 	OpticalPollMinutes int
@@ -90,6 +97,8 @@ type Config struct {
 	OIDCClientID     string
 	OIDCClientSecret string
 	OIDCRedirectURL  string
+	// OIDCAllowedDomains — bila diisi, hanya email berdomain ini yang boleh masuk lewat SSO (mis. Google Workspace).
+	OIDCAllowedDomains []string
 
 	// Email (SMTP) untuk reset password & notifikasi keamanan. SMTPHost kosong
 	// = email nonaktif (fitur reset lewat email tidak mengirim apa pun; sisa
@@ -246,6 +255,14 @@ func Load() (*Config, error) {
 	if err != nil || cfg.RESTRatePerIP < 5 || cfg.RESTRatePerIP > 1_000_000 {
 		return nil, fmt.Errorf("config: ACS_REST_RATE_LIMIT harus angka 5..1000000 (request/detik per IP)")
 	}
+	cfg.NotifyOfflineRatio, err = strconv.ParseFloat(getEnv("ACS_NOTIFY_OFFLINE_RATIO", "0.30"), 64)
+	if err != nil || cfg.NotifyOfflineRatio <= 0 || cfg.NotifyOfflineRatio > 1 {
+		return nil, fmt.Errorf("config: ACS_NOTIFY_OFFLINE_RATIO harus angka di atas 0 sampai 1 (mis. 0.30)")
+	}
+	cfg.NotifyFailedTasks, err = strconv.Atoi(getEnv("ACS_NOTIFY_FAILED_TASKS", "5"))
+	if err != nil || cfg.NotifyFailedTasks < 1 || cfg.NotifyFailedTasks > 100000 {
+		return nil, fmt.Errorf("config: ACS_NOTIFY_FAILED_TASKS harus bilangan 1..100000")
+	}
 	cfg.OpticalPollMinutes, err = strconv.Atoi(getEnv("ACS_OPTICAL_POLL_MINUTES", "360"))
 	if err != nil || cfg.OpticalPollMinutes < 0 || (cfg.OpticalPollMinutes > 0 && cfg.OpticalPollMinutes < 15) {
 		return nil, fmt.Errorf("config: ACS_OPTICAL_POLL_MINUTES harus 0 (nonaktif) atau >= 15")
@@ -259,6 +276,11 @@ func Load() (*Config, error) {
 	cfg.OIDCClientID = os.Getenv("ACS_OIDC_CLIENT_ID")
 	cfg.OIDCClientSecret = os.Getenv("ACS_OIDC_CLIENT_SECRET")
 	cfg.OIDCRedirectURL = getEnv("ACS_OIDC_REDIRECT_URL", "http://localhost:8080/api/v1/auth/oidc/callback")
+	for _, d := range strings.Split(os.Getenv("ACS_OIDC_ALLOWED_DOMAINS"), ",") {
+		if d = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(d), "@"))); d != "" {
+			cfg.OIDCAllowedDomains = append(cfg.OIDCAllowedDomains, d)
+		}
+	}
 
 	cfg.SMTPHost = os.Getenv("ACS_SMTP_HOST")
 	smtpPort, err := strconv.Atoi(getEnv("ACS_SMTP_PORT", "587"))

@@ -1,0 +1,15 @@
+{
+  "name": "ACS Console",
+  "short_name": "ACS",
+  "description": "ACS TR-069 multi-vendor untuk ISP dan operator fiber optik",
+  "lang": "id",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1a73e8",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

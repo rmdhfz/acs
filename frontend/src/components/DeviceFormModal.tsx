@@ -9,7 +9,7 @@ import { useCreateDevice, useDeviceModels, useTenants, useUpdateDevice, useVendo
 import type { Device } from '../lib/types'
 
 const inputCls =
-  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-slate-500 focus:ring-1 focus:ring-slate-500 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:disabled:bg-slate-800/50'
+  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:disabled:bg-slate-800/50'
 const labelCls = 'mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300'
 const hintCls = 'mt-1 text-xs text-slate-500 dark:text-slate-400'
 
@@ -333,10 +333,10 @@ export function DeviceFormModal({ mode, device, onClose, onSaved }: Props) {
         )}
 
         <div className="flex justify-end gap-2.5 pt-1">
-          <button type="button" onClick={onClose} disabled={busy} className="rounded-lg px-3.5 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800">
+          <button type="button" onClick={onClose} disabled={busy} className="rounded-full px-3.5 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800">
             Batal
           </button>
-          <button type="submit" disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 disabled:opacity-60">
+          <button type="submit" disabled={busy} className="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 disabled:opacity-60">
             {busy && <Spinner className="h-4 w-4 text-white" />}
             {isEdit ? 'Simpan perubahan' : 'Daftarkan perangkat'}
           </button>

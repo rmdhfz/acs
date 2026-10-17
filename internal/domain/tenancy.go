@@ -74,9 +74,11 @@ type User struct {
 	PasswordChangedAt *time.Time `db:"password_changed_at" json:"-"`
 	// MFA TOTP (migrations/0027). Rahasia terenkripsi tak pernah diekspos; MFAEnabled ditampilkan
 	// supaya admin tahu akun mana yang sudah ber-MFA.
-	TOTPSecretEnc       []byte     `db:"totp_secret_enc" json:"-"`
-	TOTPEnabled         bool       `db:"totp_enabled" json:"mfa_enabled"`
-	TOTPLastStep        *uint64    `db:"totp_last_step" json:"-"`
+	TOTPSecretEnc []byte  `db:"totp_secret_enc" json:"-"`
+	TOTPEnabled   bool    `db:"totp_enabled" json:"mfa_enabled"`
+	TOTPLastStep  *uint64 `db:"totp_last_step" json:"-"`
+	// OIDCSubject — ikatan identitas IdP "<issuer>|<sub>" (migrations/0031); tidak diekspos.
+	OIDCSubject         *string    `db:"oidc_subject" json:"-"`
 	FailedLoginAttempts uint32     `db:"failed_login_attempts" json:"-"`
 	LockedUntil         *time.Time `db:"locked_until" json:"-"`
 	Roles               []string   `db:"-" json:"roles"`
@@ -132,6 +134,8 @@ type UserRepository interface {
 	// password_changed_at) — dipakai saat role berubah agar peran lama tidak
 	// berlaku sampai token kedaluwarsa.
 	RevokeSessions(ctx context.Context, id uint64) error
+	// BindOIDCSubject mengikat akun ke identitas IdP HANYA bila belum terikat (compare-and-set). true = terikat sekarang.
+	BindOIDCSubject(ctx context.Context, id uint64, subject string) (bool, error)
 	SoftDelete(ctx context.Context, id, deletedBy uint64) error
 	TouchLastLogin(ctx context.Context, id uint64, at time.Time) error
 	RolesByUserID(ctx context.Context, userID uint64) ([]string, error)

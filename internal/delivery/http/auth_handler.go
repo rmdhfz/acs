@@ -212,7 +212,7 @@ func (r *Router) oidcCallback(c *echo.Context) error {
 
 // authConfig — konfigurasi publik untuk halaman login (tanpa rahasia).
 func (r *Router) authConfig(c *echo.Context) error {
-	return c.JSON(http.StatusOK, map[string]any{"sso_enabled": r.Auth.OIDCConfigured(), "mfa_available": r.Auth.MFAEnabledFeature(), "self_signup_enabled": r.signupEnabled()})
+	return c.JSON(http.StatusOK, map[string]any{"sso_enabled": r.Auth.OIDCConfigured(), "sso_provider": r.Auth.OIDCProvider(), "mfa_available": r.Auth.MFAEnabledFeature(), "self_signup_enabled": r.signupEnabled()})
 }
 
 // me — profil akun yang sedang login.

@@ -256,10 +256,22 @@ func (r *userRepository) attachRoles(ctx context.Context, rows []domain.User) er
 }
 
 func (r *userRepository) Update(ctx context.Context, u *domain.User) error {
-	const q = `UPDATE users SET username = :username, email = :email, full_name = :full_name,
-		is_active = :is_active, updated_by = :updated_by WHERE id = :id AND is_deleted = 0`
+	// oidc_subject dievaluasi SEBELUM email di-SET (MariaDB menilai SET dari kiri ke kanan): bila email berubah,
+	// ikatan identitas IdP dikosongkan agar alamat baru tidak mewarisi ikatan lama (migrations/0031).
+	const q = `UPDATE users SET oidc_subject = IF(email = :email, oidc_subject, NULL), username = :username, email = :email,
+		full_name = :full_name, is_active = :is_active, updated_by = :updated_by WHERE id = :id AND is_deleted = 0`
 	_, err := r.db.NamedExecContext(ctx, q, u)
 	return translateErr(err)
+}
+
+func (r *userRepository) BindOIDCSubject(ctx context.Context, id uint64, subject string) (bool, error) {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE users SET oidc_subject = ? WHERE id = ? AND oidc_subject IS NULL AND is_deleted = 0`, subject, id)
+	if err != nil {
+		return false, translateErr(err)
+	}
+	n, _ := res.RowsAffected()
+	return n == 1, nil
 }
 
 func (r *userRepository) UpdatePassword(ctx context.Context, id uint64, passwordHash string, updatedBy *uint64) error {

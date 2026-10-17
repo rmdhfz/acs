@@ -27,7 +27,7 @@ interface Props<T> {
 }
 
 const importBtn =
-  'flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
+  'flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
 
 // DataTools — pasangan tombol Ekspor + Impor yang seragam di header halaman modul.
 export function DataTools<T>({ exportCfg, importCfg }: Props<T>) {

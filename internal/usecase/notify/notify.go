@@ -63,29 +63,40 @@ type layout struct {
 	CreditName string
 	CreditURL  string
 	Year       int
+	// Chip keparahan (opsional; hanya email notifikasi). Warna bukan input pengguna: dipilih dari tabel tetap.
+	SevLabel string
+	SevFG    template.CSS
+	SevBG    template.CSS
 }
 
+// htmlTpl — gaya Google/Material: kartu putih bersudut 16px di atas latar abu terang, header ringan (bukan blok
+// gelap), aksen biru #1a73e8, teks #202124/#5f6368, tombol pill biru. Dibangun dengan tabel + style inline agar
+// kompatibel dengan klien email (Gmail, Outlook, Apple Mail); font Google Sans/Roboto dengan fallback Arial.
 var htmlTpl = template.Must(template.New("mail").Parse(`<!doctype html>
-<html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{.Title}}</title></head>
-<body style="margin:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#0f172a">
-<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f1f5f9;padding:32px 12px"><tr><td align="center">
-<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e2e8f0">
-<tr><td style="background:#0f172a;padding:22px 28px"><span style="display:inline-block;background:#4f46e5;color:#fff;border-radius:8px;padding:6px 10px;font-weight:700;font-size:14px">&#9679;</span>
-<span style="color:#fff;font-size:16px;font-weight:600;margin-left:10px;vertical-align:middle">{{.Brand}}</span></td></tr>
-<tr><td style="padding:28px">
-<h1 style="margin:0 0 14px;font-size:20px;line-height:1.3;color:#0f172a">{{.Title}}</h1>
-<p style="margin:0 0 14px;font-size:14px;line-height:1.6;color:#334155">{{.Greeting}}</p>
-{{range .Paragraphs}}<p style="margin:0 0 14px;font-size:14px;line-height:1.6;color:#334155">{{.}}</p>{{end}}
-{{if .ButtonURL}}<p style="margin:22px 0"><a href="{{.ButtonURL}}" style="display:inline-block;background:#4f46e5;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 22px;border-radius:8px">{{.Button}}</a></p>
-<p style="margin:0 0 14px;font-size:12px;line-height:1.6;color:#64748b">Jika tombol tidak berfungsi, salin tautan ini ke browser:<br><span style="word-break:break-all;color:#4f46e5">{{.ButtonURL}}</span></p>{{end}}
-{{if .Footnote}}<p style="margin:18px 0 0;padding-top:14px;border-top:1px solid #e2e8f0;font-size:12px;line-height:1.6;color:#64748b">{{.Footnote}}</p>{{end}}
+<html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>{{.Title}}</title></head>
+<body style="margin:0;padding:0;background:#f1f3f4;font-family:'Google Sans',Roboto,'Segoe UI',Helvetica,Arial,sans-serif;color:#202124">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f1f3f4;padding:24px 12px"><tr><td align="center">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;background:#ffffff;border-radius:16px;border:1px solid #dadce0">
+<tr><td style="padding:24px 32px 0 32px"><table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>
+<td style="width:28px;height:28px;background:#1a73e8;border-radius:14px;text-align:center;color:#ffffff;font-size:14px;font-weight:700;line-height:28px">&#9679;</td>
+<td style="padding-left:10px;font-size:15px;font-weight:500;color:#5f6368;font-family:'Google Sans',Roboto,Arial,sans-serif">{{.Brand}}</td></tr></table></td></tr>
+<tr><td style="padding:20px 32px 8px 32px">
+{{if .SevLabel}}<p style="margin:0 0 12px"><span style="display:inline-block;background:{{.SevBG}};color:{{.SevFG}};border-radius:12px;padding:3px 12px;font-size:12px;font-weight:500;line-height:18px">{{.SevLabel}}</span></p>{{end}}
+<h1 style="margin:0 0 16px;font-size:22px;line-height:1.35;font-weight:400;color:#202124;font-family:'Google Sans',Roboto,Arial,sans-serif">{{.Title}}</h1>
+<p style="margin:0 0 14px;font-size:14px;line-height:1.6;color:#202124">{{.Greeting}}</p>
+{{range .Paragraphs}}<p style="margin:0 0 14px;font-size:14px;line-height:1.6;color:#202124">{{.}}</p>{{end}}
+{{if .ButtonURL}}<p style="margin:24px 0"><a href="{{.ButtonURL}}" style="display:inline-block;background:#1a73e8;color:#ffffff;text-decoration:none;font-weight:500;font-size:14px;line-height:20px;padding:10px 24px;border-radius:20px;font-family:'Google Sans',Roboto,Arial,sans-serif">{{.Button}}</a></p>
+<p style="margin:0 0 14px;font-size:12px;line-height:1.6;color:#5f6368">Jika tombol tidak berfungsi, salin tautan ini ke browser:<br><span style="word-break:break-all;color:#1a73e8">{{.ButtonURL}}</span></p>{{end}}
+{{if .Footnote}}<p style="margin:20px 0 0;padding-top:16px;border-top:1px solid #e8eaed;font-size:12px;line-height:1.6;color:#5f6368">{{.Footnote}}</p>{{end}}
 </td></tr>
-<tr><td style="background:#f8fafc;padding:16px 28px;font-size:12px;color:#94a3b8;text-align:center">&copy; {{.Year}} {{.Brand}} &middot; Dibuat oleh <a href="{{.CreditURL}}" style="color:#64748b;text-decoration:underline">{{.CreditName}}</a><br>Email otomatis — mohon tidak membalas.</td></tr>
+<tr><td style="padding:16px 32px 24px 32px;font-size:12px;line-height:1.6;color:#5f6368;text-align:center">&copy; {{.Year}} {{.Brand}} &middot; Dibuat oleh <a href="{{.CreditURL}}" style="color:#5f6368;text-decoration:underline">{{.CreditName}}</a><br>Email otomatis &mdash; mohon tidak membalas.</td></tr>
 </table></td></tr></table></body></html>`))
 
 func (b *Builder) render(to, subject string, l layout) mailer.Message {
 	l.Brand, l.CreditName, l.CreditURL, l.Year = b.Brand, CreditName, CreditURL, time.Now().Year()
-	l.Title = subject
+	if l.Title == "" {
+		l.Title = subject
+	}
 	var buf bytes.Buffer
 	_ = htmlTpl.Execute(&buf, l)
 
@@ -164,6 +175,44 @@ func (b *Builder) AccountLocked(to, name string, minutes int) mailer.Message {
 		ButtonURL:  b.PublicURL + "/forgot-password",
 		Footnote:   "Jika itu Anda, tunggu hingga kunci terbuka atau reset password sekarang. Jika bukan Anda, ada pihak lain yang mencoba masuk — gunakan reset password untuk mengamankan akun.",
 	})
+}
+
+// severityStyle — chip keparahan untuk email notifikasi (teks, warna latar, warna teks). Tabel tetap: nilai
+// keparahan tak dikenal diperlakukan INFO, sehingga input tak pernah masuk ke atribut style.
+func severityStyle(sev string) (label string, fg, bg template.CSS) {
+	switch strings.ToUpper(sev) {
+	case "CRITICAL":
+		return "Kritis", "#a50e0e", "#fce8e6"
+	case "WARNING":
+		return "Peringatan", "#b06000", "#fef7e0"
+	default:
+		return "Informasi", "#1967d2", "#e8f0fe"
+	}
+}
+
+// oneLine meratakan spasi/baris baru jadi satu spasi (aman dipakai di header Subject).
+func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+// Notification — email untuk notifikasi in-app (lihat usecase/notification). `link` adalah path internal Console
+// (diawali "/") dan dijadikan tautan absolut dengan PublicURL; link yang bukan path internal dibuang. Semua teks
+// di-escape oleh html/template; pemanggil bertanggung jawab tidak memasukkan rahasia ke title/paragraphs.
+func (b *Builder) Notification(to, name, title string, paragraphs []string, link, linkLabel string, severity string) mailer.Message {
+	title = oneLine(title)
+	l := layout{
+		Title:      title, // judul di badan email tanpa awalan merek; Subject memakai awalan
+		Greeting:   greeting(name),
+		Paragraphs: paragraphs,
+		Footnote:   "Anda menerima email ini karena pengaturan notifikasi akun " + b.Brand + " Anda. Kanal notifikasi dapat diatur di Console.",
+	}
+	l.SevLabel, l.SevFG, l.SevBG = severityStyle(severity)
+	if strings.HasPrefix(link, "/") && !strings.HasPrefix(link, "//") && !strings.Contains(link, "\\") {
+		l.ButtonURL = b.PublicURL + link
+		l.Button = strings.TrimSpace(linkLabel)
+		if l.Button == "" {
+			l.Button = "Buka di Console"
+		}
+	}
+	return b.render(to, "["+b.Brand+"] "+title, l)
 }
 
 // Welcome — akun baru dibuat oleh administrator.

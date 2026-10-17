@@ -209,6 +209,8 @@ Nilai parameter bernama sensitif (`password|passphrase|psk|secret|token|key`) di
 |---|---|---|
 | `ACS_CWMP_RATE_LIMIT` | 5 | request/detik **per IP** di `/cwmp`; naikkan bila banyak CPE berbagi IP (CGNAT) |
 | `ACS_REST_RATE_LIMIT` | 100 | request/detik **per IP** di REST API (Console/BSS). Satu halaman Console memuat 15–35 permintaan dan satu kantor biasanya berbagi satu IP (NAT); batas lama 30/dtk memicu 429 / toast "tidak dapat menjangkau server". Login, MFA, lupa/reset password, dan signup punya pembatas **sendiri yang jauh lebih ketat** (tidak ikut berubah) |
+| `ACS_OIDC_ISSUER` / `_CLIENT_ID` / `_CLIENT_SECRET` / `_REDIRECT_URL` / `_ALLOWED_DOMAINS` | kosong | Masuk dengan Google / SSO OIDC (§R); `ALLOWED_DOMAINS` membatasi domain email |
+| `ACS_NOTIFY_OFFLINE_RATIO` / `ACS_NOTIFY_FAILED_TASKS` | 0,30 / 5 | ambang notifikasi proaktif (§S) |
 | `ACS_SELF_SIGNUP` | false | pendaftaran tenant mandiri (§N). **Wajib** SMTP (`ACS_SMTP_HOST`) bila true; aplikasi menolak start tanpa itu |
 | `ACS_SIGNUP_DAILY_CAP` | 50 | plafon pendaftaran baru per hari untuk seluruh platform (503 bila terlampaui) |
 | `ACS_SIGNUP_MAX_DEVICES` | 25 | batas perangkat awal tenant hasil self-signup (0 = tak dibatasi) |
@@ -256,3 +258,21 @@ Di Git Bash, argumen berawalan `/` diubah menjadi path Windows: set `MSYS_NO_PAT
 - **`scripts/smoke-uat.mjs`** — uji asap satu perintah untuk server UAT/produksi (Node 20+, tanpa dependensi): `/healthz`, `/readyz`, Console, HSTS (bila https), metrik tidak terbuka publik, login, katalog (≥ 33 vendor + `GENERIC`), laporan SaaS, CWMP menolak Inform tanpa kredensial, dan — bila secret tenant diberikan — Inform nyata (device uji `SMOKE-…` dibuat lalu dihapus). Kredensial hanya dari environment (`ACS_SMOKE_API`, `ACS_SMOKE_CWMP`, `ACS_SMOKE_USER/PASS`, opsional `ACS_SMOKE_CWMP_USER/PASS`, `ACS_SMOKE_APP`). Exit code 1 bila ada yang gagal. Peringatan "metrik terbuka" pada HTTP langsung ke `acsd` (dev/LAN) wajar; di URL https publik harus tertutup (lihat §F).
 - **`scripts/demo-seed.mjs`** — data demo untuk tinjauan/demo: 2 tenant fiktif (Nusa Fiber, Cakrawala Net), pengguna tiap peran, ±53 perangkat multi-vendor yang benar-benar Inform lewat simulator (OUI asli dari katalog, jadi vendor ter-resolve termasuk TP-Link/VSOL), tag, profil provisioning, task berhasil/gagal, penautan portal pelanggan. Lewat REST + CWMP (RBAC nyata); idempoten; **data simulasi, bukan perangkat nyata**. Butuh `bin/cpesim` linux. `--keepalive` meng-Inform ulang tiap 5 menit (sebagian perangkat sengaja dibiarkan offline). Kredensial demo ditulis ke `.demo-seed.local.json` (git-ignored) — jangan dipakai di server nyata.
 - **Membersihkan data uji e2e dari DB dev**: e2e meninggalkan puluhan tenant/ratusan perangkat. Backup dulu (`mariadb-dump`), lalu hapus per tenant lewat API (soft delete) atau—khusus DB dev yang boleh dikosongkan—jalankan skrip SQL terpisah dengan sengaja. Jangan pernah pada DB UAT/produksi.
+
+### R. Masuk dengan Google (OpenID Connect)
+Login Google memakai alur OIDC yang sama dengan SSO lain (authorization code + `state` + `nonce`, token dikirim lewat fragment). **Akun tidak dibuat otomatis**: email Google harus sudah terdaftar sebagai pengguna ACS (dibuat admin) dan **terverifikasi di Google**; pemetaan lewat email, lalu terikat ke ID Google (`sub`) pada login pertama sehingga pengambilalihan lewat email yang berpindah tangan tertolak.
+1. Google Cloud Console → *APIs & Services* → *Credentials* → **Create OAuth client ID** (jenis *Web application*). *Authorized redirect URI*: `https://<domain-api>/api/v1/auth/oidc/callback` (harus **persis** sama dengan `ACS_OIDC_REDIRECT_URL`; di belakang overlay TLS Caddy: `https://<ACS_DOMAIN>/api/v1/auth/oidc/callback`). Isi *OAuth consent screen* (nama aplikasi, email dukungan; untuk dipakai di luar organisasi, ajukan verifikasi — scope `openid email profile` bukan scope sensitif).
+2. Isi `.env` (secret **hanya** di `.env`, jangan di-commit):
+   `ACS_OIDC_ISSUER=https://accounts.google.com`, `ACS_OIDC_CLIENT_ID=…apps.googleusercontent.com`, `ACS_OIDC_CLIENT_SECRET=…`, `ACS_OIDC_REDIRECT_URL=https://<domain>/api/v1/auth/oidc/callback`, `ACS_PUBLIC_URL=https://<domain>`.
+   Opsional: `ACS_OIDC_ALLOWED_DOMAINS=perusahaan.co.id,anak.co.id` — hanya email berdomain itu yang boleh masuk lewat SSO (disarankan untuk Google Workspace).
+3. Restart `acsd`. Halaman login otomatis menampilkan tombol resmi **Masuk dengan Google** (backend melaporkan `sso_provider=google` di `GET /auth/config`).
+- Pengguna ber-MFA lokal: login Google **tidak** meminta TOTP lokal (verifikasi dua langkah Google berlaku); jika kebijakan Anda mewajibkan MFA lokal, jangan aktifkan SSO.
+- Gagal masuk (`/login?sso=error`): email belum terdaftar/tidak terverifikasi/domain tidak diizinkan/akun nonaktif/ID Google tak cocok. Penyebab rinci hanya ada di log `acsd` (pengguna sengaja tidak diberi tahu agar email terdaftar tidak bisa dienumerasi).
+- **Belum diuji dengan Google nyata** di lab ini (butuh OAuth client milik Anda); alur penuh diuji dengan IdP tiruan RS256.
+
+### S. Notifikasi (in-app + email)
+- **Di Console**: ikon lonceng (jumlah belum dibaca, tab Semua/Belum dibaca, klik = buka halaman terkait), halaman `/notifications` (riwayat, **preferensi** per jenis: Console/email), dan toast realtime via WebSocket; judul tab menampilkan `(n)`.
+- **Jenis**: peringatan keamanan akun (wajib; akun terkunci, password diganti/direset, MFA, login SSO, token API, impersonate), lonjakan perangkat offline, task gagal beruntun, rollout firmware dijeda, batas perangkat tenant tercapai, pendaftaran tenant baru (SUPERADMIN), dan pengumuman platform (SUPERADMIN → *Notifikasi → Pengumuman*).
+- **Email**: memakai SMTP yang sama dengan reset password (`ACS_SMTP_*`; tanpa SMTP, hanya in-app). Maks. 1 email per pengguna per jenis per jam; notifikasi/email tidak pernah memuat password, token, atau secret.
+- **Evaluator** berjalan tiap 5 menit di satu instance (kunci leader bila `ACS_HA=true`): offline ≥ 30% dari ≥ 10 perangkat (dedupe 6 jam), ≥ 5 task gagal dalam 30 menit (dedupe 1 jam).
+- Retensi: notifikasi dipangkas bersama log lain (`ACS_LOG_RETENTION_DAYS`).

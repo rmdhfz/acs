@@ -39,6 +39,27 @@ type Service struct {
 	activity domain.ActivityLogRepository
 	storage  domain.ObjectStorage
 	usage    domain.UsageRepository
+
+	notifier domain.Notifier // opsional (WithNotifier): notifikasi ROLLOUT_PAUSED
+}
+
+// WithNotifier memasang notifikasi persisten saat rollout dijeda otomatis. Kegagalan notifikasi diabaikan.
+func (s *Service) WithNotifier(n domain.Notifier) *Service {
+	s.notifier = n
+	return s
+}
+
+// notifyRolloutPaused memberi tahu ADMIN tenant (atau SUPERADMIN bila rollout lintas-tenant) bahwa rollout dijeda.
+func (s *Service) notifyRolloutPaused(ctx context.Context, batch *domain.FirmwareRolloutBatch, detail string) {
+	if s.notifier == nil {
+		return
+	}
+	id := batch.ID
+	_ = s.notifier.Notify(ctx, domain.NotificationEvent{
+		TypeCode: domain.NotifRolloutPaused, TenantID: batch.TenantID,
+		Title: "Rollout firmware dijeda otomatis", Body: "Rollout firmware dijeda dan menunggu keputusan operator. " + detail,
+		Link: "/firmware", EntityType: "firmware_rollout_batch", EntityID: &id,
+	})
 }
 
 func NewService(
@@ -705,6 +726,7 @@ func (s *Service) advanceRolloutLocked(ctx context.Context, batchID uint64) (*do
 					return nil, err
 				}
 				desc := fmt.Sprintf("wave %d: failure rate %d%% melebihi batas %d%%", wave, failureRatePercent, batch.MaxFailureRatePercent)
+				s.notifyRolloutPaused(ctx, batch, "Penyebab: "+desc+".")
 				_ = s.activity.Record(ctx, &domain.ActivityLog{
 					TenantID: batch.TenantID, Action: "FIRMWARE_ROLLOUT_PAUSED", EntityType: "firmware_rollout_batch", EntityID: &batch.ID,
 					Description: &desc,
@@ -765,6 +787,7 @@ func (s *Service) advanceRolloutLocked(ctx context.Context, batchID uint64) (*do
 			return nil, err
 		}
 		desc := fmt.Sprintf("wave %d: 0/%d device berhasil dijadwalkan -- kemungkinan kuota task queue tenant penuh atau masalah sistemik lain, bukan kegagalan device", wave, len(targets))
+		s.notifyRolloutPaused(ctx, batch, "Penyebab: "+desc+".")
 		_ = s.activity.Record(ctx, &domain.ActivityLog{
 			TenantID: batch.TenantID, Action: "FIRMWARE_ROLLOUT_PAUSED", EntityType: "firmware_rollout_batch", EntityID: &batch.ID,
 			Description: &desc,

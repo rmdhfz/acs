@@ -10,6 +10,7 @@ import {
   ListChecks,
   Router,
   Search,
+  Bell,
 } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { useDevices } from '../lib/hooks'
@@ -27,6 +28,7 @@ const QUICK_LINKS: QuickLink[] = [
   { label: 'Tasks', to: '/tasks', icon: ListChecks },
   { label: 'Provisioning', to: '/provisioning', icon: FileSliders },
   { label: 'Firmware', to: '/firmware', icon: HardDrive },
+  { label: 'Notifikasi', to: '/notifications', icon: Bell },
   { label: 'Catalog Vendor', to: '/catalog', icon: Cable, requireRole: 'SUPERADMIN' },
   { label: 'Administration', to: '/administration', icon: Building2, requireRole: 'ADMIN' },
 ]

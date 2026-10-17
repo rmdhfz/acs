@@ -123,6 +123,16 @@ services:
       ACS_USP_ENABLED: ${ACS_USP_ENABLED:-false}
       # Retensi tabel log (hari); 0 = tanpa pemangkasan. activity_logs (audit) tidak dipangkas.
       ACS_LOG_RETENTION_DAYS: ${ACS_LOG_RETENTION_DAYS:-90}
+      # Masuk dengan Google / SSO OIDC (kosongkan ACS_OIDC_ISSUER untuk menonaktifkan; lihat RUNBOOK §R).
+      # Google: ACS_OIDC_ISSUER=https://accounts.google.com. Secret hanya di .env, jangan di-commit.
+      ACS_OIDC_ISSUER: ${ACS_OIDC_ISSUER:-}
+      ACS_OIDC_CLIENT_ID: ${ACS_OIDC_CLIENT_ID:-}
+      ACS_OIDC_CLIENT_SECRET: ${ACS_OIDC_CLIENT_SECRET:-}
+      ACS_OIDC_REDIRECT_URL: ${ACS_OIDC_REDIRECT_URL:-http://localhost:18080/api/v1/auth/oidc/callback}
+      ACS_OIDC_ALLOWED_DOMAINS: ${ACS_OIDC_ALLOWED_DOMAINS:-}
+      # Ambang notifikasi proaktif (evaluator tiap 5 menit): rasio perangkat offline & jumlah task gagal dalam 30 menit.
+      ACS_NOTIFY_OFFLINE_RATIO: ${ACS_NOTIFY_OFFLINE_RATIO:-0.30}
+      ACS_NOTIFY_FAILED_TASKS: ${ACS_NOTIFY_FAILED_TASKS:-5}
       # Interval polling redaman optik (menit); 0 = nonaktif. Hanya untuk vendor/model bermapping optical.*.
       ACS_OPTICAL_POLL_MINUTES: ${ACS_OPTICAL_POLL_MINUTES:-360}
       # Email (reset password & notifikasi keamanan). Kosongkan ACS_SMTP_HOST

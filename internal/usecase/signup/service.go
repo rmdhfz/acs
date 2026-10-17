@@ -75,6 +75,14 @@ type Service struct {
 	mail     *notify.Builder
 	cfg      Config
 	now      func() time.Time
+
+	alerts domain.Notifier // opsional (WithNotifier): notifikasi NEW_TENANT_SIGNUP
+}
+
+// WithNotifier memasang notifikasi persisten untuk SUPERADMIN saat tenant hasil pendaftaran mandiri terbentuk.
+func (s *Service) WithNotifier(n domain.Notifier) *Service {
+	s.alerts = n
+	return s
 }
 
 func NewService(repo domain.SignupRepository, prov Provisioner, users EmailLookup, activity domain.ActivityLogRepository, notifier mailer.Notifier, mail *notify.Builder, cfg Config) *Service {
@@ -280,6 +288,16 @@ func (s *Service) Verify(ctx context.Context, token string) (*VerifyResult, erro
 		return nil, err
 	}
 	_ = s.activity.Record(ctx, &domain.ActivityLog{TenantID: &tenant.ID, Action: "SIGNUP_VERIFIED", EntityType: "tenant", EntityID: &tenant.ID})
+	if s.alerts != nil {
+		tid := tenant.ID
+		_ = s.alerts.Notify(ctx, domain.NotificationEvent{
+			TypeCode: domain.NotifNewTenantSignup, TenantID: &tid,
+			Title:      "Tenant baru mendaftar",
+			Body:       fmt.Sprintf("Tenant %q (kode %s) selesai mendaftar mandiri dan terverifikasi.", tenant.Name, tenant.Code),
+			Link:       "/administration",
+			EntityType: "tenant", EntityID: &tid,
+		})
+	}
 	return &VerifyResult{TenantCode: tenant.Code, TenantName: tenant.Name, Email: row.Email}, nil
 }
 

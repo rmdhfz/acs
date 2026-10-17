@@ -65,13 +65,13 @@ const STATUS_COLORS: Record<string, string> = {
 }
 const DEFAULT_COLOR = '#94a3b8'
 
-const cardCls = 'rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900'
-const linkCls = 'inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400'
+const cardCls = 'rounded-3xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900'
+const linkCls = 'inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-indigo-500/10'
 
 function CardHeader({ title, to, toLabel }: { title: string; to?: string; toLabel?: string }) {
   return (
     <div className="mb-4 flex items-center justify-between gap-3">
-      <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
+      <h2 className="text-base font-medium text-slate-900 dark:text-slate-100">{title}</h2>
       {to && toLabel && (
         <Link to={to} className={linkCls}>
           {toLabel} <ArrowRight className="h-3 w-3" />
@@ -97,6 +97,73 @@ interface Alert {
   key: string
   text: string
   to: string
+}
+
+// Baris daftar bergaya ilustrasi beranda: latar abu lembut, titik status berwarna, teks utama + keterangan, waktu di kanan.
+function ListRow({ to, color, title, sub, right }: { to: string; color: string; title: string; sub?: string; right?: string }) {
+  return (
+    <Link to={to} className="flex items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3 transition-colors hover:bg-slate-100 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-indigo-600 dark:bg-slate-800/50 dark:hover:bg-slate-800">
+      <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} aria-hidden="true" />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium text-slate-900 dark:text-slate-100">{title}</span>
+        {sub && <span className="block truncate text-xs text-slate-600 dark:text-slate-400">{sub}</span>}
+      </span>
+      {right && <span className="shrink-0 text-xs text-slate-600 dark:text-slate-400">{right}</span>}
+    </Link>
+  )
+}
+
+// Grafik batang dua-nada seperti ilustrasi: latar biru muda = seluruh task per jam, biru tua = yang berhasil.
+// Dihitung di klien dari task terbaru (maks. 200) — bukan agregat server — sehingga pada tenant yang sangat sibuk
+// jendela efektifnya lebih pendek dari 24 jam; keterangan di bawah grafik menyatakan hal itu.
+const HOURS = 24
+function TaskActivity({ tasks, completedId, failedId, loading, isDark }: { tasks: { created_at: string; task_status_id: number }[]; completedId: number | undefined; failedId: number | undefined; loading: boolean; isDark: boolean }) {
+  const now = Date.now()
+  const buckets = Array.from({ length: HOURS }, (_, i) => ({ start: now - (HOURS - i) * 3600_000, total: 0, ok: 0, failed: 0 }))
+  for (const t of tasks) {
+    const age = now - new Date(t.created_at).getTime()
+    if (age < 0 || age >= HOURS * 3600_000) continue
+    const b = buckets[HOURS - 1 - Math.floor(age / 3600_000)]
+    b.total++
+    if (t.task_status_id === completedId) b.ok++
+    if (t.task_status_id === failedId) b.failed++
+  }
+  const max = Math.max(1, ...buckets.map((b) => b.total))
+  const total = buckets.reduce((n, b) => n + b.total, 0)
+  const ok = buckets.reduce((n, b) => n + b.ok, 0)
+  const failed = buckets.reduce((n, b) => n + b.failed, 0)
+  const truncated = tasks.length >= 200
+  if (loading) return <PageSpinner />
+  if (total === 0) return <Empty>Belum ada task dalam 24 jam terakhir.</Empty>
+  return (
+    <figure>
+      <div className="flex h-44 items-end gap-1.5 sm:gap-2" role="img" aria-label={`Task per jam, 24 jam terakhir: ${total} task, ${ok} berhasil, ${failed} gagal`}>
+        {buckets.map((b, i) => {
+          const h = b.total === 0 ? 2 : Math.max(8, (b.total / max) * 100)
+          const okPct = b.total === 0 ? 0 : (b.ok / b.total) * 100
+          const hh = new Date(b.start + 3600_000).getHours().toString().padStart(2, '0')
+          return (
+            <div key={i} className="flex h-full min-w-0 flex-1 flex-col justify-end" title={`${hh}.00 — ${b.total} task (${b.ok} berhasil, ${b.failed} gagal)`}>
+              <div className={`relative w-full overflow-hidden rounded-t-lg ${isDark ? 'bg-indigo-900/60' : 'bg-indigo-200'}`} style={{ height: `${h}%` }}>
+                <div className="absolute inset-x-0 bottom-0 rounded-t-lg bg-indigo-600" style={{ height: `${okPct}%` }} />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      <div className="mt-2 flex justify-between text-[11px] text-slate-600 dark:text-slate-400" aria-hidden="true">
+        {[0, 6, 12, 18, 23].map((i) => (
+          <span key={i}>{new Date(buckets[i].start + 3600_000).getHours().toString().padStart(2, '0')}.00</span>
+        ))}
+      </div>
+      <figcaption className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-slate-600 dark:text-slate-400">
+        <span className="inline-flex items-center gap-1.5"><span className={`h-2.5 w-2.5 rounded-sm ${isDark ? 'bg-indigo-900/60' : 'bg-indigo-200'}`} />Semua task ({total})</span>
+        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-indigo-600" />Berhasil ({ok})</span>
+        {failed > 0 && <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-red-600" />Gagal ({failed})</span>}
+        {truncated && <span>· berdasarkan 200 task terbaru</span>}
+      </figcaption>
+    </figure>
+  )
 }
 
 export function DashboardPage() {
@@ -133,7 +200,7 @@ export function DashboardPage() {
   // ---- data
   const { data: deviceStats, isLoading: deviceStatsLoading, dataUpdatedAt } = useDeviceStats()
   const { data: taskStats, isLoading: taskStatsLoading } = useTaskStats()
-  const { data: cwmpSessions, isLoading: cwmpSessionsLoading } = useCwmpSessionsCount(canOps)
+  const { data: cwmpSessions } = useCwmpSessionsCount(canOps)
   const { data: failedWebhooks } = useWebhookFailedCount(isAdmin)
   const { data: rollouts } = useFirmwareRolloutBatches()
 
@@ -146,6 +213,8 @@ export function DashboardPage() {
   const { data: faultyDevices } = useDevices({ device_status_id: faultyId, page_size: 5 }, faultyId !== undefined)
   const { data: offlineDevices } = useDevices({ device_status_id: offlineId, page_size: 6 }, offlineId !== undefined)
   const { data: recentTasks, isLoading: recentTasksLoading } = useTasks({ page_size: 8 })
+  const { data: activityTasks, isLoading: activityTasksLoading } = useTasks({ page_size: 200 })
+  const completedTaskId = findRefIdByCode(taskStatusRefs, 'COMPLETED')
   const { data: activity } = useActivityLog({ page_size: 8 }, isAdmin)
 
   const byStatus = deviceStats?.by_status ?? []
@@ -212,7 +281,7 @@ export function DashboardPage() {
       {/* Header */}
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
+          <h1 className="text-2xl font-normal text-slate-900 dark:text-slate-100">
             {t(greetingKey(new Date().getHours()))}, {user?.username}
           </h1>
           <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
@@ -241,7 +310,7 @@ export function DashboardPage() {
             onClick={() => queryClient.invalidateQueries()}
             title={t('dash.refresh')}
             aria-label={t('dash.refresh')}
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
           >
             <RefreshCw className="h-4 w-4" />
           </button>
@@ -278,10 +347,11 @@ export function DashboardPage() {
           </div>
         ))}
 
-      {/* KPI */}
-      <div className={`mb-6 grid grid-cols-2 gap-4 sm:grid-cols-3 ${canOps ? 'xl:grid-cols-3 2xl:grid-cols-6' : 'xl:grid-cols-5'}`}>
-        <StatCard label={t('dash.kpi.total')} value={totalDevices} icon={Router} tone="default" loading={deviceStatsLoading} to="/devices" />
+      {/* KPI utama */}
+      <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <StatCard large label={t('dash.kpi.total')} value={totalDevices} icon={Router} tone="blue" loading={deviceStatsLoading} to="/devices" hint={offlineCount > 0 ? `${offlineCount} offline` : undefined} />
         <StatCard
+          large
           label={t('dash.kpi.online')}
           value={onlineCount}
           icon={Wifi}
@@ -290,25 +360,45 @@ export function DashboardPage() {
           hint={totalDevices > 0 ? t('dash.kpi.ofTotal', { pct: onlinePct }) : undefined}
           to="/devices?status=ONLINE"
         />
-        <StatCard label={t('dash.kpi.offline')} value={offlineCount} icon={WifiOff} tone="red" loading={deviceStatsLoading} to="/devices?status=OFFLINE" />
         <StatCard
-          label={t('dash.kpi.faulty')}
-          value={faultyCount}
+          large
+          label="Task gagal"
+          value={failedTaskCount}
           icon={AlertTriangle}
-          tone="amber"
-          loading={deviceStatsLoading}
-          hint={faultyCount > 0 ? t('dash.kpi.needsAction') : undefined}
-          to="/devices?status=FAULTY"
+          tone={failedTaskCount > 0 ? 'red' : 'default'}
+          loading={taskStatsLoading}
+          hint={failedTaskCount > 0 ? 'Perlu ditinjau' : 'Tidak ada yang gagal'}
+          to="/tasks?status=FAILED"
         />
-        <StatCard label={t('dash.kpi.pending')} value={pendingTaskCount} icon={Clock3} tone="amber" loading={taskStatsLoading} hint={t('dash.kpi.queue')} to="/tasks?status=PENDING" />
-        {canOps && (
-          <StatCard label={t('dash.kpi.sessions')} value={activeSessionsCount} icon={Activity} tone="blue" loading={cwmpSessionsLoading} hint={t('dash.kpi.cwmp')} />
-        )}
       </div>
 
+      {/* Ringkasan lain: chip tautan, agar kartu utama tetap fokus */}
+      <ul className="mb-6 flex flex-wrap gap-2" aria-label="Ringkasan lain">
+        {[
+          { to: '/devices?status=OFFLINE', icon: WifiOff, text: `${offlineCount} offline`, show: true },
+          { to: '/devices?status=FAULTY', icon: AlertTriangle, text: `${faultyCount} bermasalah`, show: true },
+          { to: '/tasks?status=PENDING', icon: Clock3, text: `${pendingTaskCount} task menunggu`, show: true },
+          { to: '/tasks', icon: Activity, text: `${activeSessionsCount} sesi CWMP aktif`, show: canOps },
+        ]
+          .filter((c) => c.show)
+          .map((c) => (
+            <li key={c.text}>
+              <Link to={c.to} className="inline-flex h-9 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 text-sm text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800">
+                <c.icon className="h-4 w-4 text-slate-500 dark:text-slate-400" aria-hidden="true" /> {c.text}
+              </Link>
+            </li>
+          ))}
+      </ul>
+
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        {/* Aktivitas task 24 jam */}
+        <section className={`${cardCls} p-6 lg:col-span-2`}>
+          <CardHeader title="Aktivitas task 24 jam terakhir" to="/tasks" toLabel={t('dash.recentTasks.all')} />
+          <TaskActivity tasks={activityTasks?.data ?? []} completedId={completedTaskId} failedId={failedTaskId} loading={activityTasksLoading} isDark={isDark} />
+        </section>
+
         {/* Kesehatan armada */}
-        <section className={`${cardCls} p-5`}>
+        <section className={`${cardCls} p-6`}>
           <CardHeader title={t('dash.health')} />
           {deviceStatsLoading ? (
             <PageSpinner />
@@ -351,99 +441,39 @@ export function DashboardPage() {
         </section>
 
         {/* Device perlu perhatian */}
-        <section className={`${cardCls} p-5 lg:col-span-2`}>
+        <section className={`${cardCls} p-6 lg:col-span-2`}>
           <CardHeader title={t('dash.needAttention')} to="/devices" toLabel={t('dash.needAttention.all')} />
           {attentionDevices.length === 0 ? (
             <Empty>{deviceStatsLoading ? '…' : t('dash.needAttention.empty')}</Empty>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-slate-100 text-xs uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:text-slate-400">
-                    <th className="pb-2 font-medium">{t('dash.col.device')}</th>
-                    <th className="hidden pb-2 font-medium sm:table-cell">{t('dash.col.vendor')}</th>
-                    <th className="pb-2 font-medium">{t('dash.col.status')}</th>
-                    <th className="pb-2 text-right font-medium">{t('dash.col.lastSeen')}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {attentionDevices.map((d) => {
-                    const st = findRefById(statusRefs, d.device_status_id)
-                    return (
-                      <tr key={d.id} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                        <td className="py-2.5 pr-3">
-                          <Link to={`/devices/${d.id}`} className="font-medium text-slate-900 hover:text-indigo-600 dark:text-slate-100 dark:hover:text-indigo-400">
-                            {d.serial_number}
-                          </Link>
-                        </td>
-                        <td className="hidden py-2.5 pr-3 text-slate-600 sm:table-cell dark:text-slate-400">{vendors.find((v) => v.id === d.vendor_id)?.name ?? '—'}</td>
-                        <td className="py-2.5 pr-3">
-                          <StatusBadge code={st?.code} label={st?.name ?? '—'} />
-                        </td>
-                        <td className="py-2.5 text-right text-xs text-slate-500 dark:text-slate-400">
-                          {d.last_inform_at ? formatRelativeTime(d.last_inform_at) : t('dash.never')}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-
-        {/* Task terbaru */}
-        <section className={`${cardCls} p-5 lg:col-span-2`}>
-          <CardHeader title={t('dash.recentTasks')} to="/tasks" toLabel={t('dash.recentTasks.all')} />
-          {recentTasksLoading ? (
-            <PageSpinner />
-          ) : (recentTasks?.data ?? []).length === 0 ? (
-            <Empty>{t('dash.recentTasks.empty')}</Empty>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-slate-100 text-xs uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:text-slate-400">
-                    <th className="pb-2 font-medium">{t('dash.col.task')}</th>
-                    <th className="hidden pb-2 font-medium sm:table-cell">{t('dash.col.device')}</th>
-                    <th className="pb-2 font-medium">{t('dash.col.status')}</th>
-                    <th className="pb-2 text-right font-medium">{t('dash.col.time')}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {(recentTasks?.data ?? []).map((task) => {
-                    const st = findRefById(taskStatusRefs, task.task_status_id)
-                    const type = findRefById(taskTypeRefs, task.task_type_id)
-                    return (
-                      <tr key={task.id} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                        <td className="py-2.5 pr-3 font-medium text-slate-900 dark:text-slate-100">{type?.name ?? `#${task.task_type_id}`}</td>
-                        <td className="hidden py-2.5 pr-3 sm:table-cell">
-                          <Link to={`/devices/${task.device_id}`} className="font-mono text-xs text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400">
-                            #{task.device_id}
-                          </Link>
-                        </td>
-                        <td className="py-2.5 pr-3">
-                          <StatusBadge code={st?.code} label={st?.name ?? '—'} />
-                        </td>
-                        <td className="py-2.5 text-right text-xs text-slate-500 dark:text-slate-400">{formatRelativeTime(task.created_at)}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <ul className="space-y-2">
+              {attentionDevices.map((d) => {
+                const st = findRefById(statusRefs, d.device_status_id)
+                return (
+                  <li key={d.id}>
+                    <ListRow
+                      to={`/devices/${d.id}`}
+                      color={STATUS_COLORS[st?.code ?? ''] ?? DEFAULT_COLOR}
+                      title={d.serial_number}
+                      sub={`${vendors.find((v) => v.id === d.vendor_id)?.name ?? t('dash.vendor.unknown')} · ${st?.name ?? '—'}`}
+                      right={d.last_inform_at ? formatRelativeTime(d.last_inform_at) : t('dash.never')}
+                    />
+                  </li>
+                )
+              })}
+            </ul>
           )}
         </section>
 
         {/* Aksi cepat */}
-        <section className={`${cardCls} p-5`}>
+        <section className={`${cardCls} p-6`}>
           <CardHeader title={t('dash.quick')} />
           <ul className="space-y-1.5">
             {quickActions.map((a) => (
               <li key={a.to + a.label}>
                 <Link
                   to={a.to}
-                  className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                  className="flex items-center gap-3 rounded-full px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
                 >
                   <span className="flex h-7 w-7 items-center justify-center rounded-md bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400">
                     <a.icon className="h-4 w-4" />
@@ -462,8 +492,36 @@ export function DashboardPage() {
           </ul>
         </section>
 
+        {/* Task terbaru */}
+        <section className={`${cardCls} p-6 lg:col-span-2`}>
+          <CardHeader title={t('dash.recentTasks')} to="/tasks" toLabel={t('dash.recentTasks.all')} />
+          {recentTasksLoading ? (
+            <PageSpinner />
+          ) : (recentTasks?.data ?? []).length === 0 ? (
+            <Empty>{t('dash.recentTasks.empty')}</Empty>
+          ) : (
+            <ul className="space-y-2">
+              {(recentTasks?.data ?? []).map((task) => {
+                const st = findRefById(taskStatusRefs, task.task_status_id)
+                const type = findRefById(taskTypeRefs, task.task_type_id)
+                return (
+                  <li key={task.id}>
+                    <ListRow
+                      to={`/devices/${task.device_id}`}
+                      color={STATUS_COLORS[st?.code ?? ''] ?? DEFAULT_COLOR}
+                      title={type?.name ?? `#${task.task_type_id}`}
+                      sub={`Perangkat #${task.device_id} · ${st?.name ?? '—'}`}
+                      right={formatRelativeTime(task.created_at)}
+                    />
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </section>
+
         {/* Antrean task */}
-        <section className={`${cardCls} p-5`}>
+        <section className={`${cardCls} p-6`}>
           <CardHeader title={t('dash.queue')} to="/tasks" toLabel={t('dash.recentTasks.all')} />
           {taskStatsLoading ? (
             <PageSpinner />
@@ -487,7 +545,7 @@ export function DashboardPage() {
         </section>
 
         {/* Vendor */}
-        <section className={`${cardCls} p-5`}>
+        <section className={`${cardCls} p-6 lg:col-span-2`}>
           <CardHeader title={t('dash.vendor')} />
           {deviceStatsLoading ? (
             <PageSpinner />
@@ -514,7 +572,7 @@ export function DashboardPage() {
         </section>
 
         {/* Rollout firmware */}
-        <section className={`${cardCls} p-5`}>
+        <section className={`${cardCls} p-6`}>
           <CardHeader title={t('dash.rollouts')} to="/firmware" toLabel={t('dash.rollouts.open')} />
           {activeRollouts.length === 0 ? (
             <Empty>{t('dash.rollouts.empty')}</Empty>
@@ -540,7 +598,7 @@ export function DashboardPage() {
 
         {/* Aktivitas (admin) */}
         {isAdmin && (
-          <section className={`${cardCls} p-5 lg:col-span-3`}>
+          <section className={`${cardCls} p-6 lg:col-span-3`}>
             <CardHeader title={t('dash.activity')} to="/audit" toLabel={t('dash.activity.all')} />
             {(activity?.data ?? []).length === 0 ? (
               <Empty>{t('dash.activity.empty')}</Empty>

@@ -156,6 +156,7 @@ func (s *Service) ResetPassword(ctx context.Context, token, newPassword string) 
 	_ = s.resets.InvalidateAllForUser(ctx, u.ID, now)
 	_ = s.activity.Record(ctx, &domain.ActivityLog{UserID: &u.ID, TenantID: u.TenantID, Action: "RESET_PASSWORD_VIA_EMAIL", EntityType: "user", EntityID: &u.ID})
 	s.notify(s.mail.PasswordChanged(u.Email, u.FullName))
+	s.alert(ctx, u.ID, u.TenantID, "Password akun Anda diganti", "Password akun Anda diatur ulang lewat tautan reset email. Jika bukan Anda, segera hubungi administrator.", true)
 	return nil
 }
 

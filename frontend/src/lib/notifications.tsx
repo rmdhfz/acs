@@ -1,109 +1,71 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
-import { findRefIdByCode, useDeviceStats, useRefs, useTaskStats, useWebhookFailedCount } from './hooks'
+import { createContext, useCallback, useContext, useEffect, useMemo, type ReactNode } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { useNotificationList, useUnreadCount, useMarkNotifications, type ServerNotification } from './hooks'
+import { useToast } from './toast'
 
-// Notifikasi di sini berbasis POLLING (refetchInterval 5 detik yang sudah
-// dipakai useTaskStats/useDeviceStats), BUKAN push/WebSocket sungguhan —
-// belum ada infrastruktur realtime di backend (lihat ROADMAP.md). Ini
-// deteksi perubahan client-side dari snapshot agregat yang sudah di-poll:
-// cukup utk "terasa real-time" pada skala NOC kecil-menengah, tapi bukan
-// substitusi event stream sungguhan bila kebutuhannya jadi lebih berat.
+// Notifikasi SERVER (persisten, per pengguna, in-app + email) menggantikan inferensi client-side dari polling statistik.
+// Sumber kebenaran: GET /notifications. Pembaruan instan lewat WebSocket (event "NOTIFICATION" -> window event
+// 'acs:notification', lihat lib/ws.tsx); polling pelan tetap berjalan sebagai cadangan bila WebSocket terputus.
 
-export interface AppNotification {
+export const NOTIFICATION_EVENT = 'acs:notification'
+
+export interface NotificationEventDetail {
   id: string
-  message: string
-  tone: 'error' | 'warning'
-  createdAt: number
+  type: string
+  severity: 'INFO' | 'WARNING' | 'CRITICAL'
+  title: string
+  link?: string | null
 }
 
-const PENDING_BACKLOG_THRESHOLD = 20
-
 interface NotificationContextValue {
-  notifications: AppNotification[]
+  items: ServerNotification[]
   unreadCount: number
+  isLoading: boolean
+  markRead: (ids: string[]) => void
   markAllRead: () => void
-  dismiss: (id: string) => void
 }
 
 const NotificationContext = createContext<NotificationContextValue | null>(null)
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
-  const [notifications, setNotifications] = useState<AppNotification[]>([])
-  const [unreadCount, setUnreadCount] = useState(0)
+  const qc = useQueryClient()
+  const toast = useToast()
+  const list = useNotificationList({ page: 1, pageSize: 15 })
+  const unread = useUnreadCount()
+  const mark = useMarkNotifications()
 
-  const { data: taskStatusRefs } = useRefs('ref_task_status')
-  const { data: deviceStatusRefs } = useRefs('ref_device_status')
-  const { data: taskStats } = useTaskStats()
-  const { data: deviceStats } = useDeviceStats()
-  const { data: webhookStats } = useWebhookFailedCount()
-
-  const failedId = findRefIdByCode(taskStatusRefs, 'FAILED')
-  const pendingId = findRefIdByCode(taskStatusRefs, 'PENDING')
-  const offlineId = findRefIdByCode(deviceStatusRefs, 'OFFLINE')
-
-  const prevFailed = useRef<number | null>(null)
-  const prevOffline = useRef<number | null>(null)
-  const prevWebhookFailed = useRef<number | null>(null)
-  const wasOverBacklog = useRef(false)
-
-  function push(message: string, tone: AppNotification['tone']) {
-    const item: AppNotification = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, message, tone, createdAt: Date.now() }
-    setNotifications((prev) => [item, ...prev].slice(0, 30))
-    setUnreadCount((c) => c + 1)
-  }
-
+  // Notifikasi baru lewat WebSocket: segarkan daftar + hitungan dan tampilkan toast singkat (CRITICAL = merah).
   useEffect(() => {
-    if (failedId === undefined || !taskStats) return
-    const failedCount = taskStats.find((t) => t.task_status_id === failedId)?.count ?? 0
-    if (prevFailed.current !== null && failedCount > prevFailed.current) {
-      const delta = failedCount - prevFailed.current
-      push(`${delta} task baru gagal (total ${failedCount} FAILED)`, 'error')
+    function onNotify(e: Event) {
+      const d = (e as CustomEvent<NotificationEventDetail>).detail
+      qc.invalidateQueries({ queryKey: ['notifications'] })
+      if (!d?.title) return
+      if (d.severity === 'CRITICAL') toast.error(d.title, 'Notifikasi penting')
+      else if (d.severity === 'WARNING') toast.warning(d.title, 'Perlu perhatian')
+      else toast.info(d.title, 'Notifikasi baru')
     }
-    prevFailed.current = failedCount
-  }, [taskStats, failedId])
+    window.addEventListener(NOTIFICATION_EVENT, onNotify)
+    return () => window.removeEventListener(NOTIFICATION_EVENT, onNotify)
+  }, [qc, toast])
 
+  // Jumlah belum dibaca di judul tab — terlihat walau tab sedang di latar.
+  const count = unread.data ?? 0
   useEffect(() => {
-    if (pendingId === undefined || !taskStats) return
-    const pendingCount = taskStats.find((t) => t.task_status_id === pendingId)?.count ?? 0
-    const overNow = pendingCount > PENDING_BACKLOG_THRESHOLD
-    if (overNow && !wasOverBacklog.current) {
-      push(`Backlog task menumpuk: ${pendingCount} task PENDING (ambang ${PENDING_BACKLOG_THRESHOLD})`, 'warning')
+    const base = document.title.replace(/^\(\d+\+?\)\s/, '')
+    document.title = count > 0 ? `(${count > 99 ? '99+' : count}) ${base}` : base
+    return () => {
+      document.title = document.title.replace(/^\(\d+\+?\)\s/, '')
     }
-    wasOverBacklog.current = overNow
-  }, [taskStats, pendingId])
+  }, [count])
 
-  useEffect(() => {
-    if (offlineId === undefined || !deviceStats) return
-    const offlineCount = deviceStats.by_status?.find((s) => s.device_status_id === offlineId)?.count ?? 0
-    if (prevOffline.current !== null && offlineCount > prevOffline.current) {
-      const delta = offlineCount - prevOffline.current
-      push(`${delta} device baru offline (total ${offlineCount} offline)`, 'warning')
-    }
-    prevOffline.current = offlineCount
-  }, [deviceStats, offlineId])
+  const markRead = useCallback((ids: string[]) => mark.mutate({ ids }), [mark])
+  const markAllRead = useCallback(() => mark.mutate({ all: true }), [mark])
 
-  useEffect(() => {
-    if (!webhookStats) return
-    const failedCount = webhookStats.count ?? 0
-    if (prevWebhookFailed.current !== null && failedCount > prevWebhookFailed.current) {
-      const delta = failedCount - prevWebhookFailed.current
-      push(`${delta} webhook delivery gagal (total ${failedCount} FAILED)`, 'error')
-    }
-    prevWebhookFailed.current = failedCount
-  }, [webhookStats])
-
-  function markAllRead() {
-    setUnreadCount(0)
-  }
-
-  function dismiss(id: string) {
-    setNotifications((prev) => prev.filter((n) => n.id !== id))
-  }
-
-  return (
-    <NotificationContext.Provider value={{ notifications, unreadCount, markAllRead, dismiss }}>
-      {children}
-    </NotificationContext.Provider>
+  const value = useMemo<NotificationContextValue>(
+    () => ({ items: list.data?.data ?? [], unreadCount: count, isLoading: list.isLoading, markRead, markAllRead }),
+    [list.data, list.isLoading, count, markRead, markAllRead],
   )
+  return <NotificationContext.Provider value={value}>{children}</NotificationContext.Provider>
 }
 
 export function useNotifications() {
@@ -111,4 +73,3 @@ export function useNotifications() {
   if (!ctx) throw new Error('useNotifications harus dipakai di dalam NotificationProvider')
   return ctx
 }
-
