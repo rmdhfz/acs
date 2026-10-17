@@ -39,6 +39,9 @@ func main() {
 		pass       = flag.String("pass", "", "shared secret Inform CWMP tenant (wajib)")
 		vendor     = flag.String("vendor", "zte", "profil: zte|huawei|fiberhome|nokia|cdata")
 		serial     = flag.String("serial", "", "serial number (default: acak per profil)")
+		oui        = flag.String("oui", "", "[single] timpa OUI profil (6 hex) — mis. OUI asli vendor dari katalog agar vendor ter-resolve")
+		manuf      = flag.String("manufacturer", "", "[single] timpa nama Manufacturer profil")
+		model      = flag.String("model", "", "[single] timpa ProductClass & ModelName profil")
 		events     = flag.String("events", "2 PERIODIC", "event code Inform, pisahkan koma")
 		faultParam = flag.String("fault-param", "", "balas Fault 9005 bila SetParameterValues memuat substring nama parameter ini")
 		fleet      = flag.Bool("fleet", false, "mode fleet: banyak device, beberapa siklus")
@@ -86,6 +89,15 @@ func main() {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "cpesim:", err)
 		os.Exit(2)
+	}
+	if *oui != "" {
+		prof.OUI = strings.ToUpper(*oui)
+	}
+	if *manuf != "" {
+		prof.Manufacturer = *manuf
+	}
+	if *model != "" {
+		prof.ProductClass, prof.ModelName = *model, *model
 	}
 	sn := *serial
 	if sn == "" {

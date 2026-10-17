@@ -19,3 +19,6 @@
 
 # State internal harness Claude Code (lock file sesi lokal, bukan bagian project)
 .claude/scheduled_tasks.lock
+
+# Kredensial & state hasil scripts/demo-seed.mjs (lokal)
+/.demo-seed.local.json
