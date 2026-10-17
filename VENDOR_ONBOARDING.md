@@ -12,6 +12,15 @@ Panduan operasional untuk superadmin: menambah dukungan vendor atau model CPE ba
 - Informasi vendor: nama resmi, OUI (Organizationally Unique Identifier, 6 digit hex) dari MAC address perangkatnya — bisa dicek dari label perangkat atau [IEEE OUI registry](https://standards-oui.ieee.org/) kalau belum tahu.
 - Sample data dari minimal satu unit CPE nyata (atau dokumentasi TR-069 resmi vendor tsb): daftar path TR-069 untuk parameter yang mau dipetakan (WiFi SSID, PPPoE username, dst), dan apakah device pakai `InternetGatewayDevice.*` (TR-098) atau `Device.*` (TR-181).
 
+## 1b. Cek dulu: mungkin vendornya sudah ada, atau cukup fallback standar
+
+Sejak migrasi 0029 katalog sudah berisi **33 vendor** (ZTE, Huawei, FiberHome, Nokia, C-Data + TP-Link, Tenda, Ruijie, Mercusys, VSOL, Syrotech, Skyworth, Sagemcom, Zyxel, Dasan, Raisecom, KAON, Netis, TOTOLINK, D-Link, Askey, Sercomm, Arcadyan, MitraStar, UTStarcom, Genexis, Optilink, Sumavision, Ubiquoss, Calix, ADTRAN, Gemtek) beserta ±4.300 OUI dari registry IEEE, plus vendor **`GENERIC`** berisi mapping standar TR-098/TR-181.
+
+- **Cari OUI dulu** (Catalog Vendor → Vendors → *Kelola* pada vendor, atau kolom pencarian). Bila sudah ada, **tidak perlu langkah 1**.
+- **Urutan resolusi logical key**: mapping khusus model → mapping vendor → mapping `GENERIC`. Perangkat yang OUI-nya belum dikenal tetap bisa dikelola lewat logical key standar (`wifi.ssid`, `wan.pppoe.*`, `diag.*`, `optical.*` TR-181) selama CPE-nya mengikuti TR-098/TR-181 apa adanya.
+- Langkah 2–3 (model & mapping) baru **wajib** bila CPE menyimpang dari standar (index `WLANConfiguration` berbeda, ekstensi `X_…`, path optik vendor). Mapping vendor/model yang Anda tambahkan otomatis menang atas `GENERIC`.
+- **Jujur soal status data:** seed ini data awal, **belum diuji pada perangkat nyata** satu pun. Catat hasil UAT per vendor lalu perbaiki mapping-nya lewat UI.
+
 ## 2. Langkah 1 — Daftarkan Vendor & OUI
 
 Buka **Catalog Vendor > Vendors**.
@@ -73,4 +82,4 @@ Jangan anggap selesai hanya karena data sudah diinput — validasi end-to-end:
 ## 7. Kalau Salah Input
 
 - Vendor/device model/mapping yang salah bisa diedit ulang dengan submit form yang sama (`Mapping Baru` bersifat upsert berdasarkan kombinasi vendor+data_model_version+device_model+logical_key — submit ulang dengan logical_key sama akan menimpa path lama).
-- Untuk vendor/device model yang salah total dan perlu dihapus: belum ada tombol hapus di UI Catalog Vendor saat ini (baru create/list) — hubungi tim engineering untuk soft-delete manual via database kalau memang diperlukan (ingat: soft-delete via `is_deleted`, bukan `DELETE` fisik, sesuai konvensi skema di `CLAUDE.md`).
+- Untuk vendor yang salah total dan perlu dihapus: tombol **Hapus** tersedia di Catalog Vendor (soft delete via `is_deleted`, sesuai konvensi skema di `CLAUDE.md`; ditolak 409 bila masih dipakai device/model). Jangan menghapus vendor `GENERIC`.

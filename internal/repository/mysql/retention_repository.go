@@ -12,7 +12,9 @@ import (
 
 type retentionRepository struct{ db *sqlx.DB }
 
-func NewRetentionRepository(db *sqlx.DB) domain.RetentionRepository { return &retentionRepository{db: db} }
+func NewRetentionRepository(db *sqlx.DB) domain.RetentionRepository {
+	return &retentionRepository{db: db}
+}
 
 // retentionBatch — baris per DELETE agar tidak mengunci tabel lama/lama (replikasi,
 // undo log) saat pruning pertama atas data menahun.

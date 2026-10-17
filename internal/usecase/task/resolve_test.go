@@ -20,7 +20,9 @@ type rvParams struct {
 	prefixes map[string]bool
 }
 
-func (r rvParams) HasPrefix(_ context.Context, _ uint64, p string) (bool, error) { return r.prefixes[p], nil }
+func (r rvParams) HasPrefix(_ context.Context, _ uint64, p string) (bool, error) {
+	return r.prefixes[p], nil
+}
 
 type rvMappings struct {
 	domain.VendorParameterMappingRepository

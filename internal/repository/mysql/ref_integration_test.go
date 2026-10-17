@@ -12,6 +12,7 @@ import (
 // GetByCode, dan GetByID. Dua bug lama yang lolos dari unit test:
 //   - ref_webhook_event_types tidak ada di whitelist (webhook tak bisa dibuat);
 //   - ref_parameter_types menghasilkan SQL "code AS name AS name" (500).
+//
 // Dilewati bila ACS_TEST_DSN tidak diisi.
 func TestRefRepository_AllWhitelistedTables_Integration(t *testing.T) {
 	dsn := os.Getenv("ACS_TEST_DSN")

@@ -74,9 +74,9 @@ type User struct {
 	PasswordChangedAt *time.Time `db:"password_changed_at" json:"-"`
 	// MFA TOTP (migrations/0027). Rahasia terenkripsi tak pernah diekspos; MFAEnabled ditampilkan
 	// supaya admin tahu akun mana yang sudah ber-MFA.
-	TOTPSecretEnc       []byte  `db:"totp_secret_enc" json:"-"`
-	TOTPEnabled         bool    `db:"totp_enabled" json:"mfa_enabled"`
-	TOTPLastStep        *uint64 `db:"totp_last_step" json:"-"`
+	TOTPSecretEnc       []byte     `db:"totp_secret_enc" json:"-"`
+	TOTPEnabled         bool       `db:"totp_enabled" json:"mfa_enabled"`
+	TOTPLastStep        *uint64    `db:"totp_last_step" json:"-"`
 	FailedLoginAttempts uint32     `db:"failed_login_attempts" json:"-"`
 	LockedUntil         *time.Time `db:"locked_until" json:"-"`
 	Roles               []string   `db:"-" json:"roles"`

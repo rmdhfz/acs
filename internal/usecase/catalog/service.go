@@ -176,6 +176,9 @@ func (s *Service) UpdateVendor(ctx context.Context, actor domain.Actor, id uint6
 		v.Description = nilIfEmpty(*in.Description)
 	}
 	if in.IsActive != nil {
+		if !*in.IsActive && v.Code == domain.VendorCodeGeneric {
+			return nil, fmt.Errorf("%w: vendor %q adalah fallback mapping standar milik sistem dan tidak boleh dinonaktifkan", domain.ErrConflict, v.Code)
+		}
 		v.IsActive = *in.IsActive
 	}
 	v.UpdatedBy = actor.UserIDPtr()
@@ -196,6 +199,9 @@ func (s *Service) DeleteVendor(ctx context.Context, actor domain.Actor, id uint6
 	v, err := s.vendors.GetByID(ctx, id)
 	if err != nil {
 		return err
+	}
+	if v.Code == domain.VendorCodeGeneric {
+		return fmt.Errorf("%w: vendor %q adalah fallback mapping standar milik sistem dan tidak boleh dihapus", domain.ErrConflict, v.Code)
 	}
 	usage, err := s.usage.VendorUsage(ctx, id)
 	if err != nil {

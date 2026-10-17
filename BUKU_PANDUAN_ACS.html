@@ -141,7 +141,7 @@
   <h1>Buku Panduan ACS</h1>
   <p class="sub">Auto Configuration Server multi-vendor (TR-069/CWMP) untuk manajemen CPE lintas merek</p>
   <div class="meta">
-    <strong>Versi dokumen:</strong> 2.0 &nbsp;·&nbsp;
+    <strong>Versi dokumen:</strong> 2.1 &nbsp;·&nbsp;
     <strong>Tanggal:</strong> 16 Oktober 2026 &nbsp;·&nbsp;
     <strong>Audiens:</strong> Tim Operations/NOC, Administrator Tenant, Tim Jaringan (OLT), Tim Integrasi BSS/OSS
   </div>
@@ -538,19 +538,46 @@ otomatis masuk ke tenant tersebut. Item global (tanpa tenant) hanya dapat diubah
 <strong>Wizard Onboarding Tenant</strong> (Administrasi → Onboarding) yang
 memandu: tenant + secret CWMP → admin pertama → langkah lanjutan.</p>
 
+<h3>4.2 Konsol Super Admin: laporan SaaS, impersonate, paket</h3>
+<ul>
+  <li><strong>Laporan SaaS</strong> (menu <em>Laporan SaaS</em>, hanya SUPERADMIN): KPI platform, tabel per tenant (perangkat, online,
+  pengguna, task 30 hari, penanda kesehatan), tren 30 hari, <em>Unduh CSV</em> dan <em>Cetak / PDF</em>. Sel CSV yang berawalan
+  <code>= + - @</code> dinetralkan agar aman dibuka di Excel.</li>
+  <li><strong>Masuk sebagai (impersonate)</strong> untuk dukungan: <em>Administrasi → Users → Masuk sebagai</em>. Anda mendapat sesi
+  <strong>30 menit</strong> sebagai pengguna itu (data tenant lain tak terlihat). Diblokir selama sesi: endpoint platform, impersonate
+  ulang, ganti password, MFA, token API, dan perubahan pengguna. Banner kuning tampil terus; tombol <em>Keluar dari impersonate</em>
+  mengakhiri. Audit Trail mencatat <code>IMPERSONATE_START</code>/<code>IMPERSONATE_END</code> dan setiap aksi bertanda
+  <code>impersonated_by</code>. Hanya SUPERADMIN yang dapat memakainya, tidak pada diri sendiri.</li>
+  <li><strong>Kuota &amp; Paket</strong> (<em>Administrasi → Tenant → Kuota &amp; Paket</em>): <em>Maks. Perangkat (paket)</em> dan batas task
+  menunggu. Setelah batas perangkat tercapai, Inform perangkat <em>baru</em> dijawab HTTP 503 (ONT mencoba lagi nanti), tambah/impor
+  ditolak; perangkat yang sudah ada tidak terganggu. Ini batas teknis, <strong>bukan</strong> penagihan.</li>
+</ul>
+
+<h3>4.3 Portal pelanggan (WiFi Saya)</h3>
+<p>Akun <strong>ENDUSER</strong> hanya melihat perangkat yang <strong>ditautkan</strong> oleh ADMIN (<em>Administrasi → Users → Perangkat</em>;
+satu tenant, maksimum 20 perangkat per akun). Pelanggan dapat mengganti SSID (≤ 32 byte, tanpa karakter kontrol) dan passphrase
+(8–63 karakter) serta me-restart perangkatnya; jeda <strong>30 detik</strong> berlaku antar-perubahan per akun+perangkat untuk mencegah
+banjir task. Tanpa tautan, pelanggan tidak melihat apa pun dan tidak dapat memanggil API staf.</p>
+
+<h3>4.4 Pendaftaran tenant mandiri (bawaan mati)</h3>
+<p>Diaktifkan hanya bila <code>ACS_SELF_SIGNUP=true</code> dan SMTP berfungsi. Formulir <code>/signup</code> mengirim tautan verifikasi
+(24 jam); saat diklik, tenant dan admin pertama dibuat dengan batas awal (perangkat/task) dari konfigurasi. Dilindungi pembatas laju
+ketat, batas per email/hari, plafon harian platform, honeypot, dan respons seragam. <strong>Halaman Syarat &amp; Privasi di Console
+hanyalah draf yang belum ditinjau penasihat hukum</strong> — ganti sebelum dibuka ke publik.</p>
+
 <h2 id="s5"><span class="num">5</span> Katalog vendor, OUI &amp; pemetaan parameter</h2>
 
 <p>Menu <strong>Katalog Vendor</strong> (SUPERADMIN). Agar CPE dikenali penuh, katalog menyimpan:</p>
 <ol>
-  <li><strong>Vendor</strong> (<code>ref_vendors</code>) — terisi: ZTE, Huawei, FiberHome, Nokia, Cdata.</li>
+  <li><strong>Vendor</strong> (<code>ref_vendors</code>) — terisi <strong>33</strong>: ZTE, Huawei, FiberHome, Nokia, C-Data, 27 vendor tambahan (TP-Link, Tenda, Ruijie, Mercusys, VSOL, Syrotech, Skyworth, Sagemcom, Zyxel, Dasan, Raisecom, KAON, Netis, TOTOLINK, D-Link, Askey, Sercomm, Arcadyan, MitraStar, UTStarcom, Genexis, Optilink, Sumavision, Ubiquoss, Calix, ADTRAN, Gemtek), dan vendor <code>GENERIC</code> (lihat di bawah).</li>
   <li><strong>OUI</strong> (<code>vendor_ouis</code>) — 6 karakter dari
   <a href="https://standards-oui.ieee.org/">registri IEEE</a>. Sudah terisi awal
-  <strong>±3.176 blok</strong> lewat migrasi <code>0022</code>; tambah/koreksi lewat
+  <strong>±4.300 blok</strong> lewat migrasi <code>0022</code> dan <code>0029</code>; tambah/koreksi lewat
   <strong>Katalog → Vendor → OUI Terdaftar</strong> atau impor CSV.</li>
   <li><strong>Model perangkat</strong> (<code>device_models</code>) — opsional, untuk pemetaan spesifik per model.</li>
   <li><strong>Pemetaan parameter</strong> (<code>vendor_parameter_mappings</code>) —
-  12 <em>logical key</em> standar sudah dipetakan untuk kelima vendor (nama/model/
-  serial/versi, SSID, passphrase WiFi, PPPoE username/password, interval inform).</li>
+  logical key standar (nama/model/serial/versi, SSID, passphrase WiFi, PPPoE username/password, interval inform, diagnostics,
+  optik TR-181) sudah dipetakan untuk kelima vendor awal dan untuk <code>GENERIC</code>.</li>
 </ol>
 
 <div class="callout warn"><span class="label">Verifikasi OUI dengan Inform nyata</span>
@@ -558,6 +585,15 @@ memandu: tenant + secret CWMP → admin pertama → langkah lanjutan.</p>
 CPE fisik. Saat uji lapangan, pastikan OUI dari Inform pertama ter-resolve ke vendor
 yang benar. Perangkat yang OUI-nya belum ada muncul sebagai <em>"vendor belum
 diketahui"</em> dan akan sembuh sendiri di Inform berikutnya setelah OUI ditambahkan.</p></div>
+
+<div class="callout"><span class="label">Fallback standar — mendukung "semua ONT"</span>
+<p>Urutan resolusi logical key: <strong>mapping khusus model → mapping vendor → mapping <code>GENERIC</code></strong>. Perangkat yang OUI-nya
+belum dikenal (vendor kosong) langsung memakai <code>GENERIC</code>, dan data model (TR-098 atau TR-181) dideteksi dari parameter yang dilaporkan
+CPE. Jadi ONT apa pun yang mengikuti standar TR-098/TR-181 dapat dikelola lewat logical key tanpa menunggu onboarding vendor. CPE yang
+menyimpang dari standar (index WiFi berbeda, ekstensi <code>X_…</code>, path optik vendor) cukup ditambahi mapping vendor/model lewat Katalog
+(data, bukan kode) — mapping itu otomatis menang atas <code>GENERIC</code>. Vendor <code>GENERIC</code> tidak dapat dihapus atau dinonaktifkan.
+<strong>Jujur:</strong> seluruh vendor tambahan &amp; mapping standar ini adalah data awal yang <em>belum diuji pada perangkat nyata</em>; path optik
+TR-098 per vendor sengaja belum dipetakan.</p></div>
 
 <p>Prosedur langkah-demi-langkah menambah vendor/model baru: lihat
 <strong>VENDOR_ONBOARDING.md</strong>. Seluruh tab katalog mendukung impor/ekspor (Bab 8).</p>
@@ -899,13 +935,13 @@ pemetaan parameter), gunakan panduan diagnostik di <strong>PENGUJIAN_LAPANGAN.md
 <div class="callout warn"><span class="label">Sebelum go-live penuh</span>
 <ul>
   <li><strong>Uji CPE fisik belum dilakukan.</strong> Seluruh validasi alur
-  sejauh ini memakai simulator (PENGUJIAN_E2E.md, 16/16 skenario lulus) —
+  sejauh ini memakai simulator (PENGUJIAN_E2E.md, 21/21 skenario lulus) —
   bukan firmware vendor sungguhan. Jalankan PENGUJIAN_LAPANGAN.md dengan minimal
   1–2 unit per vendor sebelum rollout lebar.</li>
   <li><strong>CWMP dilayani via HTTP</strong> oleh <code>acsd</code>; TLS dari reverse proxy
   (overlay Caddy siap pakai: <code>docker-compose.tls.yml</code>, RUNBOOK.md §F — belum diuji dengan CPE fisik).</li>
   <li><strong>Rate limit</strong> per-IP &amp; per-instance; di belakang reverse proxy isi <code>ACS_TRUSTED_PROXIES</code> agar IP klien benar.</li>
-  <li><strong>SSO</strong> belum diuji terhadap IdP organisasi nyata, dan <strong>tidak ada pendaftaran tenant mandiri</strong> (tenant dibuat Superadmin).</li>
+  <li><strong>SSO</strong> belum diuji terhadap IdP organisasi nyata (akun dipetakan lewat email, belum <code>sub</code>). <strong>Pendaftaran tenant mandiri</strong> tersedia tetapi bawaan mati, jalur aktifnya belum diuji dengan email nyata, dan teks Syarat/Privasi masih draf. <strong>Belum ada</strong> harga/metering/penagihan, status page, atau pentest independen.</li>
   <li><strong>Retensi log:</strong> tabel event/sesi/optik/riwayat webhook dipangkas otomatis setelah <code>ACS_LOG_RETENTION_DAYS</code> (default 90); audit trail tidak dipangkas.</li>
   <li><strong>Kapasitas:</strong> uji beban lab (minimal Inform, satu instance, laptop): ~550–620 sesi/dtk, p95 ≈ 99 ms pada 50 koneksi,
   tanpa galat (RUNBOOK.md §L). Inform nyata lebih berat; ulangi dengan profil realistis &amp; CPE fisik sebelum menjanjikan kapasitas.</li>
@@ -1117,7 +1153,7 @@ erDiagram
 </div>
 
 <footer>
-Buku Panduan ACS v2.0 — 16 Oktober 2026. Dokumen pendamping:
+Buku Panduan ACS v2.1 — 17 Oktober 2026. Dokumen pendamping:
 LOGIN.md, PANDUAN_LOGIN_ACS.pdf, PENGUJIAN_LAPANGAN.md, PENGUJIAN_E2E.md,
 VENDOR_ONBOARDING.md, RUNBOOK.md, openapi.yaml.
 </footer>

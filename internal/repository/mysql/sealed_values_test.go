@@ -28,7 +28,10 @@ func TestSealOpenValue(t *testing.T) {
 		t.Fatalf("open: %q err=%v", got, err)
 	}
 	// nama tidak sensitif / nilai kosong / tanpa sealer -> apa adanya
-	for _, c := range []struct{ name, val string; sealer ValueSealer }{
+	for _, c := range []struct {
+		name, val string
+		sealer    ValueSealer
+	}{
 		{"InternetGatewayDevice.DeviceInfo.Manufacturer", "ZTE", s},
 		{"x.Password", "", s},
 		{"x.Password", "plain", nil},

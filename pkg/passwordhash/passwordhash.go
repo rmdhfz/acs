@@ -30,15 +30,15 @@ import (
 // OWASP (19 MiB, t=2, p=1). Ubah di sini untuk menaikkan biaya; hash lama
 // otomatis di-upgrade saat login (needsRehash).
 const (
-	timeCost   uint32 = 3
-	memoryKiB  uint32 = 64 * 1024
-	threads    uint8  = 2
-	keyLen     uint32 = 32
-	saltLen           = 16
-	maxParamM  uint32 = 512 * 1024 // batas wajar saat mem-parse hash dari DB
-	maxParamT  uint32 = 12
-	maxParamP  uint8  = 16
-	maxKeyLen  uint32 = 128
+	timeCost  uint32 = 3
+	memoryKiB uint32 = 64 * 1024
+	threads   uint8  = 2
+	keyLen    uint32 = 32
+	saltLen          = 16
+	maxParamM uint32 = 512 * 1024 // batas wajar saat mem-parse hash dari DB
+	maxParamT uint32 = 12
+	maxParamP uint8  = 16
+	maxKeyLen uint32 = 128
 	// MaxPasswordLen membatasi input agar tidak dipakai sebagai vektor DoS
 	// (hashing string raksasa). 128 byte cukup untuk passphrase panjang.
 	MaxPasswordLen = 128

@@ -4646,11 +4646,11 @@ paths:
     get:
       operationId: countOpenSessions
       tags: [Sessions]
-      summary: Jumlah sesi CWMP berstatus OPEN saat ini (lintas tenant)
+      summary: Jumlah sesi CWMP berstatus OPEN saat ini (sesuai cakupan peran)
       description: |
-        ADMIN/NOC/SUPERADMIN. Angka **lintas seluruh tenant** (melacak beban
-        load balancer CWMP secara global, bukan per-tenant) — sengaja tidak
-        di-scope. Sesi yang CPE-nya berhenti tanpa POST-kosong penutup di-reap
+        ADMIN/NOC/SUPERADMIN. **SUPERADMIN** melihat angka seluruh platform (beban load balancer CWMP);
+        **ADMIN/NOC** hanya sesi milik perangkat tenantnya sendiri — jumlah sesi platform adalah metadata
+        tenant lain. Sesi yang CPE-nya berhenti tanpa POST-kosong penutup di-reap
         otomatis ke status `TIMEOUT` oleh sweeper (ambang 15 menit), jadi angka
         ini tidak menumpuk permanen.
       security: [{ bearerAuth: [] }]
@@ -6741,6 +6741,7 @@ components:
         name: { type: string, example: ZTE Corporation }
         description: { type: string, nullable: true }
         is_active: { type: boolean }
+        oui_count: { type: integer, description: "Jumlah OUI terdaftar. Hanya diisi pada daftar vendor (GET /vendors); dihilangkan bila 0." }
       allOf:
         - $ref: '#/components/schemas/Audit'
       required: [id, code, name, is_active]

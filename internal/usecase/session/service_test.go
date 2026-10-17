@@ -312,7 +312,7 @@ func (r *fakeSessionRepo) UpdateStatus(context.Context, uint64, string, *time.Ti
 func (r *fakeSessionRepo) SetCWMPID(context.Context, uint64, string) error                { return nil }
 func (r *fakeSessionRepo) SetCWMPNamespace(context.Context, uint64, string) error         { return nil }
 func (r *fakeSessionRepo) CountOpen(context.Context) (int, error)                         { return 0, nil }
-func (r *fakeSessionRepo) CountOpenForTenant(context.Context, uint64) (int, error)         { return 0, nil }
+func (r *fakeSessionRepo) CountOpenForTenant(context.Context, uint64) (int, error)        { return 0, nil }
 
 func (r *fakeSessionRepo) TimeoutStaleOpen(_ context.Context, olderThan time.Time) (int64, error) {
 	r.cutoffSeen = &olderThan

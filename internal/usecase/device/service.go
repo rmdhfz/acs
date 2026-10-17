@@ -835,10 +835,10 @@ func (s *Service) PushFile(ctx context.Context, actor domain.Actor, deviceID uin
 		TaskType: domain.TaskTypeDownload,
 		Priority: 5,
 		Parameters: map[string]interface{}{
-			"file_type":        tr069FileType,
+			"file_type":                tr069FileType,
 			domain.TaskParamStorageKey: f.StorageKey, // URL presigned dibuat saat RPC dikirim
-			"target_file_name": f.FileName,
-			"file_size":        f.FileSizeBytes,
+			"target_file_name":         f.FileName,
+			"file_size":                f.FileSizeBytes,
 		},
 	})
 	if err == nil {

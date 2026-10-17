@@ -208,6 +208,11 @@ Nilai parameter bernama sensitif (`password|passphrase|psk|secret|token|key`) di
 | Variabel | Bawaan | Fungsi |
 |---|---|---|
 | `ACS_CWMP_RATE_LIMIT` | 5 | request/detik **per IP** di `/cwmp`; naikkan bila banyak CPE berbagi IP (CGNAT) |
+| `ACS_REST_RATE_LIMIT` | 100 | request/detik **per IP** di REST API (Console/BSS). Satu halaman Console memuat 15–35 permintaan dan satu kantor biasanya berbagi satu IP (NAT); batas lama 30/dtk memicu 429 / toast "tidak dapat menjangkau server". Login, MFA, lupa/reset password, dan signup punya pembatas **sendiri yang jauh lebih ketat** (tidak ikut berubah) |
+| `ACS_SELF_SIGNUP` | false | pendaftaran tenant mandiri (§N). **Wajib** SMTP (`ACS_SMTP_HOST`) bila true; aplikasi menolak start tanpa itu |
+| `ACS_SIGNUP_DAILY_CAP` | 50 | plafon pendaftaran baru per hari untuk seluruh platform (503 bila terlampaui) |
+| `ACS_SIGNUP_MAX_DEVICES` | 25 | batas perangkat awal tenant hasil self-signup (0 = tak dibatasi) |
+| `ACS_SIGNUP_MAX_PENDING_TASKS` | 50 | kuota task menunggu awal tenant hasil self-signup (0 = tak dibatasi) |
 | `ACS_TRUSTED_PROXIES` | kosong | CIDR proxy yang boleh menentukan IP klien lewat `X-Forwarded-For` (wajib di belakang proxy) |
 | `ACS_WEBHOOK_BLOCK_PRIVATE` | false | SaaS publik: tolak target webhook di RFC1918/ULA/CGNAT (validasi **dan** saat menyambung — menutup DNS rebinding) |
 | `ACS_HA` | false | mode multi-instance (§H) |
@@ -228,3 +233,21 @@ Pengguna mengaktifkan sendiri di Profil → Keamanan (QR + 10 kode pemulihan sek
 | 500 | 623 | 609 ms | 926 ms | 1,09 s | 0 |
 
 Throughput jenuh ≈ 600 sesi/dtk (latensi naik linear = antrean). 15.000 perangkat unik terbentuk, seluruh sesi tertutup, tanpa error di log. Inform nyata (puluhan parameter, RPC lanjutan) jauh lebih berat — ulangi dengan profil Inform realistis & CPE fisik sebelum menjanjikan kapasitas.
+
+
+### M. Operator SaaS: laporan, impersonate, paket (SUPERADMIN)
+- **Laporan SaaS** (menu *Laporan SaaS*, `GET /reports/saas`): KPI platform, tabel per tenant (perangkat, online, pengguna, task 30 hari, kesehatan), tren 30 hari, unduh CSV (`/reports/saas/tenants.csv`; sel diawali `= + - @` dinetralkan agar aman dibuka di Excel), cetak/PDF dari peramban. Hanya SUPERADMIN; ADMIN tenant mendapat 403.
+- **Impersonate** (Administrasi → Users → *Masuk sebagai*): membuat token **30 menit** berperan sebagai pengguna target (bukan SUPERADMIN, tenant aktif). Diblokir saat impersonate: endpoint platform, impersonate ulang, ganti password, MFA, token API, dan mutasi pengguna. Setiap aksi tercatat di audit dengan `impersonated_by`; awal/akhir sesi sebagai `IMPERSONATE_START/END`. Banner di Console menampilkan sesi impersonate + tombol **Keluar dari impersonate**.
+- **Paket/batas perangkat** (Administrasi → Tenant → *Kuota & Paket*, `PATCH /tenants/:id/device-limit`): kosong = tak dibatasi. Setelah tercapai: Inform perangkat **baru** dijawab **503 + `Retry-After`** (tidak ada baris dibuat), pra-registrasi/impor ditolak **429**; perangkat yang sudah ada tidak terganggu. Pengecekan cek-lalu-tulis (pendaftaran serentak bisa melampaui sedikit). Ini batas teknis, **bukan** penagihan.
+
+### N. Pendaftaran tenant mandiri (bawaan MATI)
+Aktifkan hanya bila Anda memang membuka layanan ke pihak luar: `ACS_SELF_SIGNUP=true` + SMTP berfungsi (`ACS_SMTP_*`, `ACS_PUBLIC_URL` benar karena tautan verifikasi memakainya). Alur: formulir `/signup` → email tautan (24 jam) → klik → tenant + admin pertama dibuat (atomik, token sekali pakai) dengan batas awal §J. Perlindungan: pembatas laju ketat per IP, batas per email/hari, plafon harian platform, honeypot, respons seragam (tidak membocorkan email terdaftar). **Halaman Syarat & Privasi di Console hanyalah draf yang belum ditinjau penasihat hukum** — ganti sebelum dipakai publik.
+
+### O. Menambah dukungan vendor/ONT baru (operasi data) & fallback standar
+- Migrasi 0029 menambahkan vendor **`GENERIC`** ("Standar TR-069") berisi mapping standar TR-098/TR-181 (device.*, wan.pppoe.*, wifi.ssid/wpa_passphrase, diag.*, optical.* TR-181) + 27 vendor tambahan dengan OUI IEEE (TP-Link, Tenda, VSOL, Syrotech, Skyworth, Sagemcom, Zyxel, Dasan, Raisecom, KAON, Netis, TOTOLINK, D-Link, Askey, Sercomm, Arcadyan, MitraStar, UTStarcom, Genexis, Optilink, Sumavision, Ubiquoss, Calix, ADTRAN, Gemtek, Mercusys, Ruijie).
+- **Urutan resolusi logical key**: mapping khusus model → mapping vendor → mapping `GENERIC`. Perangkat dengan OUI belum dikenal (vendor kosong) langsung memakai `GENERIC`; data model (TR-098/TR-181) dideteksi dari parameter yang dilaporkan CPE. Jangan menghapus vendor `GENERIC`.
+- Perangkat dengan struktur nonstandar (index `WLANConfiguration` berbeda, ekstensi `X_…`): tambahkan mapping vendor/model lewat **Katalog Vendor** (tanpa mengubah kode); mapping tersebut otomatis menang atas `GENERIC`. Path optik TR-098 per vendor sengaja **belum** dipetakan (butuh dokumentasi vendor/dump `GetParameterNames`).
+- Daftar OUI adalah data awal dari registry IEEE (bukan hasil uji perangkat). OUI di DeviceId CPE belum tentu sama dengan OUI MAC unit: bila Inform pertama muncul "vendor belum diketahui", tambahkan OUI-nya di Katalog.
+
+### P. Catatan operator Windows (Git Bash/Docker Desktop)
+Di Git Bash, argumen berawalan `/` diubah menjadi path Windows: set `MSYS_NO_PATHCONV=1` untuk `docker run/compose run` (mis. `/app/migrate`) dan saat membangun Console dengan `VITE_API_BASE_URL=/api/v1`. `docker compose up -d` penuh dapat gagal menarik image MinIO bila tidak ada internet: gunakan `--no-deps` per layanan.

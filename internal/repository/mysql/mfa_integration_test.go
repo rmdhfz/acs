@@ -2,9 +2,9 @@ package mysql
 
 import (
 	"context"
-	"errors"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"os"
 	"sync"
 	"sync/atomic"

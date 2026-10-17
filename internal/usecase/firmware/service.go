@@ -307,10 +307,10 @@ func (s *Service) scheduleUpgradeJob(ctx context.Context, actor domain.Actor, de
 		TaskType: domain.TaskTypeDownload,
 		Priority: 3,
 		Parameters: map[string]interface{}{
-			"file_type":        "1 Firmware Upgrade Image",
+			"file_type":                "1 Firmware Upgrade Image",
 			domain.TaskParamStorageKey: fw.StorageKey,
-			"checksum_sha256":  fw.ChecksumSHA256,
-			"target_file_name": fw.FileName,
+			"checksum_sha256":          fw.ChecksumSHA256,
+			"target_file_name":         fw.FileName,
 		},
 		ScheduledAt: scheduledAt,
 	})

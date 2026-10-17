@@ -21,7 +21,10 @@ func (f *fakeFiles) GetByID(_ context.Context, id uint64) (*domain.File, error) 
 	}
 	return nil, domain.ErrNotFound
 }
-func (f *fakeFiles) Delete(_ context.Context, id uint64) error { f.deleted = append(f.deleted, id); return nil }
+func (f *fakeFiles) Delete(_ context.Context, id uint64) error {
+	f.deleted = append(f.deleted, id)
+	return nil
+}
 func (f *fakeFiles) List(context.Context, *uint64, domain.Pagination) ([]domain.File, int, error) {
 	return nil, 0, nil
 }

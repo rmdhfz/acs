@@ -75,7 +75,7 @@ func (f *createErrFirmwareFileRepo) Create(context.Context, *domain.FirmwareFile
 
 type fakeFirmwareJobRepo struct {
 	cancelledBatches []uint64 // batch yang task PENDING-nya dibatalkan
-	created *domain.FirmwareUpgradeJob
+	created          *domain.FirmwareUpgradeJob
 	// jobs -- seluruh job "tersimpan" (baik pre-seeded test maupun hasil
 	// Create), dipakai ListByRolloutBatch/CountByRolloutWave sungguhan alih-
 	// alih no-op, supaya TestAdvanceRollout_* menguji logika Service yang

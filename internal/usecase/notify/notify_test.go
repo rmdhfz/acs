@@ -21,7 +21,9 @@ func TestMessagesRenderSafely(t *testing.T) {
 	msgs := map[string]struct {
 		subject, html, text string
 	}{}
-	add := func(name, subj, html, text string) { msgs[name] = struct{ subject, html, text string }{subj, html, text} }
+	add := func(name, subj, html, text string) {
+		msgs[name] = struct{ subject, html, text string }{subj, html, text}
+	}
 	m := b.PasswordReset("a@example.test", evil, link, 30*time.Minute)
 	add("reset", m.Subject, m.HTML, m.Text)
 	m = b.PasswordChanged("a@example.test", evil)
