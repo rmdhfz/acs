@@ -934,17 +934,30 @@ func RetryBackoff(n uint32) time.Duration {
 }
 
 func (s *Service) handleAutoDiscoveryResponse(ctx context.Context, t *domain.Task, response domain.JSONRawMessage) {
-	// Parse GetParameterNamesResponse
-	var b struct {
-		ParameterList struct {
-			Items []struct {
-				Name     string `json:"Name"`
-				Writable bool   `json:"Writable"`
-			} `json:"Items"`
-		} `json:"ParameterList"`
+	// Parse GetParameterNamesResponse. Respons yang DISIMPAN session engine adalah seluruh Body CWMP
+	// ({"GetParameterNamesResponse":{"ParameterList":{...}}}); bentuk polos ({"ParameterList":...}) tetap
+	// diterima (data/tes lama). Sebelumnya hanya bentuk polos yang dibaca sehingga penelusuran pohon
+	// tidak pernah mengisi apa pun pada alur nyata (ditemukan e2e S17).
+	type nameItem struct {
+		Name     string `json:"Name"`
+		Writable bool   `json:"Writable"`
 	}
-	if err := json.Unmarshal(response, &b); err != nil {
+	type nameList struct {
+		Items []nameItem `json:"Items"`
+	}
+	var raw struct {
+		Wrapped struct {
+			ParameterList nameList `json:"ParameterList"`
+		} `json:"GetParameterNamesResponse"`
+		ParameterList nameList `json:"ParameterList"`
+	}
+	if err := json.Unmarshal(response, &raw); err != nil {
 		return
+	}
+	var b struct{ ParameterList nameList }
+	b.ParameterList = raw.Wrapped.ParameterList
+	if len(b.ParameterList.Items) == 0 {
+		b.ParameterList = raw.ParameterList
 	}
 
 	// Konfigurasi penelusuran rekursif (diisi endpoint refresh): kedalaman & anggaran task.

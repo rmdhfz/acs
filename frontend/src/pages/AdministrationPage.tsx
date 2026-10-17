@@ -1,12 +1,13 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Building2, Gauge, KeyRound, Pencil, Palette, Plus, Shield, ShieldOff, Trash2, Upload, Users as UsersIcon, Wand2 } from 'lucide-react'
+import { Building2, Gauge, KeyRound, Link2, Pencil, Palette, Plus, Shield, ShieldOff, Trash2, Upload, Users as UsersIcon, Wand2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { EmptyState } from '../components/EmptyState'
 import { StatusBadge } from '../components/StatusBadge'
 import { Modal } from '../components/Modal'
 import { CopyButton } from '../components/CopyButton'
 import { ExportMenu } from '../components/ExportMenu'
+import { UserDevicesModal } from '../components/UserDevicesModal'
 import { ImportWizard } from '../components/ImportWizard'
 import { loadUserExportRows, userAdapter, userExportColumns } from '../imports/users'
 import { loadTenantExportRows, tenantAdapter, tenantExportColumns } from '../imports/tenants'
@@ -121,6 +122,7 @@ function UsersTab({ isSuperadmin }: { isSuperadmin: boolean }) {
   const [showCreate, setShowCreate] = useState(false)
   const [editTarget, setEditTarget] = useState<User | null>(null)
   const [passwordTarget, setPasswordTarget] = useState<User | null>(null)
+  const [devicesTarget, setDevicesTarget] = useState<User | null>(null)
   const [rolesTarget, setRolesTarget] = useState<User | null>(null)
   const [detailUserId, setDetailUserId] = useState<number | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
@@ -258,6 +260,15 @@ function UsersTab({ isSuperadmin }: { isSuperadmin: boolean }) {
                         >
                           <KeyRound className="h-3.5 w-3.5" /> Reset Password
                         </button>
+                        {u.roles.includes('ENDUSER') && (
+                          <button
+                            onClick={() => setDevicesTarget(u)}
+                            className="flex items-center gap-1 whitespace-nowrap text-xs font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
+                            title="Perangkat yang terlihat di portal WiFi Saya"
+                          >
+                            <Link2 className="h-3.5 w-3.5" /> Perangkat
+                          </button>
+                        )}
                         {u.mfa_enabled && (
                           <button
                             onClick={() => handleResetMfa(u)}
@@ -311,6 +322,7 @@ function UsersTab({ isSuperadmin }: { isSuperadmin: boolean }) {
       {showCreate && <CreateUserModal isSuperadmin={isSuperadmin} tenants={tenants} onClose={() => setShowCreate(false)} />}
       {editTarget && <EditUserModal user={editTarget} isSelf={currentUser?.id === editTarget.id} onClose={() => setEditTarget(null)} />}
       {passwordTarget && <ResetPasswordModal user={passwordTarget} onClose={() => setPasswordTarget(null)} />}
+      {devicesTarget && <UserDevicesModal user={devicesTarget} onClose={() => setDevicesTarget(null)} />}
       {rolesTarget && <ManageRolesModal user={rolesTarget} onClose={() => setRolesTarget(null)} />}
       {detailUserId !== null && <UserDetailModal id={detailUserId} onClose={() => setDetailUserId(null)} />}
     </div>

@@ -182,6 +182,10 @@ func (r *Router) Register(e *echo.Echo) {
 	authed.PATCH("/users/:id", r.updateUser, RequireRoles(admin...))
 	authed.PATCH("/users/:id/password", r.resetUserPassword, RequireRoles(admin...))
 	authed.DELETE("/users/:id/mfa", r.adminResetMFA, RequireRoles(admin...))
+	// Penautan akun ENDUSER <-> perangkat untuk portal "WiFi Saya".
+	authed.GET("/users/:id/devices", r.listUserDevices, RequireRoles(admin...))
+	authed.PUT("/users/:id/devices/:deviceId", r.linkUserDevice, RequireRoles(admin...))
+	authed.DELETE("/users/:id/devices/:deviceId", r.unlinkUserDevice, RequireRoles(admin...))
 	authed.PATCH("/users/:id/roles", r.replaceUserRoles, RequireRoles(admin...))
 	authed.DELETE("/users/:id", r.deleteUser, RequireRoles(admin...))
 

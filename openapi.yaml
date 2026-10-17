@@ -737,6 +737,122 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  /users/{id}/devices:
+    get:
+      operationId: listUserDevices
+      tags: [Users]
+      summary: Perangkat yang tertaut ke akun pelanggan (ENDUSER)
+      description: |
+        ADMIN (tenant yang sama) / SUPERADMIN. Menampilkan perangkat yang dapat dilihat akun itu di portal
+        "WiFi Saya" (`/self-service`). Hanya perangkat yang masih ada dan se-tenant dengan akun.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/userIdPath'
+      responses:
+        '200':
+          description: Daftar perangkat tertaut.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer, format: int64 }
+                        serial_number: { type: string }
+                        model: { type: string, nullable: true }
+                        status: { type: string }
+                  total: { type: integer }
+                required: [data, total]
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Bukan ADMIN/SUPERADMIN, atau akun di luar tenant pemanggil.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Akun tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /users/{id}/devices/{deviceId}:
+    put:
+      operationId: linkUserDevice
+      tags: [Users]
+      summary: Tautkan perangkat ke akun pelanggan (ENDUSER)
+      description: |
+        ADMIN (tenant yang sama) / SUPERADMIN. Tanpa tautan ini akun ENDUSER tidak melihat perangkat apa pun di
+        portal self-service. Syarat: akun ber-role **ENDUSER**; akun dan perangkat di tenant yang **sama**;
+        maksimum 20 perangkat per akun. Idempoten. Tercatat di audit trail (`LINK_USER_DEVICE`).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/userIdPath'
+        - { name: deviceId, in: path, required: true, description: ID numerik internal device., schema: { type: integer, format: int64 } }
+      responses:
+        '204':
+          description: Tertaut.
+        '400':
+          description: Akun bukan ENDUSER, atau akun & perangkat beda tenant / perangkat tanpa tenant.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Bukan ADMIN/SUPERADMIN, atau akun/perangkat di luar tenant pemanggil.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Akun atau perangkat tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Batas 20 perangkat per akun tercapai.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    delete:
+      operationId: unlinkUserDevice
+      tags: [Users]
+      summary: Lepas tautan perangkat dari akun pelanggan
+      description: ADMIN (tenant yang sama) / SUPERADMIN. Idempoten (tautan tak ada = sukses); perangkat boleh sudah dihapus. Tercatat `UNLINK_USER_DEVICE`.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/userIdPath'
+        - { name: deviceId, in: path, required: true, description: ID numerik internal device., schema: { type: integer, format: int64 } }
+      responses:
+        '204':
+          description: Tautan dilepas.
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Bukan ADMIN/SUPERADMIN, atau akun di luar tenant pemanggil.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Akun tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+
   # ============================== REFS ==============================
   /refs/{table}:
     get:

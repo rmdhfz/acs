@@ -124,6 +124,8 @@ func main() {
 		{"S14-diagnostics", scenarioDiagnostics},
 		{"S15-optical-poll", scenarioOpticalPoll},
 		{"S16-mfa-totp", scenarioMFA},
+		{"S17-tree-attributes", scenarioTreeAndAttributes},
+		{"S18-portal-pelanggan", scenarioPortal},
 	}
 
 	var results []result

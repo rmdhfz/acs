@@ -19,6 +19,7 @@ type Service struct {
 	refs        domain.RefRepository
 	tasks       *task.Service
 	activity    domain.ActivityLogRepository
+	users       domain.UserRepository // opsional: penautan akun<->perangkat oleh admin (link.go)
 }
 
 func NewService(userDevices domain.UserDeviceRepository, devices domain.DeviceRepository, refs domain.RefRepository, tasks *task.Service, activity domain.ActivityLogRepository) *Service {

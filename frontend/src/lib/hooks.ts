@@ -824,6 +824,37 @@ export function useResetPassword() {
   })
 }
 
+// ---- Penautan akun ENDUSER <-> perangkat (portal "WiFi Saya") ----
+export interface LinkedDevice {
+  id: number
+  serial_number: string
+  model: string | null
+  status: string
+}
+
+export function useUserDevices(userId: number) {
+  return useQuery({
+    queryKey: ['user-devices', userId],
+    queryFn: () => api.get<ListResponse<LinkedDevice>>(`/users/${userId}/devices`),
+  })
+}
+
+export function useLinkUserDevice() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ userId, deviceId }: { userId: number; deviceId: number }) => api.put<void>(`/users/${userId}/devices/${deviceId}`),
+    onSuccess: (_d, v) => qc.invalidateQueries({ queryKey: ['user-devices', v.userId] }),
+  })
+}
+
+export function useUnlinkUserDevice() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ userId, deviceId }: { userId: number; deviceId: number }) => api.del<void>(`/users/${userId}/devices/${deviceId}`),
+    onSuccess: (_d, v) => qc.invalidateQueries({ queryKey: ['user-devices', v.userId] }),
+  })
+}
+
 // ---- MFA TOTP (migrations/0027) ----
 export interface MfaStatus {
   available: boolean

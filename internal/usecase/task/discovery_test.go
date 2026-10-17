@@ -33,8 +33,9 @@ func TestAutoDiscovery_RekursifDanTidakMenimpaNilai(t *testing.T) {
 	svc := NewService(repo, &fakeDeviceRepo{dev: &domain.Device{ID: 1, TenantID: u64(100)}}, params, nil, nil, refs, &fakeActivityRepo{}, nil, nil, nil)
 
 	parent := &domain.Task{DeviceID: 1, Parameters: domain.JSONRawMessage(`{"path":"Device.","next_level":true,"discover":{"depth":3,"budget":30}}`)}
-	resp := domain.JSONRawMessage(`{"ParameterList":{"Items":[
-		{"Name":"Device.WiFi.","Writable":false},{"Name":"Device.IP.","Writable":false},{"Name":"Device.RootLeaf","Writable":true}]}}`)
+	// Bentuk NYATA yang disimpan session engine: seluruh Body CWMP (regresi: dulu hanya bentuk polos yang dibaca).
+	resp := domain.JSONRawMessage(`{"Fault":null,"GetParameterNamesResponse":{"ParameterList":{"ArrayType":"","Items":[
+		{"Name":"Device.WiFi.","Writable":false},{"Name":"Device.IP.","Writable":false},{"Name":"Device.RootLeaf","Writable":true}]}}}`)
 	svc.handleAutoDiscoveryResponse(context.Background(), parent, resp)
 
 	if len(params.names) != 3 {
@@ -73,5 +74,21 @@ func TestAutoDiscovery_RekursifDanTidakMenimpaNilai(t *testing.T) {
 		if ct.TaskTypeID == typeNames {
 			t.Fatal("depth 1 tidak boleh menelusuri anak lagi")
 		}
+	}
+}
+
+// Bentuk polos ({"ParameterList":...}) tetap diterima (kompatibilitas data lama).
+func TestAutoDiscovery_BentukPolosTetapDiterima(t *testing.T) {
+	refs := &fakeRefRepo{ids: map[string]uint64{
+		domain.TaskTypeGetParameterNames:  40,
+		domain.TaskTypeGetParameterValues: 41,
+		domain.TaskStatusPending:          42,
+	}}
+	params := &discParams{}
+	svc := NewService(&fakeTaskRepo{}, &fakeDeviceRepo{dev: &domain.Device{ID: 1, TenantID: u64(100)}}, params, nil, nil, refs, &fakeActivityRepo{}, nil, nil, nil)
+	parent := &domain.Task{DeviceID: 1, Parameters: domain.JSONRawMessage(`{"path":"Device.","next_level":true}`)}
+	svc.handleAutoDiscoveryResponse(context.Background(), parent, domain.JSONRawMessage(`{"ParameterList":{"Items":[{"Name":"Device.A","Writable":true}]}}`))
+	if len(params.names) != 1 {
+		t.Fatalf("bentuk polos harus tetap terbaca: %d", len(params.names))
 	}
 }

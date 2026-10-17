@@ -214,7 +214,7 @@ func main() {
 	fileSvc := file.NewService(fileRepo, objStorage, activityLogRepo)
 	tagSvc := tag.NewService(tagRepo, activityLogRepo)
 	presetSvc := preset.NewService(presetRepo, activityLogRepo)
-	selfServiceSvc := selfservice.NewService(userDeviceRepo, deviceRepo, refRepo, taskSvc, activityLogRepo)
+	selfServiceSvc := selfservice.NewService(userDeviceRepo, deviceRepo, refRepo, taskSvc, activityLogRepo).WithUsers(userRepo)
 
 	// ---- Observability: metrics Prometheus (TECH.md §10, ROADMAP.md Fase 2) ----
 	// Registry terpisah (bukan prometheus.DefaultRegisterer) supaya /metrics

@@ -19,6 +19,50 @@ func (r *Router) mountSelfServiceRoutes(api *echo.Group) {
 	ss.POST("/devices/:id/reboot", r.rebootMyDevice)
 }
 
+// ---- Penautan akun ENDUSER <-> perangkat (ADMIN/SUPERADMIN) ----
+
+func (r *Router) listUserDevices(c *echo.Context) error {
+	uid, err := parseUint64Param(c, "id")
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "id tidak valid")
+	}
+	devs, err := r.SelfService.ListUserDevices(c.Request().Context(), ActorFrom(c), uid)
+	if err != nil {
+		return handleErr(c, err)
+	}
+	return c.JSON(http.StatusOK, listResponse{Data: devs, Total: len(devs)})
+}
+
+func (r *Router) linkUserDevice(c *echo.Context) error {
+	uid, err := parseUint64Param(c, "id")
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "id tidak valid")
+	}
+	did, err := parseUint64Param(c, "deviceId")
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "deviceId tidak valid")
+	}
+	if err := r.SelfService.LinkDevice(c.Request().Context(), ActorFrom(c), uid, did); err != nil {
+		return handleErr(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
+func (r *Router) unlinkUserDevice(c *echo.Context) error {
+	uid, err := parseUint64Param(c, "id")
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "id tidak valid")
+	}
+	did, err := parseUint64Param(c, "deviceId")
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "deviceId tidak valid")
+	}
+	if err := r.SelfService.UnlinkDevice(c.Request().Context(), ActorFrom(c), uid, did); err != nil {
+		return handleErr(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
 func (r *Router) listMyDevices(c *echo.Context) error {
 	actor := ActorFrom(c)
 	devices, err := r.SelfService.ListMyDevices(c.Request().Context(), actor)
