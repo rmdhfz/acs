@@ -268,6 +268,13 @@ func (h *Handler) handleInform(c *echo.Context, token string, env *cwmpxml.Envel
 			h.log.Warn("cwmp: Inform ditolak (konflik kepemilikan device)", "oui", inf.DeviceId.OUI, "serial_number", inf.DeviceId.SerialNumber)
 			return c.NoContent(http.StatusConflict)
 		}
+		if errors.Is(err, domain.ErrQuotaExceeded) {
+			// Batas perangkat tenant tercapai: bukan galat server. 503 + Retry-After supaya CPE mencoba lagi nanti
+			// (setelah paket dinaikkan) tanpa membanjiri ACS.
+			h.log.Warn("cwmp: Inform ditolak, batas perangkat tenant tercapai", "oui", inf.DeviceId.OUI, "serial_number", inf.DeviceId.SerialNumber)
+			c.Response().Header().Set("Retry-After", "3600")
+			return c.NoContent(http.StatusServiceUnavailable)
+		}
 		h.log.Error("cwmp: HandleInform gagal", "oui", inf.DeviceId.OUI, "serial_number", inf.DeviceId.SerialNumber, "error", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}

@@ -387,6 +387,9 @@ func (s *Service) createFromInput(ctx context.Context, actor domain.Actor, tenan
 	}
 	s.resolveVendorModel(ctx, d, in.OUI, pc)
 
+	if err := s.requireDeviceCapacity(ctx, d.TenantID); err != nil {
+		return nil, err
+	}
 	if err := s.devices.Create(ctx, d); err != nil {
 		if errors.Is(err, domain.ErrConflict) {
 			// Baris terhapus milik tenant LAIN (revive lintas tenant ditolak repo).

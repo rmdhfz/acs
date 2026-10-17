@@ -130,6 +130,26 @@ func (r *Router) updateTenantBranding(c *echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
+type setTenantDeviceLimitRequest struct {
+	MaxDevices *uint32 `json:"max_devices"`
+}
+
+// setTenantDeviceLimit — superadmin only (plan SaaS). max_devices null = tidak dibatasi.
+func (r *Router) setTenantDeviceLimit(c *echo.Context) error {
+	id, err := parseUint64Param(c, "id")
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "id tidak valid")
+	}
+	var req setTenantDeviceLimitRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "payload tidak valid")
+	}
+	if err := r.IAM.SetDeviceLimit(c.Request().Context(), ActorFrom(c), id, req.MaxDevices); err != nil {
+		return handleErr(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
 type setTenantTaskQuotaRequest struct {
 	MaxPendingTasks *uint32 `json:"max_pending_tasks"`
 }

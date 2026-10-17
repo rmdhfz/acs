@@ -1,3 +1,9 @@
+import { afterEach } from 'vitest'
+import { cleanup } from '@testing-library/react'
+
+// Tanpa globals, Testing Library tidak membersihkan DOM otomatis antar-tes.
+afterEach(() => cleanup())
+
 // Setup tes komponen (jsdom): API browser yang tidak ada di jsdom tetapi dipakai ThemeProvider dll.
 if (!window.matchMedia) {
   window.matchMedia = ((query: string) => ({

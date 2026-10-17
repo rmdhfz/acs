@@ -27,6 +27,7 @@ import {
   useResetUserPassword,
   useSetTenantCWMPCredentials,
   useSetTenantTaskQuota,
+  useSetTenantDeviceLimit,
   useTenants,
   useApiTokens,
   useIssueApiToken,
@@ -892,6 +893,9 @@ function TenantsTab() {
                     ) : (
                       <span className="font-mono text-xs">{t.max_pending_tasks} pending</span>
                     )}
+                    <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">
+                      {t.max_devices == null ? 'perangkat tak dibatasi' : `maks. ${t.max_devices} perangkat`}
+                    </span>
                   </td>
                   <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{formatDateTime(t.created_at)}</td>
                   <td className="px-5 py-3.5 text-right">
@@ -1165,8 +1169,10 @@ function RotateCWMPCredentialsModal({ tenant, onClose }: { tenant: Tenant; onClo
 // self-service tenant.
 function EditTaskQuotaModal({ tenant, onClose }: { tenant: Tenant; onClose: () => void }) {
   const [value, setValue] = useState(tenant.max_pending_tasks != null ? String(tenant.max_pending_tasks) : '')
+  const [devValue, setDevValue] = useState(tenant.max_devices != null ? String(tenant.max_devices) : '')
   const [error, setError] = useState<string | null>(null)
   const setQuotaMutation = useSetTenantTaskQuota()
+  const setDeviceLimitMutation = useSetTenantDeviceLimit()
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -1177,16 +1183,23 @@ function EditTaskQuotaModal({ tenant, onClose }: { tenant: Tenant; onClose: () =
       setError('Kuota harus bilangan bulat non-negatif, atau kosongkan untuk tidak dibatasi')
       return
     }
+    const devTrimmed = devValue.trim()
+    const maxDevices = devTrimmed === '' ? null : Number(devTrimmed)
+    if (maxDevices !== null && (!Number.isInteger(maxDevices) || maxDevices < 0 || maxDevices > 10_000_000)) {
+      setError('Batas perangkat harus bilangan bulat 0–10.000.000, atau kosongkan untuk tidak dibatasi')
+      return
+    }
     try {
       await setQuotaMutation.mutateAsync({ tenantId: tenant.id, maxPendingTasks })
+      await setDeviceLimitMutation.mutateAsync({ tenantId: tenant.id, maxDevices })
       onClose()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Gagal menyimpan kuota task')
+      setError(err instanceof ApiError ? err.message : 'Gagal menyimpan kuota')
     }
   }
 
   return (
-    <Modal title={`Kuota Task — ${tenant.name}`} onClose={onClose}>
+    <Modal title={`Kuota & Paket — ${tenant.name}`} onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-3">
         <p className="text-xs text-slate-500 dark:text-slate-400">
           Batas jumlah task berstatus PENDING milik tenant ini lintas semua device-nya — mencegah satu tenant
@@ -1204,8 +1217,23 @@ function EditTaskQuotaModal({ tenant, onClose }: { tenant: Tenant; onClose: () =
             className={inputCls}
           />
         </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Maks. Perangkat (paket)</label>
+          <input
+            type="number"
+            min={0}
+            max={10000000}
+            value={devValue}
+            onChange={(e) => setDevValue(e.target.value)}
+            placeholder="Tidak dibatasi"
+            className={inputCls}
+          />
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Perangkat baru ditolak (Inform dijawab 503, pra-registrasi/impor gagal) setelah batas tercapai; yang sudah ada tidak terganggu.
+          </p>
+        </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
-        <button type="submit" disabled={setQuotaMutation.isPending} className={`${primaryBtnCls} w-full`}>
+        <button type="submit" disabled={setQuotaMutation.isPending || setDeviceLimitMutation.isPending} className={`${primaryBtnCls} w-full`}>
           Simpan Kuota
         </button>
       </form>

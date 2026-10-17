@@ -104,6 +104,12 @@ services:
       # Reverse proxy/LB tepercaya (IP/CIDR, pisahkan koma). WAJIB diisi bila ACS di belakang
       # proxy agar IP klien benar; kosong = X-Forwarded-For diabaikan.
       ACS_TRUSTED_PROXIES: ${ACS_TRUSTED_PROXIES:-}
+      # Pendaftaran tenant mandiri (bawaan mati; WAJIB ACS_SMTP_HOST untuk email verifikasi). Tenant baru mulai dengan
+      # batas paket awal di bawah (0 = tak dibatasi); superadmin menaikkannya lewat PATCH /tenants/:id/device-limit.
+      ACS_SELF_SIGNUP: ${ACS_SELF_SIGNUP:-false}
+      ACS_SIGNUP_DAILY_CAP: ${ACS_SIGNUP_DAILY_CAP:-50}
+      ACS_SIGNUP_MAX_DEVICES: ${ACS_SIGNUP_MAX_DEVICES:-25}
+      ACS_SIGNUP_MAX_PENDING_TASKS: ${ACS_SIGNUP_MAX_PENDING_TASKS:-50}
       # Multi-instance (beberapa acsd + load balancer, berbagi MariaDB & Redis): rate limit terdistribusi,
       # fan-out WebSocket, kunci leader sweeper. Bawaan false (satu instance).
       ACS_HA: ${ACS_HA:-false}

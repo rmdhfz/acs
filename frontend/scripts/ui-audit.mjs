@@ -64,7 +64,9 @@ const dev = (await (await fetch(`${API}/devices?page_size=1`, { headers: auth })
 
 const ROUTES = [
   '/dashboard', '/devices', dev ? `/devices/${dev.id}` : null, '/tasks', '/provisioning', '/firmware',
-  '/presets', '/audit', '/profile', '/webhooks', '/catalog', '/administration',
+  '/presets', '/audit', '/profile', '/webhooks', '/catalog', '/administration', '/reports',
+  // halaman publik (tanpa login); /signup diaudit dalam keadaan AKTIF (config dipaksa lewat intersepsi di bawah)
+  '/signup', '/terms', '/privacy', '/verify-signup',
 ].filter(Boolean)
 const VIEWPORTS = [
   { name: 'desktop', width: 1366, height: 800, mobile: false },
@@ -115,6 +117,14 @@ async function newPage(vp, theme) {
 for (const vp of VIEWPORTS) for (const theme of THEMES) {
   if (!keep(vp.name, theme)) continue
   const { ctx, page } = await newPage(vp, theme)
+  // Form pendaftaran bawaan MATI di backend; paksa tampil aktif HANYA untuk audit a11y bentuknya.
+  await page.setRequestInterception(true)
+  page.on('request', (req) => {
+    if (req.url().endsWith('/auth/config') && req.method() === 'GET') {
+      return req.respond({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ sso_enabled: false, mfa_available: true, self_signup_enabled: true }) })
+    }
+    req.continue()
+  })
   const errors = []
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text().slice(0, 160)))
   page.on('pageerror', (e) => errors.push(`PAGEERROR ${String(e).slice(0, 160)}`))

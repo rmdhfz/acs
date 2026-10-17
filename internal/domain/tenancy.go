@@ -25,6 +25,8 @@ type Tenant struct {
 	// NULL = tidak dibatasi. HANYA membatasi jumlah task PENDING, bukan rate
 	// limit koneksi/sesi CWMP (lihat usecase/task.Service.CreateTask).
 	MaxPendingTasks *uint32 `db:"max_pending_tasks" json:"max_pending_tasks"`
+	// MaxDevices — batas perangkat aktif tenant (dasar paket SaaS, migrations/0028); nil = tak dibatasi.
+	MaxDevices *uint32 `db:"max_devices" json:"max_devices"`
 	Audit
 }
 
@@ -43,6 +45,14 @@ type TenantRepository interface {
 	// Kebijakan platform-level, superadmin only (lihat usecase/iam.SetTaskQuota).
 	SetTaskQuota(ctx context.Context, id uint64, maxPendingTasks *uint32, updatedBy *uint64) error
 	SoftDelete(ctx context.Context, id, deletedBy uint64) error
+}
+
+// TenantQuotaRepository — batas perangkat per tenant. Antarmuka terpisah dari TenantRepository (lihat
+// repository/mysql/tenant_quota_repository.go).
+type TenantQuotaRepository interface {
+	SetMaxDevices(ctx context.Context, id uint64, max *uint32, updatedBy *uint64) error
+	// DeviceCapacity mengembalikan batas (nil = tak dibatasi) dan jumlah perangkat aktif tenant saat ini.
+	DeviceCapacity(ctx context.Context, tenantID uint64) (max *uint32, current int, err error)
 }
 
 type User struct {

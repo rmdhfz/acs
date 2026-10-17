@@ -47,15 +47,16 @@ func (r *reportRepository) Tenants(ctx context.Context, now time.Time) ([]domain
 		IsActive   bool      `db:"is_active"`
 		CreatedAt  time.Time `db:"created_at"`
 		MaxPending *uint32   `db:"max_pending_tasks"`
+		MaxDevices *uint32   `db:"max_devices"`
 	}
 	if err := r.db.SelectContext(ctx, &base,
-		`SELECT id, code, name, is_active, created_at, max_pending_tasks FROM tenants WHERE is_deleted = 0 ORDER BY name`); err != nil {
+		`SELECT id, code, name, is_active, created_at, max_pending_tasks, max_devices FROM tenants WHERE is_deleted = 0 ORDER BY name`); err != nil {
 		return nil, translateErr(err)
 	}
 	rows := make(map[uint64]*domain.TenantReport, len(base))
 	out := make([]domain.TenantReport, len(base))
 	for i, b := range base {
-		out[i] = domain.TenantReport{TenantID: b.ID, Code: b.Code, Name: b.Name, IsActive: b.IsActive, CreatedAt: b.CreatedAt, MaxPending: b.MaxPending, HealthReasons: []string{}}
+		out[i] = domain.TenantReport{TenantID: b.ID, Code: b.Code, Name: b.Name, IsActive: b.IsActive, CreatedAt: b.CreatedAt, MaxPending: b.MaxPending, MaxDevices: b.MaxDevices, HealthReasons: []string{}}
 		rows[b.ID] = &out[i]
 	}
 

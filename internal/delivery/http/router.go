@@ -16,6 +16,7 @@ import (
 	"acs/internal/usecase/device"
 	"acs/internal/usecase/diagnostics"
 	"acs/internal/usecase/report"
+	"acs/internal/usecase/signup"
 	"acs/internal/usecase/file"
 	"acs/internal/usecase/firmware"
 	"acs/internal/usecase/iam"
@@ -37,6 +38,7 @@ type Router struct {
 	Firmware      *firmware.Service
 	Diagnostics   *diagnostics.Service
 	Reports       *report.Service
+	Signup        *signup.Service // nil/mati = pendaftaran tenant mandiri nonaktif
 	Webhooks      *webhook.Service
 	Sessions      *session.Service
 	Catalog       *catalog.Service
@@ -103,6 +105,9 @@ func (r *Router) Register(e *echo.Echo) {
 
 	// Tahap kedua login MFA: publik tetapi dibatasi laju & lockout akun yang sama dengan login.
 	api.POST("/auth/mfa/verify", r.mfaVerify, r.limiter("mfa-verify", 2))
+	// Pendaftaran tenant mandiri (bawaan mati): publik tetapi dibatasi laju ketat; tenant dibuat hanya setelah email diverifikasi.
+	api.POST("/auth/signup", r.signup, r.limiter("signup", 0.1))
+	api.POST("/auth/signup/verify", r.verifySignup, r.limiter("signup-verify", 0.5))
 	api.GET("/auth/config", r.authConfig)
 	api.GET("/auth/oidc/login", r.oidcLogin)
 	api.GET("/auth/oidc/callback", r.oidcCallback)
@@ -176,6 +181,8 @@ func (r *Router) Register(e *echo.Echo) {
 	// Kuota task queue: kebijakan platform-level, superadmin only (bukan
 	// self-service tenant seperti branding di atas) — lihat usecase/iam.SetTaskQuota.
 	authed.PATCH("/tenants/:id/task-quota", r.setTenantTaskQuota, RequireRoles(superadminOnly...))
+	// Batas perangkat per tenant (paket SaaS): superadmin only.
+	authed.PATCH("/tenants/:id/device-limit", r.setTenantDeviceLimit, RequireRoles(superadminOnly...))
 	authed.POST("/users", r.createUser, RequireRoles(admin...), denyImpersonation)
 	authed.GET("/users", r.listUsers, RequireRoles(admin...))
 	// Self-service tenant admin (ROADMAP.md Fase 2): superadmin bisa ke user

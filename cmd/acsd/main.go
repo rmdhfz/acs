@@ -36,6 +36,7 @@ import (
 	"acs/internal/usecase/device"
 	"acs/internal/usecase/diagnostics"
 	"acs/internal/usecase/report"
+	"acs/internal/usecase/signup"
 	"acs/internal/usecase/file"
 	"acs/internal/usecase/firmware"
 	"acs/internal/usecase/iam"
@@ -158,10 +159,17 @@ func main() {
 	}
 	// MFA TOTP: rahasia dienkripsi dengan kunci kredensial yang sama (AES-GCM).
 	authSvc.WithMFA(mysql.NewMFARepository(db), enc, "ACS")
-	iamSvc := iam.NewService(tenantRepo, userRepo, refRepo, activityLogRepo, enc, usageRepo)
+	tenantQuotaRepo := mysql.NewTenantQuotaRepository(db)
+	signupRepo := mysql.NewSignupRepository(db)
+	iamSvc := iam.NewService(tenantRepo, userRepo, refRepo, activityLogRepo, enc, usageRepo).WithQuota(tenantQuotaRepo)
 	if cfg.SMTPHost != "" {
 		iamSvc.WithEmail(mailNotifier, mailBuilder, passwordResetRepo)
 	}
+	// Pendaftaran tenant mandiri (bawaan mati; butuh SMTP — divalidasi di config).
+	signupSvc := signup.NewService(signupRepo, iamSvc, userRepo, activityLogRepo, mailNotifier, mailBuilder, signup.Config{
+		Enabled: cfg.SelfSignup, DailyCap: cfg.SignupDailyCap,
+		MaxDevices: uint32(cfg.SignupMaxDevices), MaxPendingTasks: uint32(cfg.SignupMaxPendingTasks),
+	})
 	catalogSvc := catalog.NewService(vendorRepo, vendorOUIRepo, deviceModelRepo, paramMappingRepo, usageRepo, activityLogRepo)
 	// webhookSvc dikonstruksi lebih dulu -- session & task memakainya lewat
 	// domain.WebhookEnqueuer (interface sempit, tanpa import cycle), worker
@@ -209,7 +217,7 @@ func main() {
 	firmwareSvc := firmware.NewService(firmwareFileRepo, firmwareJobRepo, firmwareRolloutRepo, deviceRepo, taskSvc, refRepo, activityLogRepo, objStorage, usageRepo)
 	provisioningSvc := provisioning.NewService(profileRepo, profileParamRepo, ztRuleRepo, deviceRepo, deviceParamRepo, refRepo, taskSvc, firmwareSvc, activityLogRepo, presetRepo, presetAppRepo)
 	deviceSvc := device.NewService(deviceRepo, vendorOUIRepo, deviceModelRepo, refRepo, deviceParamRepo, deviceEventRepo, opticalMetricRepo, configSnapshotRepo, enc, activityLogRepo, taskSvc, fileRepo, objStorage, mysql.NewOpenTaskCanceller(db))
-	deviceSvc.WithCatalog(vendorRepo, tenantRepo)
+	deviceSvc.WithCatalog(vendorRepo, tenantRepo).WithQuota(tenantQuotaRepo)
 	diagnosticsSvc := diagnostics.NewService(diagnosticRepo, deviceRepo, taskSvc, activityLogRepo)
 	sessionSvc := session.NewService(deviceSessionRepo, deviceEventRepo, deviceParamRepo, deviceRepo, tenantRepo, refRepo, deviceSvc, taskSvc, provisioningSvc, firmwareSvc, diagnosticsSvc, enc, activityLogRepo, logger, webhookSvc, wsHub).WithOpticalPoll(time.Duration(cfg.OpticalPollMinutes) * time.Minute)
 	fileSvc := file.NewService(fileRepo, objStorage, activityLogRepo)
@@ -275,7 +283,7 @@ func main() {
 	restEcho.Use(middleware.RateLimiter(limiterStore("rest", 30)))
 	router := &deliveryhttp.Router{
 		Auth: authSvc, IAM: iamSvc, Devices: deviceSvc, Tasks: taskSvc, Provisioning: provisioningSvc,
-		Firmware: firmwareSvc, Diagnostics: diagnosticsSvc, Reports: report.NewService(mysql.NewReportRepository(db)), Webhooks: webhookSvc, Sessions: sessionSvc,
+		Firmware: firmwareSvc, Diagnostics: diagnosticsSvc, Reports: report.NewService(mysql.NewReportRepository(db)), Signup: signupSvc, Webhooks: webhookSvc, Sessions: sessionSvc,
 		Catalog: catalogSvc,
 		Vendors: vendorRepo, VendorOUIs: vendorOUIRepo, DeviceModels: deviceModelRepo, ParamMappings: paramMappingRepo,
 		Refs: refRepo, Activity: activityLogRepo,
@@ -347,7 +355,7 @@ func main() {
 	}()
 
 	stop := make(chan struct{})
-	go runSweepers(deviceSvc, taskSvc, firmwareSvc, webhookSvc, sessionSvc, diagnosticsSvc, mysql.NewRetentionRepository(db), cfg.LogRetentionDays, lockSweeper, stop)
+	go runSweepers(deviceSvc, taskSvc, firmwareSvc, webhookSvc, sessionSvc, diagnosticsSvc, mysql.NewRetentionRepository(db), cfg.LogRetentionDays, signupSvc.Purge, lockSweeper, stop)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
@@ -438,7 +446,7 @@ func redactingRequestLogger(logger *slog.Logger) echo.MiddlewareFunc {
 // karena app server stateless (TECH.md §9). Dispatch webhook pakai ticker
 // terpisah yang lebih cepat (15 dtk) supaya event fault/value-change sampai
 // ke sistem pihak ketiga dengan latensi rendah.
-func runSweepers(deviceSvc *device.Service, taskSvc *task.Service, firmwareSvc *firmware.Service, webhookSvc *webhook.Service, sessionSvc *session.Service, diagSvc *diagnostics.Service, retention domain.RetentionRepository, retentionDays int, lock func(name string, ttl time.Duration) (func(), bool), stop <-chan struct{}) {
+func runSweepers(deviceSvc *device.Service, taskSvc *task.Service, firmwareSvc *firmware.Service, webhookSvc *webhook.Service, sessionSvc *session.Service, diagSvc *diagnostics.Service, retention domain.RetentionRepository, retentionDays int, signupPurge func(context.Context) (int64, error), lock func(name string, ttl time.Duration) (func(), bool), stop <-chan struct{}) {
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
 	// Pemangkasan log: tiap 6 jam (data menahun dihapus bertahap per batch).
@@ -462,6 +470,12 @@ func runSweepers(deviceSvc *device.Service, taskSvc *task.Service, firmwareSvc *
 				} else {
 					log.Printf("sweeper: retensi log (> %d hari) dipangkas: %v", retentionDays, res)
 				}
+			}
+			// Antrean verifikasi pendaftaran lama (kedaluwarsa > 7 hari / terverifikasi > 30 hari) dihapus.
+			if n, err := signupPurge(context.Background()); err != nil {
+				log.Printf("sweeper: pangkas pendaftaran kedaluwarsa gagal: %v", err)
+			} else if n > 0 {
+				log.Printf("sweeper: %d pendaftaran tenant lama dipangkas", n)
 			}
 			release()
 		case <-webhookTicker.C:

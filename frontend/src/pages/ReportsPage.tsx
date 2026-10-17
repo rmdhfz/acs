@@ -197,7 +197,7 @@ function ReportsContent() {
               <tr className="border-b border-slate-200 text-xs font-medium uppercase tracking-wide text-slate-600 dark:border-slate-800 dark:text-slate-400">
                 <th className="py-2 pr-3">Tenant</th>
                 <th className="py-2 pr-3">Kesehatan</th>
-                <th className="py-2 pr-3 text-right">Perangkat (online)</th>
+                <th className="py-2 pr-3 text-right">Perangkat / batas (online)</th>
                 <th className="py-2 pr-3 text-right">Pengguna aktif</th>
                 <th className="py-2 pr-3 text-right">Task 30h (gagal)</th>
                 <th className="py-2 pr-3 text-right">Antrean</th>
@@ -233,7 +233,11 @@ function TenantRow({ t }: { t: TenantReport }) {
         <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${HEALTH_STYLE[t.health] ?? HEALTH_STYLE.sehat}`}>{t.health}</span>
         {t.health_reasons.length > 0 && <p className="mt-1 max-w-xs text-xs text-slate-600 dark:text-slate-400">{t.health_reasons.join('; ')}</p>}
       </td>
-      <td className="py-2.5 pr-3 text-right tabular-nums">{t.devices} <span className="text-slate-600 dark:text-slate-400">({t.devices_online})</span></td>
+      <td className="py-2.5 pr-3 text-right tabular-nums">
+        {t.devices}
+        {t.max_devices ? <span className="text-slate-600 dark:text-slate-400"> / {t.max_devices}</span> : null}{' '}
+        <span className="text-slate-600 dark:text-slate-400">({t.devices_online})</span>
+      </td>
       <td className="py-2.5 pr-3 text-right tabular-nums">{t.users_active_30d} / {t.users}</td>
       <td className="py-2.5 pr-3 text-right tabular-nums">{t.tasks_30d} <span className={t.tasks_failed_30d > 0 ? 'text-red-700 dark:text-red-400' : 'text-slate-600 dark:text-slate-400'}>({t.tasks_failed_30d})</span></td>
       <td className="py-2.5 pr-3 text-right tabular-nums">{t.pending_tasks}{t.max_pending_tasks ? ` / ${t.max_pending_tasks}` : ''}</td>

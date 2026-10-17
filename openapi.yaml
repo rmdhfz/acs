@@ -461,7 +461,8 @@ paths:
                 properties:
                   sso_enabled: { type: boolean }
                   mfa_available: { type: boolean }
-                required: [sso_enabled, mfa_available]
+                  self_signup_enabled: { type: boolean }
+                required: [sso_enabled, mfa_available, self_signup_enabled]
 
   /auth/me:
     get:
@@ -983,6 +984,149 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '403':
           description: Bukan SUPERADMIN.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+
+  /auth/signup:
+    post:
+      operationId: signupTenant
+      tags: [Auth]
+      summary: Pendaftaran tenant mandiri (self-signup)
+      description: |
+        **Bawaan MATI** (`ACS_SELF_SIGNUP=true` + SMTP). Publik, dibatasi laju ketat per IP. Tenant & admin TIDAK dibuat di sini:
+        hanya pendaftaran tertunda (hash token + hash password) yang disimpan, lalu email berisi tautan verifikasi dikirim
+        (`/verify-signup#token=...`, berlaku 24 jam). Respons **seragam** (202) baik untuk email baru maupun yang sudah terdaftar
+        atau terkena batas per email — tidak membocorkan keberadaan akun. Field `website` adalah honeypot (harus kosong; bot yang
+        mengisinya tampak sukses tanpa efek). Batas: 5 per IP/jam, 3 per email/hari, plafon harian platform (`ACS_SIGNUP_DAILY_CAP`).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                company_name: { type: string, minLength: 3, maxLength: 128 }
+                full_name: { type: string, minLength: 2, maxLength: 128 }
+                email: { type: string, format: email, maxLength: 191 }
+                password: { type: string, format: password, minLength: 10, maxLength: 128, description: "Tidak boleh memuat email atau nama perusahaan." }
+                accept_terms: { type: boolean, description: "Harus true." }
+                website: { type: string, description: "Honeypot — biarkan kosong." }
+              required: [company_name, full_name, email, password, accept_terms]
+      responses:
+        '202':
+          description: Diterima (tautan verifikasi dikirim bila data valid).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        '400':
+          description: Validasi gagal (nama, email, password, persetujuan).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Pendaftaran mandiri tidak diaktifkan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Batas per IP tercapai.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '503':
+          description: Plafon harian pendaftaran platform tercapai.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /auth/signup/verify:
+    post:
+      operationId: verifySignup
+      tags: [Auth]
+      summary: Verifikasi email pendaftaran — membuat tenant & admin pertama
+      description: |
+        Memakai token dari email (sekali pakai, atomik: klik ganda/paralel tidak membuat dua tenant). Membuat tenant (kode dari nama +
+        sufiks acak), admin pertama (peran ADMIN, password hasil pendaftaran), dan menerapkan **batas paket awal**
+        (`ACS_SIGNUP_MAX_DEVICES`, `ACS_SIGNUP_MAX_PENDING_TASKS`). Gagal di tengah jalan = tenant setengah jadi dihapus dan tautan
+        bisa dicoba lagi. Token tidak valid/kedaluwarsa/terpakai = pesan seragam.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token: { type: string }
+              required: [token]
+      responses:
+        '200':
+          description: Tenant & admin dibuat.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenant_code: { type: string }
+                  tenant_name: { type: string }
+                  email: { type: string, format: email }
+        '400':
+          description: Token tidak valid, kedaluwarsa, atau sudah dipakai.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Pendaftaran mandiri tidak diaktifkan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /tenants/{id}/device-limit:
+    patch:
+      operationId: setTenantDeviceLimit
+      tags: [Tenants]
+      summary: Atur batas perangkat tenant (paket SaaS)
+      description: |
+        SUPERADMIN. `max_devices` null = tak dibatasi. Setelah batas tercapai: Inform perangkat BARU dijawab **503** (+ `Retry-After`,
+        tidak ada baris dibuat), pra-registrasi `POST /devices` dan baris impor ditolak (**429**); perangkat yang sudah ada tidak
+        terganggu. Pengecekan cek-lalu-tulis (pendaftaran serentak dapat melampaui sedikit).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, description: ID numerik internal tenant., schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                max_devices: { type: integer, minimum: 0, maximum: 10000000, nullable: true }
+      responses:
+        '204':
+          description: Tersimpan.
+        '400':
+          description: Nilai tidak valid.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Bukan SUPERADMIN.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Tenant tidak ditemukan.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -5972,6 +6116,7 @@ components:
         logo_url: { type: string, nullable: true }
         primary_color: { type: string, nullable: true, example: "#1a73e8" }
         max_pending_tasks: { type: integer, nullable: true, description: "NULL berarti tidak dibatasi." }
+        max_devices: { type: integer, nullable: true, description: "Batas perangkat aktif tenant (paket SaaS); null = tak dibatasi." }
       allOf:
         - $ref: '#/components/schemas/Audit'
       required: [id, tenant_uuid, code, name, is_active]

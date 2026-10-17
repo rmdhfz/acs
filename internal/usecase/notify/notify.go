@@ -44,6 +44,11 @@ func (b *Builder) ResetLink(token string) string {
 	return b.PublicURL + "/reset-password#token=" + token
 }
 
+// VerifySignupLink — tautan verifikasi pendaftaran tenant; token di FRAGMENT (tidak masuk log proxy/Referer).
+func (b *Builder) VerifySignupLink(token string) string {
+	return b.PublicURL + "/verify-signup#token=" + token
+}
+
 // LoginURL — halaman masuk.
 func (b *Builder) LoginURL() string { return b.PublicURL + "/login" }
 
@@ -104,6 +109,19 @@ func greeting(name string) string {
 		return "Halo,"
 	}
 	return "Halo " + name + ","
+}
+
+// SignupVerification — verifikasi email pendaftaran tenant mandiri.
+func (b *Builder) SignupVerification(to, name, company, link string, ttl time.Duration) mailer.Message {
+	return b.render(to, "Verifikasi pendaftaran "+b.Brand, layout{
+		Greeting: greeting(name),
+		Paragraphs: []string{
+			fmt.Sprintf("Terima kasih telah mendaftarkan %q di %s. Klik tombol di bawah untuk memverifikasi email dan mengaktifkan akun administrator Anda.", company, b.Brand),
+		},
+		Button:    "Verifikasi & aktifkan akun",
+		ButtonURL: link,
+		Footnote:  fmt.Sprintf("Tautan ini berlaku %d jam dan hanya bisa dipakai sekali. Jika Anda tidak mendaftar, abaikan email ini — tidak ada akun yang dibuat.", int(ttl.Hours())),
+	})
 }
 
 // PasswordReset — tautan reset password sekali-pakai.

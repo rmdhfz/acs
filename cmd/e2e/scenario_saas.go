@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // S19 — operator SaaS: laporan platform & impersonate.
@@ -17,7 +18,8 @@ import (
 //  3. ADMIN tenant tidak bisa meng-impersonate; tidak bisa ke diri sendiri.
 //  4. Audit: IMPERSONATE_START/END tercatat dan aksi selama impersonate memuat impersonated_by.
 func scenarioSaaSOperator(ctx context.Context, w *World) result {
-	call := func(method, path string, body any, token string) (int, []byte, string) {
+	var doCall func(method, path string, body any, token string, retried bool) (int, []byte, string)
+	doCall = func(method, path string, body any, token string, retried bool) (int, []byte, string) {
 		var rd io.Reader
 		if body != nil {
 			b, _ := json.Marshal(body)
@@ -37,7 +39,15 @@ func scenarioSaaSOperator(ctx context.Context, w *World) result {
 		}
 		defer resp.Body.Close()
 		raw, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode == http.StatusTooManyRequests && !retried {
+			// rate limit global 30 req/dtk per IP: rentetan panggilan skenario ini bisa menabraknya; tunggu & ulangi sekali.
+			time.Sleep(1200 * time.Millisecond)
+			return doCall(method, path, body, token, true)
+		}
 		return resp.StatusCode, raw, resp.Header.Get("Content-Type")
+	}
+	call := func(method, path string, body any, token string) (int, []byte, string) {
+		return doCall(method, path, body, token, false)
 	}
 
 	// ---- 1. laporan ----

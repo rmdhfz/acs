@@ -547,7 +547,7 @@ export function DashboardPage() {
             ) : (
               <ul className="grid gap-x-8 gap-y-1 md:grid-cols-2">
                 {(activity?.data ?? []).map((a) => (
-                  <li key={a.id} className="flex items-start gap-3 py-2">
+                  <li key={a.id} className="flex min-w-0 items-start gap-3 py-2">
                     <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-400" />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm text-slate-700 dark:text-slate-300">

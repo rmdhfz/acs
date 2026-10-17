@@ -212,6 +212,7 @@ CREATE TABLE tenants (
     -- HANYA task queue (jumlah task PENDING milik tenant), BUKAN rate limit
     -- koneksi/sesi CWMP itu sendiri (itu di luar cakupan perubahan ini).
     max_pending_tasks         INT UNSIGNED    NULL,
+    max_devices               INT UNSIGNED    NULL COMMENT 'Batas perangkat aktif tenant (NULL = tak dibatasi; migrations/0028)',
     created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     created_by      BIGINT UNSIGNED NULL,
     updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -260,6 +261,29 @@ CREATE TABLE users (
     KEY idx_users_tenant (tenant_id),
     CONSTRAINT fk_users_tenant FOREIGN KEY (tenant_id) REFERENCES tenants (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Pendaftaran tenant mandiri menunggu verifikasi email (migrations/0028). Pengecualian audit 7-kolom: antrean verifikasi
+-- berumur pendek yang dipangkas; jejak audit di activity_logs. Hanya hash token & hash password yang disimpan.
+CREATE TABLE tenant_signups (
+    id            BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    signup_uuid   CHAR(36)        NOT NULL,
+    company_name  VARCHAR(128)    NOT NULL,
+    tenant_code   VARCHAR(32)     NOT NULL COMMENT 'Kode tenant yang akan dibuat (unik saat verifikasi)',
+    email         VARCHAR(191)    NOT NULL,
+    full_name     VARCHAR(128)    NOT NULL,
+    password_hash VARCHAR(255)    NOT NULL,
+    token_hash    CHAR(64)        NOT NULL COMMENT 'SHA-256 heksadesimal dari token verifikasi (token asli hanya ada di email)',
+    ip_address    VARCHAR(45)     NULL,
+    expires_at    DATETIME        NOT NULL,
+    verified_at   DATETIME        NULL,
+    created_at    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_signup_uuid (signup_uuid),
+    UNIQUE KEY uq_signup_token (token_hash),
+    KEY idx_signup_email (email, created_at),
+    KEY idx_signup_ip (ip_address, created_at),
+    KEY idx_signup_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Pendaftaran tenant mandiri menunggu verifikasi email';
 
 -- Kode pemulihan MFA sekali pakai (migrations/0027). Pengecualian audit 7-kolom: tabel kredensial
 -- sekali pakai volume rendah yang diganti utuh saat MFA diaktifkan/dimatikan; jejak audit ada di

@@ -38,10 +38,15 @@ export function LoginPage() {
   const from = (location.state as { from?: string } | null)?.from
 
   const [ssoEnabled, setSsoEnabled] = useState(false)
+  const [signupEnabled, setSignupEnabled] = useState(false)
   const ssoFailed = new URLSearchParams(location.search).get('sso') === 'error'
   useEffect(() => {
     let alive = true
-    fetch(`${API_BASE}/auth/config`).then((r) => (r.ok ? r.json() : null)).then((c) => alive && setSsoEnabled(Boolean(c?.sso_enabled))).catch(() => undefined)
+    fetch(`${API_BASE}/auth/config`).then((r) => (r.ok ? r.json() : null)).then((c) => {
+      if (!alive) return
+      setSsoEnabled(Boolean(c?.sso_enabled))
+      setSignupEnabled(Boolean(c?.self_signup_enabled))
+    }).catch(() => undefined)
     return () => { alive = false }
   }, [])
   const [email, setEmail] = useState(readRemembered)
@@ -333,6 +338,15 @@ export function LoginPage() {
       </a>
       <p className="mt-2 text-center text-xs text-slate-500 dark:text-slate-400">{t('login.ssoHint')}</p>
       </>
+      )}
+
+      {signupEnabled && (
+        <p className="mt-6 text-center text-sm text-slate-600 dark:text-slate-400">
+          Belum punya akun?{' '}
+          <Link to="/signup" className="font-medium text-indigo-700 hover:text-indigo-600 dark:text-indigo-300">
+            Daftar tenant baru
+          </Link>
+        </p>
       )}
 
       <p className="mt-8 text-center text-xs text-slate-500 dark:text-slate-400">

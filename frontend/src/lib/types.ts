@@ -52,6 +52,7 @@ export interface TenantReport {
   tasks_failed_30d: number
   pending_tasks: number
   max_pending_tasks: number | null
+  max_devices: number | null
   sessions_30d: number
   webhooks_active: number
   last_inform_at: string | null
@@ -238,6 +239,8 @@ export interface Tenant {
   // max_pending_tasks — kuota task queue tenant ini (ROADMAP.md Fase 2).
   // null = tidak dibatasi.
   max_pending_tasks: number | null
+  // max_devices — batas perangkat aktif (paket SaaS, migrations/0028). null = tidak dibatasi.
+  max_devices: number | null
   created_at: string
 }
 

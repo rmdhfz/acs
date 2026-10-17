@@ -66,6 +66,12 @@ type Config struct {
 	// Mati (bawaan) = perilaku satu instance seperti sebelumnya.
 	HA bool
 
+	// Pendaftaran tenant mandiri (bawaan MATI). Butuh SMTP (email verifikasi). Tenant baru mulai dengan batas paket awal.
+	SelfSignup            bool
+	SignupDailyCap        int  // plafon pendaftaran per 24 jam di seluruh platform
+	SignupMaxDevices      uint // batas perangkat awal tenant baru (0 = tak dibatasi)
+	SignupMaxPendingTasks uint // batas antrean task awal (0 = tak dibatasi)
+
 	// LogRetentionDays — umur maksimum (hari) tabel log volume tinggi (event, sesi CWMP,
 	// metrik optik, riwayat webhook). 0 = tanpa pemangkasan. activity_logs (audit) tidak dipangkas.
 	LogRetentionDays int
@@ -205,6 +211,19 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("config: ACS_USP_ENABLED tidak valid: %w", err)
 	}
 	cfg.USPEnabled = uspEnabled
+	cfg.SelfSignup, err = strconv.ParseBool(getEnv("ACS_SELF_SIGNUP", "false"))
+	if err != nil {
+		return nil, fmt.Errorf("config: ACS_SELF_SIGNUP tidak valid: %w", err)
+	}
+	if cfg.SignupDailyCap, err = strconv.Atoi(getEnv("ACS_SIGNUP_DAILY_CAP", "50")); err != nil || cfg.SignupDailyCap < 1 || cfg.SignupDailyCap > 100000 {
+		return nil, fmt.Errorf("config: ACS_SIGNUP_DAILY_CAP harus 1..100000")
+	}
+	if cfg.SignupMaxDevices, err = parseUintEnv("ACS_SIGNUP_MAX_DEVICES", "25"); err != nil {
+		return nil, err
+	}
+	if cfg.SignupMaxPendingTasks, err = parseUintEnv("ACS_SIGNUP_MAX_PENDING_TASKS", "50"); err != nil {
+		return nil, err
+	}
 	cfg.HA, err = strconv.ParseBool(getEnv("ACS_HA", "false"))
 	if err != nil {
 		return nil, fmt.Errorf("config: ACS_HA tidak valid: %w", err)
@@ -241,6 +260,9 @@ func Load() (*Config, error) {
 	cfg.SMTPPassword = os.Getenv("ACS_SMTP_PASSWORD")
 	cfg.SMTPFrom = getEnv("ACS_SMTP_FROM", cfg.SMTPUsername)
 	cfg.SMTPFromName = getEnv("ACS_SMTP_FROM_NAME", "ACS Console")
+	if cfg.SelfSignup && cfg.SMTPHost == "" {
+		return nil, fmt.Errorf("config: ACS_SELF_SIGNUP=true butuh email (ACS_SMTP_HOST) untuk verifikasi pendaftaran")
+	}
 	if cfg.SMTPHost != "" && cfg.SMTPFrom == "" {
 		return nil, fmt.Errorf("config: ACS_SMTP_FROM (atau ACS_SMTP_USERNAME) wajib diisi bila ACS_SMTP_HOST diisi")
 	}
@@ -272,6 +294,14 @@ func weakSecret(b []byte) bool {
 		distinct[c] = struct{}{}
 	}
 	return len(distinct) < 10
+}
+
+func parseUintEnv(name, def string) (uint, error) {
+	v, err := strconv.ParseUint(getEnv(name, def), 10, 32)
+	if err != nil || v > 10_000_000 {
+		return 0, fmt.Errorf("config: %s harus bilangan 0..10000000", name)
+	}
+	return uint(v), nil
 }
 
 func getEnv(key, fallback string) string {

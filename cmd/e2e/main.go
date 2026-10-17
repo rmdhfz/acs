@@ -127,6 +127,7 @@ func main() {
 		{"S17-tree-attributes", scenarioTreeAndAttributes},
 		{"S18-portal-pelanggan", scenarioPortal},
 		{"S19-saas-operator", scenarioSaaSOperator},
+		{"S20-paket-signup", scenarioPlanAndSignup},
 	}
 
 	var results []result

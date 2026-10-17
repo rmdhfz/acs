@@ -41,6 +41,7 @@ type TenantReport struct {
 	TasksFailed30d int        `json:"tasks_failed_30d"`
 	PendingTasks   int        `json:"pending_tasks"`
 	MaxPending     *uint32    `json:"max_pending_tasks"`
+	MaxDevices     *uint32    `json:"max_devices"`
 	Sessions30d    int        `json:"sessions_30d"`
 	Webhooks       int        `json:"webhooks_active"`
 	LastInformAt   *time.Time `json:"last_inform_at"`

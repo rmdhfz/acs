@@ -35,6 +35,7 @@ type Service struct {
 	activity domain.ActivityLogRepository
 	enc      *cryptoutil.Encryptor
 	usage    domain.UsageRepository
+	quota    domain.TenantQuotaRepository // opsional (WithQuota)
 
 	// Email notifikasi (opsional, lihat WithEmail) — nil = tidak ada email.
 	notifier mailer.Notifier
@@ -284,6 +285,30 @@ func (s *Service) UpdateBranding(ctx context.Context, actor domain.Actor, tenant
 	return nil
 }
 
+// WithQuota — penyimpanan batas perangkat per tenant (opsional).
+func (s *Service) WithQuota(q domain.TenantQuotaRepository) *Service {
+	s.quota = q
+	return s
+}
+
+// SetDeviceLimit mengubah batas perangkat aktif sebuah tenant (nil = tak dibatasi) — dasar paket SaaS. Superadmin only.
+func (s *Service) SetDeviceLimit(ctx context.Context, actor domain.Actor, tenantID uint64, max *uint32) error {
+	if err := auth.RequireRole(actor, domain.RoleSuperadmin); err != nil {
+		return err
+	}
+	if s.quota == nil {
+		return fmt.Errorf("%w: batas perangkat tidak dikonfigurasi", domain.ErrInvalidInput)
+	}
+	if max != nil && *max > 10_000_000 {
+		return fmt.Errorf("%w: max_devices terlalu besar", domain.ErrInvalidInput)
+	}
+	if err := s.quota.SetMaxDevices(ctx, tenantID, max, actor.UserIDPtr()); err != nil {
+		return err
+	}
+	_ = s.activity.Record(ctx, &domain.ActivityLog{UserID: actor.UserIDPtr(), Action: "SET_TENANT_DEVICE_LIMIT", EntityType: "tenant", EntityID: &tenantID})
+	return nil
+}
+
 // SetTaskQuota mengubah batas task PENDING sebuah tenant (nil = tidak
 // dibatasi). BEDA dari UpdateBranding: ini kebijakan platform-level (kuota
 // resource bersama, ROADMAP.md Fase 2), bukan self-service tenant -- hanya
@@ -307,6 +332,9 @@ type CreateUserInput struct {
 	Password  string
 	FullName  string
 	RoleCodes []string
+	// PasswordHash (opsional) — hash Argon2id yang SUDAH dihitung pemanggil (mis. pendaftaran mandiri yang menyimpan
+	// hash, bukan password, sampai email diverifikasi). Bila diisi, Password diabaikan.
+	PasswordHash string
 }
 
 // validateRoleCodesAssignable menolak actor non-superadmin yang mencoba
@@ -383,12 +411,16 @@ func (s *Service) CreateUser(ctx context.Context, actor domain.Actor, in CreateU
 	// Panjang minimum password disamakan dengan ResetUserPassword &
 	// ChangeOwnPassword (sebelumnya CreateUser tidak mengecek — akun bisa
 	// dibuat dengan password lemah/kosong).
-	if len(in.Password) < domain.MinUserPasswordLen {
-		return nil, fmt.Errorf("%w: password minimal %d karakter", domain.ErrInvalidInput, domain.MinUserPasswordLen)
-	}
-	hash, err := auth.HashPassword(in.Password)
-	if err != nil {
-		return nil, err
+	hash := in.PasswordHash
+	if hash == "" {
+		if len(in.Password) < domain.MinUserPasswordLen {
+			return nil, fmt.Errorf("%w: password minimal %d karakter", domain.ErrInvalidInput, domain.MinUserPasswordLen)
+		}
+		var err error
+		hash, err = auth.HashPassword(in.Password)
+		if err != nil {
+			return nil, err
+		}
 	}
 	u := &domain.User{
 		UserUUID: uuid.NewString(), TenantID: in.TenantID, Username: in.Username, Email: in.Email,

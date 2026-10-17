@@ -102,6 +102,9 @@ func assessHealth(t *domain.TenantReport, now time.Time) {
 	if t.Tasks30d >= 10 && float64(t.TasksFailed30d)/float64(t.Tasks30d) > 0.2 {
 		t.HealthReasons = append(t.HealthReasons, fmt.Sprintf("%d%% task gagal (30 hari)", t.TasksFailed30d*100/t.Tasks30d))
 	}
+	if t.MaxDevices != nil && *t.MaxDevices > 0 && float64(t.Devices) >= 0.9*float64(*t.MaxDevices) {
+		t.HealthReasons = append(t.HealthReasons, fmt.Sprintf("batas perangkat hampir penuh (%d/%d)", t.Devices, *t.MaxDevices))
+	}
 	if t.MaxPending != nil && *t.MaxPending > 0 && float64(t.PendingTasks) >= 0.9*float64(*t.MaxPending) {
 		t.HealthReasons = append(t.HealthReasons, "antrean task mendekati kuota")
 	}
@@ -129,7 +132,7 @@ func CSVSafe(s string) string {
 func TenantsCSV(rep *domain.SaaSReport) [][]string {
 	rows := [][]string{{
 		"kode", "nama", "status", "kesehatan", "alasan", "dibuat", "perangkat", "perangkat_online", "pengguna", "pengguna_aktif_30h",
-		"task_30h", "task_gagal_30h", "task_antre", "kuota_antre", "sesi_30h", "webhook_aktif", "inform_terakhir", "login_terakhir",
+		"task_30h", "task_gagal_30h", "task_antre", "kuota_antre", "batas_perangkat", "sesi_30h", "webhook_aktif", "inform_terakhir", "login_terakhir",
 	}}
 	ts := func(t *time.Time) string {
 		if t == nil {
@@ -142,14 +145,17 @@ func TenantsCSV(rep *domain.SaaSReport) [][]string {
 		if !t.IsActive {
 			status = "nonaktif"
 		}
-		quota := ""
+		quota, devLimit := "", ""
 		if t.MaxPending != nil {
 			quota = strconv.FormatUint(uint64(*t.MaxPending), 10)
+		}
+		if t.MaxDevices != nil {
+			devLimit = strconv.FormatUint(uint64(*t.MaxDevices), 10)
 		}
 		rows = append(rows, []string{
 			CSVSafe(t.Code), CSVSafe(t.Name), status, t.Health, CSVSafe(strings.Join(t.HealthReasons, "; ")), t.CreatedAt.UTC().Format(time.RFC3339),
 			strconv.Itoa(t.Devices), strconv.Itoa(t.DevicesOnline), strconv.Itoa(t.Users), strconv.Itoa(t.UsersActive30d),
-			strconv.Itoa(t.Tasks30d), strconv.Itoa(t.TasksFailed30d), strconv.Itoa(t.PendingTasks), quota,
+			strconv.Itoa(t.Tasks30d), strconv.Itoa(t.TasksFailed30d), strconv.Itoa(t.PendingTasks), quota, devLimit,
 			strconv.Itoa(t.Sessions30d), strconv.Itoa(t.Webhooks), ts(t.LastInformAt), ts(t.LastLoginAt),
 		})
 	}

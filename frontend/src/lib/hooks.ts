@@ -825,6 +825,39 @@ export function useResetPassword() {
   })
 }
 
+// ---- Pendaftaran tenant mandiri (publik) ----
+export interface SignupInput {
+  company_name: string
+  full_name: string
+  email: string
+  password: string
+  accept_terms: boolean
+  website: string // honeypot
+}
+
+export function useSignup() {
+  return useMutation({ mutationFn: (body: SignupInput) => api.post<{ message: string }>('/auth/signup', body) })
+}
+
+export function useVerifySignup() {
+  return useMutation({
+    mutationFn: (token: string) => api.post<{ tenant_code: string; tenant_name: string; email: string }>('/auth/signup/verify', { token }),
+  })
+}
+
+// Batas perangkat per tenant (plan SaaS), SUPERADMIN.
+export function useSetTenantDeviceLimit() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ tenantId, maxDevices }: { tenantId: number; maxDevices: number | null }) =>
+      api.patch<void>(`/tenants/${tenantId}/device-limit`, { max_devices: maxDevices }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['tenants'] })
+      void qc.invalidateQueries({ queryKey: ['saas-report'] })
+    },
+  })
+}
+
 // ---- Laporan SaaS (SUPERADMIN) ----
 export function useSaaSReport() {
   return useQuery({

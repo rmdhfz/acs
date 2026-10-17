@@ -17,6 +17,9 @@ import { FirmwarePage } from './pages/FirmwarePage'
 import { CatalogPage } from './pages/CatalogPage'
 import { AdministrationPage } from './pages/AdministrationPage'
 import { ReportsPage } from './pages/ReportsPage'
+import { SignupPage } from './pages/SignupPage'
+import { VerifySignupPage } from './pages/VerifySignupPage'
+import { PrivacyPage, TermsPage } from './pages/LegalPages'
 import { TenantOnboardingWizard } from './pages/TenantOnboardingWizard'
 import { WebhooksPage } from './pages/WebhooksPage'
 import FilesPage from './pages/FilesPage'
@@ -65,6 +68,10 @@ function App() {
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/sso" element={<SsoCallbackPage />} />
+      <Route path="/signup" element={<SignupPage />} />
+      <Route path="/verify-signup" element={<VerifySignupPage />} />
+      <Route path="/terms" element={<TermsPage />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
 
       <Route
         element={

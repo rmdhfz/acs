@@ -9,6 +9,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 
 	"acs/internal/domain"
 	"acs/internal/usecase/task"
@@ -21,6 +23,9 @@ type Service struct {
 	tasks       *task.Service
 	activity    domain.ActivityLogRepository
 	users       domain.UserRepository // opsional: penautan akun<->perangkat oleh admin (link.go)
+
+	cdMu     sync.Mutex
+	cooldown map[[2]uint64]time.Time
 }
 
 func NewService(userDevices domain.UserDeviceRepository, devices domain.DeviceRepository, refs domain.RefRepository, tasks *task.Service, activity domain.ActivityLogRepository) *Service {
@@ -134,9 +139,7 @@ func (s *Service) ChangeMyWiFi(ctx context.Context, actor domain.Actor, deviceID
 	if len(ssid) > 32 || hasControlChars(ssid) || hasControlChars(pass) {
 		return nil, domain.ErrInvalidInput // SSID maks. 32 byte (IEEE 802.11), tanpa karakter kontrol
 	}
-	if err := s.requireNoPending(ctx, deviceID); err != nil {
-		return nil, err
-	}
+
 	if pass != "" && (len(pass) < 8 || len(pass) > 63) {
 		return nil, domain.ErrInvalidInput // batas WPA-PSK
 	}
@@ -149,6 +152,11 @@ func (s *Service) ChangeMyWiFi(ctx context.Context, actor domain.Actor, deviceID
 		prefix = "wifi.5g."
 	default:
 		return nil, domain.ErrInvalidInput
+	}
+
+	// Jeda per akun+perangkat SETELAH semua validasi (input salah tidak memakai jatah jeda).
+	if err := s.requireCooldown(actor.UserID, deviceID); err != nil {
+		return nil, err
 	}
 
 	values := map[string]string{}
@@ -167,16 +175,31 @@ func (s *Service) ChangeMyWiFi(ctx context.Context, actor domain.Actor, deviceID
 	return t, nil
 }
 
-// requireNoPending membatasi pelanggan ke SATU perintah yang menunggu per perangkat: tanpa ini satu akun dapat
-// membanjiri antrean task tenant atau memicu reboot berulang (audit OWASP A04).
-func (s *Service) requireNoPending(ctx context.Context, deviceID uint64) error {
-	pending, err := s.tasks.HasPendingForDevice(ctx, deviceID)
-	if err != nil {
-		return err
+// selfServiceCooldown — jeda minimum antar-aksi (ganti WiFi/reboot) per akun+perangkat. Membatasi pelanggan agar tidak
+// membanjiri antrean task atau memicu reboot berulang (audit OWASP A04). Sengaja BUKAN "tolak bila ada task menunggu":
+// task latar sistem (mis. polling optik) juga mengantre dan akan menolak pelanggan tanpa sebab. Per-instance (memori).
+const selfServiceCooldown = 30 * time.Second
+
+func (s *Service) requireCooldown(userID, deviceID uint64) error {
+	key := [2]uint64{userID, deviceID}
+	now := time.Now()
+	s.cdMu.Lock()
+	defer s.cdMu.Unlock()
+	if s.cooldown == nil {
+		s.cooldown = map[[2]uint64]time.Time{}
 	}
-	if pending {
-		return fmt.Errorf("%w: masih ada perintah yang menunggu untuk perangkat ini — tunggu selesai lalu coba lagi", domain.ErrConflict)
+	if last, ok := s.cooldown[key]; ok && now.Sub(last) < selfServiceCooldown {
+		wait := int((selfServiceCooldown - now.Sub(last)).Seconds()) + 1
+		return fmt.Errorf("%w: tunggu %d detik sebelum perintah berikutnya untuk perangkat ini", domain.ErrQuotaExceeded, wait)
 	}
+	if len(s.cooldown) > 10000 { // jaga memori: buang entri kedaluwarsa
+		for k, t := range s.cooldown {
+			if now.Sub(t) >= selfServiceCooldown {
+				delete(s.cooldown, k)
+			}
+		}
+	}
+	s.cooldown[key] = now
 	return nil
 }
 
@@ -193,7 +216,7 @@ func (s *Service) RebootMyDevice(ctx context.Context, actor domain.Actor, device
 	if _, err := s.requireOwnership(ctx, actor, deviceID); err != nil {
 		return err
 	}
-	if err := s.requireNoPending(ctx, deviceID); err != nil {
+	if err := s.requireCooldown(actor.UserID, deviceID); err != nil {
 		return err
 	}
 	if _, err := s.tasks.EnqueueReboot(ctx, actor, deviceID, 2); err != nil {

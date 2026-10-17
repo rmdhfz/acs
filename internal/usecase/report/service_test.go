@@ -53,7 +53,8 @@ func TestKesehatanTenantDanUrutan(t *testing.T) {
 		{TenantID: 3, Name: "Sepi", IsActive: true, Devices: 10, DevicesOnline: 2, LastInformAt: ptrT(now.Add(-48 * time.Hour))},
 		{TenantID: 4, Name: "Gagal", IsActive: true, Devices: 4, DevicesOnline: 4, LastInformAt: ptrT(now), Tasks30d: 50, TasksFailed30d: 30},
 		{TenantID: 5, Name: "Antre", IsActive: true, Devices: 1, DevicesOnline: 1, LastInformAt: ptrT(now), PendingTasks: 9, MaxPending: &q},
-		{TenantID: 6, Name: "Kosong", IsActive: true}, // tanpa perangkat: tidak dianggap bermasalah
+		{TenantID: 6, Name: "Kosong", IsActive: true},                                                                       // tanpa perangkat: tidak dianggap bermasalah
+		{TenantID: 7, Name: "Penuh", IsActive: true, Devices: 9, DevicesOnline: 9, LastInformAt: ptrT(now), MaxDevices: &q}, // 9/10 perangkat
 	}, daily: map[string]domain.DailyPoint{"2026-10-17": {NewDevices: 3, Tasks: 7}}}
 	s := NewService(repo)
 	s.now = func() time.Time { return now }
@@ -67,7 +68,7 @@ func TestKesehatanTenantDanUrutan(t *testing.T) {
 		health[tr.Name] = tr.Health
 		reasons[tr.Name] = len(tr.HealthReasons)
 	}
-	want := map[string]string{"Sehat": "sehat", "Mati": "nonaktif", "Sepi": "perhatian", "Gagal": "perhatian", "Antre": "perhatian", "Kosong": "sehat"}
+	want := map[string]string{"Sehat": "sehat", "Mati": "nonaktif", "Sepi": "perhatian", "Gagal": "perhatian", "Antre": "perhatian", "Kosong": "sehat", "Penuh": "perhatian"}
 	for k, v := range want {
 		if health[k] != v {
 			t.Errorf("%s: kesehatan %q, mau %q", k, health[k], v)

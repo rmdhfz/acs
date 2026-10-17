@@ -72,6 +72,7 @@ type Service struct {
 	// pra-registrasi, impor, dan edit.
 	vendors domain.VendorRepository
 	tenants domain.TenantRepository
+	quota   domain.TenantQuotaRepository // opsional (WithQuota): batas perangkat per tenant
 }
 
 func NewService(
@@ -468,10 +469,35 @@ func (s *Service) FindOrCreateFromInform(ctx context.Context, info InformDeviceI
 
 	s.resolveVendorModel(ctx, d, info.OUI, info.ProductClass)
 
+	if err := s.requireDeviceCapacity(ctx, d.TenantID); err != nil {
+		return nil, false, err
+	}
 	if err := s.devices.Create(ctx, d); err != nil {
 		return nil, false, err
 	}
 	return d, true, nil
+}
+
+// WithQuota mengaktifkan penegakan batas perangkat per tenant (tenants.max_devices; plan SaaS).
+func (s *Service) WithQuota(q domain.TenantQuotaRepository) *Service {
+	s.quota = q
+	return s
+}
+
+// requireDeviceCapacity menolak penambahan perangkat baru bila tenant sudah mencapai batasnya. Cek-lalu-tulis (bukan
+// transaksi): pendaftaran serentak dapat melampaui batas sedikit — batas ini kuota komersial, bukan jaminan keamanan.
+func (s *Service) requireDeviceCapacity(ctx context.Context, tenantID *uint64) error {
+	if s.quota == nil || tenantID == nil {
+		return nil
+	}
+	max, cur, err := s.quota.DeviceCapacity(ctx, *tenantID)
+	if err != nil {
+		return err
+	}
+	if max != nil && uint32(cur) >= *max {
+		return fmt.Errorf("%w: batas %d perangkat untuk tenant ini sudah tercapai — hubungi administrator untuk menaikkan paket", domain.ErrQuotaExceeded, *max)
+	}
+	return nil
 }
 
 // resolveVendorModel mengisi d.VendorID (dari vendor_ouis) dan d.DeviceModelID
