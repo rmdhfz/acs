@@ -113,7 +113,7 @@ function TreeNodeView({ node, depth = 0, onRefreshNode, onEditNode, onAddObject,
                   di dalam baris parameter. Nama aksesibelnya diambil dari
                   aria-label; tanpa itu pembaca layar hanya menyebut "edit text"
                   tanpa memberi tahu parameter mana yang sedang diubah. */}
-              <input
+              <input maxLength={4096}
                 type="text"
                 value={editVal}
                 onChange={(e) => setEditVal(e.target.value)}
@@ -313,7 +313,7 @@ export function ParameterTree({ deviceId, parameters, onRefresh, isLoading }: Pa
       <div className="flex items-center justify-between p-3 border-b border-slate-700 bg-slate-800/50">
         <div className="flex-1 max-w-md relative">
           <Settings2 className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 dark:text-slate-400" />
-          <input
+          <input maxLength={200}
             type="text"
             placeholder="Cari parameter atau nilai..."
             value={filter}

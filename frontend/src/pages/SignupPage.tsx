@@ -138,7 +138,7 @@ export function SignupPage() {
             {/* Honeypot: tersembunyi dari manusia & pembaca layar; bot sederhana mengisinya. */}
             <div aria-hidden="true" style={{ position: 'absolute', left: '-10000px', width: 1, height: 1, overflow: 'hidden' }}>
               <label htmlFor="su-website">Website (jangan diisi)</label>
-              <input id="su-website" tabIndex={-1} autoComplete="off" value={website} onChange={(e) => setWebsite(e.target.value)} />
+              <input maxLength={128} id="su-website" tabIndex={-1} autoComplete="off" value={website} onChange={(e) => setWebsite(e.target.value)} />
             </div>
 
             <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-700 dark:text-slate-300">

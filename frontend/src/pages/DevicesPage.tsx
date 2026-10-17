@@ -270,7 +270,7 @@ export function DevicesPage() {
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[220px]">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
-          <input
+          <input maxLength={100}
             type="text"
             placeholder="Cari serial number atau MAC address..."
             value={search}

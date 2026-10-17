@@ -1208,7 +1208,7 @@ function EditTaskQuotaModal({ tenant, onClose }: { tenant: Tenant; onClose: () =
         </p>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Maks. Task Pending</label>
-          <input
+          <input max={10000000}
             type="number"
             min={0}
             value={value}

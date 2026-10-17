@@ -1,14 +1,18 @@
 package http
 
 import (
+	"context"
+	"errors"
 	"log"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/labstack/echo/v5"
 
 	"acs/internal/delivery/ws"
+	"acs/internal/usecase/auth"
 )
 
 // wsOriginAllowed membatasi Origin peramban: harus salah satu origin Console yang
@@ -56,12 +60,28 @@ func (r *Router) serveWs(c *echo.Context) error {
 		}
 	}
 
+	token := bearerFromRequest(c.Request())
 	client := &ws.Client{
 		Hub:      r.WSHub,
 		Conn:     conn,
 		Send:     make(chan []byte, 256),
 		TenantID: actor.TenantID,
 		Role:     role,
+		// Cek ulang kredensial tiap siklus ping: token kedaluwarsa / user atau tenant dinonaktifkan -> tutup.
+		// Galat SISTEM (DB sesaat) tidak memutus koneksi (fail-open); hanya penolakan kredensial yang memutus.
+		Revalidate: func() bool {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			a, err := r.Auth.ResolveActor(ctx, token)
+			switch {
+			case err == nil:
+				return a != nil
+			case errors.Is(err, auth.ErrInvalidToken), errors.Is(err, auth.ErrTenantInactive):
+				return false
+			default:
+				return true
+			}
+		},
 	}
 	client.Hub.Register <- client
 

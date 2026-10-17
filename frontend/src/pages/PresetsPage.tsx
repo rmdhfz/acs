@@ -288,7 +288,7 @@ function PresetModal({ preset, onClose }: { preset: Preset | null; onClose: () =
             <label className="mb-1 block text-sm font-medium text-slate-600 dark:text-slate-400">Weight</label>
             {/* Selalu terisi (default '0') sehingga placeholder tidak pernah
                 tampil — petunjuknya ditaruh sebagai teks bantuan di bawah. */}
-            <input type="number" value={weight} onChange={(e) => setWeight(e.target.value)} className={inputCls} />
+            <input min={-1000000} max={1000000} type="number" value={weight} onChange={(e) => setWeight(e.target.value)} className={inputCls} />
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
               Preset dievaluasi urut weight menaik; bila dua preset mengatur parameter yang sama, weight lebih besar yang menang.
             </p>
@@ -304,7 +304,7 @@ function PresetModal({ preset, onClose }: { preset: Preset | null; onClose: () =
           <label className="mb-1 block text-sm font-medium text-slate-600 dark:text-slate-400">
             Precondition <span className="font-normal text-slate-500 dark:text-slate-400">— JSON, kosakata sama dengan Zero-Touch Rule. <code>{'{}'}</code> = cocok semua device.</span>
           </label>
-          <textarea
+          <textarea maxLength={20000}
             value={precondition}
             onChange={(e) => setPrecondition(e.target.value)}
             rows={4}
@@ -318,7 +318,7 @@ function PresetModal({ preset, onClose }: { preset: Preset | null; onClose: () =
           <label className="mb-1 block text-sm font-medium text-slate-600 dark:text-slate-400">
             Configurations <span className="font-normal text-slate-500 dark:text-slate-400">— JSON array. v1: hanya <code>op: "set_parameter"</code>.</span>
           </label>
-          <textarea
+          <textarea maxLength={20000}
             value={configurations}
             onChange={(e) => setConfigurations(e.target.value)}
             rows={5}

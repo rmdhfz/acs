@@ -260,7 +260,7 @@ export function DeviceFormModal({ mode, device, onClose, onSaved }: Props) {
             <label htmlFor="df-mac" className={labelCls}>
               MAC address
             </label>
-            <input id="df-mac" value={mac} onChange={(e) => setMac(e.target.value)} placeholder="AA:BB:CC:DD:EE:FF" autoComplete="off" className={`${inputCls} font-mono`} aria-invalid={!!fieldErrors.mac} />
+            <input maxLength={17} id="df-mac" value={mac} onChange={(e) => setMac(e.target.value)} placeholder="AA:BB:CC:DD:EE:FF" autoComplete="off" className={`${inputCls} font-mono`} aria-invalid={!!fieldErrors.mac} />
             {fe('mac')}
           </div>
         </div>
@@ -281,14 +281,14 @@ export function DeviceFormModal({ mode, device, onClose, onSaved }: Props) {
             <label htmlFor="df-lat" className={labelCls}>
               Latitude
             </label>
-            <input id="df-lat" type="number" step="any" value={lat} onChange={(e) => setLat(e.target.value)} placeholder="-6.200000" className={inputCls} aria-invalid={!!fieldErrors.lat} />
+            <input min={-90} max={90} id="df-lat" type="number" step="any" value={lat} onChange={(e) => setLat(e.target.value)} placeholder="-6.200000" className={inputCls} aria-invalid={!!fieldErrors.lat} />
             {fe('lat')}
           </div>
           <div>
             <label htmlFor="df-lon" className={labelCls}>
               Longitude
             </label>
-            <input id="df-lon" type="number" step="any" value={lon} onChange={(e) => setLon(e.target.value)} placeholder="106.816666" className={inputCls} aria-invalid={!!fieldErrors.lon} />
+            <input min={-180} max={180} id="df-lon" type="number" step="any" value={lon} onChange={(e) => setLon(e.target.value)} placeholder="106.816666" className={inputCls} aria-invalid={!!fieldErrors.lon} />
             {fe('lon')}
           </div>
         </div>
@@ -304,7 +304,7 @@ export function DeviceFormModal({ mode, device, onClose, onSaved }: Props) {
               <label htmlFor="df-crurl" className={labelCls}>
                 URL
               </label>
-              <input id="df-crurl" value={crUrl} onChange={(e) => setCrUrl(e.target.value)} placeholder="http://203.0.113.7:7547/" className={`${inputCls} font-mono`} aria-invalid={!!fieldErrors.crUrl} />
+              <input maxLength={255} id="df-crurl" value={crUrl} onChange={(e) => setCrUrl(e.target.value)} placeholder="http://203.0.113.7:7547/" className={`${inputCls} font-mono`} aria-invalid={!!fieldErrors.crUrl} />
               {fieldErrors.crUrl ? fe('crUrl') : <p className={hintCls}>Biasanya terisi otomatis dari Inform; isi manual untuk skenario NAT.</p>}
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -312,13 +312,13 @@ export function DeviceFormModal({ mode, device, onClose, onSaved }: Props) {
                 <label htmlFor="df-cruser" className={labelCls}>
                   Username
                 </label>
-                <input id="df-cruser" value={crUser} onChange={(e) => setCrUser(e.target.value)} autoComplete="off" placeholder={isEdit ? '(tersimpan — isi untuk mengganti)' : ''} className={inputCls} />
+                <input maxLength={128} id="df-cruser" value={crUser} onChange={(e) => setCrUser(e.target.value)} autoComplete="off" placeholder={isEdit ? '(tersimpan — isi untuk mengganti)' : ''} className={inputCls} />
               </div>
               <div>
                 <label htmlFor="df-crpass" className={labelCls}>
                   Password
                 </label>
-                <input id="df-crpass" type="password" value={crPass} onChange={(e) => setCrPass(e.target.value)} autoComplete="new-password" placeholder={isEdit ? '(tersimpan — isi untuk mengganti)' : ''} className={inputCls} />
+                <input maxLength={128} id="df-crpass" type="password" value={crPass} onChange={(e) => setCrPass(e.target.value)} autoComplete="new-password" placeholder={isEdit ? '(tersimpan — isi untuk mengganti)' : ''} className={inputCls} />
               </div>
             </div>
             <p className={`${hintCls} -mt-2`}>Disimpan terenkripsi dan tidak pernah ditampilkan kembali. ACS menjawab tantangan Digest/Basic dari CPE memakai kredensial ini.</p>

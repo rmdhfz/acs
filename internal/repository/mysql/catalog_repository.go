@@ -54,7 +54,8 @@ func (r *vendorRepository) List(ctx context.Context, p domain.Pagination) ([]dom
 	}
 	var rows []domain.Vendor
 	err := r.db.SelectContext(ctx, &rows,
-		`SELECT * FROM ref_vendors WHERE is_deleted = 0 ORDER BY id LIMIT ? OFFSET ?`, p.Limit(), p.Offset())
+		`SELECT v.*, (SELECT COUNT(*) FROM vendor_ouis o WHERE o.vendor_id = v.id AND o.is_deleted = 0) AS oui_count
+		 FROM ref_vendors v WHERE v.is_deleted = 0 ORDER BY v.id LIMIT ? OFFSET ?`, p.Limit(), p.Offset())
 	if err != nil {
 		return nil, 0, translateErr(err)
 	}

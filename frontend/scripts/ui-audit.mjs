@@ -141,8 +141,11 @@ for (const vp of VIEWPORTS) for (const theme of THEMES) {
     const m = await page.evaluate(() => ({
       overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
       dark: document.documentElement.classList.contains('dark'),
+      // toast galat pemuatan data (QueryErrorToaster) = ada query yang gagal/undefined meski tak ada console.error
+      dataToast: /Gagal memuat data/.test(document.body.innerText),
     }))
     if (m.overflow > 1) findings.push({ where, kind: 'overflow-horizontal', detail: `+${m.overflow}px` })
+    if (m.dataToast) findings.push({ where, kind: 'toast-galat-data', detail: 'ada toast "Gagal memuat data"' })
     if (theme === 'dark' && !m.dark) findings.push({ where, kind: 'mode-gelap-tidak-aktif', detail: '' })
     if (errors.length) findings.push({ where, kind: 'galat-konsol', detail: errors[0] })
     for (const v of (await axeRun(page, null)) ?? []) findings.push({ where, kind: `axe:${v.id}`, detail: `${v.n} node (${v.impact}) ${v.nodes[0]}` })

@@ -11,6 +11,8 @@ type Vendor struct {
 	Name        string  `db:"name" json:"name"`
 	Description *string `db:"description" json:"description"`
 	IsActive    bool    `db:"is_active" json:"is_active"`
+	// OUICount hanya terisi pada List (satu subquery, bukan N permintaan per vendor dari UI); 0 = tak dikirim.
+	OUICount int `db:"oui_count" json:"oui_count,omitempty"`
 	Audit
 }
 

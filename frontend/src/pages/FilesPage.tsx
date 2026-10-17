@@ -216,7 +216,7 @@ function UploadModal({
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-600 dark:text-slate-400">Nama file (opsional)</label>
-          <input
+          <input maxLength={255}
             value={fileName}
             onChange={(e) => setFileName(e.target.value)}
             placeholder="Kosongkan untuk pakai nama asli"

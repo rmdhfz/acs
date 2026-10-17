@@ -93,7 +93,7 @@ export function TasksPage() {
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <input
+        <input max={999999999999}
           type="number"
           placeholder="Filter Device ID..."
           value={deviceIdFilter}
@@ -317,7 +317,7 @@ function CreateTaskModal({
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Device ID</label>
-          <input type="number" required value={deviceId} onChange={(e) => setDeviceId(e.target.value)} placeholder="ID numerik device, mis. 12" className={inputCls} />
+          <input max={999999999999} type="number" required value={deviceId} onChange={(e) => setDeviceId(e.target.value)} placeholder="ID numerik device, mis. 12" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Tipe Task</label>
@@ -344,7 +344,7 @@ function CreateTaskModal({
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Parameters (JSON)</label>
-          <textarea
+          <textarea maxLength={20000}
             value={parametersJson}
             onChange={(e) => setParametersJson(e.target.value)}
             rows={4}

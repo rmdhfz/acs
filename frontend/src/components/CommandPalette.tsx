@@ -115,7 +115,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       >
         <div className="flex items-center gap-2.5 border-b border-slate-200 px-4 py-3">
           <Search className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" />
-          <input
+          <input maxLength={200}
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}

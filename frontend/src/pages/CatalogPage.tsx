@@ -154,7 +154,7 @@ function VendorsTab() {
                   <td className="px-5 py-3.5 font-mono text-xs text-slate-700 dark:text-slate-300">{v.code}</td>
                   <td className="px-5 py-3.5 font-medium text-slate-900 dark:text-slate-100">{v.name}</td>
                   <td className="px-5 py-3.5">
-                    <VendorOUICell vendorId={v.id} vendorName={v.name} canManage={canManage} />
+                    <VendorOUICell vendorId={v.id} vendorName={v.name} count={v.oui_count ?? 0} canManage={canManage} />
                   </td>
                   <td className="px-5 py-3.5">
                     <StatusBadge code={v.is_active ? 'ONLINE' : 'OFFLINE'} label={v.is_active ? 'Aktif' : 'Nonaktif'} />
@@ -184,9 +184,8 @@ function VendorsTab() {
 
 // Seed OUI IEEE (migrasi 0022) membuat satu vendor bisa punya ribuan OUI
 // (ZTE ~500, Huawei ~2.000): menampilkan semuanya sebagai chip di sel tabel
-// membuat halaman tak terpakai. Sel hanya meringkas (jumlah + beberapa pertama);
+// membuat halaman tak terpakai. Sel hanya menampilkan jumlah (dari daftar vendor);
 // daftar lengkap, pencarian, dan hapus ada di modal.
-const OUI_PREVIEW = 4
 const OUI_LIST_LIMIT = 200
 
 function OUIChip({ oui, notes, onDelete, disabled }: { oui: string; notes: string | null; onDelete?: () => void; disabled?: boolean }) {
@@ -212,23 +211,18 @@ function OUIChip({ oui, notes, onDelete, disabled }: { oui: string; notes: strin
   )
 }
 
-function VendorOUICell({ vendorId, vendorName, canManage }: { vendorId: number; vendorName: string; canManage: boolean }) {
-  const { data, isLoading } = useVendorOUIs(vendorId)
-  const ouis = data ?? []
+// Jumlah OUI datang dari daftar vendor (satu permintaan); daftar lengkapnya baru diambil saat modal dibuka.
+// Dulu satu permintaan per vendor per baris — dengan 30+ vendor itu menabrak rate limit API (429).
+function VendorOUICell({ vendorId, vendorName, count, canManage }: { vendorId: number; vendorName: string; count: number; canManage: boolean }) {
   const [open, setOpen] = useState(false)
 
-  if (isLoading) return <span className="text-xs text-slate-500 dark:text-slate-400">…</span>
-  if (ouis.length === 0) return <span className="text-xs text-slate-500 dark:text-slate-400">Belum ada</span>
+  if (count === 0) return <span className="text-xs text-slate-500 dark:text-slate-400">Belum ada</span>
 
   return (
     <div className="flex flex-wrap items-center gap-1">
       <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-slate-700 dark:text-slate-200">
-        {ouis.length} OUI
+        {count} OUI
       </span>
-      {ouis.slice(0, OUI_PREVIEW).map((o) => (
-        <OUIChip key={o.id} oui={o.oui} notes={o.notes} />
-      ))}
-      {ouis.length > OUI_PREVIEW && <span className="text-[11px] text-slate-500 dark:text-slate-400">+{ouis.length - OUI_PREVIEW}</span>}
       <button
         type="button"
         onClick={() => setOpen(true)}
@@ -236,7 +230,7 @@ function VendorOUICell({ vendorId, vendorName, canManage }: { vendorId: number; 
       >
         {canManage ? 'Kelola' : 'Lihat semua'}
       </button>
-      {open && <VendorOUIsModal vendorId={vendorId} vendorName={vendorName} ouis={ouis} canManage={canManage} onClose={() => setOpen(false)} />}
+      {open && <VendorOUIsModal vendorId={vendorId} vendorName={vendorName} canManage={canManage} onClose={() => setOpen(false)} />}
     </div>
   )
 }
@@ -244,16 +238,16 @@ function VendorOUICell({ vendorId, vendorName, canManage }: { vendorId: number; 
 function VendorOUIsModal({
   vendorId,
   vendorName,
-  ouis,
   canManage,
   onClose,
 }: {
   vendorId: number
   vendorName: string
-  ouis: VendorOUI[]
   canManage: boolean
   onClose: () => void
 }) {
+  const { data, isLoading } = useVendorOUIs(vendorId)
+  const ouis: VendorOUI[] = data ?? []
   const [query, setQuery] = useState('')
   const deleteMutation = useDeleteVendorOUI()
   const toast = useToast()
@@ -287,7 +281,7 @@ function VendorOUIsModal({
   return (
     <Modal title={`OUI — ${vendorName}`} onClose={onClose} wide>
       <div className="space-y-3">
-        <input
+        <input maxLength={100}
           autoFocus
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -296,7 +290,7 @@ function VendorOUIsModal({
           className={inputCls}
         />
         <p className="text-xs text-slate-500 dark:text-slate-400" aria-live="polite">
-          {filtered.length === ouis.length ? `${ouis.length} OUI terdaftar` : `${filtered.length} cocok dari ${ouis.length} OUI`}
+          {isLoading ? 'Memuat daftar OUI…' : filtered.length === ouis.length ? `${ouis.length} OUI terdaftar` : `${filtered.length} cocok dari ${ouis.length} OUI`}
           {filtered.length > OUI_LIST_LIMIT && ` — menampilkan ${OUI_LIST_LIMIT} pertama, persempit pencarian untuk melihat sisanya`}
         </p>
         {shown.length === 0 ? (

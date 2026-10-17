@@ -36,9 +36,8 @@ func (r *Router) deviceStats(c *echo.Context) error {
 }
 
 func (r *Router) countOpenSessions(c *echo.Context) error {
-	// Endpoint ini lintas-tenant karena melacak load balancer CWMP
-	// secara global. Hanya admin/noc (sudah digate di router).
-	count, err := r.Sessions.CountOpenSessions(c.Request().Context())
+	// SUPERADMIN: seluruh platform (load balancer CWMP). ADMIN/NOC: hanya sesi perangkat tenantnya.
+	count, err := r.Sessions.CountOpenSessionsFor(c.Request().Context(), ActorFrom(c))
 	if err != nil {
 		return handleErr(c, err)
 	}

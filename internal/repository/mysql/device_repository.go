@@ -480,6 +480,18 @@ func (r *deviceSessionRepository) CountOpen(ctx context.Context) (int, error) {
 	return count, nil
 }
 
+// CountOpenForTenant — CountOpen yang dibatasi ke perangkat milik satu tenant.
+func (r *deviceSessionRepository) CountOpenForTenant(ctx context.Context, tenantID uint64) (int, error) {
+	var count int
+	err := r.db.GetContext(ctx, &count,
+		`SELECT COUNT(*) FROM device_sessions s JOIN devices d ON d.id = s.device_id
+		 WHERE s.status = ? AND d.tenant_id = ?`, domain.SessionStatusOpen, tenantID)
+	if err != nil {
+		return 0, translateErr(err)
+	}
+	return count, nil
+}
+
 // TimeoutStaleOpen — lihat komentar domain.DeviceSessionRepository.
 func (r *deviceSessionRepository) TimeoutStaleOpen(ctx context.Context, olderThan time.Time) (int64, error) {
 	res, err := r.db.ExecContext(ctx,

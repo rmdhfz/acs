@@ -115,6 +115,8 @@ services:
       ACS_HA: ${ACS_HA:-false}
       # SaaS publik: tolak target webhook di jaringan privat (RFC1918/ULA/CGNAT). Bawaan false (LAN diizinkan).
       ACS_WEBHOOK_BLOCK_PRIVATE: ${ACS_WEBHOOK_BLOCK_PRIVATE:-false}
+      # Batas request/detik PER IP di REST API (Console/BSS). Login/MFA/reset/signup punya batas sendiri yang lebih ketat.
+      ACS_REST_RATE_LIMIT: ${ACS_REST_RATE_LIMIT:-100}
       # Batas request/detik PER IP di endpoint CWMP (naikkan bila banyak CPE berbagi satu IP/CGNAT).
       ACS_CWMP_RATE_LIMIT: ${ACS_CWMP_RATE_LIMIT:-5}
       # Endpoint /usp (TR-369) masih kerangka tanpa auth: default mati.

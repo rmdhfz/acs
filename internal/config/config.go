@@ -57,6 +57,12 @@ type Config struct {
 	// (juga mitigasi brute-force shared secret Inform).
 	CWMPRatePerIP float64
 
+	// RESTRatePerIP — batas request/detik PER IP pada REST API (default 100). Satu halaman Console memuat
+	// 15–35 permintaan sekaligus dan beberapa pengguna satu kantor berbagi satu IP publik (NAT); 30/dtk lama
+	// memicu 429 ("tidak dapat menjangkau server") pada pemakaian normal. Endpoint sensitif (login, MFA,
+	// lupa/reset password, signup) punya pembatas laju sendiri yang jauh lebih ketat dan tidak terpengaruh.
+	RESTRatePerIP float64
+
 	// WebhookBlockPrivate — tolak target webhook di jaringan privat (RFC1918/ULA/CGNAT). Aktifkan pada
 	// SaaS publik di mana admin tenant tidak tepercaya; matikan bila receiver webhook ada di LAN yang sama.
 	WebhookBlockPrivate bool
@@ -235,6 +241,10 @@ func Load() (*Config, error) {
 	cfg.CWMPRatePerIP, err = strconv.ParseFloat(getEnv("ACS_CWMP_RATE_LIMIT", "5"), 64)
 	if err != nil || cfg.CWMPRatePerIP < 1 || cfg.CWMPRatePerIP > 1_000_000 {
 		return nil, fmt.Errorf("config: ACS_CWMP_RATE_LIMIT harus angka 1..1000000 (request/detik per IP)")
+	}
+	cfg.RESTRatePerIP, err = strconv.ParseFloat(getEnv("ACS_REST_RATE_LIMIT", "100"), 64)
+	if err != nil || cfg.RESTRatePerIP < 5 || cfg.RESTRatePerIP > 1_000_000 {
+		return nil, fmt.Errorf("config: ACS_REST_RATE_LIMIT harus angka 5..1000000 (request/detik per IP)")
 	}
 	cfg.OpticalPollMinutes, err = strconv.Atoi(getEnv("ACS_OPTICAL_POLL_MINUTES", "360"))
 	if err != nil || cfg.OpticalPollMinutes < 0 || (cfg.OpticalPollMinutes > 0 && cfg.OpticalPollMinutes < 15) {

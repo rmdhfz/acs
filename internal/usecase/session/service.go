@@ -130,6 +130,18 @@ func (s *Service) CountOpenSessions(ctx context.Context) (int, error) {
 	return s.sessions.CountOpen(ctx)
 }
 
+// CountOpenSessionsFor — sesi terbuka sesuai cakupan actor: SUPERADMIN melihat seluruh platform, selain itu
+// hanya perangkat tenantnya sendiri (actor tanpa tenant dan bukan superadmin ditolak).
+func (s *Service) CountOpenSessionsFor(ctx context.Context, actor domain.Actor) (int, error) {
+	if actor.IsSuperadmin() {
+		return s.sessions.CountOpen(ctx)
+	}
+	if actor.TenantID == nil {
+		return 0, domain.ErrForbidden
+	}
+	return s.sessions.CountOpenForTenant(ctx, *actor.TenantID)
+}
+
 // TimeoutStaleSessions men-reap sesi CWMP berstatus OPEN yang usianya (dari
 // started_at) sudah melewati threshold — yaitu sesi yang CPE-nya tidak pernah
 // mengirim POST-kosong penutup (koneksi putus, CPE reboot mendadak, dsb).

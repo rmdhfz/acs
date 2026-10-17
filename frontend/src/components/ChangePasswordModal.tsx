@@ -44,16 +44,16 @@ export function ChangePasswordModal({ onClose }: { onClose: () => void }) {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-600 dark:text-slate-400">Password saat ini</label>
-          <input type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} required className={inputCls} />
+          <input maxLength={128} type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} required className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-600 dark:text-slate-400">Password baru</label>
-          <input type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} required minLength={MIN_LEN} placeholder={`Minimal ${MIN_LEN} karakter`} className={inputCls} />
+          <input maxLength={128} type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} required minLength={MIN_LEN} placeholder={`Minimal ${MIN_LEN} karakter`} className={inputCls} />
           {next ? <PasswordStrengthBar password={next} /> : <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Minimal {MIN_LEN} karakter.</p>}
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-600 dark:text-slate-400">Ulangi password baru</label>
-          <input type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required className={inputCls} />
+          <input maxLength={128} type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required className={inputCls} />
         </div>
         {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
         <div className="flex justify-end gap-2.5 pt-1">

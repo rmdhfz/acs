@@ -276,11 +276,12 @@ func main() {
 		AllowHeaders: []string{"Authorization", "Content-Type"},
 	}))
 	// Rate limit per identifier (default: IP) — jauh lebih longgar dari CWMP
-	// (5 req/s) karena dashboard frontend polling beberapa endpoint tiap 5
-	// detik per tab; 30 req/s tetap membatasi brute-force /auth/login &
-	// scraping API token sambil tidak mengganggu pemakaian normal
-	// (ROADMAP.md Fase 2 — gap yang dicatat saat CWMP rate limit ditambahkan).
-	restEcho.Use(middleware.RateLimiter(limiterStore("rest", 30)))
+	// (5 req/s) karena satu halaman Console memuat belasan–puluhan permintaan dan
+	// dashboard polling tiap beberapa detik per tab; beberapa pengguna satu kantor
+	// berbagi satu IP (NAT). Default 100 req/s (ACS_REST_RATE_LIMIT). Brute-force
+	// login/MFA/reset/signup dibatasi pembatas tersendiri per rute (jauh lebih ketat)
+	// plus lockout akun, bukan oleh batas global ini.
+	restEcho.Use(middleware.RateLimiter(limiterStore("rest", cfg.RESTRatePerIP)))
 	router := &deliveryhttp.Router{
 		Auth: authSvc, IAM: iamSvc, Devices: deviceSvc, Tasks: taskSvc, Provisioning: provisioningSvc,
 		Firmware: firmwareSvc, Diagnostics: diagnosticsSvc, Reports: report.NewService(mysql.NewReportRepository(db)), Signup: signupSvc, Webhooks: webhookSvc, Sessions: sessionSvc,

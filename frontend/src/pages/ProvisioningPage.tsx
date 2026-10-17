@@ -339,14 +339,14 @@ function ProfileModal({ id, onClose }: { id: number | undefined; onClose: () => 
                 return (
                   <div key={i}>
                     <div className="flex gap-2">
-                      <input
+                      <input maxLength={512}
                         placeholder="parameter_name / logical key"
                         list="param-logical-keys"
                         value={p.parameter_name}
                         onChange={(e) => updateParam(i, { parameter_name: e.target.value })}
                         className={`${inputCls} flex-1 font-mono text-xs`}
                       />
-                      <input
+                      <input maxLength={4096}
                         placeholder="value"
                         value={p.parameter_value ?? ''}
                         onChange={(e) => updateParam(i, { parameter_value: e.target.value })}
@@ -748,7 +748,7 @@ function ZTRuleModal({ id, onClose }: { id: number | undefined; onClose: () => v
             <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Priority</label>
             {/* Selalu terisi (default '10') sehingga placeholder tidak pernah
                 tampil — petunjuknya ditaruh sebagai teks bantuan di bawah. */}
-            <input type="number" min={1} value={priority} onChange={(e) => setPriority(e.target.value)} className={inputCls} />
+            <input max={100000} type="number" min={1} value={priority} onChange={(e) => setPriority(e.target.value)} className={inputCls} />
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Makin kecil angkanya, makin dulu aturan ini dievaluasi.</p>
           </div>
           <label className="mt-6 flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">

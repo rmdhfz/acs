@@ -179,11 +179,11 @@ function WiFiForm({ deviceId, onClose }: { deviceId: number; onClose: () => void
     <form onSubmit={handleSubmit} className="space-y-3">
       <div>
         <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama WiFi (SSID) baru</label>
-        <input value={ssid} onChange={(e) => setSsid(e.target.value)} placeholder="Kosongkan bila tidak diubah" className={inputCls} />
+        <input maxLength={32} value={ssid} onChange={(e) => setSsid(e.target.value)} placeholder="Kosongkan bila tidak diubah" className={inputCls} />
       </div>
       <div>
         <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Kata sandi WiFi baru</label>
-        <input
+        <input maxLength={63}
           type="text"
           value={passphrase}
           onChange={(e) => setPassphrase(e.target.value)}

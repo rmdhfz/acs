@@ -172,6 +172,8 @@ export interface Vendor {
   name: string
   description: string | null
   is_active: boolean
+  /** Jumlah OUI terdaftar (hanya pada daftar vendor); kosong = 0. */
+  oui_count?: number
 }
 
 export interface DeviceStatusCount {

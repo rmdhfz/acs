@@ -177,6 +177,9 @@ type DeviceSessionRepository interface {
 	// sehingga sengaja tidak tenant-scoped (beda dgn CountByStatus milik
 	// DeviceRepository/TaskRepository yang menerima tenantID nullable).
 	CountOpen(ctx context.Context) (int, error)
+	// CountOpenForTenant — sama, tetapi hanya sesi milik perangkat tenant tsb (untuk ADMIN/NOC tenant:
+	// jumlah sesi seluruh platform adalah metadata tenant lain; audit OWASP A01).
+	CountOpenForTenant(ctx context.Context, tenantID uint64) (int, error)
 	// TimeoutStaleOpen menandai semua sesi berstatus OPEN yang started_at-nya
 	// lebih lama dari olderThan menjadi TIMEOUT (ended_at = NOW()). Dipakai
 	// sweeper periodik cmd/acsd untuk membersihkan sesi yang tidak pernah

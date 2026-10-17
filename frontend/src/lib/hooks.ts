@@ -302,7 +302,10 @@ export function useAddVendorOUI() {
   return useMutation({
     mutationFn: ({ vendorId, oui, notes }: { vendorId: number; oui: string; notes?: string }) =>
       api.post<VendorOUI>(`/vendors/${vendorId}/ouis`, { oui, notes }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['vendor-ouis'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['vendor-ouis'] })
+      qc.invalidateQueries({ queryKey: ['vendors'] })
+    },
   })
 }
 
@@ -723,7 +726,9 @@ export function useSetTenantCWMPCredentials() {
 export function useCurrentTenant() {
   return useQuery({
     queryKey: ['tenants', 'current'],
-    queryFn: () => api.get<CurrentTenant | undefined>('/tenants/current'),
+    // 204 (superadmin tanpa tenant) -> null: TanStack Query v5 menganggap queryFn yang mengembalikan undefined sebagai GALAT
+    // (toast 'Gagal memuat data' palsu di setiap halaman untuk superadmin).
+    queryFn: async () => (await api.get<CurrentTenant | undefined>('/tenants/current')) ?? null,
     staleTime: 5 * 60 * 1000,
   })
 }
@@ -1373,7 +1378,10 @@ export function useDeleteVendorOUI() {
   return useMutation({
     mutationFn: ({ vendorId, ouiId }: { vendorId: number; ouiId: number }) =>
       api.del<void>(`/vendors/${vendorId}/ouis/${ouiId}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['vendor-ouis'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['vendor-ouis'] })
+      qc.invalidateQueries({ queryKey: ['vendors'] })
+    },
   })
 }
 

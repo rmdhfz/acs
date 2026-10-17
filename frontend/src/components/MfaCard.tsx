@@ -239,7 +239,7 @@ function DisableModal({ onClose }: { onClose: () => void }) {
         </p>
         <div>
           <label htmlFor="mfa-dis-pw" className={labelCls}>Password</label>
-          <input id="mfa-dis-pw" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required className={inputCls} />
+          <input maxLength={128} id="mfa-dis-pw" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required className={inputCls} />
         </div>
         <div>
           <label htmlFor="mfa-dis-code" className={labelCls}>Kode authenticator / kode pemulihan</label>

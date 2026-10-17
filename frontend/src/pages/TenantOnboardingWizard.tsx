@@ -163,7 +163,7 @@ function TenantStep({ onCreated }: { onCreated: (tenant: Tenant) => void }) {
               onChange={(e) => setCwmpUsername(e.target.value)}
               className={`${inputCls} font-mono text-xs`}
             />
-            <input
+            <input maxLength={128}
               placeholder="Password Inform (min. 16 karakter)"
               type="password"
               value={cwmpPassword}

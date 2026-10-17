@@ -122,6 +122,10 @@ func (r *deviceSessionRepository) CountOpen(ctx context.Context) (int, error) {
 	return r.mysqlRepo.CountOpen(ctx)
 }
 
+func (r *deviceSessionRepository) CountOpenForTenant(ctx context.Context, tenantID uint64) (int, error) {
+	return r.mysqlRepo.CountOpenForTenant(ctx, tenantID)
+}
+
 // TimeoutStaleOpen — reap sesi OPEN yang basi (sweeper cmd/acsd). Dijalankan di
 // MySQL (sumber kebenaran status sesi). Entri cache per-sesi yang di-reap tidak
 // diinvalidasi satu per satu di sini (operasi bulk, tanpa daftar id) — aman

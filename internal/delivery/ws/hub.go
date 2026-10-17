@@ -24,6 +24,10 @@ type Client struct {
 	Send     chan []byte
 	TenantID *uint64
 	Role     string
+	// Revalidate (opsional) dipanggil tiap siklus ping. false = kredensial sudah tak berlaku (token
+	// kedaluwarsa, user/tenant dinonaktifkan) -> koneksi ditutup. Audit OWASP A07: tanpa ini koneksi
+	// WebSocket tetap menerima event tenant setelah sesi HTTP-nya berakhir.
+	Revalidate func() bool
 }
 
 type Hub struct {
@@ -184,8 +188,11 @@ func (h *Hub) BroadcastToTenant(tenantID uint64, eventType string, payload inter
 	h.publish("tenant", tenantID, data)
 }
 
+// pingPeriod — jeda ping sekaligus siklus Revalidate. Variabel agar bisa dipercepat di test.
+var pingPeriod = 54 * time.Second
+
 func (c *Client) WritePump() {
-	ticker := time.NewTicker(54 * time.Second)
+	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()
 		c.Conn.Close()
@@ -217,6 +224,11 @@ func (c *Client) WritePump() {
 			}
 		case <-ticker.C:
 			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if c.Revalidate != nil && !c.Revalidate() {
+				c.Conn.WriteMessage(websocket.CloseMessage,
+					websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "sesi berakhir"))
+				return
+			}
 			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
