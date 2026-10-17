@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -33,6 +34,9 @@ type Service struct {
 	// selalu lewat notifyTaskFailed() yang nil-safe & tidak menggagalkan alur.
 	webhookEnq domain.WebhookEnqueuer
 	publisher  domain.EventPublisher
+
+	// genericVendor — cache id vendor GENERIC (domain.VendorCodeGeneric); 0 = belum/tidak ada.
+	genericVendor atomic.Uint64
 }
 
 func NewService(
@@ -97,9 +101,6 @@ func (s *Service) ResolveMapping(ctx context.Context, deviceID uint64, key strin
 	if err != nil {
 		return nil, err
 	}
-	if dev.VendorID == nil {
-		return nil, fmt.Errorf("task: device belum diketahui vendor-nya, tidak bisa resolve logical key %q", key)
-	}
 	// Data model version: dari model perangkat bila ada; bila belum (ONT baru, model
 	// belum terdaftar) dideteksi dari root parameter yang pernah dilaporkan CPE.
 	var dmvID uint64
@@ -116,17 +117,49 @@ func (s *Service) ResolveMapping(ctx context.Context, deviceID uint64, key strin
 		}
 		dmvID = id
 	}
-	m, err := s.paramMappings.Resolve(ctx, *dev.VendorID, dmvID, dev.DeviceModelID, key, dev.SoftwareVersion)
-	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			return nil, fmt.Errorf("task: tidak ada vendor_parameter_mappings untuk logical key %q pada device ini (kirim raw TR-069 path bila belum dipetakan, lihat FR-12)", key)
+	// Urutan: mapping vendor perangkat -> mapping standar (vendor GENERIC). Perangkat ber-vendor NULL
+	// (OUI belum dikenal) langsung memakai mapping standar, sehingga ONT/router apa pun yang patuh
+	// TR-098/TR-181 tetap bisa dikelola lewat logical key tanpa menunggu onboarding vendor.
+	candidates := make([]uint64, 0, 2)
+	if dev.VendorID != nil {
+		candidates = append(candidates, *dev.VendorID)
+	}
+	if gid := s.genericVendorID(ctx); gid != 0 && (dev.VendorID == nil || *dev.VendorID != gid) {
+		candidates = append(candidates, gid)
+	}
+	if len(candidates) == 0 {
+		return nil, fmt.Errorf("task: device belum diketahui vendor-nya, tidak bisa resolve logical key %q", key)
+	}
+	for _, vid := range candidates {
+		m, err := s.paramMappings.Resolve(ctx, vid, dmvID, dev.DeviceModelID, key, dev.SoftwareVersion)
+		if err != nil {
+			if errors.Is(err, domain.ErrNotFound) {
+				continue
+			}
+			return nil, err
 		}
-		return nil, err
+		if m.ValueScale == 0 {
+			m.ValueScale = 1
+		}
+		return m, nil
 	}
-	if m.ValueScale == 0 {
-		m.ValueScale = 1
+	return nil, fmt.Errorf("task: tidak ada vendor_parameter_mappings untuk logical key %q pada device ini (kirim raw TR-069 path bila belum dipetakan, lihat FR-12)", key)
+}
+
+// genericVendorID mengembalikan id vendor GENERIC (0 bila belum ada). Hasil positif di-cache.
+func (s *Service) genericVendorID(ctx context.Context) uint64 {
+	if id := s.genericVendor.Load(); id != 0 {
+		return id
 	}
-	return m, nil
+	if s.refs == nil {
+		return 0
+	}
+	v, err := s.refs.GetByCode(ctx, domain.RefTableVendors, domain.VendorCodeGeneric)
+	if err != nil {
+		return 0
+	}
+	s.genericVendor.Store(v.ID)
+	return v.ID
 }
 
 // detectDataModelVersion menentukan TR-098 vs TR-181 dari parameter device (root object

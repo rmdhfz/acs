@@ -128,6 +128,7 @@ func main() {
 		{"S18-portal-pelanggan", scenarioPortal},
 		{"S19-saas-operator", scenarioSaaSOperator},
 		{"S20-paket-signup", scenarioPlanAndSignup},
+		{"S21-vendor-generik", scenarioGenericVendor},
 	}
 
 	var results []result

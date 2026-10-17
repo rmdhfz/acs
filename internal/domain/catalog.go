@@ -31,6 +31,11 @@ type VendorOUI struct {
 	Audit
 }
 
+// VendorCodeGeneric — kode vendor "standar/generik" (migrations/0029): menampung mapping logical key ->
+// path standar TR-098/TR-181 yang dipakai sebagai FALLBACK bagi perangkat yang vendor-nya belum dikenal
+// atau belum punya mapping sendiri. Bukan percabangan per vendor: satu jalur data-driven yang sama.
+const VendorCodeGeneric = "GENERIC"
+
 type VendorOUIRepository interface {
 	Create(ctx context.Context, o *VendorOUI) error
 	GetByOUI(ctx context.Context, oui string) (*VendorOUI, error)
