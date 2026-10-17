@@ -51,6 +51,13 @@ func AuthMiddleware(authSvc *auth.Service) echo.MiddlewareFunc {
 				return echo.NewHTTPError(http.StatusUnauthorized, "invalid token")
 			}
 			c.Set(actorContextKey, *actor)
+			if actor.ImpersonatorID != 0 {
+				// audit: setiap catatan selama impersonate memuat impersonated_by
+				req := c.Request()
+				meta, _ := domain.RequestMetaFrom(req.Context())
+				meta.ImpersonatorID = actor.ImpersonatorID
+				c.SetRequest(req.WithContext(domain.WithRequestMeta(req.Context(), meta)))
+			}
 			return next(c)
 		}
 	}

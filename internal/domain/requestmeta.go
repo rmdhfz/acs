@@ -7,6 +7,8 @@ import "context"
 type RequestMeta struct {
 	IP        string
 	UserAgent string
+	// ImpersonatorID — id SUPERADMIN bila request berasal dari sesi impersonate; audit otomatis mencatatnya.
+	ImpersonatorID uint64
 }
 
 type requestMetaKey struct{}

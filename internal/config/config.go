@@ -109,6 +109,9 @@ func Load() (*Config, error) {
 	if len(cfg.JWTSecret) < 32 {
 		return nil, fmt.Errorf("config: ACS_JWT_SECRET wajib diisi minimal 32 karakter")
 	}
+	if weakSecret(cfg.JWTSecret) {
+		return nil, fmt.Errorf("config: ACS_JWT_SECRET lemah/placeholder (mis. salinan .env.example) — buat acak: openssl rand -hex 32")
+	}
 
 	expiry, err := time.ParseDuration(getEnv("ACS_JWT_EXPIRY", "8h"))
 	if err != nil {
@@ -253,6 +256,22 @@ func Load() (*Config, error) {
 	cfg.PasswordResetTTL = resetTTL
 
 	return cfg, nil
+}
+
+// weakSecret menolak secret placeholder dari contoh konfigurasi dan secret berentropi rendah. JWT yang
+// ditandatangani secret yang dapat ditebak bisa dipalsukan (mis. peran SUPERADMIN).
+func weakSecret(b []byte) bool {
+	low := strings.ToLower(string(b))
+	for _, bad := range []string{"change-me", "changeme", "example", "your-secret", "secret-key", "password", "contoh"} {
+		if strings.Contains(low, bad) {
+			return true
+		}
+	}
+	distinct := map[byte]struct{}{}
+	for _, c := range b {
+		distinct[c] = struct{}{}
+	}
+	return len(distinct) < 10
 }
 
 func getEnv(key, fallback string) string {

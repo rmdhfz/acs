@@ -126,6 +126,7 @@ func main() {
 		{"S16-mfa-totp", scenarioMFA},
 		{"S17-tree-attributes", scenarioTreeAndAttributes},
 		{"S18-portal-pelanggan", scenarioPortal},
+		{"S19-saas-operator", scenarioSaaSOperator},
 	}
 
 	var results []result

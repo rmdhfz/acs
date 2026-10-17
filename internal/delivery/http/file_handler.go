@@ -12,6 +12,13 @@ import (
 
 func (r *Router) uploadFile(c *echo.Context) error {
 	actor := ActorFrom(c)
+	// Batas body HARUS dipasang sebelum FormValue/FormFile (keduanya mem-parse multipart ke disk sementara);
+	// BodyLimit global dikecualikan untuk route ini. Tolak cepat bila Content-Length sudah melewati batas.
+	maxBody := domain.MaxFirmwareFileSizeBytes + (1 << 20)
+	if cl := c.Request().ContentLength; cl > maxBody {
+		return echo.NewHTTPError(http.StatusRequestEntityTooLarge, "file terlalu besar")
+	}
+	c.Request().Body = http.MaxBytesReader(c.Response(), c.Request().Body, maxBody)
 	fileTypeStr := c.FormValue("file_type")
 	vendorIDStr := c.FormValue("vendor_id")
 	modelIDStr := c.FormValue("device_model_id")
@@ -39,9 +46,6 @@ func (r *Router) uploadFile(c *echo.Context) error {
 		verPtr = &version
 	}
 
-	// Batas ukuran streaming (BodyLimit global 2 MiB dikecualikan untuk route ini,
-	// lihat cmd/acsd/main.go): tanpa ini upload besar tak terbatas.
-	c.Request().Body = http.MaxBytesReader(c.Response(), c.Request().Body, domain.MaxFirmwareFileSizeBytes+(1<<20))
 	if len(fileName) > 255 {
 		return echo.NewHTTPError(http.StatusBadRequest, "file_name maksimum 255 karakter")
 	}

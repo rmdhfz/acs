@@ -30,10 +30,16 @@ interface AuthContextValue {
   /** Login SSO: token dari redirect backend; profil diambil lewat GET /auth/me. */
   loginWithToken: (token: string) => Promise<void>
   logout: () => void
+  /** SUPERADMIN: "masuk sebagai" pengguna tenant (token pendek, teraudit). */
+  impersonate: (userId: number) => Promise<void>
+  /** Keluar dari impersonate dan kembali ke sesi SUPERADMIN asli. */
+  stopImpersonation: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 const USER_STORAGE_KEY = 'acs_user'
+// Sesi SUPERADMIN asli selama impersonate; sessionStorage (per-tab) agar tidak bocor ke tab lain / sesi berikutnya.
+const IMPERSONATION_ORIGIN_KEY = 'acs_imp_origin'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
@@ -54,6 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUnauthorizedHandler(() => {
       setAuthToken(null)
       localStorage.removeItem(USER_STORAGE_KEY)
+      sessionStorage.removeItem(IMPERSONATION_ORIGIN_KEY)
       queryClient.clear() // jangan sisakan data pengguna sebelumnya di cache
       setUser(null)
     })
@@ -92,8 +99,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  async function impersonate(userId: number) {
+    const resp = await api.post<LoginResponse & { impersonator_id: number }>(`/users/${userId}/impersonate`, {})
+    sessionStorage.setItem(IMPERSONATION_ORIGIN_KEY, JSON.stringify({ token: getAuthToken(), user }))
+    queryClient.clear()
+    setAuthToken(resp.access_token)
+    const impersonated = { ...resp.user, impersonator_id: resp.impersonator_id }
+    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(impersonated))
+    setUser(impersonated)
+  }
+
+  async function stopImpersonation() {
+    try {
+      await api.post('/auth/impersonation/end', {}) // catat akhir sesi di audit trail (best-effort)
+    } catch {
+      // token impersonate mungkin sudah kedaluwarsa — tetap pulihkan sesi asli
+    }
+    const raw = sessionStorage.getItem(IMPERSONATION_ORIGIN_KEY)
+    sessionStorage.removeItem(IMPERSONATION_ORIGIN_KEY)
+    queryClient.clear()
+    try {
+      const origin = raw ? (JSON.parse(raw) as { token: string | null; user: AuthUser | null }) : null
+      if (origin?.token && origin.user) {
+        setAuthToken(origin.token)
+        localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(origin.user))
+        setUser(origin.user)
+        return
+      }
+    } catch {
+      // data asal rusak -> keluar bersih
+    }
+    logout()
+  }
+
   function logout() {
     setAuthToken(null)
+    sessionStorage.removeItem(IMPERSONATION_ORIGIN_KEY)
     localStorage.removeItem(USER_STORAGE_KEY)
     queryClient.clear()
     setUser(null)
@@ -105,7 +146,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: !!user, isLoading, hasRole, login, completeMfa, loginWithToken, logout }}>
+    <AuthContext.Provider value={{ user, isAuthenticated: !!user, isLoading, hasRole, login, completeMfa, loginWithToken, logout, impersonate, stopImpersonation }}>
       {children}
     </AuthContext.Provider>
   )

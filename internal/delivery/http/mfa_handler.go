@@ -49,6 +49,9 @@ func (r *Router) mfaVerify(c *echo.Context) error {
 
 // requireSessionToken — pengelolaan MFA hanya lewat sesi login (JWT), bukan API token.
 func requireSessionToken(c *echo.Context) error {
+	if err := denyIfImpersonating(c); err != nil {
+		return err
+	}
 	if strings.HasPrefix(bearerFromRequest(c.Request()), "acs_") {
 		return echo.NewHTTPError(http.StatusForbidden, "API token tidak dapat mengelola MFA; gunakan sesi login")
 	}

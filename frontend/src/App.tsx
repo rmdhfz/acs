@@ -16,6 +16,7 @@ import { ProvisioningPage } from './pages/ProvisioningPage'
 import { FirmwarePage } from './pages/FirmwarePage'
 import { CatalogPage } from './pages/CatalogPage'
 import { AdministrationPage } from './pages/AdministrationPage'
+import { ReportsPage } from './pages/ReportsPage'
 import { TenantOnboardingWizard } from './pages/TenantOnboardingWizard'
 import { WebhooksPage } from './pages/WebhooksPage'
 import FilesPage from './pages/FilesPage'
@@ -86,6 +87,7 @@ function App() {
         <Route path="/self-service" element={<SelfServicePage />} />
         <Route path="/webhooks" element={<WebhooksPage />} />
         <Route path="/catalog" element={<CatalogPage />} />
+        <Route path="/reports" element={<ReportsPage />} />
         <Route path="/administration" element={<AdministrationPage />} />
         <Route path="/administration/onboarding" element={<TenantOnboardingWizard />} />
       </Route>

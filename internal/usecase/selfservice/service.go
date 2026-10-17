@@ -7,6 +7,7 @@ package selfservice
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"acs/internal/domain"
@@ -130,6 +131,12 @@ func (s *Service) ChangeMyWiFi(ctx context.Context, actor domain.Actor, deviceID
 	if ssid == "" && pass == "" {
 		return nil, domain.ErrInvalidInput
 	}
+	if len(ssid) > 32 || hasControlChars(ssid) || hasControlChars(pass) {
+		return nil, domain.ErrInvalidInput // SSID maks. 32 byte (IEEE 802.11), tanpa karakter kontrol
+	}
+	if err := s.requireNoPending(ctx, deviceID); err != nil {
+		return nil, err
+	}
 	if pass != "" && (len(pass) < 8 || len(pass) > 63) {
 		return nil, domain.ErrInvalidInput // batas WPA-PSK
 	}
@@ -160,8 +167,33 @@ func (s *Service) ChangeMyWiFi(ctx context.Context, actor domain.Actor, deviceID
 	return t, nil
 }
 
+// requireNoPending membatasi pelanggan ke SATU perintah yang menunggu per perangkat: tanpa ini satu akun dapat
+// membanjiri antrean task tenant atau memicu reboot berulang (audit OWASP A04).
+func (s *Service) requireNoPending(ctx context.Context, deviceID uint64) error {
+	pending, err := s.tasks.HasPendingForDevice(ctx, deviceID)
+	if err != nil {
+		return err
+	}
+	if pending {
+		return fmt.Errorf("%w: masih ada perintah yang menunggu untuk perangkat ini — tunggu selesai lalu coba lagi", domain.ErrConflict)
+	}
+	return nil
+}
+
+func hasControlChars(s string) bool {
+	for _, r := range s {
+		if r < 0x20 || r == 0x7f {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Service) RebootMyDevice(ctx context.Context, actor domain.Actor, deviceID uint64) error {
 	if _, err := s.requireOwnership(ctx, actor, deviceID); err != nil {
+		return err
+	}
+	if err := s.requireNoPending(ctx, deviceID); err != nil {
 		return err
 	}
 	if _, err := s.tasks.EnqueueReboot(ctx, actor, deviceID, 2); err != nil {

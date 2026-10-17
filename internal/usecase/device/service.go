@@ -281,6 +281,18 @@ func (s *Service) Update(ctx context.Context, actor domain.Actor, id uint64, in 
 	if in.Latitude != nil && (*in.Latitude < -90 || *in.Latitude > 90 || *in.Longitude < -180 || *in.Longitude > 180) {
 		return nil, invalid("latitude harus -90..90 dan longitude -180..180")
 	}
+	// Connection Request mengirim username/password CR hasil dekripsi ke URL ini (tantangan Basic): mengubah URL
+	// = mengarahkan kredensial ke tujuan lain. Hanya ADMIN/SUPERADMIN (yang memang berhak melihat rahasia);
+	// NOC boleh menyimpan ulang nilai yang SAMA (mis. saat mengedit catatan lewat form yang sama).
+	if in.ConnectionRequestURL != nil && !actor.CanSeeSecrets() {
+		cur := ""
+		if d.ConnectionRequestURL != nil {
+			cur = *d.ConnectionRequestURL
+		}
+		if strings.TrimSpace(*in.ConnectionRequestURL) != cur {
+			return nil, fmt.Errorf("%w: hanya ADMIN yang boleh mengubah connection_request_url", domain.ErrForbidden)
+		}
+	}
 	if in.ConnectionRequestURL != nil && strings.TrimSpace(*in.ConnectionRequestURL) != "" {
 		if err := validateCRURL(strings.TrimSpace(*in.ConnectionRequestURL)); err != nil {
 			return nil, err

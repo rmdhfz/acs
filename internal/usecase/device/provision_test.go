@@ -423,3 +423,27 @@ func (f *pvByID) GetByID(_ context.Context, id uint64) (*domain.Device, error) {
 	}
 	return nil, domain.ErrNotFound
 }
+
+// Regresi audit OWASP A01: NOC tidak boleh mengalihkan Connection Request URL (kredensial CR dikirim ke URL itu);
+// ADMIN boleh; NOC boleh menyimpan ulang nilai yang sama.
+func TestUpdate_UbahURLConnectionRequestHanyaAdmin(t *testing.T) {
+	svc, devs, _ := pvRig(t)
+	cur := "http://10.0.0.5:7547/cr"
+	devs.byKey["00D0D0|CR1"] = &domain.Device{ID: 310, TenantID: ptr(uint64(7)), OUI: ptr("00D0D0"), SerialNumber: "CR1", ConnectionRequestURL: &cur}
+	svc.devices = &pvByID{pvDevices: devs, id: 310, key: "00D0D0|CR1"}
+	ctx := context.Background()
+	noc := domain.Actor{UserID: 4, TenantID: ptr(uint64(7)), Roles: []string{domain.RoleNOC}}
+
+	if _, err := svc.Update(ctx, noc, 310, UpdateDeviceInput{ConnectionRequestURL: ptr("http://evil.example/steal")}); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("NOC mengubah URL CR harus ditolak: %v", err)
+	}
+	if _, err := svc.Update(ctx, noc, 310, UpdateDeviceInput{ConnectionRequestURL: ptr("")}); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("NOC mengosongkan URL CR harus ditolak: %v", err)
+	}
+	if _, err := svc.Update(ctx, noc, 310, UpdateDeviceInput{ConnectionRequestURL: ptr(cur), Notes: ptr("catatan")}); err != nil {
+		t.Fatalf("NOC menyimpan ulang URL yang sama harus boleh: %v", err)
+	}
+	if _, err := svc.Update(ctx, adminT7, 310, UpdateDeviceInput{ConnectionRequestURL: ptr("http://10.0.0.9:7547/cr")}); err != nil {
+		t.Fatalf("ADMIN boleh mengubah URL CR: %v", err)
+	}
+}

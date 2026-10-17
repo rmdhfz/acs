@@ -13,6 +13,12 @@
 	encode zstd gzip
 
 	# Console web (hasil `npm run build` di-mount ke /srv/console). Rute SPA jatuh ke index.html.
+	# /metrics (Prometheus) TIDAK publik: tanpa auth by design (konvensi exporter), memuat jumlah perangkat/antrean/sesi.
+	# Prometheus menyadap acsd langsung di jaringan internal compose (acsd:8080), bukan lewat proxy publik.
+	handle /api/v1/metrics {
+		respond "Not Found" 404
+	}
+
 	handle /api/* {
 		# WebSocket (/api/v1/ws) otomatis di-upgrade oleh reverse_proxy.
 		reverse_proxy acsd:8080
@@ -47,6 +53,10 @@
 		root * /srv/console
 		try_files {path} /index.html
 		header Cache-Control "no-cache"
+		# CSP SPA: token sesi ada di localStorage, jadi XSS apa pun = pencurian sesi; skrip hanya dari origin sendiri
+		# (tanpa 'unsafe-inline'). style 'unsafe-inline' dibutuhkan atribut style React/Recharts; gambar https: untuk
+		# logo tenant & tile peta OSM; font Google Fonts. API & WebSocket satu origin ('self').
+		header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 		file_server
 	}
 
@@ -55,6 +65,7 @@
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
 		-Server
 	}
 }

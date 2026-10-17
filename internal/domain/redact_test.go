@@ -36,3 +36,16 @@ func TestRedactURLCredentials(t *testing.T) {
 		t.Fatalf("bagian aman hilang: %s", got)
 	}
 }
+
+func TestRedactPresetConfigurations(t *testing.T) {
+	in := `[{"op":"set_parameter","key":"wifi.password","value":"rahasia"},{"op":"set_parameter","key":"wifi.ssid","value":"Rumah"},{"op":"reboot"}]`
+	out := RedactPresetConfigurations(in)
+	if strings.Contains(out, "rahasia") || !strings.Contains(out, "Rumah") || !strings.Contains(out, RedactedValue) {
+		t.Fatalf("hanya nilai sensitif yang disamarkan: %s", out)
+	}
+	for _, c := range []string{"", "null", "[]", "bukan json", `{"a":1}`} {
+		if got := RedactPresetConfigurations(c); got != c {
+			t.Fatalf("%q harus apa adanya, dapat %q", c, got)
+		}
+	}
+}

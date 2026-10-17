@@ -35,6 +35,7 @@ import (
 	"acs/internal/usecase/catalog"
 	"acs/internal/usecase/device"
 	"acs/internal/usecase/diagnostics"
+	"acs/internal/usecase/report"
 	"acs/internal/usecase/file"
 	"acs/internal/usecase/firmware"
 	"acs/internal/usecase/iam"
@@ -274,7 +275,7 @@ func main() {
 	restEcho.Use(middleware.RateLimiter(limiterStore("rest", 30)))
 	router := &deliveryhttp.Router{
 		Auth: authSvc, IAM: iamSvc, Devices: deviceSvc, Tasks: taskSvc, Provisioning: provisioningSvc,
-		Firmware: firmwareSvc, Diagnostics: diagnosticsSvc, Webhooks: webhookSvc, Sessions: sessionSvc,
+		Firmware: firmwareSvc, Diagnostics: diagnosticsSvc, Reports: report.NewService(mysql.NewReportRepository(db)), Webhooks: webhookSvc, Sessions: sessionSvc,
 		Catalog: catalogSvc,
 		Vendors: vendorRepo, VendorOUIs: vendorOUIRepo, DeviceModels: deviceModelRepo, ParamMappings: paramMappingRepo,
 		Refs: refRepo, Activity: activityLogRepo,

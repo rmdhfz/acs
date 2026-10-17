@@ -65,6 +65,34 @@ func (p *Preset) ParsedPrecondition() (PresetPrecondition, error) {
 	return pc, nil
 }
 
+// RedactPresetConfigurations menyamarkan "value" op set_parameter yang kuncinya sensitif (password, PSK, token, ...)
+// untuk role yang tidak boleh melihat rahasia (NOC/VIEWER). Konfigurasi yang bukan array JSON valid dikembalikan apa adanya.
+func RedactPresetConfigurations(configs string) string {
+	var ops []map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(configs), &ops); err != nil {
+		return configs
+	}
+	changed := false
+	for _, op := range ops {
+		var key, value string
+		if json.Unmarshal(op["key"], &key) != nil || json.Unmarshal(op["value"], &value) != nil {
+			continue
+		}
+		if value != "" && IsSensitiveParamName(key) {
+			op["value"], _ = json.Marshal(RedactedValue)
+			changed = true
+		}
+	}
+	if !changed {
+		return configs
+	}
+	out, err := json.Marshal(ops)
+	if err != nil {
+		return configs
+	}
+	return string(out)
+}
+
 // ParsedConfigurations meng-unmarshal kolom Configurations (array op).
 func (p *Preset) ParsedConfigurations() ([]PresetConfigOp, error) {
 	s := p.Configurations

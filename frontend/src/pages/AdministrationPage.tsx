@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Building2, Gauge, KeyRound, Link2, Pencil, Palette, Plus, Shield, ShieldOff, Trash2, Upload, Users as UsersIcon, Wand2 } from 'lucide-react'
+import { Building2, Gauge, KeyRound, Link2, LogIn, Pencil, Palette, Plus, Shield, ShieldOff, Trash2, Upload, Users as UsersIcon, Wand2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { EmptyState } from '../components/EmptyState'
 import { StatusBadge } from '../components/StatusBadge'
@@ -108,7 +108,8 @@ function TabButton({ active, onClick, icon: Icon, label }: { active: boolean; on
 // ---- Users ----
 
 function UsersTab({ isSuperadmin }: { isSuperadmin: boolean }) {
-  const { user: currentUser, hasRole } = useAuth()
+  const { user: currentUser, hasRole, impersonate } = useAuth()
+  const navigate = useNavigate()
   const canManage = hasRole('ADMIN')
   const queryClient = useQueryClient()
   const { data: tenantsResp } = useTenants()
@@ -133,6 +134,23 @@ function UsersTab({ isSuperadmin }: { isSuperadmin: boolean }) {
   const resetMfaMutation = useResetUserMfa()
   const toast = useToast()
   const confirm = useConfirm()
+
+  // SUPERADMIN asli (bukan sesi impersonate) boleh masuk sebagai pengguna tenant yang aktif & bukan SUPERADMIN.
+  const canImpersonate = !!currentUser?.roles.includes('SUPERADMIN') && !currentUser.impersonator_id
+  async function handleImpersonate(u: User) {
+    const ok = await confirm({
+      title: 'Masuk sebagai pengguna',
+      message: <>Anda akan bertindak sebagai <strong>{u.username}</strong> ({u.roles.join(', ')}). Semua aksi tercatat atas nama Anda di audit trail dan sesi berakhir otomatis dalam 30 menit. Ganti password, MFA, dan token API diblokir selama mode ini.</>,
+      confirmLabel: 'Masuk sebagai',
+    })
+    if (!ok) return
+    try {
+      await impersonate(u.id)
+      navigate('/dashboard', { replace: true })
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Gagal memulai impersonate')
+    }
+  }
 
   async function handleResetMfa(u: User) {
     const ok = await confirm({
@@ -260,6 +278,15 @@ function UsersTab({ isSuperadmin }: { isSuperadmin: boolean }) {
                         >
                           <KeyRound className="h-3.5 w-3.5" /> Reset Password
                         </button>
+                        {canImpersonate && !isSelf && u.is_active && u.tenant_id !== null && !u.roles.includes('SUPERADMIN') && (
+                          <button
+                            onClick={() => handleImpersonate(u)}
+                            className="flex items-center gap-1 whitespace-nowrap text-xs font-medium text-indigo-700 hover:text-indigo-900 dark:text-indigo-300 dark:hover:text-indigo-200"
+                            title="Masuk sebagai pengguna ini (dukungan; teraudit)"
+                          >
+                            <LogIn className="h-3.5 w-3.5" /> Masuk sebagai
+                          </button>
+                        )}
                         {u.roles.includes('ENDUSER') && (
                           <button
                             onClick={() => setDevicesTarget(u)}

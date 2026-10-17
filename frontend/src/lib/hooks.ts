@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from './api'
 import type {
   ActivityLog,
+  SaaSReport,
   ApiToken,
   IssuedApiToken,
   CurrentTenant,
@@ -821,6 +822,15 @@ export function useForgotPassword() {
 export function useResetPassword() {
   return useMutation({
     mutationFn: (input: { token: string; new_password: string }) => api.post<void>('/auth/reset-password', input),
+  })
+}
+
+// ---- Laporan SaaS (SUPERADMIN) ----
+export function useSaaSReport() {
+  return useQuery({
+    queryKey: ['saas-report'],
+    queryFn: () => api.get<SaaSReport>('/reports/saas'),
+    staleTime: 60_000,
   })
 }
 

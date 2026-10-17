@@ -627,6 +627,51 @@ func redactSensitiveParams(params *domain.JSONRawMessage, actor domain.Actor) {
 	}
 }
 
+// redactSensitiveResponse menyamarkan nilai parameter bernama sensitif di task.Response untuk NOC/VIEWER.
+// Response menyimpan seluruh Body CWMP (mis. GetParameterValuesResponse dengan daftar {Name, Value}); tanpa ini
+// NOC bisa memicu GetParameterValues untuk PPPoE/WiFi password lalu membaca nilainya lewat GET /tasks/:id
+// (temuan audit OWASP A01). Berjalan rekursif: objek apa pun yang memuat Name sensitif + Value ikut disamarkan.
+func redactSensitiveResponse(resp *domain.JSONRawMessage, actor domain.Actor) {
+	if actor.IsSuperadmin() || actor.HasRole(domain.RoleAdmin) || resp == nil || len(*resp) == 0 {
+		return
+	}
+	var v any
+	if err := json.Unmarshal(*resp, &v); err != nil {
+		return
+	}
+	if !redactNameValue(v) {
+		return
+	}
+	if out, err := json.Marshal(v); err == nil {
+		*resp = out
+	}
+}
+
+func redactNameValue(v any) bool {
+	changed := false
+	switch x := v.(type) {
+	case map[string]any:
+		if name, ok := x["Name"].(string); ok && domain.IsSensitiveParamName(name) {
+			if _, has := x["Value"]; has {
+				x["Value"] = domain.RedactedValue
+				changed = true
+			}
+		}
+		for _, c := range x {
+			if redactNameValue(c) {
+				changed = true
+			}
+		}
+	case []any:
+		for _, c := range x {
+			if redactNameValue(c) {
+				changed = true
+			}
+		}
+	}
+	return changed
+}
+
 func (s *Service) Get(ctx context.Context, actor domain.Actor, id uint64) (*domain.Task, error) {
 	t, err := s.tasks.GetByID(ctx, id)
 	if err != nil {
@@ -636,6 +681,7 @@ func (s *Service) Get(ctx context.Context, actor domain.Actor, id uint64) (*doma
 		return nil, err
 	}
 	redactSensitiveParams(&t.Parameters, actor)
+	redactSensitiveResponse(&t.Response, actor)
 	return t, nil
 }
 
@@ -653,6 +699,7 @@ func (s *Service) List(ctx context.Context, actor domain.Actor, f domain.TaskFil
 	}
 	for i := range tasks {
 		redactSensitiveParams(&tasks[i].Parameters, actor)
+		redactSensitiveResponse(&tasks[i].Response, actor)
 	}
 	return tasks, total, nil
 }

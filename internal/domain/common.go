@@ -50,6 +50,8 @@ type Actor struct {
 	UserID   uint64
 	TenantID *uint64
 	Roles    []string
+	// ImpersonatorID != 0: sesi ini adalah SUPERADMIN (id ini) yang "masuk sebagai" UserID untuk dukungan.
+	ImpersonatorID uint64
 }
 
 func (a Actor) HasRole(role string) bool {

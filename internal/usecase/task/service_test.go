@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -584,4 +585,35 @@ func TestCreateTaskProactiveChunking(t *testing.T) {
 			t.Fatalf("want tepat 1 task (tidak dipecah krn tidak MELEBIHI threshold), got %d", len(repo.created))
 		}
 	})
+}
+
+// Regresi audit OWASP A01: NOC/VIEWER tidak boleh membaca nilai rahasia dari task.Response
+// (GetParameterValuesResponse menyimpan seluruh Body CWMP).
+func TestRedactSensitiveResponse(t *testing.T) {
+	body := `{"GetParameterValuesResponse":{"ParameterList":{"Items":[
+		{"Name":"InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID","Value":"Rumah"},
+		{"Name":"InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1.KeyPassphrase","Value":"rahasia-wifi"},
+		{"Name":"InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.Password","Value":"rahasia-ppp"}]}}}`
+	noc := domain.Actor{UserID: 3, Roles: []string{domain.RoleNOC}}
+	resp := domain.JSONRawMessage(body)
+	redactSensitiveResponse(&resp, noc)
+	got := string(resp)
+	if strings.Contains(got, "rahasia-wifi") || strings.Contains(got, "rahasia-ppp") {
+		t.Fatalf("nilai rahasia bocor ke NOC: %s", got)
+	}
+	if !strings.Contains(got, "Rumah") || strings.Count(got, domain.RedactedValue) != 2 {
+		t.Fatalf("nilai biasa harus tetap & 2 rahasia disamarkan: %s", got)
+	}
+	for _, a := range []domain.Actor{{UserID: 1, Roles: []string{domain.RoleAdmin}}, {UserID: 2, Roles: []string{domain.RoleSuperadmin}}} {
+		r := domain.JSONRawMessage(body)
+		redactSensitiveResponse(&r, a)
+		if !strings.Contains(string(r), "rahasia-ppp") {
+			t.Fatalf("ADMIN/SUPERADMIN berhak melihat nilai asli")
+		}
+	}
+	// respons kosong/bukan JSON tidak panik
+	for _, raw := range []domain.JSONRawMessage{nil, domain.JSONRawMessage("null"), domain.JSONRawMessage("bukan json")} {
+		r := raw
+		redactSensitiveResponse(&r, noc)
+	}
 }

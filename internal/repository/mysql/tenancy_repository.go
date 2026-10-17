@@ -3,6 +3,7 @@ package mysql
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -475,6 +476,17 @@ func NewActivityLogRepository(db *sqlx.DB) domain.ActivityLogRepository {
 }
 
 func (r *activityLogRepository) Record(ctx context.Context, log *domain.ActivityLog) error {
+	// Sesi impersonate: catat siapa yang sebenarnya bertindak (SUPERADMIN) pada setiap baris audit.
+	if m, ok := domain.RequestMetaFrom(ctx); ok && m.ImpersonatorID != 0 {
+		if log.Details == nil {
+			log.Details = map[string]any{}
+		}
+		log.Details["impersonated_by"] = m.ImpersonatorID
+		if log.Description != nil {
+			s := *log.Description + fmt.Sprintf(" [impersonated_by=%d]", m.ImpersonatorID)
+			log.Description = &s
+		}
+	}
 	// Lipat Details terstruktur jadi JSON di kolom description bila description
 	// belum diisi eksplisit — activity_logs sengaja tidak punya kolom metadata
 	// terpisah (audit ringan, CLAUDE.md §2).

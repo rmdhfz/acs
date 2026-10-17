@@ -32,23 +32,17 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 
-    <!-- Font dimuat non-blocking (tidak menghambat render pertama / LCP); fallback sistem tersedia. -->
+    <!-- Font Google (Inter/JetBrains Mono); fallback sistem tersedia. Tanpa skrip/handler inline agar CSP script-src 'self' berlaku. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" />
-    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" /></noscript>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" />
 
     <!--seo-jsonld-->
   </head>
   <body>
     <div id="root"><!--ssr-landing--></div>
     <!-- Beranda statis hanya untuk "/": di route lain disembunyikan sebelum React mengambil alih (tanpa kedip). -->
-    <script>
-      if (location.pathname !== '/') {
-        var r = document.getElementById('root');
-        if (r) r.style.visibility = 'hidden';
-      }
-    </script>
+    <script src="/boot.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

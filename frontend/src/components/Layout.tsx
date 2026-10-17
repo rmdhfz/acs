@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
+  BarChart3,
   Bell,
+  EyeOff,
   Building2,
   Cable,
   FileSliders,
@@ -49,6 +51,7 @@ const NAV_ITEMS: { to: string; key: string; icon: typeof LayoutGrid; requireRole
   { to: '/webhooks', key: 'nav.webhooks', icon: Bell, requireRole: 'ADMIN' },
   { to: '/audit', key: 'nav.auditTrail', icon: ScrollText, requireRole: 'ADMIN' },
   { to: '/catalog', key: 'nav.catalog', icon: Cable, requireRole: 'SUPERADMIN' },
+  { to: '/reports', key: 'nav.reports', icon: BarChart3, requireRole: 'SUPERADMIN' },
   { to: '/administration', key: 'nav.administration', icon: Building2, requireRole: 'ADMIN' },
 ]
 
@@ -98,6 +101,37 @@ function LangToggle() {
       <Languages className="h-4 w-4" strokeWidth={2} />
       {lang}
     </button>
+  )
+}
+
+// Banner permanen selama SUPERADMIN meng-impersonate pengguna tenant: tidak bisa disembunyikan, jelas siapa yang sedang
+// bertindak, dan satu klik untuk kembali. Aksi sensitif (password/MFA/token API) diblokir server selama mode ini.
+function ImpersonationBanner() {
+  const { user, stopImpersonation } = useAuth()
+  const navigate = useNavigate()
+  const [busy, setBusy] = useState(false)
+  return (
+    <div role="status" className="sticky top-14 z-20 flex flex-wrap items-center justify-between gap-2 border-b border-amber-400 bg-amber-100 px-4 py-2 text-sm text-amber-950 md:top-0 print:hidden dark:border-amber-500/50 dark:bg-amber-900/60 dark:text-amber-50">
+      <span className="flex items-center gap-2">
+        <EyeOff className="h-4 w-4 shrink-0" />
+        <span>
+          <strong>Mode impersonate:</strong> Anda bertindak sebagai <strong>{user?.username}</strong> ({user?.roles.join(', ')}). Semua aksi tercatat
+          atas nama Anda; sesi berakhir otomatis ≤ 30 menit.
+        </span>
+      </span>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true)
+          await stopImpersonation()
+          navigate('/administration', { replace: true })
+        }}
+        className="rounded-lg bg-amber-900 px-3 py-1 text-xs font-semibold text-white hover:bg-amber-800 disabled:opacity-60 dark:bg-amber-200 dark:text-amber-950 dark:hover:bg-amber-100"
+      >
+        Keluar dari impersonate
+      </button>
+    </div>
   )
 }
 
@@ -241,7 +275,7 @@ export function Layout() {
     <NotificationProvider>
       <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950">
         {/* Top bar mobile — sidebar disembunyikan jadi drawer di layar sempit */}
-        <div className="fixed inset-x-0 top-0 z-30 flex h-14 items-center justify-between border-b border-slate-200 bg-white px-4 md:hidden dark:border-slate-800 dark:bg-slate-900">
+        <div className="fixed inset-x-0 top-0 z-30 flex h-14 print:hidden items-center justify-between border-b border-slate-200 bg-white px-4 md:hidden dark:border-slate-800 dark:bg-slate-900">
           <button
             onClick={() => setMobileNavOpen(true)}
             aria-label="Buka menu navigasi"
@@ -262,7 +296,7 @@ export function Layout() {
         )}
 
         <aside
-          className={`fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col border-r border-slate-200 bg-white transition-transform duration-200 md:static md:z-auto md:w-60 md:translate-x-0 dark:border-slate-800 dark:bg-slate-900 ${
+          className={`print:hidden fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col border-r border-slate-200 bg-white transition-transform duration-200 md:static md:z-auto md:w-60 md:translate-x-0 dark:border-slate-800 dark:bg-slate-900 ${
             mobileNavOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
@@ -270,8 +304,9 @@ export function Layout() {
         </aside>
 
         <main className="min-w-0 flex-1 pt-14 md:pt-0">
+          {user?.impersonator_id ? <ImpersonationBanner /> : null}
           {/* Top bar desktop — jam realtime kiri, kontrol kanan */}
-          <div className="hidden items-center justify-between border-b border-slate-200 bg-white px-4 py-2 md:flex dark:border-slate-800 dark:bg-slate-900">
+          <div className="hidden items-center justify-between border-b border-slate-200 bg-white px-4 py-2 md:flex print:!hidden dark:border-slate-800 dark:bg-slate-900">
             <NavClock />
             <div className="flex items-center gap-1">
               <LangToggle />
@@ -280,7 +315,7 @@ export function Layout() {
             </div>
           </div>
           <Outlet />
-          <CreditFooter className="px-6 pb-6 pt-2 text-center" />
+          <CreditFooter className="px-6 pb-6 pt-2 text-center print:hidden" />
         </main>
 
         <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />

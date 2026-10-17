@@ -26,6 +26,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -417,7 +418,13 @@ func (s *Service) postDelivery(ctx context.Context, sub *domain.WebhookSubscript
 
 	resp, err := s.http.Do(req)
 	if err != nil {
-		m := "koneksi gagal: " + err.Error()
+		// Detail dial (IP, refused/timeout) hanya ke log: ke tenant cukup kategori, agar webhook tidak menjadi
+		// pemindai port jaringan internal (audit OWASP A10).
+		s.logger.Warn("webhook: koneksi gagal", "delivery_id", d.ID, "subscription_id", sub.ID, "error", err)
+		m := "koneksi ke target gagal"
+		if strings.Contains(err.Error(), "netguard:") {
+			m = "alamat target tidak diizinkan"
+		}
 		return domain.WebhookDeliveryStatusPending, nil, &m
 	}
 	defer resp.Body.Close()

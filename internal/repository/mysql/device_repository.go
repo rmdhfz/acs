@@ -132,7 +132,7 @@ func (r *deviceRepository) List(ctx context.Context, f domain.DeviceFilter, p do
 	}
 	if f.Search != "" {
 		where = append(where, "(serial_number LIKE ? OR mac_address LIKE ?)")
-		like := "%" + f.Search + "%"
+		like := "%" + likeEscape(f.Search) + "%"
 		args = append(args, like, like)
 	}
 	if f.TagID != nil {
@@ -367,7 +367,7 @@ func (r *deviceParameterRepository) ListByDevice(ctx context.Context, deviceID u
 	}
 	err := r.db.SelectContext(ctx, &rows,
 		`SELECT * FROM device_parameters WHERE device_id = ? AND parameter_name LIKE ? ORDER BY parameter_name`,
-		deviceID, prefix+"%")
+		deviceID, likeEscape(prefix)+"%")
 	return rows, translateErr(err)
 }
 

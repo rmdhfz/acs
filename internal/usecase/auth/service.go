@@ -72,6 +72,8 @@ type Claims struct {
 	// Purpose kosong = token sesi. Nilai lain (mis. "mfa" — tahap kedua login) BUKAN sesi dan
 	// ditolak oleh ResolveActor/ParseJWT.
 	Purpose string `json:"pur,omitempty"`
+	// Imp != 0: token impersonate; id SUPERADMIN yang bertindak atas nama UserID (lihat impersonate.go).
+	Imp uint64 `json:"imp,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -369,7 +371,7 @@ func (s *Service) ParseJWT(tokenStr string) (*domain.Actor, error) {
 	if claims.Purpose != "" {
 		return nil, ErrInvalidToken
 	}
-	return &domain.Actor{UserID: claims.UserID, TenantID: claims.TenantID, Roles: claims.Roles}, nil
+	return &domain.Actor{UserID: claims.UserID, TenantID: claims.TenantID, Roles: claims.Roles, ImpersonatorID: claims.Imp}, nil
 }
 
 func (s *Service) parseClaims(tokenStr string) (*Claims, error) {
@@ -406,8 +408,11 @@ func (s *Service) ResolveActor(ctx context.Context, tokenStr string) (*domain.Ac
 		if claims, err = s.parseClaims(tokenStr); err == nil && claims.Purpose != "" {
 			err = errors.New("token bukan token sesi")
 		} else if err == nil {
-			actor = &domain.Actor{UserID: claims.UserID, TenantID: claims.TenantID, Roles: claims.Roles}
+			actor = &domain.Actor{UserID: claims.UserID, TenantID: claims.TenantID, Roles: claims.Roles, ImpersonatorID: claims.Imp}
 			err = s.checkSession(ctx, claims)
+			if err == nil && claims.Imp != 0 {
+				err = s.checkImpersonator(ctx, claims)
+			}
 		}
 	}
 	if err != nil {

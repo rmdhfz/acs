@@ -33,6 +33,55 @@ export interface AuthUser {
   username: string
   roles: string[]
   tenant_id: number | null
+  /** Terisi bila sesi ini adalah SUPERADMIN (id ini) yang meng-impersonate akun ini. */
+  impersonator_id?: number
+}
+
+// ---- Laporan SaaS (SUPERADMIN) ----
+export interface TenantReport {
+  tenant_id: number
+  code: string
+  name: string
+  is_active: boolean
+  created_at: string
+  devices: number
+  devices_online: number
+  users: number
+  users_active_30d: number
+  tasks_30d: number
+  tasks_failed_30d: number
+  pending_tasks: number
+  max_pending_tasks: number | null
+  sessions_30d: number
+  webhooks_active: number
+  last_inform_at: string | null
+  last_login_at: string | null
+  health: 'sehat' | 'perhatian' | 'nonaktif'
+  health_reasons: string[]
+}
+
+export interface SaaSReport {
+  generated_at: string
+  platform: {
+    tenants_total: number
+    tenants_active: number
+    tenants_new_30d: number
+    devices_total: number
+    devices_online: number
+    devices_new_7d: number
+    devices_new_30d: number
+    users_total: number
+    users_active_30d: number
+    tasks_30d: number
+    tasks_failed_30d: number
+    sessions_24h: number
+    failed_logins_24h: number
+    webhooks_active: number
+    firmware_files: number
+  }
+  tenants: TenantReport[]
+  vendors: { vendor: string; devices: number }[]
+  daily: { date: string; new_devices: number; sessions: number; tasks: number; tasks_failed: number }[]
 }
 
 export interface Device {

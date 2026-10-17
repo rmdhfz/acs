@@ -38,7 +38,16 @@ func (s *Service) Create(ctx context.Context, actor domain.Actor, in domain.Pres
 }
 
 func (s *Service) List(ctx context.Context, actor domain.Actor, p domain.Pagination) ([]domain.Preset, int, error) {
-	return s.presets.List(ctx, actor.TenantID, p)
+	presets, total, err := s.presets.List(ctx, actor.TenantID, p)
+	if err != nil {
+		return nil, 0, err
+	}
+	if !actor.CanSeeSecrets() {
+		for i := range presets {
+			presets[i].Configurations = domain.RedactPresetConfigurations(presets[i].Configurations)
+		}
+	}
+	return presets, total, nil
 }
 
 func (s *Service) Get(ctx context.Context, actor domain.Actor, id uint64) (*domain.Preset, error) {
@@ -51,6 +60,10 @@ func (s *Service) Get(ctx context.Context, actor domain.Actor, id uint64) (*doma
 	if preset.TenantID != nil && !actor.IsSuperadmin() &&
 		(actor.TenantID == nil || *actor.TenantID != *preset.TenantID) {
 		return nil, domain.ErrForbidden
+	}
+	// NOC/VIEWER boleh melihat preset tetapi tidak nilai rahasianya (password PPPoE/PSK WiFi default).
+	if !actor.CanSeeSecrets() {
+		preset.Configurations = domain.RedactPresetConfigurations(preset.Configurations)
 	}
 	return preset, nil
 }

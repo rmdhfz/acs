@@ -154,6 +154,15 @@ func (s *Service) Get(ctx context.Context, actor domain.Actor, id uint64) (*doma
 	if err != nil {
 		return nil, nil, err
 	}
+	// NOC/VIEWER boleh melihat profil tetapi tidak nilai rahasianya (password PPPoE/PSK WiFi).
+	if !actor.CanSeeSecrets() {
+		for i := range params {
+			if params[i].ParameterValue != nil && *params[i].ParameterValue != "" && domain.IsSensitiveParamName(params[i].ParameterName) {
+				red := domain.RedactedValue
+				params[i].ParameterValue = &red
+			}
+		}
+	}
 	return p, params, nil
 }
 

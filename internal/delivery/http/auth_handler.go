@@ -79,6 +79,9 @@ type changeOwnPasswordRequest struct {
 // password ORANG LAIN). Actor diambil dari JWT (bukan :id di path) -- semua
 // role yang sudah login boleh memanggil ini, tidak ada RequireRoles di router.go.
 func (r *Router) changeOwnPassword(c *echo.Context) error {
+	if err := denyIfImpersonating(c); err != nil {
+		return err
+	}
 	actor := ActorFrom(c)
 	var req changeOwnPasswordRequest
 	if err := c.Bind(&req); err != nil {
@@ -106,6 +109,9 @@ type issueTokenRequest struct {
 }
 
 func (r *Router) issueAPIToken(c *echo.Context) error {
+	if err := denyIfImpersonating(c); err != nil {
+		return err
+	}
 	actor := ActorFrom(c)
 	// API token tidak boleh menerbitkan token baru (token curian bisa beranak-pinak
 	// dan bertahan walau token asalnya dicabut); hanya sesi login (JWT).
@@ -218,6 +224,7 @@ func (r *Router) me(c *echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"id": u.ID, "uuid": u.UserUUID, "username": u.Username, "roles": u.Roles, "tenant_id": u.TenantID,
 		"email": u.Email, "full_name": u.FullName, "mfa_enabled": u.TOTPEnabled,
+		"impersonator_id": ActorFrom(c).ImpersonatorID,
 	})
 }
 

@@ -15,6 +15,7 @@ import (
 	"acs/internal/usecase/catalog"
 	"acs/internal/usecase/device"
 	"acs/internal/usecase/diagnostics"
+	"acs/internal/usecase/report"
 	"acs/internal/usecase/file"
 	"acs/internal/usecase/firmware"
 	"acs/internal/usecase/iam"
@@ -35,6 +36,7 @@ type Router struct {
 	Provisioning  *provisioning.Service
 	Firmware      *firmware.Service
 	Diagnostics   *diagnostics.Service
+	Reports       *report.Service
 	Webhooks      *webhook.Service
 	Sessions      *session.Service
 	Catalog       *catalog.Service
@@ -139,6 +141,7 @@ func (r *Router) Register(e *echo.Echo) {
 	// (karena itu di authedSelf, bukan authed yang di-gate staffOnly).
 	authedSelf.PATCH("/auth/password", r.changeOwnPassword)
 	authedSelf.GET("/auth/me", r.me)
+	authedSelf.POST("/auth/impersonation/end", r.endImpersonation)
 	// MFA TOTP akun sendiri (hanya sesi login, bukan API token).
 	authedSelf.GET("/auth/mfa", r.mfaStatus)
 	authedSelf.POST("/auth/mfa/setup", r.mfaSetup)
@@ -173,21 +176,26 @@ func (r *Router) Register(e *echo.Echo) {
 	// Kuota task queue: kebijakan platform-level, superadmin only (bukan
 	// self-service tenant seperti branding di atas) — lihat usecase/iam.SetTaskQuota.
 	authed.PATCH("/tenants/:id/task-quota", r.setTenantTaskQuota, RequireRoles(superadminOnly...))
-	authed.POST("/users", r.createUser, RequireRoles(admin...))
+	authed.POST("/users", r.createUser, RequireRoles(admin...), denyImpersonation)
 	authed.GET("/users", r.listUsers, RequireRoles(admin...))
 	// Self-service tenant admin (ROADMAP.md Fase 2): superadmin bisa ke user
 	// manapun, ADMIN dibatasi ke user satu tenant + guard self-lockout —
 	// keduanya dicek di usecase/iam, role gate di sini cuma menyaring NOC/VIEWER.
 	authed.GET("/users/:id", r.getUser, RequireRoles(admin...))
-	authed.PATCH("/users/:id", r.updateUser, RequireRoles(admin...))
-	authed.PATCH("/users/:id/password", r.resetUserPassword, RequireRoles(admin...))
-	authed.DELETE("/users/:id/mfa", r.adminResetMFA, RequireRoles(admin...))
+	authed.PATCH("/users/:id", r.updateUser, RequireRoles(admin...), denyImpersonation)
+	authed.PATCH("/users/:id/password", r.resetUserPassword, RequireRoles(admin...), denyImpersonation)
+	authed.DELETE("/users/:id/mfa", r.adminResetMFA, RequireRoles(admin...), denyImpersonation)
+	// SUPERADMIN "masuk sebagai" pengguna tenant (dukungan SaaS); token pendek, terbatas, teraudit.
+	authed.POST("/users/:id/impersonate", r.impersonateUser, RequireRoles(superadminOnly...))
+	// Laporan SaaS (operator platform).
+	authed.GET("/reports/saas", r.getSaaSReport, RequireRoles(superadminOnly...))
+	authed.GET("/reports/saas/tenants.csv", r.exportSaaSTenantsCSV, RequireRoles(superadminOnly...))
 	// Penautan akun ENDUSER <-> perangkat untuk portal "WiFi Saya".
 	authed.GET("/users/:id/devices", r.listUserDevices, RequireRoles(admin...))
 	authed.PUT("/users/:id/devices/:deviceId", r.linkUserDevice, RequireRoles(admin...))
 	authed.DELETE("/users/:id/devices/:deviceId", r.unlinkUserDevice, RequireRoles(admin...))
-	authed.PATCH("/users/:id/roles", r.replaceUserRoles, RequireRoles(admin...))
-	authed.DELETE("/users/:id", r.deleteUser, RequireRoles(admin...))
+	authed.PATCH("/users/:id/roles", r.replaceUserRoles, RequireRoles(admin...), denyImpersonation)
+	authed.DELETE("/users/:id", r.deleteUser, RequireRoles(admin...), denyImpersonation)
 
 	authed.GET("/devices", r.listDevices)
 	authed.GET("/devices/stats", r.deviceStats)
