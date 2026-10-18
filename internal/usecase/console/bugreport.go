@@ -35,7 +35,7 @@ const (
 	maxScreenshotBytes = 2 << 20
 	minScreenshotSide  = 16
 	maxScreenshotSide  = 6000
-	bugNoteMax           = 500
+	bugNoteMax         = 500
 )
 
 var (
