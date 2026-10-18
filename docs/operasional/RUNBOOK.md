@@ -276,3 +276,16 @@ Login Google memakai alur OIDC yang sama dengan SSO lain (authorization code + `
 - **Email**: memakai SMTP yang sama dengan reset password (`ACS_SMTP_*`; tanpa SMTP, hanya in-app). Maks. 1 email per pengguna per jenis per jam; notifikasi/email tidak pernah memuat password, token, atau secret.
 - **Evaluator** berjalan tiap 5 menit di satu instance (kunci leader bila `ACS_HA=true`): offline ≥ 30% dari ≥ 10 perangkat (dedupe 6 jam), ≥ 5 task gagal dalam 30 menit (dedupe 1 jam).
 - Retensi: notifikasi dipangkas bersama log lain (`ACS_LOG_RETENTION_DAYS`).
+
+### T. Langganan & pembayaran (Xendit) — bawaan MATI
+1. Buat akun Xendit, ambil **secret API key** (mode test dulu) dan tentukan **callback token** acak ≥ 24 karakter. Simpan hanya di `.env`.
+2. Set `ACS_BILLING_ENABLED=true`, `ACS_XENDIT_SECRET_KEY`, `ACS_XENDIT_CALLBACK_TOKEN`, `ACS_PUBLIC_URL` (https publik; dipakai untuk URL kembali `/billing?status=success|failed`). `ACS_XENDIT_BASE_URL` bawaan `https://api.xendit.co`; `ACS_BILLING_INVOICE_HOURS` 1–168 (bawaan 24). Config menolak start bila enabled tanpa kunci/token.
+3. Di dashboard Xendit daftarkan **Invoice paid/expired callback** ke `<ACS_PUBLIC_URL>/api/v1/billing/xendit/webhook` dengan token yang sama.
+4. Urutan rilis: **rebuild `acsd` lalu migrasi 0032** (atau serentak) — `acsd` lama gagal membaca `tenants` setelah kolom baru ada.
+5. Paket contoh (STARTER/PRO/ENTERPRISE) berharga placeholder: ubah di Console → Langganan (SUPERADMIN) sebelum dipakai. Harga hanya dibaca dari DB; klien tidak pernah mengirim nominal.
+- Tidak ada pemutusan layanan otomatis saat masa aktif habis — hanya notifikasi + email; keputusan tindakan ada pada operator.
+- Callback tidak dipercaya mentah: status/nominal selalu diambil ulang dari Xendit; event idempoten; token salah 401; billing mati 404.
+- **Belum diuji dengan Xendit nyata/sandbox**. Uji dulu di mode test: buat invoice, bayar lewat simulator Xendit, pastikan callback menandai LUNAS dan masa aktif bertambah; tombol "Periksa status" sebagai cadangan bila callback gagal.
+
+### U. Struktur dokumen
+Semua dokumen ada di `docs/` (lihat `docs/README.md`). Perbarui PDF dengan `node scripts/build-docs-pdf.mjs` setelah mengubah HTML di `docs/panduan` atau `docs/pengujian`.

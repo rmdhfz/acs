@@ -1,6 +1,6 @@
 # TECH.md — Desain Teknis ACS (Auto Configuration Server)
 
-Dokumen ini menjelaskan arsitektur teknis untuk implementasi ACS multi-vendor sesuai `PRD.md`. Skema database detail ada di `schema.sql`.
+Dokumen ini menjelaskan arsitektur teknis untuk implementasi ACS multi-vendor sesuai `docs/produk/PRD.md`. Skema database detail ada di `schema.sql`.
 
 ---
 
@@ -151,7 +151,7 @@ Saat event `0 BOOTSTRAP` diterima dari device yang belum punya `provisioning_pro
 - **Kredensial connection request** (`connection_request_username`/`password`) disimpan terenkripsi (AES-GCM, key dari secret manager/env, bukan hardcoded) — bukan plaintext di DB.
 - **Kredensial Inform Auth** per device/profil juga tidak plaintext.
 - **RBAC** di layer REST API: role `SUPERADMIN`, `ADMIN` (scoped per tenant), `NOC`, `VIEWER` — middleware Echo memeriksa scope tenant pada setiap request.
-- **Rate limiting** pada endpoint REST publik dan endpoint CWMP (mencegah CPE nakal/loop menginform terlalu sering membebani server, dan sejak Basic Auth CWMP aktif, juga mitigasi brute-force kredensial). Implementasi saat ini: `middleware.RateLimiter` (Echo v5) di `cwmpEcho`, 5 req/s per identifier — **belum ada di REST API internal** (`restEcho`), masih perlu ditambahkan (lihat ROADMAP.md).
+- **Rate limiting** pada endpoint REST publik dan endpoint CWMP (mencegah CPE nakal/loop menginform terlalu sering membebani server, dan sejak Basic Auth CWMP aktif, juga mitigasi brute-force kredensial). Implementasi saat ini: `middleware.RateLimiter` (Echo v5) di `cwmpEcho`, 5 req/s per identifier — **belum ada di REST API internal** (`restEcho`), masih perlu ditambahkan (lihat docs/produk/ROADMAP.md).
 - Semua endpoint REST admin memerlukan API token (`api_tokens`) atau JWT sesi user; tidak ada endpoint mutasi tanpa autentikasi.
 - Shared secret Inform CWMP (`tenants.cwmp_inform_password`) wajib minimal 16 karakter (`internal/usecase/iam/service.go`) — mengurangi risiko brute-force mengingat endpoint `/cwmp` publik-facing.
 
@@ -180,6 +180,6 @@ Saat event `0 BOOTSTRAP` diterima dari device yang belum punya `provisioning_pro
 ## 12. Yang Sengaja Belum Diputuskan / Perlu Divalidasi
 
 - Library XML/SOAP: implementasi manual vs mengevaluasi library CWMP Go yang sudah ada (perlu riset lisensi & kematangan sebelum dipakai produksi).
-- Mekanisme Connection Request untuk CPE di belakang CGNAT (STUN) — Fase 2 per `PRD.md`.
+- Mekanisme Connection Request untuk CPE di belakang CGNAT (STUN) — Fase 2 per `docs/produk/PRD.md`.
 - Strategi partisi tabel log — menunggu data volume produksi nyata sebelum menentukan skema partisi final.
 - Object storage untuk file firmware (S3-compatible vs filesystem lokal) — tergantung infrastruktur deployment.

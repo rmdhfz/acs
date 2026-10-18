@@ -53,7 +53,11 @@ function findViolations(): string[] {
       if (NON_TEXT.has(type)) continue
       if (/\bdisabled\b/.test(tag) && !/onChange/.test(tag)) continue
       const textual = TEXTUAL.has(type)
-      if ((textual && !/maxLength/.test(tag)) || (type === 'number' && !/\bmax=/.test(tag))) {
+      // password BARU wajib punya minLength (server menolak < 8; klien memberi umpan balik sebelum request)
+      const weakNew = /autoComplete="new-password"/.test(tag) && !/minLength/.test(tag)
+      // angka wajib punya batas bawah juga (negatif/NaN tak boleh lolos sebagai nilai wajar)
+      const noMin = type === 'number' && !/\bmin=/.test(tag)
+      if ((textual && !/maxLength/.test(tag)) || (type === 'number' && !/\bmax=/.test(tag)) || weakNew || noMin) {
         const line = s.slice(0, m.index).split('\n').length
         bad.push(`${path.relative(SRC, file).split(path.sep).join('/')}:${line} <${m[1]} ${type}>`)
       }
@@ -63,7 +67,7 @@ function findViolations(): string[] {
 }
 
 describe('batas input form', () => {
-  it('semua input teks punya maxLength dan input angka punya max', () => {
+  it('input teks punya maxLength, angka punya min & max, password baru punya minLength', () => {
     expect(findViolations()).toEqual([])
   })
 })

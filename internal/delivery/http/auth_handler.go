@@ -11,6 +11,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 
+	"acs/internal/domain"
 	"acs/internal/usecase/auth"
 	"acs/pkg/passwordhash"
 )
@@ -23,6 +24,14 @@ var forgotSlots = make(chan struct{}, 32)
 
 // loginRequest — login memakai EMAIL + password. Field username tetap
 // diterima (kompatibilitas skrip/klien lama); bila keduanya ada, email menang.
+// Batas masukan endpoint publik (tanpa autentikasi): menolak payload raksasa SEBELUM menyentuh DB/hashing.
+const (
+	maxAuthIdentifier = 191 // = users.email VARCHAR(191)
+	maxAuthPassword   = 256 // password sah <= 128; selisih memberi ruang pesan "terlalu panjang" tanpa hashing
+	maxAuthToken      = 512 // token reset / mfa_token / kode pemulihan
+	maxMFACode        = 32
+)
+
 type loginRequest struct {
 	Email    string `json:"email"`
 	Username string `json:"username"`
@@ -40,6 +49,9 @@ func (r *Router) login(c *echo.Context) error {
 	}
 	if identifier == "" || req.Password == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "email dan password wajib diisi")
+	}
+	if err := checkMaxLen(lenRule{"email", identifier, maxAuthIdentifier}, lenRule{"password", req.Password, maxAuthPassword}); err != nil {
+		return err
 	}
 	u, token, err := r.Auth.Login(c.Request().Context(), identifier, req.Password)
 	if errors.Is(err, auth.ErrMFARequired) {
@@ -246,6 +258,9 @@ func (r *Router) forgotPassword(c *echo.Context) error {
 	if strings.TrimSpace(req.Email) == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "email wajib diisi")
 	}
+	if err := checkMaxLen(lenRule{"email", req.Email, maxAuthIdentifier}); err != nil {
+		return err
+	}
 	if !r.Auth.PasswordResetEnabled() {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "reset password lewat email belum diaktifkan — hubungi administrator")
 	}
@@ -287,6 +302,9 @@ func (r *Router) resetPassword(c *echo.Context) error {
 	}
 	if req.Token == "" || req.NewPassword == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "token dan new_password wajib diisi")
+	}
+	if err := checkMaxLen(lenRule{"token", req.Token, maxAuthToken}, lenRule{"new_password", req.NewPassword, domain.MaxUserPasswordLen}); err != nil {
+		return err
 	}
 	err := r.Auth.ResetPassword(c.Request().Context(), req.Token, req.NewPassword)
 	switch {

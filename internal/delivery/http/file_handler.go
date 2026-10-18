@@ -2,7 +2,9 @@ package http
 
 import (
 	"net/http"
+	"path"
 	"strconv"
+	"strings"
 
 	"acs/internal/domain"
 	"acs/internal/usecase/file"
@@ -28,17 +30,19 @@ func (r *Router) uploadFile(c *echo.Context) error {
 	var vendorID *uint64
 	if vendorIDStr != "" {
 		vid, err := strconv.ParseUint(vendorIDStr, 10, 64)
-		if err == nil {
-			vendorID = &vid
+		if err != nil || vid == 0 {
+			return echo.NewHTTPError(http.StatusBadRequest, "vendor_id tidak valid")
 		}
+		vendorID = &vid
 	}
 
 	var modelID *uint64
 	if modelIDStr != "" {
 		mid, err := strconv.ParseUint(modelIDStr, 10, 64)
-		if err == nil {
-			modelID = &mid
+		if err != nil || mid == 0 {
+			return echo.NewHTTPError(http.StatusBadRequest, "device_model_id tidak valid")
 		}
+		modelID = &mid
 	}
 
 	var verPtr *string
@@ -46,11 +50,14 @@ func (r *Router) uploadFile(c *echo.Context) error {
 		verPtr = &version
 	}
 
-	if len(fileName) > 255 {
-		return echo.NewHTTPError(http.StatusBadRequest, "file_name maksimum 255 karakter")
+	if err := checkMaxLen(lenRule{"file_name", fileName, 255}, lenRule{"version", version, 100}); err != nil {
+		return err
 	}
-	if len(version) > 100 {
-		return echo.NewHTTPError(http.StatusBadRequest, "version maksimum 100 karakter")
+	if err := validateUploadName(fileName); err != nil {
+		return err
+	}
+	if err := rejectControl("version", version); err != nil {
+		return err
 	}
 	fh, err := c.FormFile("file")
 	if err != nil {
@@ -68,10 +75,14 @@ func (r *Router) uploadFile(c *echo.Context) error {
 	defer f.Close()
 
 	if fileName == "" {
-		fileName = fh.Filename
+		// nama dari klien: ambil basename saja (buang direktori gaya Unix/Windows)
+		fileName = path.Base(strings.ReplaceAll(fh.Filename, "\\", "/"))
 	}
-	if len(fileName) > 255 {
-		return echo.NewHTTPError(http.StatusBadRequest, "file_name maksimum 255 karakter")
+	if err := checkMaxLen(lenRule{"file_name", fileName, 255}); err != nil {
+		return err
+	}
+	if err := validateUploadName(fileName); err != nil {
+		return err
 	}
 
 	in := file.UploadFileInput{

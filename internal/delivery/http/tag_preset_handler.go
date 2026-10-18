@@ -16,7 +16,7 @@ func (r *Router) createTag(c *echo.Context) error {
 	actor := ActorFrom(c)
 	var in domain.Tag
 	if err := c.Bind(&in); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+		return echo.NewHTTPError(http.StatusBadRequest, "payload tidak valid")
 	}
 	if err := checkMaxLen(
 		lenRule{"name", in.Name, maxTagName},
@@ -123,7 +123,7 @@ func (r *Router) assignDeviceTag(c *echo.Context) error {
 	}
 	var req assignDeviceTagRequest
 	if err := c.Bind(&req); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+		return echo.NewHTTPError(http.StatusBadRequest, "payload tidak valid")
 	}
 	if req.TagID == 0 {
 		return echo.NewHTTPError(http.StatusBadRequest, "tag_id wajib diisi")
@@ -162,7 +162,7 @@ func (r *Router) createPreset(c *echo.Context) error {
 	actor := ActorFrom(c)
 	var in domain.Preset
 	if err := c.Bind(&in); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+		return echo.NewHTTPError(http.StatusBadRequest, "payload tidak valid")
 	}
 	if err := checkMaxLen(
 		lenRule{"name", in.Name, maxPresetName},
@@ -215,7 +215,7 @@ func (r *Router) updatePreset(c *echo.Context) error {
 	}
 	var in domain.Preset
 	if err := c.Bind(&in); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+		return echo.NewHTTPError(http.StatusBadRequest, "payload tidak valid")
 	}
 	if err := checkMaxLen(
 		lenRule{"name", in.Name, maxPresetName},

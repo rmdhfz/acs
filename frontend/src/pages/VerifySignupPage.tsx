@@ -49,10 +49,10 @@ export function VerifySignupPage() {
       )}
       {state === 'ok' && tenant && (
         <div>
-          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
             <CheckCircle2 className="h-7 w-7" />
           </div>
-          <h1 className="mt-5 text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">Akun aktif</h1>
+          <h1 className="mt-5 text-[1.75rem] font-normal leading-tight text-center text-slate-900 dark:text-slate-100">Akun aktif</h1>
           <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400" role="status">
             Tenant <strong>{tenant.tenant_name}</strong> berhasil dibuat. Masuk dengan <strong>{tenant.email}</strong> dan password yang Anda daftarkan.
             Langkah berikutnya: <em>Administrasi → Wizard Onboarding</em> untuk mengatur kredensial CWMP dan mendaftarkan perangkat pertama.

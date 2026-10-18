@@ -5,7 +5,7 @@ import { EmptyState } from '../components/EmptyState'
 import { PageSpinner } from '../components/Spinner'
 import { ApiError } from '../lib/api'
 import { useConfirm } from '../lib/confirm'
-import { useMyDevices, useChangeMyWiFi, useRebootMyDevice } from '../lib/hooks'
+import { useMyDevices, useMyDevice, useChangeMyWiFi, useRebootMyDevice } from '../lib/hooks'
 import type { SelfServiceDevice } from '../lib/types'
 
 const inputCls =
@@ -48,6 +48,9 @@ export default function SelfServicePage() {
 
 function DeviceCard({ device }: { device: SelfServiceDevice }) {
   const [showWiFi, setShowWiFi] = useState(false)
+  const [showInfo, setShowInfo] = useState(false)
+  // Rincian terbaru dari GET /self-service/devices/:id — hanya dimuat saat dibuka.
+  const { data: fresh, isLoading: infoLoading } = useMyDevice(showInfo ? device.id : undefined)
   const rebootMut = useRebootMyDevice()
   const [rebootDone, setRebootDone] = useState(false)
   const confirm = useConfirm()
@@ -113,6 +116,31 @@ function DeviceCard({ device }: { device: SelfServiceDevice }) {
           {rebootMut.error instanceof ApiError ? rebootMut.error.message : 'Gagal mengirim perintah restart'}
         </p>
       )}
+
+      <div className="mt-3">
+        <button type="button" onClick={() => setShowInfo((v) => !v)} aria-expanded={showInfo} className="text-sm font-medium text-indigo-700 hover:underline dark:text-indigo-300">
+          {showInfo ? 'Sembunyikan rincian' : 'Lihat rincian perangkat'}
+        </button>
+        {showInfo && (
+          <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 rounded-2xl bg-slate-50 p-4 text-sm dark:bg-slate-800/50">
+            {infoLoading || !fresh ? (
+              <dd className="col-span-2 text-slate-600 dark:text-slate-400">Memuat…</dd>
+            ) : (
+              [
+                ['Model', fresh.model ?? '–'],
+                ['Status', fresh.online ? 'Online' : 'Offline'],
+                ['Serial', fresh.serial_number],
+                ['Firmware', fresh.software_version ?? '–'],
+              ].map(([k, v]) => (
+                <div key={k}>
+                  <dt className="text-xs text-slate-600 dark:text-slate-400">{k}</dt>
+                  <dd className="font-medium text-slate-900 dark:text-slate-100">{v}</dd>
+                </div>
+              ))
+            )}
+          </dl>
+        )}
+      </div>
 
       <div className="mt-4 border-t border-slate-100 pt-4 dark:border-slate-800">
         {showWiFi ? (

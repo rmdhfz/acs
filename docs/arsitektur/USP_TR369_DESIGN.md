@@ -5,7 +5,7 @@ pemilik produk atas §8 sebelum coding dimulai.
 **Dibuat:** 2026-09-02 (sesi `/goal` "lebih baik dari GenieACS?")
 
 Dokumen ini menaruh keputusan arsitektur di tangan pemilik produk — bukan
-spesifikasi final. Baca `PRD.md` §4.2 (USP = out-of-scope Fase 1, dipertimbangkan
+spesifikasi final. Baca `docs/produk/PRD.md` §4.2 (USP = out-of-scope Fase 1, dipertimbangkan
 Fase 3) dan `CLAUDE.md` ("keputusan arsitektur besar → tanyakan dulu").
 
 ---
@@ -18,7 +18,7 @@ USP di repo ini **stub, bukan implementasi**:
 |---|---|
 | `pkg/usp/record.go` | Struct **JSON** buatan sendiri (`Record`, `Msg`, `Get`, `Set`, `Notify`). **BUKAN** format wire USP sungguhan — USP pakai **Protocol Buffers** (`usp-record.proto` + `usp-msg.proto` dari Broadband Forum). Tidak ada agen USP nyata yang bisa bicara dengan struct ini. |
 | `internal/delivery/usp/ws_handler.go` | WebSocket handler di `/usp`, subprotokol `v1.usp` benar. Tapi `endpointID` fallback ke `RemoteAddr`, `CheckOrigin` selalu true, dan pesan masuk cuma di-`json.Unmarshal`. |
-| `internal/usecase/usp_session/service.go` | `HandleMessage` = `// TODO: Route USP Message` + `slog.Info`. **Tidak melakukan apa-apa.** `conns map[string]Connection` **in-memory** — tidak multi-instance-safe (app server didesain stateless, TECH.md §9). |
+| `internal/usecase/usp_session/service.go` | `HandleMessage` = `// TODO: Route USP Message` + `slog.Info`. **Tidak melakukan apa-apa.** `conns map[string]Connection` **in-memory** — tidak multi-instance-safe (app server didesain stateless, docs/arsitektur/TECH.md §9). |
 
 **Kesimpulan:** klaim "USP didukung" tidak benar. Untuk jujur, ROADMAP/scorecard
 harus bilang "USP belum diimplementasikan".
@@ -64,7 +64,7 @@ kebalikan — dan itu mengubah bagian tersulit sistem kita (§5).
 
 - **Protobuf USP** — vendor `usp-record.proto` + `usp-msg.proto` (BBF, lisensi
   BSD-3), generate Go via `protoc`/`buf` **di build-time** (bukan runtime).
-  Tambah ke CI. Ini dependency baru — perlu persetujuan (TECH.md §12: "riset
+  Tambah ke CI. Ini dependency baru — perlu persetujuan (docs/arsitektur/TECH.md §12: "riset
   lisensi & kematangan sebelum dipakai produksi").
 - **MTP layer** (`internal/delivery/usp/`) — decode Record → verifikasi →
   decode Message → route. Encode balik untuk response/request.
@@ -79,7 +79,7 @@ kebalikan — dan itu mengubah bagian tersulit sistem kita (§5).
 
 | MTP | Plus | Minus | Rekomendasi |
 |---|---|---|---|
-| **WebSocket** | Agent-initiated (lewat NAT/CGNAT tanpa STUN — masalah `PRD.md` §12 hilang untuk USP!). Tanpa broker. Mirip pola yang sudah kita pakai (`internal/delivery/ws` untuk frontend). TLS = wss. | Koneksi pinned ke 1 instance acsd → butuh routing (§5). Agent harus reachable... tidak, agent yang connect keluar. | **v1: WebSocket saja.** |
+| **WebSocket** | Agent-initiated (lewat NAT/CGNAT tanpa STUN — masalah `docs/produk/PRD.md` §12 hilang untuk USP!). Tanpa broker. Mirip pola yang sudah kita pakai (`internal/delivery/ws` untuk frontend). TLS = wss. | Koneksi pinned ke 1 instance acsd → butuh routing (§5). Agent harus reachable... tidak, agent yang connect keluar. | **v1: WebSocket saja.** |
 | **MQTT 5.0** | Broker menangani fan-out & routing lintas-instance secara alami (acsd subscribe ke topik). Skala besar lebih mudah. Banyak agent CPE dukung MQTT. | **Dependency infra baru** (broker MQTT HA — Mosquitto/EMQX/HiveMQ). Auth & topic ACL per-tenant perlu desain. | v2 — kalau skala/vendor menuntut. |
 | **STOMP** | — | Jarang dipakai vendor CPE. | Lewati. |
 | **CoAP** | Ringan (IoT). | Bukan use-case ONT/router FTTH kita. | Lewati. |

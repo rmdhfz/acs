@@ -29,9 +29,11 @@ import (
 	"acs/internal/delivery/ws"
 	"acs/internal/domain"
 	"acs/internal/metrics"
+	"acs/internal/payment/xendit"
 	"acs/internal/repository/mysql"
 	"acs/internal/repository/redisrepo"
 	"acs/internal/usecase/auth"
+	"acs/internal/usecase/billing"
 	"acs/internal/usecase/catalog"
 	"acs/internal/usecase/device"
 	"acs/internal/usecase/diagnostics"
@@ -241,6 +243,33 @@ func main() {
 	deviceSvc.WithNotifier(notifSvc)
 	firmwareSvc.WithNotifier(notifSvc)
 
+	// ---- Langganan SaaS lewat Xendit (migrations/0032). Bawaan MATI (ACS_BILLING_ENABLED=false): klien gateway tidak
+	// dibuat, endpoint mutasi menjawab 409 dan webhook 404. Kunci rahasia/token hanya dipegang klien & usecase —
+	// tidak pernah dicatat di log. ----
+	var paymentGW domain.PaymentGateway
+	billingCfg := billing.Config{
+		Enabled: cfg.BillingEnabled, CallbackToken: cfg.XenditCallbackToken,
+		Invoice: time.Duration(cfg.BillingInvoiceHours) * time.Hour, PublicURL: cfg.PublicURL,
+	}
+	if cfg.BillingEnabled {
+		xc, err := xendit.New(cfg.XenditSecretKey, cfg.XenditBaseURL)
+		if err != nil {
+			log.Fatalf("xendit: %v", err)
+		}
+		paymentGW = xc
+		// Base URL non-bawaan (mis. sandbox/mock operator) ikut dipercaya sebagai host payment_url.
+		if cfg.XenditBaseURL != xendit.DefaultBaseURL {
+			if u, perr := url.Parse(cfg.XenditBaseURL); perr == nil && u.Hostname() != "" {
+				billingCfg.AllowedPaymentHosts = []string{u.Hostname()}
+			}
+		}
+		logger.Info("billing: pembayaran Xendit aktif", "base_url", cfg.XenditBaseURL, "invoice_hours", cfg.BillingInvoiceHours)
+	}
+	billingSvc := billing.NewService(mysql.NewBillingRepository(db), tenantRepo, userRepo, paymentGW, activityLogRepo, billingCfg, logger).WithNotifier(notifSvc)
+	if cfg.SMTPHost != "" {
+		billingSvc.WithEmail(mailNotifier, mailBuilder)
+	}
+
 	// ---- Observability: metrics Prometheus (TECH.md §10, ROADMAP.md Fase 2) ----
 	// Registry terpisah (bukan prometheus.DefaultRegisterer) supaya /metrics
 	// HANYA mengekspos metrik agregat ACS di atas — tidak ikut membocorkan
@@ -309,6 +338,7 @@ func main() {
 		Tags:           tagSvc, Presets: presetSvc,
 		SelfService:   selfServiceSvc,
 		Notifications: notifSvc,
+		Billing:       billingSvc,
 		WSHub:         wsHub,
 
 		WSAllowedOrigins: cfg.CORSAllowOrigins,
@@ -373,7 +403,7 @@ func main() {
 	}()
 
 	stop := make(chan struct{})
-	go runSweepers(deviceSvc, taskSvc, firmwareSvc, webhookSvc, sessionSvc, diagnosticsSvc, mysql.NewRetentionRepository(db), cfg.LogRetentionDays, signupSvc.Purge, notifSvc.Evaluate, lockSweeper, stop)
+	go runSweepers(deviceSvc, taskSvc, firmwareSvc, webhookSvc, sessionSvc, diagnosticsSvc, mysql.NewRetentionRepository(db), cfg.LogRetentionDays, signupSvc.Purge, notifSvc.Evaluate, billingSvc.Evaluate, lockSweeper, stop)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
@@ -464,7 +494,7 @@ func redactingRequestLogger(logger *slog.Logger) echo.MiddlewareFunc {
 // karena app server stateless (TECH.md §9). Dispatch webhook pakai ticker
 // terpisah yang lebih cepat (15 dtk) supaya event fault/value-change sampai
 // ke sistem pihak ketiga dengan latensi rendah.
-func runSweepers(deviceSvc *device.Service, taskSvc *task.Service, firmwareSvc *firmware.Service, webhookSvc *webhook.Service, sessionSvc *session.Service, diagSvc *diagnostics.Service, retention domain.RetentionRepository, retentionDays int, signupPurge func(context.Context) (int64, error), notifyEval func(context.Context) (int, error), lock func(name string, ttl time.Duration) (func(), bool), stop <-chan struct{}) {
+func runSweepers(deviceSvc *device.Service, taskSvc *task.Service, firmwareSvc *firmware.Service, webhookSvc *webhook.Service, sessionSvc *session.Service, diagSvc *diagnostics.Service, retention domain.RetentionRepository, retentionDays int, signupPurge func(context.Context) (int64, error), notifyEval func(context.Context) (int, error), billingEval func(context.Context) (int, error), lock func(name string, ttl time.Duration) (func(), bool), stop <-chan struct{}) {
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
 	// Pemangkasan log: tiap 6 jam (data menahun dihapus bertahap per batch).
@@ -475,10 +505,24 @@ func runSweepers(deviceSvc *device.Service, taskSvc *task.Service, firmwareSvc *
 	// Evaluator notifikasi (lonjakan perangkat offline, task gagal beruntun): tiap 5 menit, satu instance per tick.
 	notifyTicker := time.NewTicker(5 * time.Minute)
 	defer notifyTicker.Stop()
+	// Evaluator langganan (invoice kedaluwarsa, pengingat masa berlaku): tiap jam. Tidak memutus layanan otomatis.
+	billingTicker := time.NewTicker(1 * time.Hour)
+	defer billingTicker.Stop()
 	for {
 		select {
 		case <-stop:
 			return
+		case <-billingTicker.C:
+			release, ok := lock("billing", 50*time.Minute)
+			if !ok {
+				continue // instance lain yang mengevaluasi tick ini
+			}
+			if n, err := billingEval(context.Background()); err != nil {
+				log.Printf("sweeper: evaluasi langganan gagal: %v", err)
+			} else if n > 0 {
+				log.Printf("sweeper: %d tindakan langganan diproses evaluator", n)
+			}
+			release()
 		case <-notifyTicker.C:
 			release, ok := lock("notify", 4*time.Minute)
 			if !ok {

@@ -21,10 +21,11 @@ func NewService(tags domain.TagRepository, activity domain.ActivityLogRepository
 }
 
 func (s *Service) Create(ctx context.Context, actor domain.Actor, in domain.Tag) (*domain.Tag, error) {
-	in.Name = strings.TrimSpace(in.Name)
-	if in.Name == "" {
-		return nil, fmt.Errorf("%w: nama tag wajib diisi", domain.ErrInvalidInput)
+	name, err := domain.CleanText("nama tag", in.Name, 1, 255, false)
+	if err != nil {
+		return nil, err
 	}
+	in.Name = name
 	if in.Color != nil && strings.TrimSpace(*in.Color) == "" {
 		in.Color = nil
 	}
@@ -80,15 +81,19 @@ func (s *Service) Update(ctx context.Context, actor domain.Actor, id uint64, in 
 		return nil, err
 	}
 	if in.Name != nil {
-		if *in.Name == "" {
-			return nil, fmt.Errorf("%w: nama tag tidak boleh kosong", domain.ErrInvalidInput)
+		name, verr := domain.CleanText("nama tag", *in.Name, 1, 255, false)
+		if verr != nil {
+			return nil, verr
 		}
-		tag.Name = *in.Name
+		tag.Name = name
 	}
 	if in.Color != nil {
-		if *in.Color == "" {
+		if strings.TrimSpace(*in.Color) == "" {
 			tag.Color = nil
 		} else {
+			if !tagColorFormat.MatchString(*in.Color) {
+				return nil, fmt.Errorf("%w: color harus heksadesimal (#RGB atau #RRGGBB)", domain.ErrInvalidInput)
+			}
 			tag.Color = in.Color
 		}
 	}

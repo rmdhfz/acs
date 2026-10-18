@@ -1,7 +1,7 @@
 import { useI18n } from '../lib/i18n'
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Building2, Gauge, KeyRound, Link2, LogIn, Palette, Plus, Shield, ShieldOff, Trash2, Upload, Users as UsersIcon, Wand2 } from 'lucide-react'
+import { Building2, CreditCard, Gauge, KeyRound, Link2, LogIn, Palette, Plus, Shield, ShieldOff, Trash2, Upload, Users as UsersIcon, Wand2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { EmptyState } from '../components/EmptyState'
 import { StatusBadge } from '../components/StatusBadge'
@@ -15,7 +15,7 @@ import { loadTenantExportRows, tenantAdapter, tenantExportColumns } from '../imp
 import { PageSpinner } from '../components/Spinner'
 import { RowMenu } from '../components/RowMenu'
 import { useAuth } from '../lib/auth'
-import { ApiError } from '../lib/api'
+import { api, ApiError } from '../lib/api'
 import { useToast } from '../lib/toast'
 import { useConfirm } from '../lib/confirm'
 import {
@@ -49,7 +49,7 @@ import {
 import { formatDateTime } from '../lib/format'
 import { LIMITS } from '../lib/limits'
 import { DetailButton, DetailModal, EditButton } from '../components/RecordActions'
-import type { ApiToken, Tenant, User } from '../lib/types'
+import type { ApiToken, ListResponse, Tenant, User } from '../lib/types'
 
 const inputCls =
   'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
@@ -418,11 +418,11 @@ function CreateUserModal({
         )}
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Username</label>
-          <input required maxLength={LIMITS.user.username} value={username} onChange={(e) => setUsername(e.target.value)} placeholder="mis. admin.jkt" className={inputCls} />
+          <input required minLength={3} maxLength={LIMITS.user.username} pattern="[A-Za-z0-9][A-Za-z0-9._@+\-]{2,63}" title="3-64 karakter: huruf, angka, titik, garis bawah, strip, @, +" autoComplete="off" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="mis. admin.jkt" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama Lengkap</label>
-          <input value={fullName} onChange={(e) => setFullName(e.target.value)} maxLength={LIMITS.user.fullName} placeholder="mis. Budi Santoso" className={inputCls} />
+          <input required minLength={2} value={fullName} onChange={(e) => setFullName(e.target.value)} maxLength={LIMITS.user.fullName} placeholder="mis. Budi Santoso" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Email</label>
@@ -480,7 +480,7 @@ function EditUserModal({ user, isSelf, onClose }: { user: User; isSelf: boolean;
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama Lengkap</label>
-          <input value={fullName} onChange={(e) => setFullName(e.target.value)} maxLength={LIMITS.user.fullName} placeholder="mis. Budi Santoso" className={inputCls} />
+          <input required minLength={2} value={fullName} onChange={(e) => setFullName(e.target.value)} maxLength={LIMITS.user.fullName} placeholder="mis. Budi Santoso" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Email</label>
@@ -767,7 +767,7 @@ function IssueApiTokenModal({ onClose }: { onClose: () => void }) {
 
 function TenantsTab() {
   const navigate = useNavigate()
-  const { user: currentUser } = useAuth()
+  const { user: currentUser, impersonate } = useAuth()
   const queryClient = useQueryClient()
   const [showImport, setShowImport] = useState(false)
   const { data, isLoading } = useTenants()
@@ -781,6 +781,29 @@ function TenantsTab() {
   const deleteTenantMutation = useDeleteTenant()
   const toast = useToast()
   const confirm = useConfirm()
+
+  // Pintasan dukungan: masuk sebagai ADMIN aktif tenant ini (sesi 30 menit, teraudit). Hanya SUPERADMIN asli, bukan sesi impersonate.
+  const canImpersonate = !!currentUser?.roles.includes('SUPERADMIN') && !currentUser.impersonator_id
+  async function handleImpersonateTenant(t: Tenant) {
+    try {
+      const res = await api.get<ListResponse<User>>(`/users?tenant_id=${t.id}&page_size=200`)
+      const admin = (res.data ?? []).find((u) => u.is_active && u.roles.includes('ADMIN'))
+      if (!admin) {
+        toast.error(`Tenant ${t.code} belum punya pengguna ADMIN yang aktif.`)
+        return
+      }
+      const ok = await confirm({
+        title: 'Masuk sebagai admin tenant',
+        message: <>Anda akan bertindak sebagai <strong>{admin.username}</strong> (ADMIN) di tenant <strong>{t.name}</strong>. Semua aksi tercatat atas nama Anda di audit trail dan sesi berakhir otomatis dalam 30 menit. Ganti password, MFA, dan token API diblokir selama mode ini.</>,
+        confirmLabel: 'Masuk sebagai',
+      })
+      if (!ok) return
+      await impersonate(admin.id)
+      navigate('/dashboard', { replace: true })
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Gagal memulai impersonate')
+    }
+  }
 
   async function handleDeleteTenant(t: Tenant) {
     const ok = await confirm({
@@ -877,6 +900,8 @@ function TenantsTab() {
                       <RowMenu
                         label={`Aksi lainnya untuk tenant ${t.code}`}
                         items={[
+                          { label: 'Masuk sebagai admin tenant', icon: LogIn, tone: 'brand', onClick: () => void handleImpersonateTenant(t), hidden: !canImpersonate || !t.is_active, title: 'Dukungan: bertindak sebagai ADMIN tenant ini (teraudit, 30 menit)' },
+                          { label: 'Langganan & tagihan', icon: CreditCard, onClick: () => navigate(`/billing?tenant_id=${t.id}`), hidden: !currentUser?.roles.includes('SUPERADMIN'), title: 'Paket, masa aktif, dan invoice tenant ini' },
                           { label: 'Kuota & paket', icon: Gauge, onClick: () => setQuotaTarget(t), title: 'Batas perangkat dan kuota task tenant (superadmin)' },
                           { label: 'Kredensial CWMP', icon: KeyRound, onClick: () => setRotateTarget(t), title: 'Set/rotate shared secret Inform CWMP' },
                           { label: 'Branding', icon: Palette, onClick: () => setBrandingTarget(t), title: 'Edit branding (nama, logo, warna aksen)' },
@@ -974,7 +999,7 @@ function EditTenantModal({ tenant, onClose }: { tenant: Tenant; onClose: () => v
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Code</label>
-          <input required maxLength={LIMITS.tenant.code} value={code} onChange={(e) => setCode(e.target.value)} placeholder="mis. ISP-JKT" className={inputCls} />
+          <input required minLength={2} maxLength={LIMITS.tenant.code} pattern="[A-Za-z0-9][A-Za-z0-9._\-]{1,31}" title="2-32 karakter: huruf, angka, titik, garis bawah, strip; tanpa spasi" autoComplete="off" value={code} onChange={(e) => setCode(e.target.value)} placeholder="mis. ISP-JKT" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama</label>

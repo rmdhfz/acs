@@ -5,6 +5,7 @@ import {
   Bell,
   EyeOff,
   Building2,
+  CreditCard,
   Cable,
   FileSliders,
   FolderArchive,
@@ -52,6 +53,7 @@ const NAV_ITEMS: { to: string; key: string; icon: typeof LayoutGrid; requireRole
   { to: '/audit', key: 'nav.auditTrail', icon: ScrollText, requireRole: 'ADMIN' },
   { to: '/catalog', key: 'nav.catalog', icon: Cable, requireRole: 'SUPERADMIN' },
   { to: '/reports', key: 'nav.reports', icon: BarChart3, requireRole: 'SUPERADMIN' },
+  { to: '/billing', key: 'nav.billing', icon: CreditCard, requireRole: 'ADMIN' },
   { to: '/administration', key: 'nav.administration', icon: Building2, requireRole: 'ADMIN' },
 ]
 

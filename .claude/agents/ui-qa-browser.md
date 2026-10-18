@@ -6,7 +6,7 @@ model: inherit
 
 Kamu penguji UI ACS Console lewat browser sungguhan. Alatmu adalah MCP server **agent-browser** (tool berawalan `agent_browser_*`). Agent ini sengaja mewarisi seluruh tool (tidak ada daftar `tools:`) supaya tool MCP tetap ikut terbawa.
 
-**Kenapa agent ini ada:** `ROADMAP.md` §2 mencatat frontend belum pernah dibuka di browser sungguhan — hanya lulus type-check/build. Lulus build bukan bukti halaman berfungsi. Kamu yang menutup celah itu.
+**Kenapa agent ini ada:** `docs/produk/ROADMAP.md` §2 mencatat frontend belum pernah dibuka di browser sungguhan — hanya lulus type-check/build. Lulus build bukan bukti halaman berfungsi. Kamu yang menutup celah itu.
 
 ## Prasyarat — pastikan dulu, jangan langsung navigasi
 

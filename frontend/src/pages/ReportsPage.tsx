@@ -7,7 +7,7 @@ import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, X
 import { StatCard } from '../components/StatCard'
 import { PageSpinner } from '../components/Spinner'
 import { EmptyState } from '../components/EmptyState'
-import { API_BASE, ApiError, getAuthToken } from '../lib/api'
+import { api, ApiError } from '../lib/api'
 import { useSaaSReport } from '../lib/hooks'
 import { useTheme } from '../lib/theme'
 import { useToast } from '../lib/toast'
@@ -62,9 +62,7 @@ function ReportsContent() {
 
   async function downloadCsv() {
     try {
-      const res = await fetch(`${API_BASE}/reports/saas/tenants.csv`, { headers: { Authorization: `Bearer ${getAuthToken() ?? ''}` } })
-      if (!res.ok) throw new ApiError(res.status, 'Gagal mengunduh laporan')
-      const blob = await res.blob()
+      const blob = await api.blob('/reports/saas/tenants.csv')
       const a = document.createElement('a')
       a.href = URL.createObjectURL(blob)
       a.download = `laporan-saas-tenant-${new Date().toISOString().slice(0, 10)}.csv`

@@ -1,6 +1,6 @@
-# LOGIN.md — Cara Masuk ke ACS
+# Cara Masuk ke ACS
 
-Panduan login untuk Tim Operations dan developer. Ringkasan ada di `LOGIN_INSTRUCTION.md`; versi bergambar di `PANDUAN_LOGIN_ACS.pdf`.
+Panduan login untuk Tim Operations dan developer (satu-satunya panduan login; versi lama `LOGIN_INSTRUCTION.md` dan `PANDUAN_LOGIN_ACS` sudah digabung/diarsipkan — lihat `docs/arsip/`). Penjelasan peran dan MFA yang lebih bergambar ada di `docs/panduan/BUKU_PANDUAN_ACS.html` bab 4.
 
 > **Tidak ada akun bawaan (default account).** Akun pertama dibuat lewat `seed-admin` (§2). Jangan menulis password di file ini, di commit, atau di chat tim.
 
@@ -29,6 +29,12 @@ docker compose exec acsd /app/seed-admin -username <USERNAME> -password <PASSWOR
 
 Halaman login meminta **email** dan password (email tak peka huruf besar/kecil). Tambahan UX: tampilkan/sembunyikan password, peringatan Caps Lock, opsi "Ingat email di perangkat ini" (hanya email yang disimpan, tidak pernah password).
 Untuk skrip lama, API masih menerima field `username` sebagai pengganti `email`.
+
+### 3b. Masuk dengan Google / SSO
+Bila admin mengisi `ACS_OIDC_*` (panduan: `docs/operasional/RUNBOOK.md` §R), halaman login menampilkan tombol **Masuk dengan Google** (atau **Masuk dengan SSO** untuk IdP lain). Syarat: email akun Google sama dengan email akun ACS dan terverifikasi di Google; akun tidak dibuat otomatis (admin mendaftarkannya dulu). Login pertama mengikat akun ke ID Google; mengubah email akun mengosongkan ikatan itu. Login SSO tidak meminta kode MFA lokal.
+
+### 3c. Verifikasi dua langkah (MFA TOTP) & pendaftaran mandiri
+Pengguna mengaktifkan MFA sendiri di Profil → Keamanan; login berikutnya meminta kode 6 digit setelah password (kode pemulihan tersedia). Halaman **Daftar** (`/signup`) membuat tenant baru lewat email verifikasi; **bawaan nonaktif** (`ACS_SELF_SIGNUP=true` + SMTP) — lihat RUNBOOK §N.
 
 ## 4. Lupa password (lewat email)
 
@@ -68,7 +74,7 @@ Item global (`tenant_id` kosong) hanya bisa diubah/dihapus SUPERADMIN; ADMIN ten
 
 - **Lockout:** 5 kali password salah → akun terkunci 15 menit (pemilik menerima email). Pesan error disamarkan seragam: "email atau password salah".
 - **Pencabutan sesi:** JWT yang terbit sebelum password diganti (reset email, ganti sendiri, reset admin) ditolak; akun yang dinonaktifkan/dihapus juga langsung kehilangan akses. Ganti password dari Profil menerbitkan token baru, jadi Anda tidak terlempar.
-- **SSO (OIDC):** bila dikonfigurasi, tombol SSO aktif. Akun SSO tidak punya password lokal.
+- **SSO (OIDC/Google):** bila dikonfigurasi, tombol SSO/Google aktif (lihat §3b). Pengguna SSO tetap boleh punya password lokal; batasi domain dengan `ACS_OIDC_ALLOWED_DOMAINS`.
 - **API token:** untuk integrasi/BSS, buat di Administrasi; punya umur (TTL) dan scope tenant. Kirim sebagai `Authorization: Bearer <token>`.
 - Endpoint mutasi wajib terautentikasi, kecuali yang setara login (`/auth/login`, `/auth/forgot-password`, `/auth/reset-password`) yang dijaga rate limit, token sekali pakai, dan respons seragam.
 

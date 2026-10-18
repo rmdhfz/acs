@@ -89,4 +89,16 @@ export const api = {
   patch: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'PATCH', body: body !== undefined ? JSON.stringify(body) : undefined }),
   del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
+  // Unduh berkas (CSV dsb.) sebagai Blob, tetap lewat penanganan 401/galat yang sama.
+  blob: async (path: string): Promise<Blob> => {
+    const headers = new Headers()
+    if (authToken) headers.set('Authorization', `Bearer ${authToken}`)
+    const res = await fetch(`${API_BASE}${path}`, { headers })
+    if (res.status === 401) {
+      onUnauthorized?.()
+      throw new ApiError(401, 'Sesi berakhir, silakan login kembali')
+    }
+    if (!res.ok) throw new ApiError(res.status, res.statusText || 'Gagal mengunduh')
+    return res.blob()
+  },
 }

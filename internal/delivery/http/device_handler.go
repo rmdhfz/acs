@@ -1,12 +1,14 @@
 package http
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/labstack/echo/v5"
 
 	"acs/internal/domain"
 	"acs/internal/usecase/device"
+	"acs/internal/usecase/task"
 )
 
 func (r *Router) listDevices(c *echo.Context) error {
@@ -349,6 +351,9 @@ func (r *Router) getParameterValuesDevice(c *echo.Context) error {
 	if len(req.Names) == 0 {
 		return echo.NewHTTPError(http.StatusBadRequest, "names wajib diisi minimal 1")
 	}
+	if len(req.Names) > task.MaxParameterNames {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("names maksimal %d per permintaan", task.MaxParameterNames))
+	}
 	if err := r.Devices.GetParameterValues(c.Request().Context(), actor, id, req.Names); err != nil {
 		return handleErr(c, err)
 	}
@@ -373,6 +378,9 @@ func (r *Router) setParameterValuesDevice(c *echo.Context) error {
 	}
 	if len(req.Values) == 0 {
 		return echo.NewHTTPError(http.StatusBadRequest, "values wajib diisi minimal 1")
+	}
+	if len(req.Values) > task.MaxSetValues {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("values maksimal %d per permintaan", task.MaxSetValues))
 	}
 	if err := r.Devices.SetParameterValues(c.Request().Context(), actor, id, req.Values); err != nil {
 		return handleErr(c, err)

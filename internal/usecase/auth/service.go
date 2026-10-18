@@ -381,8 +381,8 @@ func (s *Service) ChangeOwnPassword(ctx context.Context, actor domain.Actor, cur
 	if verr != nil || !ok {
 		return "", ErrInvalidCredentials
 	}
-	if len(newPassword) < domain.MinUserPasswordLen {
-		return "", fmt.Errorf("%w: password minimal %d karakter", domain.ErrInvalidInput, domain.MinUserPasswordLen)
+	if err := domain.ValidatePassword(newPassword); err != nil {
+		return "", err
 	}
 	hash, err := HashPassword(newPassword)
 	if err != nil {

@@ -130,6 +130,8 @@ tags:
     description: Portal pelanggan (role `ENDUSER`) — hanya device yang dipetakan ke akun lewat `user_devices` (migrations/0020).
   - name: Notifications
     description: Notifikasi persisten (in-app + email) untuk staf Console — daftar, tandai baca, preferensi kanal, dan pengumuman SUPERADMIN (migrations/0030).
+  - name: Billing
+    description: Langganan SaaS lewat Xendit (Invoice API) — paket, status langganan, checkout, invoice, sinkronisasi, dan callback publik (migrations/0032). Bawaan MATI (`ACS_BILLING_ENABLED`).
   - name: Metrics
     description: Endpoint observability format Prometheus (bukan JSON), tanpa autentikasi.
 
@@ -5793,6 +5795,432 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  # ============================== BILLING (langganan SaaS — Xendit) ==============================
+  /billing/plans:
+    get:
+      operationId: listBillingPlans
+      tags: [Billing]
+      summary: Daftar paket langganan
+      description: |
+        Semua staf (SUPERADMIN/ADMIN/NOC/VIEWER) boleh membaca; `ENDUSER` → `403`. Non-SUPERADMIN hanya melihat paket **aktif**;
+        SUPERADMIN melihat semua (termasuk nonaktif). Urut `sort_order`. Harga selalu bilangan bulat rupiah; `max_devices: null`
+        = perangkat tak dibatasi.
+
+        **Seed contoh** (`STARTER`, `BUSINESS`, `ENTERPRISE`) hanyalah placeholder yang HARUS disesuaikan pemilik produk
+        sebelum billing diaktifkan di produksi.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Daftar paket.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/BillingPlan' }
+                required: [data]
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role `ENDUSER`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    post:
+      operationId: createBillingPlan
+      tags: [Billing]
+      summary: Buat paket langganan (SUPERADMIN)
+      description: |
+        SUPERADMIN saja. Validasi ketat: `code` dinormalisasi ke huruf besar lalu harus `^[A-Z][A-Z0-9_]{1,31}$`; `name` 2–64
+        karakter; `description` ≤ 255; `price_idr` bilangan bulat 0–1.000.000.000; `max_devices` kosong/`null` (tak dibatasi) atau
+        1–10.000.000; `period_days` 1–366 (bawaan 30). Karakter kontrol ditolak; field tak dikenal ditolak; body maks 16 KiB.
+        Tercatat di audit trail (`BILLING_PLAN_CREATED`).
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateBillingPlanRequest' }
+      responses:
+        '201':
+          description: Paket dibuat.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BillingPlan' }
+        '400':
+          description: Validasi gagal (kode, nama, harga pecahan/negatif, rentang, karakter kontrol, field tak dikenal).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Bukan SUPERADMIN.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: Kode paket sudah ada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '413':
+          description: Body melebihi 16 KiB.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /billing/plans/{code}:
+    patch:
+      operationId: updateBillingPlan
+      tags: [Billing]
+      summary: Ubah paket langganan (SUPERADMIN)
+      description: |
+        SUPERADMIN saja. Semua field opsional; `max_devices: null` = tak dibatasi, field tidak dikirim = tak berubah. Kode paket
+        tidak dapat diubah. **Perubahan hanya berlaku untuk invoice BARU** — nominal dan periode invoice yang sudah dibuat
+        tersalin di invoice dan tidak berubah; tenant yang sudah berlangganan tidak ikut diubah batasnya sampai pembayaran
+        berikutnya. Tercatat di audit trail (`BILLING_PLAN_UPDATED`).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: code
+          in: path
+          required: true
+          description: Kode paket (tidak peka huruf besar/kecil).
+          schema: { type: string, minLength: 2, maxLength: 64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateBillingPlanRequest' }
+      responses:
+        '200':
+          description: Paket setelah diubah.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BillingPlan' }
+        '400':
+          description: Validasi gagal.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Bukan SUPERADMIN.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Paket tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /billing/subscription:
+    get:
+      operationId: getBillingSubscription
+      tags: [Billing]
+      summary: Status langganan tenant
+      description: |
+        Semua staf boleh membaca (NOC/VIEWER juga). Tenant = tenant actor; SUPERADMIN **wajib** `tenant_id`; ADMIN/NOC/VIEWER
+        dengan `tenant_id` tenant lain → `403`. `enabled=false` bila pembayaran dimatikan (`ACS_BILLING_ENABLED`).
+        `status`: `NONE` (belum pernah berlangganan), `ACTIVE`, `EXPIRED`. `days_left` dibulatkan ke atas (0 bila `EXPIRED`,
+        `null` bila `NONE`). `pending_invoice` (memuat `payment_url`) hanya untuk ADMIN/SUPERADMIN; peran lain selalu `null`.
+
+        **Tidak ada pemutusan layanan otomatis** saat langganan berakhir — hanya status `EXPIRED` dan notifikasi; kebijakannya
+        keputusan pemilik produk.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: tenant_id
+          in: query
+          description: ID tenant (wajib untuk SUPERADMIN; angka desimal positif, selain itu `400`).
+          schema: { type: integer, format: int64, minimum: 1 }
+      responses:
+        '200':
+          description: Status langganan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BillingSubscription' }
+        '400':
+          description: "`tenant_id` tidak valid, atau SUPERADMIN tanpa `tenant_id`."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role `ENDUSER` atau `tenant_id` milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Tenant tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /billing/checkout:
+    post:
+      operationId: billingCheckout
+      tags: [Billing]
+      summary: Buat invoice pembayaran (checkout)
+      description: |
+        ADMIN tenant sendiri atau SUPERADMIN (wajib `tenant_id`). Sesi impersonate sebagai ADMIN juga boleh (membuat invoice
+        bukan aksi sensitif; audit memuat `impersonated_by`). **Nominal HANYA dari DB** (harga paket aktif) — klien hanya
+        mengirim `plan_code`; field `amount`/`price_idr` pada body ditolak `400`.
+
+        Idempoten: bila sudah ada invoice `PENDING` yang belum kedaluwarsa untuk paket yang sama, invoice itu dikembalikan
+        (tidak membuat ganda). Maks **5** invoice `PENDING` per tenant. `payment_url` divalidasi (https + host `xendit.co`)
+        sebelum disimpan/dikirim. Bila gateway gagal, invoice ditandai `FAILED` dan klien menerima `502` umum (tanpa detail
+        gateway). Bawaan fitur MATI → `409`.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BillingCheckoutRequest' }
+      responses:
+        '201':
+          description: Invoice (baru atau yang masih berlaku) beserta URL bayar.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BillingCheckoutResponse' }
+        '400':
+          description: Body/`plan_code` tidak valid, paket tidak ada/nonaktif/gratis, field tak dikenal, atau SUPERADMIN tanpa `tenant_id`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Bukan ADMIN/SUPERADMIN, atau `tenant_id` milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Tenant tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: Pembayaran belum diaktifkan di server, atau tenant tidak aktif.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '413':
+          description: Body melebihi 16 KiB.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Sudah ada 5 invoice `PENDING`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '502':
+          description: Gateway pembayaran tidak tersedia/ditolak (pesan umum; invoice ditandai `FAILED`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /billing/invoices:
+    get:
+      operationId: listBillingInvoices
+      tags: [Billing]
+      summary: Daftar invoice langganan
+      description: |
+        ADMIN (tenant sendiri) dan SUPERADMIN (semua tenant bila `tenant_id` kosong). NOC/VIEWER/ENDUSER → `403`. Terbaru dulu.
+        `payment_url` hanya terisi untuk invoice `PENDING` yang belum kedaluwarsa. Id invoice = `invoice_uuid`; id numerik
+        dan id gateway tidak pernah diekspos.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: tenant_id
+          in: query
+          description: Hanya efektif untuk SUPERADMIN; ADMIN dengan tenant lain → `403`. Angka desimal positif, selain itu `400`.
+          schema: { type: integer, format: int64, minimum: 1 }
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: Halaman invoice.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/BillingInvoice' }
+                  meta:
+                    type: object
+                    properties:
+                      total: { type: integer }
+                      page: { type: integer }
+                      limit: { type: integer }
+                    required: [total, page, limit]
+                required: [data, meta]
+        '400':
+          description: "`tenant_id` tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Bukan ADMIN/SUPERADMIN, atau `tenant_id` milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /billing/invoices/{uuid}/sync:
+    post:
+      operationId: syncBillingInvoice
+      tags: [Billing]
+      summary: Periksa status invoice ke gateway ("Periksa status")
+      description: |
+        ADMIN tenant pemilik atau SUPERADMIN. Mengambil status terbaru dari gateway lalu menerapkannya lewat jalur yang sama dengan
+        callback (termasuk perpanjangan langganan bila ternyata sudah lunas) — untuk kasus callback terlambat. Maks 1 panggilan
+        per invoice per 10 detik. Invoice milik tenant lain → `404` (keberadaannya tidak dibocorkan).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          description: Id invoice (UUID kanonik).
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Invoice setelah sinkronisasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BillingInvoice' }
+        '400':
+          description: Id bukan UUID kanonik.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Bukan ADMIN/SUPERADMIN.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Invoice tidak ditemukan atau milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: Pembayaran belum diaktifkan di server.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Disinkronkan kurang dari 10 detik yang lalu.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '502':
+          description: Gateway pembayaran tidak tersedia (pesan umum).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /billing/xendit/webhook:
+    post:
+      operationId: xenditWebhook
+      tags: [Billing]
+      summary: Callback invoice Xendit (publik, server-ke-server)
+      description: |
+        **PUBLIK (tanpa Bearer)** — dipanggil oleh Xendit, bukan oleh klien API. Keamanan: header **`X-CALLBACK-TOKEN`** harus sama
+        dengan `ACS_XENDIT_CALLBACK_TOKEN` (dibandingkan waktu-konstan; salah → `401` tanpa efek). Isi payload **tidak
+        dipercaya**: setelah token cocok, server mengambil ulang status dan nominal invoice dari gateway
+        (`GET /v2/invoices/{id}`) dan hanya melunasi bila `external_id` dan `amount` cocok dengan invoice kita. `PAID` dan
+        `SETTLED` dianggap lunas; `EXPIRED` menandai invoice kedaluwarsa.
+
+        Idempoten: callback ganda/paralel hanya memperpanjang langganan **sekali** (`billing_webhook_events` + transisi status
+        atomik). Perpanjangan: `plan_expires_at = max(sekarang, masa berlaku saat ini) + period_days`; `tenants.max_devices`
+        mengikuti paket. Invoice tak dikenal → `200` tanpa efek (keberadaan tidak dibocorkan). Respons sukses selalu seragam;
+        galat sistem/gateway menghasilkan `5xx` agar Xendit mengulang.
+
+        Pembatasan: body maks 64 KiB; laju 20 permintaan/detik per IP. Billing dimatikan → `404`.
+      security: []
+      parameters:
+        - name: X-CALLBACK-TOKEN
+          in: header
+          required: true
+          description: Token verifikasi callback yang diatur di dashboard Xendit (rahasia; tidak pernah dicatat di log).
+          schema: { type: string, maxLength: 512 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/XenditWebhookPayload' }
+      responses:
+        '200':
+          description: Diterima (juga untuk invoice tak dikenal / duplikat — respons seragam).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [ok] }
+                required: [status]
+        '400':
+          description: Payload bukan JSON objek yang valid (token sudah cocok).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Header `X-CALLBACK-TOKEN` tidak ada atau salah.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Pembayaran dimatikan (`ACS_BILLING_ENABLED=false`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '413':
+          description: Body melebihi 64 KiB.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Melebihi 20 permintaan/detik dari IP yang sama.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '502':
+          description: Gateway tidak dapat dihubungi saat verifikasi — Xendit akan mengulang callback.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   # ============================== SELF-SERVICE (portal pelanggan) ==============================
   /self-service/devices:
     get:
@@ -6191,6 +6619,115 @@ components:
       properties:
         recipients: { type: integer, description: Jumlah penerima yang dibuatkan notifikasi. }
       required: [recipients]
+
+    # ---------- Billing (langganan SaaS) ----------
+    BillingPlan:
+      type: object
+      description: Paket langganan. Id numerik tidak diekspos; `code` adalah identifier publik.
+      properties:
+        code: { type: string, pattern: '^[A-Z][A-Z0-9_]{1,31}$', example: STARTER }
+        name: { type: string, minLength: 2, maxLength: 64 }
+        description: { type: string, maxLength: 255 }
+        max_devices: { type: integer, nullable: true, minimum: 1, maximum: 10000000, description: "Batas perangkat aktif; `null` = tak dibatasi." }
+        price_idr: { type: integer, format: int64, minimum: 0, maximum: 1000000000, description: "Harga per periode, bilangan bulat rupiah." }
+        period_days: { type: integer, minimum: 1, maximum: 366 }
+        is_active: { type: boolean }
+        sort_order: { type: integer }
+      required: [code, name, description, max_devices, price_idr, period_days, is_active, sort_order]
+
+    CreateBillingPlanRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        code: { type: string, maxLength: 64, description: "Dinormalisasi ke huruf besar; harus `^[A-Z][A-Z0-9_]{1,31}$`." }
+        name: { type: string, minLength: 2, maxLength: 64 }
+        description: { type: string, maxLength: 255 }
+        max_devices: { type: integer, nullable: true, minimum: 1, maximum: 10000000 }
+        price_idr: { type: integer, format: int64, minimum: 0, maximum: 1000000000 }
+        period_days: { type: integer, minimum: 1, maximum: 366, default: 30 }
+        is_active: { type: boolean, default: true }
+        sort_order: { type: integer }
+      required: [code, name, price_idr]
+
+    UpdateBillingPlanRequest:
+      type: object
+      additionalProperties: false
+      description: "Semua field opsional. `max_devices: null` = tak dibatasi; tidak dikirim = tak berubah."
+      properties:
+        name: { type: string, minLength: 2, maxLength: 64 }
+        description: { type: string, maxLength: 255 }
+        max_devices: { type: integer, nullable: true, minimum: 1, maximum: 10000000 }
+        price_idr: { type: integer, format: int64, minimum: 0, maximum: 1000000000 }
+        period_days: { type: integer, minimum: 1, maximum: 366 }
+        is_active: { type: boolean }
+        sort_order: { type: integer }
+
+    BillingInvoice:
+      type: object
+      description: |
+        Invoice langganan. `id` = `invoice_uuid`. Tidak memuat id numerik, id gateway, maupun rahasia. `payment_url` hanya
+        terisi saat `status=PENDING` dan belum kedaluwarsa.
+      properties:
+        id: { type: string, format: uuid }
+        number: { type: string, maxLength: 64, description: "Nomor invoice (= `external_id` di Xendit), mis. `ACS-12-1790000000000000000-ab12cd34`." }
+        tenant_id: { type: integer, format: int64 }
+        plan_code: { type: string }
+        plan_name: { type: string }
+        amount_idr: { type: integer, format: int64, description: Nominal yang ditagih (disalin dari paket saat invoice dibuat). }
+        status: { type: string, enum: [PENDING, PAID, EXPIRED, FAILED] }
+        payment_url: { type: string, nullable: true, format: uri, description: "Halaman bayar Xendit (https, host `xendit.co`)." }
+        period_days: { type: integer }
+        created_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        paid_at: { type: string, format: date-time, nullable: true }
+      required: [id, number, tenant_id, plan_code, plan_name, amount_idr, status, payment_url, period_days, created_at, expires_at, paid_at]
+
+    BillingSubscription:
+      type: object
+      properties:
+        enabled: { type: boolean, description: "`false` bila pembayaran dimatikan di server." }
+        status: { type: string, enum: [NONE, ACTIVE, EXPIRED] }
+        plan: { type: object, nullable: true, allOf: [{ $ref: '#/components/schemas/BillingPlan' }] }
+        expires_at: { type: string, format: date-time, nullable: true }
+        days_left: { type: integer, nullable: true, description: "Sisa hari (dibulatkan ke atas); 0 bila EXPIRED; `null` bila NONE." }
+        max_devices: { type: integer, nullable: true, description: "Batas perangkat tenant saat ini; `null` = tak dibatasi." }
+        pending_invoice:
+          type: object
+          nullable: true
+          allOf: [{ $ref: '#/components/schemas/BillingInvoice' }]
+          description: "Invoice PENDING terbaru yang punya URL bayar. Hanya untuk ADMIN/SUPERADMIN; peran lain selalu `null`."
+      required: [enabled, status, plan, expires_at, days_left, max_devices, pending_invoice]
+
+    BillingCheckoutRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        plan_code: { type: string, maxLength: 64, description: "Dinormalisasi ke huruf besar lalu dicocokkan dengan paket aktif di DB." }
+        tenant_id: { type: integer, format: int64, minimum: 1, description: "Wajib untuk SUPERADMIN; ADMIN hanya boleh tenant sendiri." }
+      required: [plan_code]
+
+    BillingCheckoutResponse:
+      type: object
+      properties:
+        invoice: { $ref: '#/components/schemas/BillingInvoice' }
+        payment_url: { type: string, format: uri, description: "Sama dengan `invoice.payment_url`; arahkan pengguna ke sini." }
+      required: [invoice, payment_url]
+
+    XenditWebhookPayload:
+      type: object
+      description: |
+        Payload callback invoice Xendit. Hanya `id` dan/atau `external_id` yang dipakai (untuk menemukan invoice); `status`,
+        `amount`, dan field lain **tidak dipercaya** — kebenaran diambil ulang dari API Xendit. Field tambahan diterima apa adanya.
+      properties:
+        id: { type: string, maxLength: 128, description: "Id invoice di Xendit." }
+        external_id: { type: string, maxLength: 128, description: "= `number` invoice kita." }
+        status: { type: string, description: "PAID / EXPIRED (diabaikan; diverifikasi ulang ke gateway)." }
+        amount: { type: number }
+        paid_amount: { type: number }
+        paid_at: { type: string }
+        payer_email: { type: string }
+        currency: { type: string }
+      additionalProperties: true
 
     # ---------- Generik ----------
     ErrorResponse:

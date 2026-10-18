@@ -130,6 +130,8 @@ func main() {
 		{"S20-paket-signup", scenarioPlanAndSignup},
 		{"S21-vendor-generik", scenarioGenericVendor},
 		{"S22-notifikasi", scenarioNotify},
+		{"S23-billing-mati", scenarioBilling},
+		{"S24-validasi-masukan", scenarioValidation},
 	}
 
 	var results []result

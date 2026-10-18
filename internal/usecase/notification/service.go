@@ -138,6 +138,14 @@ func defaultAudiences(code string) []domain.NotificationAudience {
 		return []domain.NotificationAudience{{Kind: domain.AudienceSuperadmins}}
 	case domain.NotifAnnouncement:
 		return []domain.NotificationAudience{{Kind: domain.AudienceTenantAllStaff}}
+	case domain.NotifBillingPaid:
+		// Pembayaran langganan: ADMIN tenant + operator platform.
+		return []domain.NotificationAudience{
+			{Kind: domain.AudienceTenantRoles, Roles: []string{domain.RoleAdmin}},
+			{Kind: domain.AudienceSuperadmins},
+		}
+	case domain.NotifBillingExpiring, domain.NotifBillingExpired, domain.NotifBillingFailed:
+		return []domain.NotificationAudience{{Kind: domain.AudienceTenantRoles, Roles: []string{domain.RoleAdmin}}}
 	}
 	return nil
 }

@@ -54,10 +54,10 @@ export function ResetPasswordPage() {
     return (
       <AuthShell>
         <div className="text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
+          <div className="mx-auto mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
             <CheckCircle2 className="h-7 w-7" />
           </div>
-          <h1 className="mt-5 text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">{t('reset.successTitle')}</h1>
+          <h1 className="mt-5 text-[1.75rem] font-normal leading-tight text-center text-slate-900 dark:text-slate-100">{t('reset.successTitle')}</h1>
           <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{t('reset.successDesc')}</p>
           <button onClick={() => navigate('/login', { replace: true })} className={`${authPrimaryBtnCls} mt-7`}>
             {t('reset.goLogin')}
@@ -71,10 +71,10 @@ export function ResetPasswordPage() {
     return (
       <AuthShell>
         <div className="text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400">
+          <div className="mx-auto mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400">
             <ShieldAlert className="h-7 w-7" />
           </div>
-          <h1 className="mt-5 text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">{t('reset.invalidTitle')}</h1>
+          <h1 className="mt-5 text-[1.75rem] font-normal leading-tight text-center text-slate-900 dark:text-slate-100">{t('reset.invalidTitle')}</h1>
           <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{t('reset.invalidDesc')}</p>
           <Link to="/forgot-password" className={`${authPrimaryBtnCls} mt-7`}>
             {t('reset.requestNew')}
@@ -90,7 +90,7 @@ export function ResetPasswordPage() {
   return (
     <AuthShell>
       <div className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">{t('reset.title')}</h1>
+        <h1 className="text-[1.75rem] font-normal leading-tight text-center text-slate-900 dark:text-slate-100">{t('reset.title')}</h1>
         <p className="mt-1.5 text-sm text-slate-500 dark:text-slate-400">{t('reset.subtitle')}</p>
       </div>
 
@@ -101,7 +101,7 @@ export function ResetPasswordPage() {
           </label>
           <div className="relative">
             <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
-            <input
+            <input minLength={8}
               id="new-password"
               type={show ? 'text' : 'password'}
               autoComplete="new-password"
@@ -129,7 +129,7 @@ export function ResetPasswordPage() {
           </label>
           <div className="relative">
             <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
-            <input
+            <input minLength={8}
               id="confirm-password"
               type={show ? 'text' : 'password'}
               autoComplete="new-password"

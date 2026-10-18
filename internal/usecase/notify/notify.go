@@ -215,6 +215,38 @@ func (b *Builder) Notification(to, name, title string, paragraphs []string, link
 	return b.render(to, "["+b.Brand+"] "+title, l)
 }
 
+// FormatRupiah memformat bilangan bulat rupiah dengan pemisah ribuan titik: 199000 -> "Rp 199.000".
+func FormatRupiah(n uint64) string {
+	s := fmt.Sprintf("%d", n)
+	var b strings.Builder
+	for i, c := range s {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			b.WriteByte('.')
+		}
+		b.WriteRune(c)
+	}
+	return "Rp " + b.String()
+}
+
+// PaymentReceipt — tanda terima pembayaran langganan. Hanya memuat nomor invoice, nama paket, nominal, dan tanggal;
+// TIDAK PERNAH memuat data kartu/rekening, kunci, atau token gateway. Semua nilai di-escape oleh html/template.
+func (b *Builder) PaymentReceipt(to, name, tenantName, planName, invoiceNumber string, amountIDR uint64, paidAt, activeUntil time.Time) mailer.Message {
+	paras := []string{
+		fmt.Sprintf("Pembayaran langganan %s untuk %s telah kami terima. Terima kasih.", planName, oneLine(tenantName)),
+		"Nomor invoice: " + oneLine(invoiceNumber),
+		"Jumlah dibayar: " + FormatRupiah(amountIDR),
+		"Tanggal pembayaran: " + paidAt.Format("02-01-2006 15:04 MST"),
+		"Langganan aktif hingga: " + activeUntil.Format("02-01-2006"),
+	}
+	return b.render(to, "Tanda terima pembayaran langganan "+b.Brand, layout{
+		Greeting:   greeting(name),
+		Paragraphs: paras,
+		Button:     "Lihat langganan",
+		ButtonURL:  b.PublicURL + "/billing",
+		Footnote:   "Simpan email ini sebagai tanda terima. Jika Anda tidak merasa melakukan pembayaran ini, segera hubungi administrator platform.",
+	})
+}
+
 // Welcome — akun baru dibuat oleh administrator.
 func (b *Builder) Welcome(to, name, email, role string) mailer.Message {
 	paras := []string{

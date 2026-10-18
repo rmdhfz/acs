@@ -67,7 +67,7 @@ Saat ini proses konfigurasi CPE dilakukan manual per-vendor (masing-masing punya
 | Nokia (eks Alcatel-Lucent) | ONT GPON (G-xxx series) | TR-181 |
 | Vendor lain (VSOL, BDCOM, Dasan Zhone, dll) | ONT/ONU generik | TR-098/TR-181 |
 
-Daftar vendor bersifat terbuka — arsitektur harus memungkinkan penambahan vendor baru cukup dengan menambah data (vendor, OUI, parameter mapping), bukan perubahan kode inti. Lihat `TECH.md` bagian "Vendor Extensibility".
+Daftar vendor bersifat terbuka — arsitektur harus memungkinkan penambahan vendor baru cukup dengan menambah data (vendor, OUI, parameter mapping), bukan perubahan kode inti. Lihat `docs/arsitektur/TECH.md` bagian "Vendor Extensibility".
 
 ## 6. Pengguna & Peran
 
@@ -170,5 +170,5 @@ Daftar vendor bersifat terbuka — arsitektur harus memungkinkan penambahan vend
 |---|---|
 | Variasi implementasi TR-069 antar-vendor/firmware tidak selalu sesuai spec | Layer parameter mapping + kemampuan override/raw path per device; testing lab per vendor sebelum rollout massal |
 | CPE di belakang CGNAT tidak reachable untuk Connection Request | Fallback: task dieksekusi saat periodic inform berikutnya; STUN di fase 2 |
-| Volume data tinggi (parameter/event log) membengkakkan database | Kebijakan retensi & partisi tabel log terpisah dari tabel master; lihat `TECH.md` |
+| Volume data tinggi (parameter/event log) membengkakkan database | Kebijakan retensi & partisi tabel log terpisah dari tabel master; lihat `docs/arsitektur/TECH.md` |
 | Kredensial connection request bocor | Enkripsi at-rest, akses terbatas RBAC, rotasi berkala |

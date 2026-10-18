@@ -216,15 +216,20 @@ func (h *Handler) handleInform(c *echo.Context, token string, env *cwmpxml.Envel
 	// InformResponse balasan supaya konsisten dgn yang dipakai CPE ybs,
 	// bukan cwmp-1-2 hardcoded (lihat TECH.md §3, catatan investigasi
 	// arsitektur soal Huawei & vendor lain yang sensitif terhadap ini).
-	ns := env.Body.Namespace()
+	// Namespace di luar pola urn:dslforum-org:cwmp-1-N dianggap cacat dan diganti default saat membalas.
+	ns := sanitizeNamespace(env.Body.Namespace())
 
-	events := make([]session.InformEvent, 0, len(inf.Event.Items))
-	for _, e := range inf.Event.Items {
-		events = append(events, session.InformEvent{EventCode: e.EventCode, CommandKey: e.CommandKey})
+	// Isi Inform tidak dipercaya: identitas cacat ditolak 400; event/parameter dibatasi jumlah & ukurannya
+	// (lihat inform_sanitize.go) supaya satu nilai buruk tidak membuat INSERT gagal atau membanjiri DB.
+	if err := validateInformIdentity(inf.DeviceId); err != nil {
+		h.log.Warn("cwmp: Inform ditolak (identitas tidak valid)", "remote_ip", c.RealIP())
+		return c.NoContent(http.StatusBadRequest)
 	}
-	params := make([]session.InformParameter, 0, len(inf.ParameterList.Values))
-	for _, p := range inf.ParameterList.Values {
-		params = append(params, session.InformParameter{Name: p.Name, Value: p.Value.Value, Type: p.Value.Type})
+	events := sanitizeInformEvents(inf.Event.Items)
+	params := sanitizeInformParams(inf.ParameterList.Values)
+	crURL := paramSuffix(params, ".ManagementServer.ConnectionRequestURL")
+	if len(crURL) > maxInformCRURLLen {
+		crURL = ""
 	}
 
 	// Basic Auth wajib untuk setiap Inform (session baru maupun lanjutan) —
@@ -241,15 +246,15 @@ func (h *Handler) handleInform(c *echo.Context, token string, env *cwmpxml.Envel
 		RemoteIP:        c.RealIP(),
 		DeviceOUI:       inf.DeviceId.OUI,
 		SerialNumber:    inf.DeviceId.SerialNumber,
-		ProductClass:    inf.DeviceId.ProductClass,
-		SoftwareVersion: paramSuffix(params, "SoftwareVersion"),
-		HardwareVersion: paramSuffix(params, "HardwareVersion"),
+		ProductClass:    clampRunes(inf.DeviceId.ProductClass, maxInformProductClass),
+		SoftwareVersion: clampRunes(paramSuffix(params, "SoftwareVersion"), maxInformVersionLen),
+		HardwareVersion: clampRunes(paramSuffix(params, "HardwareVersion"), maxInformVersionLen),
 		// Suffix segmen lengkap (bukan cuma "ConnectionRequestURL") supaya
 		// vendor-extension yang kebetulan berakhiran sama — mis.
 		// X_ACME_ConnectionRequestURL — tidak keliru dipakai sebagai target
 		// GET Connection Request. Cocok utk TR-098 & TR-181 (keduanya
 		// berakhiran .ManagementServer.ConnectionRequestURL).
-		ConnectionRequestURL: paramSuffix(params, ".ManagementServer.ConnectionRequestURL"),
+		ConnectionRequestURL: crURL,
 		InformUsername:       username,
 		InformPassword:       password,
 		Events:               events,

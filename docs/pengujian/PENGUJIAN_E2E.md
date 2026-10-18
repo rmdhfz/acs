@@ -6,7 +6,7 @@ hidup (`docker-compose`: REST API + endpoint CWMP + MariaDB + MinIO + Redis),
 memakai **simulator CPE TR-069 multi-vendor** (`internal/simcpe`) sebagai
 "perangkat lapangan".
 
-**Hubungan dengan `PENGUJIAN_LAPANGAN.md`:** dokumen itu untuk uji dengan CPE
+**Hubungan dengan `docs/pengujian/PENGUJIAN_LAPANGAN.md`:** dokumen itu untuk uji dengan CPE
 **fisik** (ZTE/Huawei/FiberHome/Nokia/Cdata sungguhan). Harness di sini
 **melengkapi**, bukan menggantikan — simulator tidak menjalankan firmware vendor
 nyata dan tidak punya kuirk per-firmware. Gunanya:
@@ -46,8 +46,10 @@ nyata dan tidak punya kuirk per-firmware. Gunanya:
 | S20 | Paket & self-signup | Batas perangkat per tenant: Inform perangkat baru **503** tanpa membuat baris, pra-registrasi **429**, perangkat yang sudah ada tetap diterima, menaikkan batas memulihkan, ADMIN tenant 403. Self-signup **mati secara bawaan**: signup & verify → 403 (jalur aktif diuji di unit + integrasi MariaDB, bukan e2e, karena butuh SMTP) |
 | S21 | Vendor generik (semua ONT) | Migrasi 0029: CPE TR-098 ber-OUI TP-Link (OUI seed IEEE) → `vendor_id` ter-resolve; logical key `wifi.ssid` & `wan.pppoe.username` jatuh ke mapping standar vendor `GENERIC` dan nilainya berubah di CPE. CPE TR-181 ber-OUI **tak dikenal** (vendor NULL) → data model terdeteksi dari parameter Inform, logical key tetap ter-resolve ke path standar TR-181, task `COMPLETED` |
 | S22 | Notifikasi | Pengumuman SUPERADMIN ke tenant pilot → ADMIN pilot melihatnya (unread bertambah, id UUID, isi sebagai teks), tenant pilot2 **tidak**; ENDUSER 403; ADMIN tak bisa mengumumkan (403); link/judul tak sah & tenant tak ada → 400; mark-read menurunkan unread; jenis wajib tak bisa dimatikan |
+| S23 | Billing (mati) | Billing bawaan MATI: 3 paket contoh, subscription `enabled=false`, checkout/sync 409, webhook 404, RBAC (ENDUSER/NOC/ADMIN), CRUD paket tervalidasi. **Pembayaran Xendit nyata TIDAK diuji.** |
+| S24 | Validasi masukan | Query rusak (page/page_size/*_id/search) → 400; user/tenant cacat → 400 di POST **dan** PATCH; parameter task melewati batas → 400; login/reset dengan payload raksasa → 400; Inform dengan OUI/serial cacat → 400 (bukan 500) |
 
-Status terakhir: **22/22 PASS** (2026-10-17), termasuk run ulang penuh setelah penambahan vendor generik/OUI, revalidasi WebSocket, hitungan sesi per tenant, dan batas laju REST yang dapat diatur. Catatan jujur: seluruh skenario memakai **simulator** — bukan bukti perilaku pada firmware nyata (lihat `PENGUJIAN_LAPANGAN.md`).
+Status terakhir: **24/24 PASS** (2026-10-18), termasuk run ulang penuh setelah penambahan vendor generik/OUI, revalidasi WebSocket, hitungan sesi per tenant, dan batas laju REST yang dapat diatur. Catatan jujur: seluruh skenario memakai **simulator** — bukan bukti perilaku pada firmware nyata (lihat `docs/pengujian/PENGUJIAN_LAPANGAN.md`).
 
 ---
 
@@ -150,7 +152,7 @@ ekspektasi).
 
 - **Simulator ≠ firmware vendor nyata.** Tidak ada kuirk per-firmware, tidak ada
   variasi index WLAN/WAN antar model, tidak ada perilaku aneh saat parameter
-  besar. Uji fisik (`PENGUJIAN_LAPANGAN.md`) tetap wajib sebelum klaim
+  besar. Uji fisik (`docs/pengujian/PENGUJIAN_LAPANGAN.md`) tetap wajib sebelum klaim
   kompatibilitas vendor.
 - **Load test terbatas rate limiter `/cwmp`** (5 req/s per IP). Dari satu
   mesin/IP, "ribuan sesi concurrent" tidak bisa diukur murni — butuh rig

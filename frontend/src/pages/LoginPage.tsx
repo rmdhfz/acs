@@ -4,6 +4,7 @@ import { AlertCircle, ArrowRight, Eye, EyeOff, Info, KeyRound, Lock, Mail } from
 import { useAuth } from '../lib/auth'
 import { useI18n } from '../lib/i18n'
 import { API_BASE, ApiError } from '../lib/api'
+import { useAuthConfig } from '../lib/hooks'
 import { Spinner } from '../components/Spinner'
 import { AuthShell } from '../components/AuthShell'
 import { GoogleSignInButton } from '../components/GoogleSignInButton'
@@ -38,21 +39,11 @@ export function LoginPage() {
   const location = useLocation()
   const from = (location.state as { from?: string } | null)?.from
 
-  const [ssoEnabled, setSsoEnabled] = useState(false)
+  const { data: cfg } = useAuthConfig()
+  const ssoEnabled = Boolean(cfg?.sso_enabled)
   // 'google' bila ACS_OIDC_ISSUER = accounts.google.com (tombol resmi Google); 'oidc' = IdP lain (Azure/Keycloak/Okta).
-  const [ssoProvider, setSsoProvider] = useState<'google' | 'oidc'>('oidc')
-  const [signupEnabled, setSignupEnabled] = useState(false)
+  const ssoProvider: 'google' | 'oidc' = cfg?.sso_provider === 'google' ? 'google' : 'oidc'
   const ssoFailed = new URLSearchParams(location.search).get('sso') === 'error'
-  useEffect(() => {
-    let alive = true
-    fetch(`${API_BASE}/auth/config`).then((r) => (r.ok ? r.json() : null)).then((c) => {
-      if (!alive) return
-      setSsoEnabled(Boolean(c?.sso_enabled))
-      setSsoProvider(c?.sso_provider === 'google' ? 'google' : 'oidc')
-      setSignupEnabled(Boolean(c?.self_signup_enabled))
-    }).catch(() => undefined)
-    return () => { alive = false }
-  }, [])
   const [email, setEmail] = useState(readRemembered)
   const [remember, setRemember] = useState(() => readRemembered() !== '')
   const [password, setPassword] = useState('')
@@ -145,7 +136,7 @@ export function LoginPage() {
     return (
       <AuthShell>
         <div className="mb-8">
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">{t('login.mfaTitle')}</h1>
+          <h1 className="text-[1.75rem] font-normal leading-tight text-center text-slate-900 dark:text-slate-100">{t('login.mfaTitle')}</h1>
           <p className="mt-1.5 text-sm text-slate-500 dark:text-slate-400">{t('login.mfaDesc')}</p>
         </div>
         <form onSubmit={handleMfaSubmit} noValidate className="space-y-5">
@@ -344,14 +335,12 @@ export function LoginPage() {
         </button>
       </form>
 
-      {signupEnabled && (
-        <p className="mt-6 text-center text-sm text-slate-600 dark:text-slate-400">
-          Belum punya akun?{' '}
-          <Link to="/signup" className="font-medium text-indigo-700 hover:text-indigo-600 dark:text-indigo-300">
-            Daftar tenant baru
-          </Link>
-        </p>
-      )}
+      <p className="mt-7 text-center text-sm text-slate-600 dark:text-slate-400">
+        Belum punya akun?{' '}
+        <Link to="/signup" className="font-medium text-indigo-700 hover:underline dark:text-indigo-300">
+          Daftar
+        </Link>
+      </p>
 
     </AuthShell>
   )

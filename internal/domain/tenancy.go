@@ -27,6 +27,10 @@ type Tenant struct {
 	MaxPendingTasks *uint32 `db:"max_pending_tasks" json:"max_pending_tasks"`
 	// MaxDevices — batas perangkat aktif tenant (dasar paket SaaS, migrations/0028); nil = tak dibatasi.
 	MaxDevices *uint32 `db:"max_devices" json:"max_devices"`
+	// BillingPlanID/PlanExpiresAt -- paket langganan aktif terakhir dan masa berlakunya (migrations/0032). ID paket tidak
+	// diekspos (kode paket ada di GET /billing/subscription); nil = belum pernah berlangganan.
+	BillingPlanID *uint64    `db:"billing_plan_id" json:"-"`
+	PlanExpiresAt *time.Time `db:"plan_expires_at" json:"plan_expires_at"`
 	Audit
 }
 

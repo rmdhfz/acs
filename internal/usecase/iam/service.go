@@ -76,20 +76,20 @@ func (s *Service) CreateTenant(ctx context.Context, actor domain.Actor, in Creat
 	if err := auth.RequireRole(actor, domain.RoleSuperadmin); err != nil {
 		return nil, err
 	}
-	in.Code, in.Name = strings.TrimSpace(in.Code), strings.TrimSpace(in.Name)
-	if in.Code == "" || in.Name == "" {
-		return nil, fmt.Errorf("%w: code dan name tenant wajib diisi", domain.ErrInvalidInput)
+	var verr error
+	if in.Code, verr = domain.ValidateTenantCode(in.Code); verr != nil {
+		return nil, verr
 	}
-	if strings.ContainsAny(in.Code, " \t") {
-		return nil, fmt.Errorf("%w: code tenant tidak boleh mengandung spasi", domain.ErrInvalidInput)
+	if in.Name, verr = domain.CleanText("name tenant", in.Name, 1, 128, false); verr != nil {
+		return nil, verr
 	}
 	if (in.CWMPInformPassword != nil) != (in.CWMPInformUsername != nil) {
 		return nil, fmt.Errorf("%w: username dan password Inform CWMP harus diisi bersamaan", domain.ErrInvalidInput)
 	}
 	var passwordEnc []byte
 	if in.CWMPInformPassword != nil {
-		if len(*in.CWMPInformPassword) < minCWMPInformPasswordLen {
-			return nil, fmt.Errorf("%w: password Inform CWMP minimal %d karakter", domain.ErrInvalidInput, minCWMPInformPasswordLen)
+		if err := validateInformCredentials(*in.CWMPInformUsername, *in.CWMPInformPassword); err != nil {
+			return nil, err
 		}
 		enc, err := s.enc.Encrypt(*in.CWMPInformPassword)
 		if err != nil {
@@ -115,8 +115,8 @@ func (s *Service) SetCWMPInformCredentials(ctx context.Context, actor domain.Act
 	if err := auth.RequireRole(actor, domain.RoleSuperadmin); err != nil {
 		return err
 	}
-	if len(password) < minCWMPInformPasswordLen {
-		return fmt.Errorf("%w: password Inform CWMP minimal %d karakter", domain.ErrInvalidInput, minCWMPInformPasswordLen)
+	if err := validateInformCredentials(username, password); err != nil {
+		return err
 	}
 	passwordEnc, err := s.enc.Encrypt(password)
 	if err != nil {
@@ -207,11 +207,20 @@ func (s *Service) UpdateTenant(ctx context.Context, actor domain.Actor, tenantID
 	// UPDATE (kolom NOT NULL tapi VARCHAR kosong tetap valid secara SQL,
 	// bukan error) dan mengosongkan data secara diam-diam (temuan
 	// acs-code-reviewer).
-	if in.Code != nil && *in.Code == "" {
-		return nil, fmt.Errorf("%w: code tidak boleh kosong", domain.ErrInvalidInput)
+	// Aturan yang SAMA dengan CreateTenant (validator bersama): PATCH tidak boleh meloloskan nilai yang ditolak POST.
+	if in.Code != nil {
+		code, verr := domain.ValidateTenantCode(*in.Code)
+		if verr != nil {
+			return nil, verr
+		}
+		in.Code = &code
 	}
-	if in.Name != nil && *in.Name == "" {
-		return nil, fmt.Errorf("%w: name tidak boleh kosong", domain.ErrInvalidInput)
+	if in.Name != nil {
+		name, verr := domain.CleanText("name tenant", *in.Name, 1, 128, false)
+		if verr != nil {
+			return nil, verr
+		}
+		in.Name = &name
 	}
 	t, err := s.tenants.GetByID(ctx, tenantID)
 	if err != nil {
@@ -372,6 +381,26 @@ func validateRoleCodesAssignable(actor domain.Actor, roleCodes []string) error {
 	return nil
 }
 
+// maxRoleCodes membatasi role_codes pada CreateUser (tiap kode memicu query DB).
+const maxRoleCodes = 5
+
+var informUsernameRe = regexp.MustCompile(`^[A-Za-z0-9._@-]{3,128}$`)
+
+// validateInformCredentials: username Inform tanpa ':' (memecah Basic Auth) / spasi / kontrol; password
+// minimal minCWMPInformPasswordLen dan maksimal 128 (kolom terenkripsi VARBINARY(255), enkripsi menambah ~28 byte).
+func validateInformCredentials(username, password string) error {
+	if !informUsernameRe.MatchString(username) {
+		return fmt.Errorf("%w: username Inform CWMP 3-128 karakter, hanya huruf, angka, titik, garis bawah, strip dan @", domain.ErrInvalidInput)
+	}
+	if len(password) < minCWMPInformPasswordLen {
+		return fmt.Errorf("%w: password Inform CWMP minimal %d karakter", domain.ErrInvalidInput, minCWMPInformPasswordLen)
+	}
+	if len(password) > domain.MaxUserPasswordLen {
+		return fmt.Errorf("%w: password Inform CWMP maksimal %d karakter", domain.ErrInvalidInput, domain.MaxUserPasswordLen)
+	}
+	return nil
+}
+
 // validateUserEmail — email dipakai login, reset password, dan tujuan email
 // notifikasi, jadi harus alamat polos yang valid (tanpa nama tampilan/spasi/
 // karakter kontrol). Mencegah email selamat-datang dikirim ke "alamat" aneh.
@@ -413,6 +442,16 @@ func (s *Service) CreateUser(ctx context.Context, actor domain.Actor, in CreateU
 			return nil, fmt.Errorf("%w: SUPERADMIN bersifat lintas tenant, tenant_id harus kosong", domain.ErrInvalidInput)
 		}
 	}
+	if len(in.RoleCodes) > maxRoleCodes {
+		return nil, fmt.Errorf("%w: role_codes maksimal %d", domain.ErrInvalidInput, maxRoleCodes)
+	}
+	var verr error
+	if in.Username, verr = domain.ValidateUsername(in.Username); verr != nil {
+		return nil, verr
+	}
+	if in.FullName, verr = domain.CleanText("full_name", in.FullName, 2, 128, false); verr != nil {
+		return nil, verr
+	}
 	if err := validateUserEmail(in.Email); err != nil {
 		return nil, err
 	}
@@ -421,8 +460,8 @@ func (s *Service) CreateUser(ctx context.Context, actor domain.Actor, in CreateU
 	// dibuat dengan password lemah/kosong).
 	hash := in.PasswordHash
 	if hash == "" {
-		if len(in.Password) < domain.MinUserPasswordLen {
-			return nil, fmt.Errorf("%w: password minimal %d karakter", domain.ErrInvalidInput, domain.MinUserPasswordLen)
+		if err := domain.ValidatePassword(in.Password, in.Username, in.Email); err != nil {
+			return nil, err
 		}
 		var err error
 		hash, err = auth.HashPassword(in.Password)
@@ -524,7 +563,11 @@ func (s *Service) UpdateUser(ctx context.Context, actor domain.Actor, targetID u
 		return nil, fmt.Errorf("%w: tidak bisa menonaktifkan akun sendiri", domain.ErrForbidden)
 	}
 	if in.FullName != nil {
-		target.FullName = *in.FullName
+		fn, verr := domain.CleanText("full_name", *in.FullName, 2, 128, false)
+		if verr != nil {
+			return nil, verr
+		}
+		target.FullName = fn
 	}
 	emailChanged := false
 	if in.Email != nil {
@@ -559,8 +602,8 @@ func (s *Service) ResetUserPassword(ctx context.Context, actor domain.Actor, tar
 	if err != nil {
 		return err
 	}
-	if len(newPassword) < domain.MinUserPasswordLen {
-		return fmt.Errorf("%w: password minimal %d karakter", domain.ErrInvalidInput, domain.MinUserPasswordLen)
+	if err := domain.ValidatePassword(newPassword, target.Username, target.Email); err != nil {
+		return err
 	}
 	hash, err := auth.HashPassword(newPassword)
 	if err != nil {

@@ -334,7 +334,7 @@ func (s *Service) Create(ctx context.Context, actor domain.Actor, in CreateDevic
 		return nil, err
 	}
 	if existing != nil {
-		return nil, fmt.Errorf("%w: perangkat dengan OUI %s dan serial %s sudah terdaftar", domain.ErrConflict, in.OUI, in.SerialNumber)
+		return nil, fmt.Errorf("%w: perangkat dengan OUI dan serial ini sudah terdaftar", domain.ErrConflict)
 	}
 	d, err := s.createFromInput(ctx, actor, tenantID, in)
 	if err != nil {

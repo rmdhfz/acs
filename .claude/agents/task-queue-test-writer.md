@@ -5,7 +5,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, PowerShell
 model: inherit
 ---
 
-Kamu menulis dan mereview test Go untuk task queue ACS. Baca `TECH.md` §4 (Task Queue) dan `internal/usecase/task/service_test.go` yang sudah ada untuk pola/helper test yang berlaku (table-driven test, mock repository, dsb) sebelum menambah test baru — ikuti pola yang sudah mapan, jangan perkenalkan pola test baru tanpa alasan kuat.
+Kamu menulis dan mereview test Go untuk task queue ACS. Baca `docs/arsitektur/TECH.md` §4 (Task Queue) dan `internal/usecase/task/service_test.go` yang sudah ada untuk pola/helper test yang berlaku (table-driven test, mock repository, dsb) sebelum menambah test baru — ikuti pola yang sudah mapan, jangan perkenalkan pola test baru tanpa alasan kuat.
 
 ## Aturan wajib — ini yang paling sering dilewatkan
 

@@ -133,6 +133,12 @@ services:
       # Ambang notifikasi proaktif (evaluator tiap 5 menit): rasio perangkat offline & jumlah task gagal dalam 30 menit.
       ACS_NOTIFY_OFFLINE_RATIO: ${ACS_NOTIFY_OFFLINE_RATIO:-0.30}
       ACS_NOTIFY_FAILED_TASKS: ${ACS_NOTIFY_FAILED_TASKS:-5}
+      # Langganan SaaS via Xendit (bawaan MATI). Aktifkan hanya dengan kunci dari dashboard Xendit; JANGAN commit nilainya.
+      ACS_BILLING_ENABLED: ${ACS_BILLING_ENABLED:-false}
+      ACS_XENDIT_SECRET_KEY: ${ACS_XENDIT_SECRET_KEY:-}
+      ACS_XENDIT_CALLBACK_TOKEN: ${ACS_XENDIT_CALLBACK_TOKEN:-}
+      ACS_XENDIT_BASE_URL: ${ACS_XENDIT_BASE_URL:-https://api.xendit.co}
+      ACS_BILLING_INVOICE_HOURS: ${ACS_BILLING_INVOICE_HOURS:-24}
       # Interval polling redaman optik (menit); 0 = nonaktif. Hanya untuk vendor/model bermapping optical.*.
       ACS_OPTICAL_POLL_MINUTES: ${ACS_OPTICAL_POLL_MINUTES:-360}
       # Email (reset password & notifikasi keamanan). Kosongkan ACS_SMTP_HOST

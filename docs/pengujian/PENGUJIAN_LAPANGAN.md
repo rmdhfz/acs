@@ -1,8 +1,8 @@
 # PENGUJIAN_LAPANGAN.md — Rencana Uji Perangkat Fisik (ZTE, FiberHome, Huawei, Nokia, Cdata)
 
-Dokumen kerja untuk sesi uji lapangan dengan CPE sungguhan. Beda dari `VENDOR_ONBOARDING.md` (cara mendaftarkan vendor baru sebagai operasi data) — dokumen ini adalah **checklist eksekusi** untuk hari pengujian itu sendiri: apa yang disiapkan, urutan langkah, apa yang diharapkan berhasil, apa yang **sudah diketahui belum lengkap** (supaya tidak disalahartikan sebagai bug baru saat ditemukan), dan cara melaporkan temuan supaya masuk balik ke `ROADMAP.md`.
+Dokumen kerja untuk sesi uji lapangan dengan CPE sungguhan. Beda dari `docs/operasional/VENDOR_ONBOARDING.md` (cara mendaftarkan vendor baru sebagai operasi data) — dokumen ini adalah **checklist eksekusi** untuk hari pengujian itu sendiri: apa yang disiapkan, urutan langkah, apa yang diharapkan berhasil, apa yang **sudah diketahui belum lengkap** (supaya tidak disalahartikan sebagai bug baru saat ditemukan), dan cara melaporkan temuan supaya masuk balik ke `docs/produk/ROADMAP.md`.
 
-**Baca ini sebelum mulai. Status sebelum hari-H: sistem ini BELUM PERNAH menerima Inform dari CPE fisik sama sekali** — validasi sejauh ini hanya lewat **simulator CPE** (`internal/simcpe`; 10 skenario e2e lulus, lihat `PENGUJIAN_E2E.md`). Simulator tidak menjalankan firmware vendor nyata dan tidak punya kuirk per-firmware, jadi bukti "alur ACS benar" ada, tetapi bukti "cocok dengan perangkat nyata" nol. Pengujian ini adalah validasi pertama ke dunia nyata — harapkan hal yang tidak terduga, terutama pada nomor 5 (parameter mapping) dan interoperabilitas per-firmware (`PRD.md` §12 sudah eksplisit menyebut ini sebagai risiko).
+**Baca ini sebelum mulai. Status sebelum hari-H: sistem ini BELUM PERNAH menerima Inform dari CPE fisik sama sekali** — validasi sejauh ini hanya lewat **simulator CPE** (`internal/simcpe`; 10 skenario e2e lulus, lihat `docs/pengujian/PENGUJIAN_E2E.md`). Simulator tidak menjalankan firmware vendor nyata dan tidak punya kuirk per-firmware, jadi bukti "alur ACS benar" ada, tetapi bukti "cocok dengan perangkat nyata" nol. Pengujian ini adalah validasi pertama ke dunia nyata — harapkan hal yang tidak terduga, terutama pada nomor 5 (parameter mapping) dan interoperabilitas per-firmware (`docs/produk/PRD.md` §12 sudah eksplisit menyebut ini sebagai risiko).
 
 ---
 
@@ -22,7 +22,7 @@ Dokumen kerja untuk sesi uji lapangan dengan CPE sungguhan. Beda dari `VENDOR_ON
 
 Ini BUKAN daftar lengkap bug potensial — ini yang **sudah kita tahu sebelumnya** akan terjadi/tidak berfungsi, supaya waktu ketemu di lapangan tidak dianggap temuan baru:
 
-- **`vendor_ouis` sudah di-seed** (migrasi `0022`: 3.176 blok MA-L dari registry IEEE — ZTE 502, Huawei 2.088, FiberHome 220, Nokia 358, Cdata 8; sumber, cakupan & pengecualian ada di header file migrasinya). Device dari OUI-OUI itu langsung ter-resolve `vendor_id`-nya. **Tetap mungkin muncul "Vendor belum diketahui"** karena: (a) OUI di `DeviceId` TR-069 adalah OUI produsen dan tidak selalu sama dengan OUI MAC unit; (b) blok MA-M/MA-S (28/36-bit) sengaja tidak di-seed; (c) CPE white-label sering memakai OUI pihak lain. Kalau muncul, tambahkan OUI-nya lewat Catalog Vendor (`VENDOR_ONBOARDING.md` §2). **Device yang sudah terlanjur dibuat tanpa vendor kini sembuh sendiri pada Inform berikutnya** setelah OUI terdaftar — hanya mengisi yang masih kosong, assign manual operator tidak pernah ditimpa; tidak perlu assign manual lagi. `device_model_id` baru terisi bila ada model di katalog dengan `product_class` yang PERSIS sama dengan yang dikirim CPE (daftarkan model setelah Inform pertama menunjukkan ProductClass-nya). **OUI salah ketik** bisa dihapus lewat API (`DELETE /vendors/{id}/ouis/{ouiId}`) dan didaftarkan ulang (baris lama dihidupkan kembali — dibuktikan e2e S11). UI belum punya tombol hapus OUI; pakai API/Postman.
+- **`vendor_ouis` sudah di-seed** (migrasi `0022`: 3.176 blok MA-L dari registry IEEE — ZTE 502, Huawei 2.088, FiberHome 220, Nokia 358, Cdata 8; sumber, cakupan & pengecualian ada di header file migrasinya). Device dari OUI-OUI itu langsung ter-resolve `vendor_id`-nya. **Tetap mungkin muncul "Vendor belum diketahui"** karena: (a) OUI di `DeviceId` TR-069 adalah OUI produsen dan tidak selalu sama dengan OUI MAC unit; (b) blok MA-M/MA-S (28/36-bit) sengaja tidak di-seed; (c) CPE white-label sering memakai OUI pihak lain. Kalau muncul, tambahkan OUI-nya lewat Catalog Vendor (`docs/operasional/VENDOR_ONBOARDING.md` §2). **Device yang sudah terlanjur dibuat tanpa vendor kini sembuh sendiri pada Inform berikutnya** setelah OUI terdaftar — hanya mengisi yang masih kosong, assign manual operator tidak pernah ditimpa; tidak perlu assign manual lagi. `device_model_id` baru terisi bila ada model di katalog dengan `product_class` yang PERSIS sama dengan yang dikirim CPE (daftarkan model setelah Inform pertama menunjukkan ProductClass-nya). **OUI salah ketik** bisa dihapus lewat API (`DELETE /vendors/{id}/ouis/{ouiId}`) dan didaftarkan ulang (baris lama dihidupkan kembali — dibuktikan e2e S11). UI belum punya tombol hapus OUI; pakai API/Postman.
 - **Logical key yang SUDAH dipetakan** (berlaku sama persis di kelima vendor — TR-098 & TR-181, lihat migrasi `0004`): `device.manufacturer`, `device.model_name`, `device.serial_number`, `device.hardware_version`, `device.software_version`, `device.uptime`, `device.periodic_inform_interval`, `device.connection_request_url`, `wifi.ssid`, `wifi.wpa_passphrase`, `wan.pppoe.username`, `wan.pppoe.password`. Ini semua asumsi instance pertama (`.1`) untuk WAN/WiFi/PPP — konvensi paling umum di CPE residensial single-WAN/single-radio, TAPI bukan jaminan mutlak spec untuk device tertentu.
 - **Logical key yang SENGAJA BELUM dipetakan (jangan dianggap bug kalau tidak ada di datalist provisioning profile):**
   - `wifi.5g.ssid` / split SSID 2.4G vs 5G — index radio WLAN tidak distandarkan, beda per vendor/model/firmware.
@@ -30,7 +30,7 @@ Ini BUKAN daftar lengkap bug potensial — ini yang **sudah kita tahu sebelumnya
   - **Optical power (redaman RX/TX)** — SELALU vendor extension nonstandar (pola `X_<OUI>_...`), tidak ada di spec dasar. **Ini bukan blocker** untuk uji dasar — WiFi/PPPoE/info device tetap jalan karena itu yang distandarkan spec.
   - Kalau menemukan path yang benar untuk salah satu di atas dari device fisik yang diuji, catat di §6 untuk ditambahkan ke `vendor_parameter_mappings` (via `device_model_id` spesifik, bukan generik vendor, supaya tidak menimpa asumsi default utk model lain).
 - **Cdata paling minim tervalidasi dari 5 vendor ini** — baru ditambahkan sebagai data starting point, belum ada riwayat penggunaan sama sekali sebelum migrasi ini (4 vendor lain setidaknya sudah ada sejak baseline awal).
-- **Dark mode dan tampilan mobile**: status verifikasi visual ada di `ROADMAP.md` Fase 1 (catatan keterbatasan jujur di sana). Kalau ada yang aneh secara visual selagi memantau pengujian, kemungkinan besar itu gap yang sudah tercatat, bukan akibat dari pengujian device.
+- **Dark mode dan tampilan mobile**: status verifikasi visual ada di `docs/produk/ROADMAP.md` Fase 1 (catatan keterbatasan jujur di sana). Kalau ada yang aneh secara visual selagi memantau pengujian, kemungkinan besar itu gap yang sudah tercatat, bukan akibat dari pengujian device.
 - **STUN/CGNAT: ada fallback TR-111 UDP, tapi BELUM teruji lapangan** — `internal/usecase/device/service.go` mencoba HTTP Connection Request dulu, lalu fallback ke STUN Binding Request UDP (TR-111, `stun_client.go`) bila alamat `UDPConnectionRequestAddress` ada di Inform. Ini belum pernah diuji ke CGNAT nyata. Kalau CPE di belakang NAT berlapis dan Connection Request gagal, itu **belum tentu bug** — catat saja (butuh CPE yang benar-benar mengirim `UDPConnectionRequestAddress` + firewall yang mengizinkan UDP balik).
 - **Rate limiter `/cwmp`: 5 req/s per IP sumber (burst 5), in-memory** (`cmd/acsd/main.go`). Satu sesi CWMP = beberapa POST (Inform, balasan RPC, POST kosong penutup). Beberapa CPE di balik **satu IP publik** (NAT lab/kantor) yang boot bersamaan bisa saling memicu **HTTP 429** → Inform ditolak; CPE akan mencoba lagi sendiri. Ini **bukan bug baru** — ini blocker skala B4 di `LAPORAN_KESIAPAN.md` §5.2. Mitigasi hari-H: nyalakan unit bergantian (jeda ±10 detik) dan jangan menyimpulkan "gagal" dari satu 429 — tunggu retry berikutnya.
 - **CWMP tanpa TLS di ACS** (lihat §1): kredensial Inform terkirim polos. Jangan uji lewat internet publik tanpa TLS terminator.
@@ -111,7 +111,7 @@ Checklist per device — centang satu-satu, jangan lompat ke langkah berikutnya 
 ## 5. Yang SEBAIKNYA TIDAK Dicoba Hari Itu (Risiko Terlalu Tinggi untuk Uji Pertama)
 
 - **Firmware upgrade job ke device produksi/pelanggan sungguhan** — kalau mau uji fitur ini, pakai unit CPE yang benar-benar boleh gagal/brick, jangan unit yang sedang dipakai pelanggan aktif. Belum ada uji firmware upgrade end-to-end ke device fisik manapun sejauh ini.
-- **Push PPPoE credentials pelanggan asli** — kalau menguji parameter write PPPoE, pakai kredensial dummy/test dulu, bukan kredensial pelanggan aktif, sampai yakin path parameternya benar-benar cocok dengan firmware device tsb (variasi antar-firmware adalah risiko eksplisit di `PRD.md` §12).
+- **Push PPPoE credentials pelanggan asli** — kalau menguji parameter write PPPoE, pakai kredensial dummy/test dulu, bukan kredensial pelanggan aktif, sampai yakin path parameternya benar-benar cocok dengan firmware device tsb (variasi antar-firmware adalah risiko eksplisit di `docs/produk/PRD.md` §12).
 - **Bulk actions ke banyak device sekaligus** — untuk sesi uji pertama, lakukan satu-satu dulu supaya kalau ada yang salah, dampaknya kebaca jelas device mana yang bermasalah.
 
 ## 6. Yang Perlu Dicatat & Dilaporkan
@@ -119,11 +119,11 @@ Checklist per device — centang satu-satu, jangan lompat ke langkah berikutnya 
 Untuk tiap device yang diuji, catat (spreadsheet/notes bebas, tidak perlu format khusus):
 - Vendor, model persis, versi firmware.
 - Hasil tiap nomor checklist §4 (berhasil/gagal/skip, dengan catatan kalau gagal).
-- Path TR-069 yang ternyata BEDA dari yang sudah dipetakan (kalau ketemu, ini bahan update `vendor_parameter_mappings` — lihat `VENDOR_ONBOARDING.md`).
+- Path TR-069 yang ternyata BEDA dari yang sudah dipetakan (kalau ketemu, ini bahan update `vendor_parameter_mappings` — lihat `docs/operasional/VENDOR_ONBOARDING.md`).
 - OUI yang belum terdaftar (kalau ketemu vendor "belum diketahui" padahal seharusnya dikenal).
 - Screenshot/log kalau ada perilaku yang benar-benar tidak terduga (bukan yang sudah dicatat di §2).
 
-Setelah sesi selesai, hasil ini dipakai untuk update `ROADMAP.md` Fase 3 item "Uji kompatibilitas riil terhadap firmware CPE..." — jangan ditandai selesai kalau baru sebagian vendor/skenario yang tercoba, catat persis apa yang sudah vs belum diuji (pola yang sama seperti entry lain di ROADMAP.md — jujur soal cakupan, bukan klaim blanket "sudah diuji").
+Setelah sesi selesai, hasil ini dipakai untuk update `docs/produk/ROADMAP.md` Fase 3 item "Uji kompatibilitas riil terhadap firmware CPE..." — jangan ditandai selesai kalau baru sebagian vendor/skenario yang tercoba, catat persis apa yang sudah vs belum diuji (pola yang sama seperti entry lain di docs/produk/ROADMAP.md — jujur soal cakupan, bukan klaim blanket "sudah diuji").
 
 ### Template lembar hasil per device (salin ke spreadsheet)
 
@@ -160,7 +160,7 @@ Kalau pengujian bikin data berantakan dan perlu restore:
 docker compose exec -T mariadb sh -c 'mariadb -uacs -p"$MARIADB_PASSWORD" acs' < backup_sebelum_uji_lapangan_YYYYMMDD.sql
 ```
 
-Prosedur ini sudah diuji end-to-end (bukan cuma didokumentasikan) — lihat `ROADMAP.md` Fase 3 "Backup/disaster recovery MariaDB".
+Prosedur ini sudah diuji end-to-end (bukan cuma didokumentasikan) — lihat `docs/produk/ROADMAP.md` Fase 3 "Backup/disaster recovery MariaDB".
 
 ---
 

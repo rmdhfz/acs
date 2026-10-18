@@ -318,7 +318,7 @@ export function DeviceFormModal({ mode, device, onClose, onSaved }: Props) {
                 <label htmlFor="df-crpass" className={labelCls}>
                   Password
                 </label>
-                <input maxLength={128} id="df-crpass" type="password" value={crPass} onChange={(e) => setCrPass(e.target.value)} autoComplete="new-password" placeholder={isEdit ? '(tersimpan — isi untuk mengganti)' : ''} className={inputCls} />
+                <input maxLength={128} id="df-crpass" type="password" value={crPass} onChange={(e) => setCrPass(e.target.value)} autoComplete="off" placeholder={isEdit ? '(tersimpan — isi untuk mengganti)' : ''} className={inputCls} />
               </div>
             </div>
             <p className={`${hintCls} -mt-2`}>Disimpan terenkripsi dan tidak pernah ditampilkan kembali. ACS menjawab tantangan Digest/Basic dari CPE memakai kredensial ini.</p>

@@ -84,7 +84,7 @@ perlu. Sisa dokumen mengasumsikan Opsi C.
 
 **JANGAN buat bahasa ekspresi/DSL baru** (dan JANGAN skrip JS seperti GenieACS
 provisions — itu keluar dari filosofi "data terstruktur, auditable" di
-`ROADMAP.md` §1 dan bertentangan dengan CLAUDE.md soal tidak menaruh logika di
+`docs/produk/ROADMAP.md` §1 dan bertentangan dengan CLAUDE.md soal tidak menaruh logika di
 tempat yang sulit di-review).
 
 `presets.precondition` (kolom JSON yang sudah ada) diisi objek terstruktur yang
@@ -191,7 +191,7 @@ konvergen, preset jadi no-op sampai ada yang mengubah nilainya di luar ACS
 
 ## 5. Konflik dengan FR-18 — keputusan produk yang WAJIB dikonfirmasi
 
-`PRD.md` FR-18 + `CLAUDE.md`:
+`docs/produk/PRD.md` FR-18 + `CLAUDE.md`:
 
 > Perubahan pada `provisioning_profile_parameters` tidak otomatis mendorong ulang
 > konfigurasi ke device yang sudah terprovisioning — ini keputusan produk yang

@@ -44,6 +44,17 @@ func (r *Router) createTask(c *echo.Context) error {
 	if req.Priority > 9 {
 		return echo.NewHTTPError(http.StatusBadRequest, "priority harus 1-9")
 	}
+	if req.ExpiresAt != nil {
+		if req.ScheduledAt != nil && !req.ExpiresAt.After(*req.ScheduledAt) {
+			return echo.NewHTTPError(http.StatusBadRequest, "expires_at harus setelah scheduled_at")
+		}
+		if req.ExpiresAt.Before(time.Now()) {
+			return echo.NewHTTPError(http.StatusBadRequest, "expires_at sudah lewat")
+		}
+	}
+	if len(req.Parameters) > 200 {
+		return echo.NewHTTPError(http.StatusBadRequest, "parameters terlalu banyak kunci")
+	}
 	// storage_key hanya boleh diisi usecase internal: ia membuat ACS menerbitkan
 	// URL presigned untuk object APA PUN di bucket (termasuk milik tenant lain).
 	if _, has := req.Parameters[domain.TaskParamStorageKey]; has {

@@ -3,8 +3,22 @@ package preset
 import (
 	"context"
 	"fmt"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"acs/internal/domain"
+)
+
+// Batas preset. Preset dievaluasi pada SETIAP Inform tiap device tenant (jalur panas CWMP), jadi jumlah operasi,
+// panjang kunci/nilai dan pola dibatasi (temuan audit validasi T2). Angka mengikuti kolom/batas ZTP.
+const (
+	MaxPresetsPerTenant = 100
+	maxPresetOps        = 50
+	maxPresetKeyLen     = 512
+	maxPresetValueLen   = 8192
+	maxPresetPatternLen = 255
+	maxPresetJSONLen    = 64 << 10
 )
 
 type Service struct {
@@ -17,11 +31,16 @@ func NewService(presets domain.PresetRepository, activity domain.ActivityLogRepo
 }
 
 func (s *Service) Create(ctx context.Context, actor domain.Actor, in domain.Preset) (*domain.Preset, error) {
-	if in.Name == "" {
-		return nil, fmt.Errorf("%w: nama preset wajib diisi", domain.ErrInvalidInput)
+	name, err := domain.CleanText("nama preset", in.Name, 1, 255, false)
+	if err != nil {
+		return nil, err
 	}
+	in.Name = name
 	if err := validatePresetJSON(&in); err != nil {
 		return nil, err
+	}
+	if _, total, err := s.presets.List(ctx, actor.TenantID, domain.Pagination{Page: 1, PageSize: 1}); err == nil && total >= MaxPresetsPerTenant {
+		return nil, fmt.Errorf("%w: batas %d preset per tenant tercapai", domain.ErrQuotaExceeded, MaxPresetsPerTenant)
 	}
 
 	in.TenantID = actor.TenantID
@@ -88,7 +107,11 @@ func (s *Service) Update(ctx context.Context, actor domain.Actor, id uint64, in 
 	if err != nil {
 		return err
 	}
-	preset.Name = in.Name
+	name, err := domain.CleanText("nama preset", in.Name, 1, 255, false)
+	if err != nil {
+		return err
+	}
+	preset.Name = name
 	preset.Weight = in.Weight
 	preset.Precondition = in.Precondition
 	preset.Configurations = in.Configurations
@@ -126,20 +149,39 @@ func (s *Service) Delete(ctx context.Context, actor domain.Actor, id uint64) err
 // disimpan — mencegah garbage masuk ke jalur enforcement (EvaluatePresets).
 // Precondition/configurations kosong dinormalkan ke "{}" / "[]".
 func validatePresetJSON(p *domain.Preset) error {
+	if len(p.Precondition) > maxPresetJSONLen || len(p.Configurations) > maxPresetJSONLen {
+		return fmt.Errorf("%w: precondition/configurations maksimal %d KB", domain.ErrInvalidInput, maxPresetJSONLen>>10)
+	}
 	if p.Precondition == "" {
 		p.Precondition = "{}"
 	}
 	if p.Configurations == "" {
 		p.Configurations = "[]"
 	}
-	if _, err := p.ParsedPrecondition(); err != nil {
+	pc, err := p.ParsedPrecondition()
+	if err != nil {
 		return fmt.Errorf("%w: %v", domain.ErrInvalidInput, err)
+	}
+	for field, v := range map[string]*string{
+		"oui": pc.OUI, "serial_pattern": pc.SerialPattern, "software_version_pattern": pc.SoftwareVersionPattern,
+		"match_parameter_name": pc.MatchParameterName, "match_parameter_value_pattern": pc.MatchParameterValuePattern,
+	} {
+		if v != nil && (utf8.RuneCountInString(*v) > maxPresetPatternLen || strings.ContainsFunc(*v, unicode.IsControl)) {
+			return fmt.Errorf("%w: precondition.%s maksimal %d karakter tanpa karakter kontrol", domain.ErrInvalidInput, field, maxPresetPatternLen)
+		}
 	}
 	ops, err := p.ParsedConfigurations()
 	if err != nil {
 		return fmt.Errorf("%w: %v", domain.ErrInvalidInput, err)
 	}
+	if len(ops) > maxPresetOps {
+		return fmt.Errorf("%w: configurations maksimal %d operasi", domain.ErrInvalidInput, maxPresetOps)
+	}
 	for i, op := range ops {
+		if utf8.RuneCountInString(op.Key) > maxPresetKeyLen || utf8.RuneCountInString(op.Value) > maxPresetValueLen ||
+			strings.ContainsFunc(op.Key, unicode.IsControl) {
+			return fmt.Errorf("%w: configurations[%d] key maks. %d / value maks. %d karakter, key tanpa karakter kontrol", domain.ErrInvalidInput, i, maxPresetKeyLen, maxPresetValueLen)
+		}
 		if op.Op != domain.PresetOpSetParameter {
 			return fmt.Errorf("%w: configurations[%d].op %q belum didukung (v1 hanya %q)", domain.ErrInvalidInput, i, op.Op, domain.PresetOpSetParameter)
 		}

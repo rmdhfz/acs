@@ -1,9 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertCircle, ArrowLeft, Building2, Eye, EyeOff, Lock, Mail, MailCheck, User } from 'lucide-react'
-import { ApiError, API_BASE } from '../lib/api'
-import { useEffect } from 'react'
-import { useSignup } from '../lib/hooks'
+import { ApiError } from '../lib/api'
+import { useAuthConfig, useSignup } from '../lib/hooks'
 import { AuthShell } from '../components/AuthShell'
 import { PasswordStrengthBar } from '../components/PasswordStrengthBar'
 import { Spinner } from '../components/Spinner'
@@ -12,12 +11,15 @@ import { authInputCls, authPrimaryBtnCls } from '../components/authStyles'
 
 const labelCls = 'mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300'
 const hintCls = 'mt-1 text-xs text-slate-600 dark:text-slate-400'
+const CONTACT_EMAIL = (import.meta.env.VITE_CONTACT_EMAIL as string | undefined) ?? ''
 
 // Pendaftaran tenant mandiri. Fitur bawaan MATI di backend (ACS_SELF_SIGNUP): halaman ini menanyakan
 // /auth/config dan menampilkan keterangan jelas bila ditutup. Backend memverifikasi email dulu sebelum tenant dibuat.
 export function SignupPage() {
   const mut = useSignup()
-  const [enabled, setEnabled] = useState<boolean | null>(null)
+  const { data: cfg, isLoading: cfgLoading, isError: cfgError } = useAuthConfig()
+  // null = belum tahu (memuat); false = ditutup atau konfigurasi tak terjangkau (gagal-tertutup, dengan pesan jelas)
+  const enabled: boolean | null = cfgLoading ? null : cfgError ? false : Boolean(cfg?.self_signup_enabled)
   const [company, setCompany] = useState('')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -28,17 +30,6 @@ export function SignupPage() {
   const [website, setWebsite] = useState('') // honeypot
   const [error, setError] = useState<string | null>(null)
   const [sentTo, setSentTo] = useState<string | null>(null)
-
-  useEffect(() => {
-    let alive = true
-    fetch(`${API_BASE}/auth/config`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((c) => alive && setEnabled(Boolean(c?.self_signup_enabled)))
-      .catch(() => alive && setEnabled(false))
-    return () => {
-      alive = false
-    }
-  }, [])
 
   const pwScore = scorePassword(password).score
   const mismatch = confirm !== '' && confirm !== password
@@ -71,18 +62,31 @@ export function SignupPage() {
       </Link>
 
       {enabled === false ? (
-        <div role="status">
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">Pendaftaran ditutup</h1>
-          <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
-            Pendaftaran tenant mandiri belum dibuka di instalasi ini. Hubungi administrator platform untuk dibuatkan akun.
+        <div role="status" className="text-center">
+          <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
+            <Lock className="h-7 w-7" strokeWidth={1.75} aria-hidden="true" />
+          </span>
+          <h1 className="mt-5 text-[1.75rem] font-normal leading-tight text-center text-slate-900 dark:text-slate-100">Pendaftaran belum dibuka</h1>
+          <p className="mt-3 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
+            Instalasi ini belum menerima pendaftaran tenant mandiri. Administrator platform dapat membuatkan akun untuk Anda, atau hubungi kami untuk jadwal demo dan rencana pilot.
           </p>
+          <div className="mt-7 flex flex-wrap justify-center gap-3">
+            {CONTACT_EMAIL && (
+              <a href={`mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent('Permintaan akses ACS Console')}`} className="inline-flex h-11 items-center rounded-full bg-indigo-600 px-6 text-sm font-medium text-white hover:bg-indigo-700">
+                Hubungi kami
+              </a>
+            )}
+            <Link to="/login" className="inline-flex h-11 items-center rounded-full border border-slate-300 px-6 text-sm font-medium text-indigo-700 hover:bg-indigo-50 dark:border-slate-600 dark:text-indigo-300 dark:hover:bg-slate-800">
+              Sudah punya akun? Masuk
+            </Link>
+          </div>
         </div>
       ) : sentTo ? (
         <div>
-          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
             <MailCheck className="h-7 w-7" />
           </div>
-          <h1 className="mt-5 text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">Cek email Anda</h1>
+          <h1 className="mt-5 text-[1.75rem] font-normal leading-tight text-center text-slate-900 dark:text-slate-100">Cek email Anda</h1>
           <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400" role="status">
             Jika data valid, kami telah mengirim tautan verifikasi ke <strong>{sentTo}</strong>. Klik tautan itu (berlaku 24 jam) untuk mengaktifkan tenant dan akun administrator Anda.
           </p>
@@ -91,8 +95,8 @@ export function SignupPage() {
       ) : (
         <>
           <div className="mb-6">
-            <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">Daftar tenant baru</h1>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Buat akun untuk mengelola perangkat ONT/CPE Anda. Paket awal gratis dengan batas perangkat.</p>
+            <h1 className="text-[1.75rem] font-normal leading-tight text-center text-slate-900 dark:text-slate-100">Buat akun ACS Console</h1>
+            <p className="mt-2 text-center text-sm text-slate-600 dark:text-slate-400">Kelola perangkat ONT/CPE Anda dari satu konsol. Paket awal gratis dengan batas perangkat; email diverifikasi sebelum akun dibuat.</p>
           </div>
 
           <form onSubmit={handleSubmit} noValidate className="space-y-4">
@@ -131,7 +135,7 @@ export function SignupPage() {
             </div>
             <div>
               <label htmlFor="su-confirm" className={labelCls}>Ulangi password</label>
-              <input id="su-confirm" type={show ? 'text' : 'password'} value={confirm} onChange={(e) => setConfirm(e.target.value)} required maxLength={128} autoComplete="new-password" aria-invalid={mismatch} className={authInputCls} />
+              <input minLength={10} id="su-confirm" type={show ? 'text' : 'password'} value={confirm} onChange={(e) => setConfirm(e.target.value)} required maxLength={128} autoComplete="new-password" aria-invalid={mismatch} className={authInputCls} />
               {mismatch && <p role="alert" className="mt-1 text-xs text-red-700 dark:text-red-400">Konfirmasi password tidak cocok.</p>}
             </div>
 

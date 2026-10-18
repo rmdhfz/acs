@@ -8,9 +8,9 @@ Diagnosis gejala berikut: **$ARGUMENTS**
 Gunakan agent `cpe-troubleshooter` (read-only — jangan ubah kode atau data).
 
 Yang saya harapkan di jawaban:
-1. Klasifikasi tegas: **batasan yang sudah diketahui** (cek `PENGUJIAN_LAPANGAN.md` §2 lebih dulu) / salah konfigurasi / bug baru / belum bisa ditentukan.
+1. Klasifikasi tegas: **batasan yang sudah diketahui** (cek `docs/pengujian/PENGUJIAN_LAPANGAN.md` §2 lebih dulu) / salah konfigurasi / bug baru / belum bisa ditentukan.
 2. Bukti berupa `file:baris` atau nama tabel/kolom — bukan tebakan berbalut kepastian.
 3. Tindakan yang disarankan, diurutkan dari yang paling cepat dicoba.
-4. Kalau ini temuan baru: kalimat siap-tempel untuk `PENGUJIAN_LAPANGAN.md` §6.
+4. Kalau ini temuan baru: kalimat siap-tempel untuk `docs/pengujian/PENGUJIAN_LAPANGAN.md` §6.
 
 Jangan tampilkan kredensial apa pun dalam bentuk plaintext.

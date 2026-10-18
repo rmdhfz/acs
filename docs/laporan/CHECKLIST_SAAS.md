@@ -11,11 +11,13 @@ Tanggal: 17 Oktober 2026 (dihitung ulang setelah LANJUTAN 12) · Dasar: kode di 
 | A. Protokol & inti ACS (TR-069) | 25 | 92% | **95%** | 23.8 |
 | B. Aplikasi web & pengalaman pengguna | 15 | 82% | **90%** | 13.5 |
 | C. Multi-tenant & identitas/akses | 15 | 89% | **95%** | 14.3 |
-| D. Keamanan | 10 | 79% | **84%** | 8.4 |
+| D. Keamanan | 10 | 79% | **86%** | 8.6 |
 | E. Operasional & deployment | 15 | 87% | **87%** | 13.0 |
-| F. Kualitas & verifikasi | 10 | 82% | **82%** | 8.2 |
-| G. Aspek SaaS komersial | 10 | 50% | **63%** | 6.3 |
-| **TOTAL** | **100** | 82.6 | | **87.5** |
+| F. Kualitas & verifikasi | 10 | 82% | **84%** | 8.4 |
+| G. Aspek SaaS komersial | 10 | 50% | **70%** | 7.0 |
+| **TOTAL** | **100** | 82.6 | | **88.7** |
+
+> Pembaruan 2026-10-18: validasi masukan menyeluruh (D, F: e2e 24/24), langganan Xendit + UI /billing (G). G tidak lebih tinggi karena pembayaran **belum diuji dengan Xendit nyata/sandbox**, belum ada aspek legal/pajak, dan pemutusan layanan otomatis sengaja tidak ada.
 
 ## Dua angka yang perlu dibedakan
 

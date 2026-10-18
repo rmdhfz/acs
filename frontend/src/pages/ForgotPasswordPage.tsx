@@ -54,10 +54,10 @@ export function ForgotPasswordPage() {
 
       {sentTo ? (
         <div>
-          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
             <MailCheck className="h-7 w-7" />
           </div>
-          <h1 className="mt-5 text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">{t('forgot.sentTitle')}</h1>
+          <h1 className="mt-5 text-[1.75rem] font-normal leading-tight text-center text-slate-900 dark:text-slate-100">{t('forgot.sentTitle')}</h1>
           <p className="mt-2 text-sm leading-relaxed text-slate-500 dark:text-slate-400" role="status">
             {t('forgot.sentDesc', { email: sentTo })}
           </p>
@@ -96,7 +96,7 @@ export function ForgotPasswordPage() {
               <LifeBuoy className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">{t('forgot.title')}</h1>
+              <h1 className="text-[1.75rem] font-normal leading-tight text-center text-slate-900 dark:text-slate-100">{t('forgot.title')}</h1>
               <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{t('forgot.subtitle')}</p>
             </div>
           </div>

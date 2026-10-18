@@ -24,6 +24,11 @@ const (
 	NotifDeviceLimitReached = "DEVICE_LIMIT_REACHED"
 	NotifNewTenantSignup    = "NEW_TENANT_SIGNUP"
 	NotifAnnouncement       = "ANNOUNCEMENT"
+	// Langganan SaaS (migrations/0032).
+	NotifBillingPaid     = "BILLING_PAID"
+	NotifBillingExpiring = "BILLING_EXPIRING"
+	NotifBillingExpired  = "BILLING_EXPIRED"
+	NotifBillingFailed   = "BILLING_FAILED"
 )
 
 // NotificationAudienceKind menentukan siapa penerima sebuah kejadian.

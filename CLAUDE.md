@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Panduan kerja untuk Claude (dan Claude Code) saat membantu mengembangkan proyek ACS ini. Baca `PRD.md` untuk konteks bisnis dan `TECH.md` untuk keputusan arsitektur sebelum mengubah kode secara signifikan.
+Panduan kerja untuk Claude (dan Claude Code) saat membantu mengembangkan proyek ACS ini. Baca `docs/produk/PRD.md` untuk konteks bisnis dan `docs/arsitektur/TECH.md` untuk keputusan arsitektur sebelum mengubah kode secara signifikan.
 
 ## Ringkasan Proyek
 
@@ -12,7 +12,7 @@ ACS multi-vendor (TR-069/CWMP) untuk manajemen CPE (ONT/ONU/router) lintas brand
 - **HTTP framework:** Echo v5
 - **DB access:** sqlx — jangan perkenalkan ORM full (GORM dll) tanpa diskusi eksplisit, ini keluar dari pola yang sudah mapan di semua proyek tim.
 - **Database:** MariaDB, InnoDB, `utf8mb4_unicode_ci`.
-- **Arsitektur:** Clean Architecture — `domain` → `usecase` → `repository`/`delivery`. Lihat struktur direktori di `TECH.md` §2. Jangan taruh logic bisnis di handler (`delivery`) atau di repository — handler hanya parsing/validasi request & memanggil usecase; repository hanya query, tanpa logic keputusan.
+- **Arsitektur:** Clean Architecture — `domain` → `usecase` → `repository`/`delivery`. Lihat struktur direktori di `docs/arsitektur/TECH.md` §2. Jangan taruh logic bisnis di handler (`delivery`) atau di repository — handler hanya parsing/validasi request & memanggil usecase; repository hanya query, tanpa logic keputusan.
 
 ## Konvensi Skema Database (wajib diikuti untuk tabel baru)
 
@@ -24,8 +24,8 @@ ACS multi-vendor (TR-069/CWMP) untuk manajemen CPE (ONT/ONU/router) lintas brand
 
 ## Domain-Specific — TR-069/CWMP
 
-- CWMP adalah protokol **stateful berbasis sesi**, bukan request-response biasa. Jangan asumsikan satu Inform = satu HTTP round-trip selesai — sesi tetap terbuka selama ACS masih punya task untuk dikirim ke CPE dalam sesi tsb. Lihat `TECH.md` §3 sebelum mengubah kode di `internal/delivery/cwmp/`.
-- Jangan hardcode path parameter TR-069 per vendor di kode Go (mis. `if vendor == "zte" { path = "..." }` tersebar di banyak file). Perbedaan path per vendor **harus** lewat tabel `vendor_parameter_mappings`, bukan percabangan kode. Lihat `TECH.md` §5.
+- CWMP adalah protokol **stateful berbasis sesi**, bukan request-response biasa. Jangan asumsikan satu Inform = satu HTTP round-trip selesai — sesi tetap terbuka selama ACS masih punya task untuk dikirim ke CPE dalam sesi tsb. Lihat `docs/arsitektur/TECH.md` §3 sebelum mengubah kode di `internal/delivery/cwmp/`.
+- Jangan hardcode path parameter TR-069 per vendor di kode Go (mis. `if vendor == "zte" { path = "..." }` tersebar di banyak file). Perbedaan path per vendor **harus** lewat tabel `vendor_parameter_mappings`, bukan percabangan kode. Lihat `docs/arsitektur/TECH.md` §5.
 - Root data model berbeda antar generasi/vendor: `InternetGatewayDevice.*` (TR-098) vs `Device.*` (TR-181). Selalu resolve dari `data_model_versions` milik device, jangan diasumsikan tetap.
 - Menambah dukungan vendor/model baru = **operasi data** (insert ke `ref_vendors`, `vendor_ouis`, `device_models`, `vendor_parameter_mappings`), bukan perubahan kode, kecuali vendor tsb punya kuirk protokol nonstandar yang memang butuh adapter khusus di `internal/vendor_adapter/`.
 - Event code CWMP (`0 BOOTSTRAP`, `1 BOOT`, `2 PERIODIC`, `4 VALUE CHANGE`, `6 CONNECTION REQUEST`, `7 TRANSFER COMPLETE`, dst.) adalah string standar dari spec Broadband Forum — jangan diubah penulisannya saat disimpan/dibandingkan.
@@ -44,6 +44,7 @@ pkg/cwmpxml/                    struct & (de)serialisasi envelope CWMP
 pkg/cryptoutil/                 enkripsi kredensial
 migrations/
 schema.sql
+docs/                          dokumentasi (indeks & aturan: docs/README.md)
 ```
 
 ## Alur Kerja yang Diharapkan
@@ -51,12 +52,12 @@ schema.sql
 - Sebelum menambah tabel/kolom: cek apakah kebutuhan itu sebenarnya bisa dipetakan ke pola EAV (`device_parameters`) atau `ref_*` yang sudah ada, daripada menambah kolom baru per parameter vendor-spesifik.
 - Sebelum menambah endpoint REST baru: pastikan sudah lewat middleware auth (API token/JWT) dan RBAC scope tenant — tidak ada endpoint mutasi tanpa autentikasi, bahkan untuk keperluan development sementara.
 - Query yang menyentuh kredensial (`connection_request_username/password`) tidak boleh di-log dalam bentuk plaintext di level manapun (aplikasi, migrasi, seed data contoh).
-- Perubahan pada `provisioning_profile_parameters` tidak otomatis mendorong ulang konfigurasi ke device yang sudah terprovisioning (lihat FR-18 di `PRD.md`) — ini keputusan produk yang disengaja, jangan "diperbaiki" jadi otomatis tanpa konfirmasi.
+- Perubahan pada `provisioning_profile_parameters` tidak otomatis mendorong ulang konfigurasi ke device yang sudah terprovisioning (lihat FR-18 di `docs/produk/PRD.md`) — ini keputusan produk yang disengaja, jangan "diperbaiki" jadi otomatis tanpa konfirmasi.
 - Test yang menyentuh task queue harus mencakup skenario retry dan `max_retries` tercapai, bukan hanya happy path.
 
 ## Yang Perlu Dikonfirmasi Sebelum Diimplementasikan (belum final)
 
-- Pilihan library XML/SOAP (manual struct vs library pihak ketiga) — lihat `TECH.md` §12.
+- Pilihan library XML/SOAP (manual struct vs library pihak ketiga) — lihat `docs/arsitektur/TECH.md` §12.
 - Strategi Connection Request untuk CPE di belakang CGNAT (STUN) — Fase 2, belum ada keputusan desain.
 - Strategi partisi tabel log (`device_events`, `device_optical_metrics`) — menunggu data volume produksi.
 

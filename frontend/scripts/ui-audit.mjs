@@ -65,7 +65,7 @@ const dev = (await (await fetch(`${API}/devices?page_size=1`, { headers: auth })
 const ROUTES = [
   '/dashboard', '/devices', dev ? `/devices/${dev.id}` : null, '/tasks', '/provisioning', '/firmware',
   '/presets', '/audit', '/profile', '/webhooks', '/catalog', '/administration', '/reports',
-  '/notifications', '/notifications?tab=preferences', '/notifications?tab=announce', '/halaman-tidak-ada',
+  '/billing', '/notifications', '/notifications?tab=preferences', '/notifications?tab=announce', '/halaman-tidak-ada',
   // halaman publik (tanpa login); /signup diaudit dalam keadaan AKTIF (config dipaksa lewat intersepsi di bawah)
   '/signup', '/terms', '/privacy', '/verify-signup',
 ].filter(Boolean)

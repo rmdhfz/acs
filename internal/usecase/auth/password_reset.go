@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"log/slog"
 	"strings"
 	"sync/atomic"
@@ -113,8 +112,8 @@ func (s *Service) ResetPassword(ctx context.Context, token, newPassword string) 
 	}
 	// Validasi password SEBELUM mengonsumsi token — agar pengguna yang salah
 	// ketik (terlalu pendek) tidak kehilangan tautannya.
-	if len(newPassword) < domain.MinUserPasswordLen {
-		return fmt.Errorf("%w: password minimal %d karakter", domain.ErrInvalidInput, domain.MinUserPasswordLen)
+	if err := domain.ValidatePassword(newPassword); err != nil {
+		return err
 	}
 	// Urutan sengaja: (1) Peek murah — token ngawur ditolak TANPA hashing Argon2
 	// (anti-DoS dari pemanggil anonim); (2) pastikan akun aktif SEBELUM token

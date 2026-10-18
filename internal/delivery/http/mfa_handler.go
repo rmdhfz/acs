@@ -28,6 +28,9 @@ func (r *Router) mfaVerify(c *echo.Context) error {
 	if strings.TrimSpace(req.MFAToken) == "" || strings.TrimSpace(req.Code) == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "mfa_token dan code wajib diisi")
 	}
+	if err := checkMaxLen(lenRule{"mfa_token", req.MFAToken, maxAuthToken}, lenRule{"code", req.Code, maxMFACode}); err != nil {
+		return err
+	}
 	u, token, err := r.Auth.MFAVerifyLogin(c.Request().Context(), req.MFAToken, req.Code)
 	if err != nil {
 		switch {

@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Modal } from './Modal'
 import { ApiError } from '../lib/api'
-import { useSetParameterAttributes } from '../lib/hooks'
+import { useGetParameterAttributes, useSetParameterAttributes } from '../lib/hooks'
 import { useToast } from '../lib/toast'
 
 const inputCls =
@@ -14,6 +14,7 @@ export function NotificationAttributesModal({ deviceId, initialNames, onClose }:
   const [level, setLevel] = useState(2)
   const [error, setError] = useState<string | null>(null)
   const mut = useSetParameterAttributes()
+  const readMut = useGetParameterAttributes()
   const toast = useToast()
 
   function submit(e: FormEvent) {
@@ -55,11 +56,32 @@ export function NotificationAttributesModal({ deviceId, initialNames, onClose }:
           </select>
         </div>
         {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-        <div className="flex justify-end gap-2 pt-1">
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+          <button
+            type="button"
+            disabled={readMut.isPending}
+            onClick={() => {
+              const list = names.split('\n').map((n) => n.trim()).filter(Boolean)
+              if (list.length === 0 || list.length > 200) return setError('Isi 1–200 nama parameter (satu per baris) untuk dibaca.')
+              setError(null)
+              readMut.mutate(
+                { deviceId, names: list },
+                {
+                  onSuccess: () => toast.success('Task pembacaan atribut diantrekan — hasilnya muncul di tab Task setelah perangkat Inform.', 'Berhasil'),
+                  onError: (err) => setError(err instanceof ApiError ? err.message : 'Gagal mengantrekan task'),
+                },
+              )
+            }}
+            className="rounded-full px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50 disabled:opacity-50 dark:text-indigo-300 dark:hover:bg-indigo-500/10"
+          >
+            {readMut.isPending ? 'Mengantrekan…' : 'Baca atribut saat ini'}
+          </button>
+          <div className="flex gap-2">
           <button type="button" onClick={onClose} className="rounded-full border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">Batal</button>
           <button type="submit" disabled={mut.isPending} className="rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50">
             {mut.isPending ? 'Mengantrekan…' : 'Terapkan'}
           </button>
+          </div>
         </div>
       </form>
     </Modal>

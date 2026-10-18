@@ -8,7 +8,8 @@ import { useAuth } from '../lib/auth'
 import { ApiError } from '../lib/api'
 import { useToast } from '../lib/toast'
 import { useConfirm } from '../lib/confirm'
-import { findRefById, useCancelTask, useCreateTask, useRefs, useTasks, type TaskFilters } from '../lib/hooks'
+import { findRefById, useCancelTask, useCreateTask, useRefs, useTask, useTasks, type TaskFilters } from '../lib/hooks'
+import type { Task } from '../lib/types'
 import { DataTools } from '../components/DataTools'
 import { loadTaskExportRows, taskExportColumns } from '../imports/exports'
 import { formatJSONField, formatDateTime, formatRelativeTime } from '../lib/format'
@@ -19,6 +20,52 @@ const inputCls =
   'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
 const primaryBtnCls =
   'flex items-center justify-center gap-2 rounded-full bg-indigo-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-indigo-300 dark:text-slate-900 dark:hover:bg-indigo-200'
+
+// Rincian satu task: memuat GET /tasks/:id (data terbaru, termasuk respons CPE) — daftar hanya membawa ringkasan.
+function TaskDetail({ task }: { task: Task }) {
+  const { data, isLoading } = useTask(task.id)
+  const t = data ?? task
+  const params = formatJSONField(t.parameters)
+  const response = formatJSONField(t.response)
+  return (
+    <div>
+      <dl className="grid grid-cols-2 gap-4 text-xs sm:grid-cols-4">
+        <div>
+          <dt className="text-slate-500 dark:text-slate-400">Task UUID</dt>
+          <dd className="font-mono text-slate-700 dark:text-slate-300">{t.task_uuid}</dd>
+        </div>
+        <div>
+          <dt className="text-slate-500 dark:text-slate-400">Terkirim</dt>
+          <dd className="text-slate-700 dark:text-slate-300">{formatDateTime(t.sent_at)}</dd>
+        </div>
+        <div>
+          <dt className="text-slate-500 dark:text-slate-400">Selesai</dt>
+          <dd className="text-slate-700 dark:text-slate-300">{formatDateTime(t.completed_at)}</dd>
+        </div>
+        <div>
+          <dt className="text-slate-500 dark:text-slate-400">Error</dt>
+          <dd className="text-red-700 dark:text-red-400">{t.error_message ?? '-'}</dd>
+        </div>
+      </dl>
+      {params && (
+        <div className="mt-3">
+          <p className="text-xs text-slate-500 dark:text-slate-400">Parameters</p>
+          <pre className="mt-1 max-h-40 overflow-auto rounded-xl bg-slate-900 p-3 text-xs text-slate-200">{params}</pre>
+        </div>
+      )}
+      <div className="mt-3">
+        <p className="text-xs text-slate-500 dark:text-slate-400">Respons perangkat</p>
+        {isLoading && !response ? (
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Memuat…</p>
+        ) : response ? (
+          <pre className="mt-1 max-h-48 overflow-auto rounded-xl bg-slate-900 p-3 text-xs text-slate-200">{response}</pre>
+        ) : (
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Belum ada respons (task belum selesai atau tidak menghasilkan data).</p>
+        )}
+      </div>
+    </div>
+  )
+}
 
 export function TasksPage() {
   const { t: tl } = useI18n()
@@ -95,7 +142,7 @@ export function TasksPage() {
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <input max={999999999999}
+        <input min={1} max={999999999999}
           type="number"
           placeholder="Filter Device ID..."
           value={deviceIdFilter}
@@ -203,34 +250,9 @@ export function TasksPage() {
                         </td>
                       </tr>
                       {isExpanded && (
-                        <tr className="bg-slate-50">
+                        <tr className="bg-slate-50 dark:bg-slate-800/40">
                           <td colSpan={7} className="px-5 py-4">
-                            <dl className="grid grid-cols-2 gap-4 text-xs sm:grid-cols-4">
-                              <div>
-                                <dt className="text-slate-500 dark:text-slate-400">Task UUID</dt>
-                                <dd className="font-mono text-slate-700 dark:text-slate-300">{t.task_uuid}</dd>
-                              </div>
-                              <div>
-                                <dt className="text-slate-500 dark:text-slate-400">Terkirim</dt>
-                                <dd className="text-slate-700 dark:text-slate-300">{formatDateTime(t.sent_at)}</dd>
-                              </div>
-                              <div>
-                                <dt className="text-slate-500 dark:text-slate-400">Selesai</dt>
-                                <dd className="text-slate-700 dark:text-slate-300">{formatDateTime(t.completed_at)}</dd>
-                              </div>
-                              <div>
-                                <dt className="text-slate-500 dark:text-slate-400">Error</dt>
-                                <dd className="text-red-600">{t.error_message ?? '-'}</dd>
-                              </div>
-                            </dl>
-                            {formatJSONField(t.parameters) && (
-                              <div className="mt-3">
-                                <p className="text-xs text-slate-500 dark:text-slate-400">Parameters</p>
-                                <pre className="mt-1 max-h-40 overflow-auto rounded-lg bg-slate-900 p-3 text-xs text-slate-200">
-                                  {formatJSONField(t.parameters)}
-                                </pre>
-                              </div>
-                            )}
+                            <TaskDetail task={t} />
                           </td>
                         </tr>
                       )}
@@ -319,7 +341,7 @@ function CreateTaskModal({
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Device ID</label>
-          <input max={999999999999} type="number" required value={deviceId} onChange={(e) => setDeviceId(e.target.value)} placeholder="ID numerik device, mis. 12" className={inputCls} />
+          <input min={1} max={999999999999} type="number" required value={deviceId} onChange={(e) => setDeviceId(e.target.value)} placeholder="ID numerik device, mis. 12" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Tipe Task</label>

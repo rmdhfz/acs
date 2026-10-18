@@ -53,6 +53,13 @@ func (r *Router) uploadFirmware(c *echo.Context) error {
 	if v := c.FormValue("release_notes"); strings.TrimSpace(v) != "" {
 		releaseNotes = &v
 	}
+	// Validasi SEMUA field form SEBELUM membaca berkas (ratusan MB): gagal murah, bukan sesudah streaming.
+	if err := checkMaxLen(lenRule{"version", version, 64}, lenRule{"release_notes", c.FormValue("release_notes"), 4000}); err != nil {
+		return err
+	}
+	if err := rejectControl("version", version); err != nil {
+		return err
+	}
 
 	fileHeader, err := c.FormFile("file")
 	if err != nil {

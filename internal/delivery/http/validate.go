@@ -3,6 +3,8 @@ package http
 import (
 	"fmt"
 	"net/http"
+	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/labstack/echo/v5"
@@ -95,4 +97,42 @@ func optStr(p *string) string {
 		return ""
 	}
 	return *p
+}
+
+// Batas masukan billing (langganan SaaS, migrations/0032). Panjang dihitung RUNE (checkMaxLen).
+const (
+	maxBillingBody      = 16 << 10 // body JSON billing biasa
+	maxBillingWebhook   = 64 << 10 // body callback Xendit
+	maxBillingPlanCode  = 64       // sebelum normalisasi; usecase menegakkan 2..32 setelah trim
+	maxBillingPlanName  = 64       // billing_plans.name VARCHAR(64)
+	maxBillingInvoiceID = 36       // UUID kanonik
+	maxCallbackToken    = 512
+)
+
+// rejectControl menolak karakter kontrol (termasuk newline/tab) dan UTF-8 tidak valid pada string dari klien.
+func rejectControl(field, v string) error {
+	if !utf8.ValidString(v) {
+		return echo.NewHTTPError(http.StatusBadRequest, field+" bukan teks UTF-8 yang valid")
+	}
+	for _, r := range v {
+		if unicode.IsControl(r) {
+			return echo.NewHTTPError(http.StatusBadRequest, field+" tidak boleh memuat karakter kontrol")
+		}
+	}
+	return nil
+}
+
+// validateUploadName menolak nama berkas yang memuat pemisah path, karakter kontrol, atau nama relatif ("."/".."):
+// nama ini kelak dipakai sebagai target_file_name RPC Download ke CPE.
+func validateUploadName(name string) error {
+	if name == "" {
+		return nil
+	}
+	if err := rejectControl("file_name", name); err != nil {
+		return err
+	}
+	if name == "." || name == ".." || strings.ContainsAny(name, "/\\") {
+		return echo.NewHTTPError(http.StatusBadRequest, "file_name tidak boleh memuat pemisah path")
+	}
+	return nil
 }

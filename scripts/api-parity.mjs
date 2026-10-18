@@ -44,7 +44,7 @@ function normalize(path) {
 // diperhitungkan, kalau tidak seluruh /self-service terbaca hilang.
 function parseBackend() {
   const files = readdirSync(HTTP_DIR)
-    .filter((f) => f.endsWith('.go'))
+    .filter((f) => f.endsWith('.go') && !f.endsWith('_test.go'))
     .map((f) => join(HTTP_DIR, f))
 
   // Kumpulkan definisi grup dulu dari seluruh file: nama -> {parent, prefix}
@@ -109,7 +109,7 @@ function walk(dir, out = []) {
   return out
 }
 
-const VERB = { get: 'GET', post: 'POST', postForm: 'POST', put: 'PUT', patch: 'PATCH', del: 'DELETE' }
+const VERB = { get: 'GET', blob: 'GET', post: 'POST', postForm: 'POST', put: 'PUT', patch: 'PATCH', del: 'DELETE' }
 
 function parseFrontend() {
   const calls = []
@@ -118,7 +118,7 @@ function parseFrontend() {
     // api.get<T>('/path')  |  api.post<T>(`/path/${id}`)
     // (?:<[^()]*>)? menampung generic bersarang seperti <ListResponse<Device>>;
     // pakai [^>]* di sini akan berhenti di '>' pertama dan melewatkan panggilannya.
-    const re = /\bapi\.(get|post|postForm|put|patch|del)\s*(?:<[^()]*>)?\s*\(\s*(['"`])([^'"`]*)\2/g
+    const re = /\bapi\.(get|blob|post|postForm|put|patch|del)\s*(?:<[^()]*>)?\s*\(\s*(['"`])([^'"`]*)\2/g
     let m
     while ((m = re.exec(src)) !== null) {
       const [, verb, , path] = m
@@ -144,16 +144,21 @@ const backend = parseBackend()
 const frontend = parseFrontend()
 
 const key = (r) => `${r.method} ${r.path}`
-const feKeys = new Set(frontend.map(key))
-const beKeys = new Set(backend.map(key))
+function segMatch(be, fe) {
+  if (be.method !== fe.method) return false
+  const a = be.path.split('/')
+  const b = fe.path.split('/')
+  if (a.length !== b.length) return false
+  return a.every((seg, i) => seg === b[i] || (seg === ':p' && b[i] !== ''))
+}
 
 const unusedEndpoints = backend
-  .filter((r) => !feKeys.has(key(r)))
+  .filter((r) => !frontend.some((c) => segMatch(r, c)))
   .sort((a, b) => key(a).localeCompare(key(b)))
 
 const seen = new Set()
 const orphanCalls = frontend
-  .filter((c) => !beKeys.has(key(c)))
+  .filter((c) => !backend.some((r) => segMatch(r, c)))
   .filter((c) => (seen.has(key(c) + c.file) ? false : seen.add(key(c) + c.file)))
   .sort((a, b) => key(a).localeCompare(key(b)))
 
@@ -164,6 +169,7 @@ const EXCEPTIONS = new Map([
   ['GET /metrics', 'scrape Prometheus, bukan konsumsi UI'],
   ['GET /auth/oidc/login', 'redirect browser, bukan fetch'],
   ['GET /auth/oidc/callback', 'redirect browser, bukan fetch'],
+  ['POST /billing/xendit/webhook', 'callback server-ke-server dari Xendit (token X-CALLBACK-TOKEN), bukan dari UI'],
 ])
 
 // Endpoint yang BISA dipanggil frontend tapi memang sengaja belum/tidak dipakai,
@@ -171,10 +177,8 @@ const EXCEPTIONS = new Map([
 // soal endpoint yang mustahil dipanggil lewat `api.*`. Isi alasannya dengan
 // hasil pemeriksaan nyata — jangan dipakai untuk menyembunyikan gap fitur.
 const REVIEWED_UNUSED = new Map([
-  ['GET /tasks/:p', 'TasksPage merender dari data list; tidak ada tampilan detail per task'],
-  ['GET /webhooks/:p', 'WebhooksPage merender dari data list; modal hanya create/delete'],
-  ['GET /firmware/rollout-batches/:p', 'FirmwarePage memakai useFirmwareRolloutBatches (list) untuk tab rollout'],
-  ['GET /self-service/devices/:p', 'SelfServicePage merender field device langsung dari list'],
+  // Kosong: seluruh endpoint relevan kini dipakai UI (detail task/webhook/rollout/perangkat portal, unduh CSV, baca atribut).
+  // Isi hanya dengan alasan nyata hasil tinjauan.
 ])
 
 const excepted = unusedEndpoints.filter((r) => EXCEPTIONS.has(key(r)))

@@ -5,7 +5,7 @@ import { EmptyState } from '../components/EmptyState'
 import { Modal } from '../components/Modal'
 import { PageSpinner } from '../components/Spinner'
 import { StatusBadge } from '../components/StatusBadge'
-import { DeleteButton, EditButton } from '../components/RecordActions'
+import { DeleteButton, DetailButton, DetailModal, EditButton } from '../components/RecordActions'
 import { useAuth } from '../lib/auth'
 import { ApiError } from '../lib/api'
 import { useToast } from '../lib/toast'
@@ -20,6 +20,7 @@ import {
   useFirmwareList,
   useFirmwareRolloutBatches,
   useRefs,
+  useRolloutBatch,
   useUpdateFirmware,
   useUploadFirmware,
   useVendors,
@@ -305,6 +306,7 @@ function RolloutTab({ canManage }: { canManage: boolean }) {
   const { data: vendorsResp } = useVendors()
   const vendors = vendorsResp?.data ?? []
   const [showCreate, setShowCreate] = useState(false)
+  const [detailId, setDetailId] = useState<number | null>(null)
   const advanceMutation = useAdvanceRolloutBatch()
   const cancelMutation = useCancelRolloutBatch()
   const toast = useToast()
@@ -385,8 +387,10 @@ function RolloutTab({ canManage }: { canManage: boolean }) {
                         {b.scheduled_at && code === 'PENDING' && <div className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">Jadwal: {formatDateTime(b.scheduled_at)}</div>}
                       </td>
                       <td className="px-5 py-3.5 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <DetailButton onClick={() => setDetailId(b.id)} title={`Detail rollout batch #${b.id}`} />
                         {canAct && (
-                          <div className="flex justify-end gap-2">
+                          <>
                             <button
                               onClick={() => handleAdvance(b.id)}
                               disabled={advanceMutation.isPending}
@@ -401,8 +405,9 @@ function RolloutTab({ canManage }: { canManage: boolean }) {
                             >
                               Batalkan
                             </button>
-                          </div>
+                          </>
                         )}
+                        </div>
                       </td>
                     </tr>
                   )
@@ -414,7 +419,36 @@ function RolloutTab({ canManage }: { canManage: boolean }) {
       </div>
 
       {showCreate && <CreateRolloutModal onClose={() => setShowCreate(false)} />}
+      {detailId !== null && <RolloutDetailModal id={detailId} onClose={() => setDetailId(null)} statusName={(sid) => statusCode(sid)} />}
     </div>
+  )
+}
+
+// Rincian satu batch dari GET /firmware/rollout-batches/:id (angka terbaru dari server, bukan salinan daftar).
+function RolloutDetailModal({ id, onClose, statusName }: { id: number; onClose: () => void; statusName: (statusId: number) => string }) {
+  const { data, isLoading, error } = useRolloutBatch(id)
+  return (
+    <DetailModal
+      title={`Rollout batch #${id}`}
+      onClose={onClose}
+      isLoading={isLoading}
+      error={error ? (error instanceof Error ? error.message : 'Gagal memuat') : null}
+      rows={
+        data
+          ? [
+              ['Status', statusName(data.status_id) || `#${data.status_id}`],
+              ['Firmware', `#${data.firmware_file_id}`],
+              ['Wave saat ini', `${data.current_wave} (×${data.wave_percentage}%)`],
+              ['Ambang gagal', `${data.max_failure_rate_percent}%`],
+              ['Terjadwal', data.scheduled_at ? formatDateTime(data.scheduled_at) : null],
+              ['Mulai', data.started_at ? formatDateTime(data.started_at) : null],
+              ['Selesai', data.completed_at ? formatDateTime(data.completed_at) : null],
+              ['Catatan', data.notes],
+              ['UUID', <span key="u" className="font-mono text-xs">{data.batch_uuid}</span>],
+            ]
+          : []
+      }
+    />
   )
 }
 

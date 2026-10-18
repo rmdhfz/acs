@@ -17,6 +17,7 @@ import { FirmwarePage } from './pages/FirmwarePage'
 import { CatalogPage } from './pages/CatalogPage'
 import { AdministrationPage } from './pages/AdministrationPage'
 import { ReportsPage } from './pages/ReportsPage'
+import { BillingPage } from './pages/BillingPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { SignupPage } from './pages/SignupPage'
 import { VerifySignupPage } from './pages/VerifySignupPage'
@@ -67,6 +68,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/audit': 'Audit Trail — ACS Console',
   '/catalog': 'Katalog Vendor — ACS Console',
   '/reports': 'Laporan SaaS — ACS Console',
+  '/billing': 'Langganan & Tagihan — ACS Console',
   '/administration': 'Administrasi — ACS Console',
   '/profile': 'Profil — ACS Console',
   '/notifications': 'Notifikasi — ACS Console',
@@ -124,6 +126,7 @@ function App() {
         <Route path="/webhooks" element={<WebhooksPage />} />
         <Route path="/catalog" element={<CatalogPage />} />
         <Route path="/reports" element={<ReportsPage />} />
+        <Route path="/billing" element={<BillingPage />} />
         <Route path="/administration" element={<AdministrationPage />} />
         <Route path="/administration/onboarding" element={<TenantOnboardingWizard />} />
       </Route>

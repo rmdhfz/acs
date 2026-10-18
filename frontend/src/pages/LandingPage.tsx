@@ -175,9 +175,14 @@ export function LandingPage() {
               </a>
             ))}
           </nav>
-          <a href="/login" className="inline-flex h-10 items-center rounded-full bg-indigo-600 px-6 text-sm font-medium text-white transition hover:bg-indigo-700 hover:shadow-md">
-            Masuk
-          </a>
+          <div className="flex items-center gap-2">
+            <a href="/signup" className="hidden h-10 items-center rounded-full px-5 text-sm font-medium text-indigo-700 transition hover:bg-indigo-50 sm:inline-flex">
+              Daftar
+            </a>
+            <a href="/login" className="inline-flex h-10 items-center rounded-full bg-indigo-600 px-6 text-sm font-medium text-white transition hover:bg-indigo-700 hover:shadow-md">
+              Masuk
+            </a>
+          </div>
         </Container>
       </header>
 
@@ -197,17 +202,17 @@ export function LandingPage() {
                 audit trail lengkap — tanpa mengubah kode saat menambah merek baru.
               </p>
               <div className="mt-9 flex flex-wrap gap-3">
-                <a href="/login" className={btnPrimary}>
-                  Masuk ke Console <ArrowRight className="h-5 w-5" aria-hidden="true" />
+                <a href="/signup" className={btnPrimary}>
+                  Daftar sekarang <ArrowRight className="h-5 w-5" aria-hidden="true" />
+                </a>
+                <a href="/login" className={btnOutline}>
+                  Masuk
                 </a>
                 {demoHref && (
-                  <a href={demoHref} className={btnOutline}>
+                  <a href={demoHref} className="inline-flex h-12 items-center rounded-full px-5 text-[15px] font-medium text-slate-700 transition hover:bg-slate-100">
                     Minta demo
                   </a>
                 )}
-                <a href="#cara-kerja" className={btnOutline}>
-                  Lihat cara kerja
-                </a>
               </div>
               <p className="mt-7 text-sm text-slate-600">
                 Katalog 30+ merek: ZTE · Huawei · FiberHome · Nokia · C-Data · TP-Link · VSOL · Tenda · Sagemcom · dan lainnya
@@ -329,11 +334,14 @@ export function LandingPage() {
               Masuk ke Console, atau hubungi kami untuk demo dan rencana pilot bersama tim operasional dan jaringan Anda.
             </p>
             <div className="mt-9 flex flex-wrap justify-center gap-3">
-              <a href="/login" className={btnPrimary}>
-                Masuk ke Console <ArrowRight className="h-5 w-5" aria-hidden="true" />
+              <a href="/signup" className={btnPrimary}>
+                Daftar sekarang <ArrowRight className="h-5 w-5" aria-hidden="true" />
+              </a>
+              <a href="/login" className={btnOutline}>
+                Masuk ke Console
               </a>
               {demoHref && (
-                <a href={demoHref} className={btnOutline}>
+                <a href={demoHref} className="inline-flex h-12 items-center rounded-full px-5 text-[15px] font-medium text-slate-700 transition hover:bg-white/60">
                   Hubungi kami
                 </a>
               )}
@@ -342,26 +350,57 @@ export function LandingPage() {
         </section>
       </main>
 
-      <footer className="border-t border-slate-200 bg-white py-10">
-        <Container className="flex flex-col gap-6 text-sm text-slate-600 md:flex-row md:items-center md:justify-between">
+      <footer className="border-t border-slate-200 bg-slate-50" aria-label="Footer situs">
+        <Container className="grid gap-10 py-12 sm:grid-cols-2 lg:grid-cols-[1.5fr_1fr_1fr_1fr]">
           <div>
-            <p className="font-medium text-slate-900">{SITE_NAME}</p>
-            <p className="mt-1">
-              © {new Date().getFullYear()} {SITE_NAME}. TR-069 / CWMP Auto Configuration Server.
-            </p>
+            <a href="/" className="flex items-center gap-3 text-slate-900" aria-label={`${SITE_NAME} — beranda`}>
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white" aria-hidden="true">
+                <Wifi className="h-5 w-5" />
+              </span>
+              <span className="text-[17px] font-medium">{SITE_NAME}</span>
+            </a>
+            <p className="mt-4 max-w-xs text-sm leading-relaxed text-slate-600">{TAGLINE}. Kelola armada ONT/ONU dari satu konsol: provisioning, firmware, notifikasi, dan audit.</p>
           </div>
-          <nav aria-label="Tautan footer" className="flex flex-wrap items-center gap-x-6 gap-y-2">
-            <a href="/login" className="hover:text-indigo-700 hover:underline">Masuk</a>
-            <a href="/privacy" className="hover:text-indigo-700 hover:underline">Kebijakan privasi</a>
-            <a href="/terms" className="hover:text-indigo-700 hover:underline">Persyaratan layanan</a>
-            <span>
+          <nav aria-label="Produk">
+            <h2 className="text-sm font-medium text-slate-900">Produk</h2>
+            <ul className="mt-4 space-y-2.5 text-sm text-slate-600">
+              {NAV.map((n) => (
+                <li key={n.href}>
+                  <a href={n.href} className="hover:text-indigo-700 hover:underline">{n.label}</a>
+                </li>
+              ))}
+            </ul>
+          </nav>
+          <nav aria-label="Akun">
+            <h2 className="text-sm font-medium text-slate-900">Akun</h2>
+            <ul className="mt-4 space-y-2.5 text-sm text-slate-600">
+              <li><a href="/login" className="hover:text-indigo-700 hover:underline">Masuk</a></li>
+              <li><a href="/signup" className="hover:text-indigo-700 hover:underline">Daftar</a></li>
+              <li><a href="/forgot-password" className="hover:text-indigo-700 hover:underline">Lupa password</a></li>
+            </ul>
+          </nav>
+          <nav aria-label="Legal dan kontak">
+            <h2 className="text-sm font-medium text-slate-900">Perusahaan</h2>
+            <ul className="mt-4 space-y-2.5 text-sm text-slate-600">
+              <li><a href="/privacy" className="hover:text-indigo-700 hover:underline">Kebijakan privasi</a></li>
+              <li><a href="/terms" className="hover:text-indigo-700 hover:underline">Persyaratan layanan</a></li>
+              {CONTACT_EMAIL && (
+                <li><a href={`mailto:${CONTACT_EMAIL}`} className="hover:text-indigo-700 hover:underline">Hubungi kami</a></li>
+              )}
+            </ul>
+          </nav>
+        </Container>
+        <div className="border-t border-slate-200">
+          <Container className="flex flex-col items-center justify-between gap-2 py-5 text-xs text-slate-600 sm:flex-row">
+            <p>© {new Date().getFullYear()} {SITE_NAME}. TR-069 / CWMP Auto Configuration Server.</p>
+            <p>
               Dibuat oleh{' '}
               <a href={CREDIT_URL} target="_blank" rel="noopener noreferrer" className="font-medium text-slate-700 hover:text-indigo-700 hover:underline">
                 {CREDIT_NAME}
               </a>
-            </span>
-          </nav>
-        </Container>
+            </p>
+          </Container>
+        </div>
       </footer>
     </div>
   )

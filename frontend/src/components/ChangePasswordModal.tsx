@@ -53,7 +53,7 @@ export function ChangePasswordModal({ onClose }: { onClose: () => void }) {
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-600 dark:text-slate-400">Ulangi password baru</label>
-          <input maxLength={128} type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required className={inputCls} />
+          <input minLength={8} maxLength={128} type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required className={inputCls} />
         </div>
         {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
         <div className="flex justify-end gap-2.5 pt-1">

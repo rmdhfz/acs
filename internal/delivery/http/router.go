@@ -12,6 +12,7 @@ import (
 	"acs/internal/delivery/ws"
 	"acs/internal/domain"
 	"acs/internal/usecase/auth"
+	"acs/internal/usecase/billing"
 	"acs/internal/usecase/catalog"
 	"acs/internal/usecase/device"
 	"acs/internal/usecase/diagnostics"
@@ -63,7 +64,10 @@ type Router struct {
 	Presets        *preset.Service
 	SelfService    *selfservice.Service
 	Notifications  *notification.Service
-	WSHub          *ws.Hub
+	// Billing — langganan SaaS lewat Xendit (nil = rute billing tidak dipasang; bila ada tetapi dimatikan lewat
+	// konfigurasi, endpoint mutasi menjawab 409 dan webhook 404).
+	Billing *billing.Service
+	WSHub   *ws.Hub
 	// WSAllowedOrigins = origin Console yang boleh membuka WebSocket (sama
 	// dengan ACS_CORS_ALLOW_ORIGINS).
 	WSAllowedOrigins []string
@@ -88,7 +92,8 @@ func (r *Router) Register(e *echo.Echo) {
 	e.GET("/healthz", r.healthz)
 	e.GET("/readyz", r.readyz)
 
-	api := e.Group("/api/v1")
+	// QueryGuard: page/page_size/*_id yang rusak ditolak 400 (bukan diam-diam jadi "tanpa filter").
+	api := e.Group("/api/v1", QueryGuard)
 
 	// Rate limit KHUSUS lebih ketat dari default REST 30 req/s (cmd/acsd/
 	// main.go) -- /auth/login adalah target brute-force paling jelas di
@@ -110,6 +115,12 @@ func (r *Router) Register(e *echo.Echo) {
 	// Pendaftaran tenant mandiri (bawaan mati): publik tetapi dibatasi laju ketat; tenant dibuat hanya setelah email diverifikasi.
 	api.POST("/auth/signup", r.signup, r.limiter("signup", 0.1))
 	api.POST("/auth/signup/verify", r.verifySignup, r.limiter("signup-verify", 0.5))
+	// Callback Xendit (billing): PUBLIK secara sengaja -- Xendit tidak membawa JWT. Kontrol: header X-CALLBACK-TOKEN
+	// (waktu-konstan), verifikasi ulang status/nominal ke gateway, body maks 64 KiB, pembatas laju sendiri yang
+	// longgar (20/dtk per IP agar callback sah tidak terblokir). Billing mati -> 404. Lihat billing_handler.go.
+	if r.Billing != nil {
+		api.POST("/billing/xendit/webhook", r.xenditWebhook, r.limiter("billing-webhook", 20))
+	}
 	api.GET("/auth/config", r.authConfig)
 	api.GET("/auth/oidc/login", r.oidcLogin)
 	api.GET("/auth/oidc/callback", r.oidcCallback)
@@ -358,6 +369,9 @@ func (r *Router) Register(e *echo.Echo) {
 	authed.GET("/presets/:id", r.getPreset)
 	authed.PATCH("/presets/:id", r.updatePreset, RequireRoles(admin...))
 	authed.DELETE("/presets/:id", r.deletePreset, RequireRoles(admin...))
+
+	// Langganan SaaS (paket, status, checkout, invoice, sync). Sengaja TANPA denyImpersonation (lihat billing_handler.go).
+	r.mountBillingRoutes(authed)
 
 	r.mountSelfServiceRoutes(api)
 }

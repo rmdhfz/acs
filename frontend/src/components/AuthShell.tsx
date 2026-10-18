@@ -25,7 +25,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
             </span>
           </Link>
         </div>
-        <div className="motion-safe:animate-[authIn_0.3s_ease-out]">{children}</div>
+        <div className="motion-safe:animate-[authIn_0.3s_ease-out] [&_h1+p]:mt-2 [&_h1+p]:text-center">{children}</div>
       </main>
 
       <footer className="flex w-full max-w-[29rem] flex-wrap items-center justify-between gap-2 px-6 pb-4 pt-5 text-xs text-slate-600 sm:px-2 dark:text-slate-400">

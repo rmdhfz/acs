@@ -1682,3 +1682,186 @@ export function useAnnounce() {
     mutationFn: (input: AnnounceInput) => api.post<{ recipients: number }>('/notifications/announce', input),
   })
 }
+
+// Konfigurasi publik halaman login/daftar (tanpa token): apakah SSO/Google, MFA, dan pendaftaran mandiri aktif.
+export interface AuthConfig {
+  sso_enabled: boolean
+  sso_provider: '' | 'google' | 'oidc'
+  mfa_available: boolean
+  self_signup_enabled: boolean
+}
+
+export function useAuthConfig() {
+  return useQuery({
+    queryKey: ['auth-config'],
+    queryFn: () => api.get<AuthConfig>('/auth/config'),
+    staleTime: 5 * 60_000,
+    retry: 1,
+  })
+}
+
+// ---- Detail per-record (GET by id): dipakai modal/baris detail agar tampilan memuat data terbaru dari server ----
+
+export function useTask(id: number | undefined) {
+  return useQuery({
+    queryKey: ['task', id],
+    queryFn: () => api.get<Task>(`/tasks/${id}`),
+    enabled: id !== undefined,
+  })
+}
+
+export function useWebhook(id: number | undefined) {
+  return useQuery({
+    queryKey: ['webhook', id],
+    queryFn: () => api.get<WebhookSubscription>(`/webhooks/${id}`),
+    enabled: id !== undefined,
+  })
+}
+
+export function useRolloutBatch(id: number | undefined) {
+  return useQuery({
+    queryKey: ['rollout-batch', id],
+    queryFn: () => api.get<FirmwareRolloutBatch>(`/firmware/rollout-batches/${id}`),
+    enabled: id !== undefined,
+  })
+}
+
+export function useMyDevice(id: number | undefined) {
+  return useQuery({
+    queryKey: ['my-device', id],
+    queryFn: () => api.get<SelfServiceDevice>(`/self-service/devices/${id}`),
+    enabled: id !== undefined,
+  })
+}
+
+// Baca atribut notifikasi parameter dari perangkat (task GetParameterAttributes; hasil muncul di tab Task).
+export function useGetParameterAttributes() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ deviceId, names }: { deviceId: number; names: string[] }) =>
+      api.post<void>(`/devices/${deviceId}/tasks/get-parameter-attributes`, { names }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+  })
+}
+
+// ---- Billing (langganan SaaS via Xendit) ----
+// Harga/nominal TIDAK pernah dikirim dari klien: checkout hanya membawa plan_code (server membaca harga dari DB).
+
+export interface BillingPlan {
+  code: string
+  name: string
+  description: string
+  max_devices: number | null
+  price_idr: number
+  period_days: number
+  is_active: boolean
+  sort_order: number
+}
+
+export type InvoiceStatus = 'PENDING' | 'PAID' | 'EXPIRED' | 'FAILED'
+
+export interface BillingInvoice {
+  id: string
+  number: string
+  tenant_id: number
+  plan_code: string
+  plan_name: string
+  amount_idr: number
+  status: InvoiceStatus
+  payment_url: string | null
+  period_days: number
+  created_at: string
+  expires_at: string
+  paid_at: string | null
+}
+
+export interface BillingSubscription {
+  enabled: boolean
+  status: 'NONE' | 'ACTIVE' | 'EXPIRED'
+  plan: BillingPlan | null
+  expires_at: string | null
+  days_left: number | null
+  max_devices: number | null
+  pending_invoice: BillingInvoice | null
+}
+
+export function useBillingPlans() {
+  return useQuery({
+    queryKey: ['billing', 'plans'],
+    queryFn: async () => (await api.get<{ data: BillingPlan[] }>('/billing/plans')).data ?? [],
+  })
+}
+
+// tenantId wajib untuk SUPERADMIN (tanpa konteks tenant); ADMIN memakai tenant sendiri.
+export function useBillingSubscription(tenantId?: number | null, enabled = true) {
+  return useQuery({
+    queryKey: ['billing', 'subscription', tenantId ?? 'self'],
+    queryFn: () => {
+      const qs = new URLSearchParams()
+      if (tenantId) qs.set('tenant_id', String(tenantId))
+      return api.get<BillingSubscription>(`/billing/subscription?${qs}`)
+    },
+    enabled,
+  })
+}
+
+export function useBillingInvoices(opts: { tenantId?: number | null; page: number; pageSize: number; enabled?: boolean }) {
+  const qs = new URLSearchParams({ page: String(opts.page), page_size: String(opts.pageSize) })
+  if (opts.tenantId) qs.set('tenant_id', String(opts.tenantId))
+  return useQuery({
+    queryKey: ['billing', 'invoices', opts.tenantId ?? 'self', opts.page, opts.pageSize],
+    queryFn: async () => {
+      const r = await api.get<{ data: BillingInvoice[]; meta: { total: number; page: number; limit: number } }>(`/billing/invoices?${qs}`)
+      return { data: r.data ?? [], total: r.meta?.total ?? 0 }
+    },
+    enabled: opts.enabled ?? true,
+  })
+}
+
+export function useBillingCheckout() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { plan_code: string; tenant_id?: number }) =>
+      api.post<{ invoice: BillingInvoice; payment_url: string | null }>('/billing/checkout', input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['billing'] }),
+  })
+}
+
+export function useSyncInvoice() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (uuid: string) => api.post<BillingInvoice>(`/billing/invoices/${encodeURIComponent(uuid)}/sync`, {}),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['billing'] })
+      void qc.invalidateQueries({ queryKey: ['notifications'] })
+    },
+  })
+}
+
+export interface BillingPlanInput {
+  code?: string
+  name?: string
+  description?: string
+  max_devices?: number | null
+  price_idr?: number
+  period_days?: number
+  is_active?: boolean
+  sort_order?: number
+}
+
+export function useCreateBillingPlan() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: BillingPlanInput) => api.post<BillingPlan>('/billing/plans', input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['billing', 'plans'] }),
+  })
+}
+
+export function useUpdateBillingPlan() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ code, ...input }: BillingPlanInput & { code: string }) =>
+      api.patch<BillingPlan>(`/billing/plans/${encodeURIComponent(code)}`, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['billing', 'plans'] }),
+  })
+}

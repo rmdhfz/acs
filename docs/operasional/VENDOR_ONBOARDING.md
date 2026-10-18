@@ -1,6 +1,6 @@
 # VENDOR_ONBOARDING.md — Playbook Menambah Vendor/Model CPE Baru
 
-Panduan operasional untuk superadmin: menambah dukungan vendor atau model CPE baru di ACS. Baca `TECH.md` §5 dan §5.1 untuk latar belakang arsitektur sebelum mengikuti langkah di bawah — dokumen ini adalah versi eksekusi praktisnya, bukan pengganti keduanya.
+Panduan operasional untuk superadmin: menambah dukungan vendor atau model CPE baru di ACS. Baca `docs/arsitektur/TECH.md` §5 dan §5.1 untuk latar belakang arsitektur sebelum mengikuti langkah di bawah — dokumen ini adalah versi eksekusi praktisnya, bukan pengganti keduanya.
 
 **Prinsip inti (jangan dilanggar):** menambah vendor/model baru adalah **operasi data**, bukan perubahan kode. Kalau kamu (atau siapa pun) menemukan diri sendiri sedang menulis kode Go untuk menangani vendor tertentu di luar `internal/vendor_adapter/`, berhenti — itu artinya ada yang salah pendekatan. Lihat §5 di bawah untuk pengecualian yang sah.
 
@@ -53,7 +53,7 @@ Untuk tiap **logical key** yang tim operasi butuhkan (cek daftar konvensi logica
 4. Pilih `Data Model Version` yang sesuai.
 5. Isi `Device Model` **hanya** kalau path ini berbeda dari default vendor untuk model tsb spesifik (override) — kosongkan untuk berlaku ke semua model vendor ini.
 
-**Tidak perlu memetakan semua parameter yang mungkin ada** — cukup logical key yang benar-benar dipakai tim operasi (biasanya: WiFi SSID/password 2.4G & 5G, PPPoE username/password, dan parameter diagnostic optik untuk ONT GPON). Operator tetap bisa mengirim raw TR-069 path langsung untuk kasus yang belum dipetakan (lihat TECH.md §5 — mapping adalah *convenience layer*, bukan satu-satunya jalur).
+**Tidak perlu memetakan semua parameter yang mungkin ada** — cukup logical key yang benar-benar dipakai tim operasi (biasanya: WiFi SSID/password 2.4G & 5G, PPPoE username/password, dan parameter diagnostic optik untuk ONT GPON). Operator tetap bisa mengirim raw TR-069 path langsung untuk kasus yang belum dipetakan (lihat docs/arsitektur/TECH.md §5 — mapping adalah *convenience layer*, bukan satu-satunya jalur).
 
 ## 5. Kapan Butuh Kode, Bukan Data
 
@@ -77,7 +77,7 @@ Jangan anggap selesai hanya karena data sudah diinput — validasi end-to-end:
 1. Kalau ada unit CPE fisik vendor ini tersedia: sambungkan ke ACS (arahkan URL Inform CPE ke endpoint CWMP ACS), tunggu Inform pertama, lalu cek di **Devices** apakah device baru muncul dengan `vendor_id`/vendor name yang benar terisi (bukan "Vendor belum diketahui").
 2. Kalau belum ada unit fisik: minimal cek data ter-input benar via **Catalog Vendor** (OUI badge muncul, device model tersimpan, parameter mapping tersimpan dengan path yang benar — baca ulang, salah ketik path adalah kesalahan paling umum).
 3. Coba buat **Provisioning Profile** untuk vendor ini di halaman **Provisioning**, isi minimal satu parameter pakai autocomplete logical key (kalau mapping sudah benar, logical key yang baru dibuat akan muncul di datalist saat vendor profil dipilih) — ini validasi tidak langsung bahwa mapping tersimpan dan bisa di-resolve.
-4. Untuk parameter kritis (WiFi, PPPoE): kalau memungkinkan, uji kirim task `SetParameterValues` pakai logical key ke satu device sungguhan dan konfirmasi CPE benar-benar berubah konfigurasinya — jangan asumsikan path yang "kelihatannya benar" dari dokumentasi vendor pasti cocok dengan firmware aktual yang dipakai pelanggan (variasi antar-firmware adalah risiko yang eksplisit disebut PRD.md §12).
+4. Untuk parameter kritis (WiFi, PPPoE): kalau memungkinkan, uji kirim task `SetParameterValues` pakai logical key ke satu device sungguhan dan konfirmasi CPE benar-benar berubah konfigurasinya — jangan asumsikan path yang "kelihatannya benar" dari dokumentasi vendor pasti cocok dengan firmware aktual yang dipakai pelanggan (variasi antar-firmware adalah risiko yang eksplisit disebut docs/produk/PRD.md §12).
 
 ## 7. Kalau Salah Input
 

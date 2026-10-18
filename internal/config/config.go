@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -114,6 +115,18 @@ type Config struct {
 	PublicURL string
 	// PasswordResetTTL — masa berlaku tautan reset password.
 	PasswordResetTTL time.Duration
+
+	// Pembayaran langganan SaaS lewat Xendit (Invoice API). Bawaan MATI. Bila BillingEnabled, kunci rahasia dan
+	// token callback WAJIB (config menolak start tanpa itu). Keduanya rahasia: tidak boleh dicetak di log/respons.
+	BillingEnabled bool
+	// XenditSecretKey — kunci rahasia API Xendit (HTTP Basic: username = kunci, password kosong).
+	XenditSecretKey string
+	// XenditCallbackToken — token verifikasi callback (header X-CALLBACK-TOKEN) yang diatur di dashboard Xendit.
+	XenditCallbackToken string
+	// XenditBaseURL — dasar URL API (bawaan https://api.xendit.co); berguna untuk tes. Harus https kecuali loopback.
+	XenditBaseURL string
+	// BillingInvoiceHours — masa berlaku invoice sebelum kedaluwarsa (jam, 1..168).
+	BillingInvoiceHours int
 }
 
 func Load() (*Config, error) {
@@ -309,7 +322,58 @@ func Load() (*Config, error) {
 	}
 	cfg.PasswordResetTTL = resetTTL
 
+	if err := loadBilling(cfg); err != nil {
+		return nil, err
+	}
+
 	return cfg, nil
+}
+
+// minXenditTokenLen — panjang minimum token callback (cegah token tebakan).
+const minXenditTokenLen = 24
+
+// loadBilling memuat konfigurasi pembayaran. Pesan galat TIDAK PERNAH memuat nilai kunci/token.
+func loadBilling(cfg *Config) error {
+	var err error
+	if cfg.BillingEnabled, err = strconv.ParseBool(getEnv("ACS_BILLING_ENABLED", "false")); err != nil {
+		return fmt.Errorf("config: ACS_BILLING_ENABLED tidak valid: harus true/false")
+	}
+	cfg.XenditSecretKey = os.Getenv("ACS_XENDIT_SECRET_KEY")
+	cfg.XenditCallbackToken = os.Getenv("ACS_XENDIT_CALLBACK_TOKEN")
+	cfg.XenditBaseURL = strings.TrimRight(getEnv("ACS_XENDIT_BASE_URL", "https://api.xendit.co"), "/")
+	if cfg.BillingInvoiceHours, err = strconv.Atoi(getEnv("ACS_BILLING_INVOICE_HOURS", "24")); err != nil || cfg.BillingInvoiceHours < 1 || cfg.BillingInvoiceHours > 168 {
+		return fmt.Errorf("config: ACS_BILLING_INVOICE_HOURS harus bilangan 1..168")
+	}
+	if !cfg.BillingEnabled {
+		return nil
+	}
+	if cfg.XenditSecretKey == "" || cfg.XenditCallbackToken == "" {
+		return fmt.Errorf("config: ACS_BILLING_ENABLED=true wajib ACS_XENDIT_SECRET_KEY dan ACS_XENDIT_CALLBACK_TOKEN")
+	}
+	for name, v := range map[string]string{"ACS_XENDIT_SECRET_KEY": cfg.XenditSecretKey, "ACS_XENDIT_CALLBACK_TOKEN": cfg.XenditCallbackToken} {
+		if strings.TrimSpace(v) != v || strings.ContainsAny(v, " \t\r\n") {
+			return fmt.Errorf("config: %s tidak boleh memuat spasi", name)
+		}
+		if weakSecret([]byte(v)) {
+			return fmt.Errorf("config: %s lemah/placeholder (mis. salinan contoh konfigurasi)", name)
+		}
+	}
+	if len(cfg.XenditCallbackToken) < minXenditTokenLen {
+		return fmt.Errorf("config: ACS_XENDIT_CALLBACK_TOKEN minimal %d karakter", minXenditTokenLen)
+	}
+	u, perr := url.Parse(cfg.XenditBaseURL)
+	if perr != nil || u.Host == "" || u.User != nil || (u.Scheme != "https" && !(u.Scheme == "http" && isLoopbackHost(u.Hostname()))) {
+		return fmt.Errorf("config: ACS_XENDIT_BASE_URL tidak valid (harus https://, atau http:// hanya untuk localhost)")
+	}
+	return nil
+}
+
+func isLoopbackHost(h string) bool {
+	if strings.EqualFold(h, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(h)
+	return ip != nil && ip.IsLoopback()
 }
 
 // weakSecret menolak secret placeholder dari contoh konfigurasi dan secret berentropi rendah. JWT yang

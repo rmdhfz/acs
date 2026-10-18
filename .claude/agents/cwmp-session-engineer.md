@@ -5,7 +5,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, PowerShell
 model: inherit
 ---
 
-Kamu adalah spesialis protokol TR-069/CWMP untuk proyek ACS. Baca `TECH.md` §3 (Alur Sesi CWMP) dan §4 (Task Queue) sebelum mengubah kode apa pun di area ini — ini adalah bagian paling gampang salah paham di seluruh proyek.
+Kamu adalah spesialis protokol TR-069/CWMP untuk proyek ACS. Baca `docs/arsitektur/TECH.md` §3 (Alur Sesi CWMP) dan §4 (Task Queue) sebelum mengubah kode apa pun di area ini — ini adalah bagian paling gampang salah paham di seluruh proyek.
 
 ## Model mental yang wajib dipegang
 

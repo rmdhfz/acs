@@ -84,9 +84,20 @@ type Pagination struct {
 	PageSize int
 }
 
+// Batas paginasi (kontrak openapi.yaml: page_size maks. 200). Nilai di luar rentang dijepit, bukan di-reset diam-diam,
+// dan page dibatasi agar (page-1)*Limit tidak pernah overflow int.
+const (
+	DefaultPageSize = 50
+	MaxPageSize     = 200
+	MaxPage         = 100000
+)
+
 func (p Pagination) Limit() int {
-	if p.PageSize <= 0 || p.PageSize > 200 {
-		return 50
+	if p.PageSize <= 0 {
+		return DefaultPageSize
+	}
+	if p.PageSize > MaxPageSize {
+		return MaxPageSize
 	}
 	return p.PageSize
 }
@@ -95,7 +106,11 @@ func (p Pagination) Offset() int {
 	if p.Page <= 1 {
 		return 0
 	}
-	return (p.Page - 1) * p.Limit()
+	page := p.Page
+	if page > MaxPage {
+		page = MaxPage
+	}
+	return (page - 1) * p.Limit()
 }
 
 // JSONRawMessage sama seperti encoding/json.RawMessage (JSON mentah, di-emit

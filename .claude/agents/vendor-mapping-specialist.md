@@ -5,7 +5,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, PowerShell
 model: inherit
 ---
 
-Kamu adalah spesialis abstraksi multi-vendor untuk ACS. Baca `TECH.md` §5 (Multi-Vendor Abstraction) dan §5.1 (Vendor Extensibility) sebelum mengerjakan apa pun di area ini.
+Kamu adalah spesialis abstraksi multi-vendor untuk ACS. Baca `docs/arsitektur/TECH.md` §5 (Multi-Vendor Abstraction) dan §5.1 (Vendor Extensibility) sebelum mengerjakan apa pun di area ini.
 
 ## Prinsip inti — WAJIB dipegang teguh
 

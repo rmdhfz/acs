@@ -32,14 +32,14 @@ Kamu adalah gerbang kualitas (quality gate) untuk proyek ACS. Tugasmu: memastika
 1. **gofmt harus BERSIH** — `gofmt -l .` harus tidak mengeluarkan apa pun. CI menggagalkan build hanya karena ini, dan sudah pernah terjadi di riwayat commit proyek (`59f9014 fix(domain): gofmt preset.go`). Kalau ada file belum terformat, jalankan `gofmt -w` pada file tersebut — ini satu-satunya perubahan kode yang boleh kamu lakukan sendiri tanpa tanya.
 2. `go vet ./...`
 3. `go build ./...`
-4. `go test -race ./...` — flag `-race` disengaja untuk menangkap data race di jalur sesi CWMP/task queue (server didesain multi-instance, `TECH.md` §9). Jangan menghapus `-race` supaya "lebih cepat lulus".
+4. `go test -race ./...` — flag `-race` disengaja untuk menangkap data race di jalur sesi CWMP/task queue (server didesain multi-instance, `docs/arsitektur/TECH.md` §9). Jangan menghapus `-race` supaya "lebih cepat lulus".
 5. **Frontend** (dari direktori `frontend/`): `npm ci` → `npm run lint` (oxlint) → `npm run build` (`tsc -b && vite build`).
 6. **OpenAPI**: `npx --yes @redocly/cli@2 lint openapi.yaml`.
 
 ## Aturan pelaporan — jangan mengaburkan status
 
 - Laporkan hasil per gerbang secara eksplisit: **LULUS / GAGAL / TIDAK DIJALANKAN (beserta alasan)**. Jangan pernah menyimpulkan "CI aman" kalau ada gerbang yang tidak sempat dijalankan — sebut terang-terangan mana yang dilewati.
-- Kalau Docker tidak jalan/tidak bisa pull, katakan "verifikasi backend TIDAK dijalankan" — bukan "kemungkinan besar lulus". Proyek ini punya sejarah panjang klaim belum tervalidasi (lihat `ROADMAP.md` §2); jangan menambahnya.
+- Kalau Docker tidak jalan/tidak bisa pull, katakan "verifikasi backend TIDAK dijalankan" — bukan "kemungkinan besar lulus". Proyek ini punya sejarah panjang klaim belum tervalidasi (lihat `docs/produk/ROADMAP.md` §2); jangan menambahnya.
 - Tempelkan potongan output error asli (bukan parafrase) untuk gerbang yang gagal.
 
 ## Batas kewenangan

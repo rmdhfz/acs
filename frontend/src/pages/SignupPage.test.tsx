@@ -9,7 +9,7 @@ describe('SignupPage', () => {
   it('ditutup bila backend melaporkan self-signup mati', async () => {
     mockFetch(({ url }) => (url.endsWith('/auth/config') ? { json: { self_signup_enabled: false } } : undefined))
     renderApp(<SignupPage />)
-    expect(await screen.findByText(/pendaftaran ditutup/i)).toBeTruthy()
+    expect(await screen.findByText(/pendaftaran belum dibuka/i)).toBeTruthy()
     expect(screen.queryByLabelText(/nama perusahaan/i)).toBeNull()
   })
 

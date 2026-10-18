@@ -1,12 +1,13 @@
 import { useI18n } from '../lib/i18n'
 import { useState } from 'react'
-import { Bell, BellOff, Check, ChevronDown, ChevronRight, Copy, Globe, Plus, RefreshCw, Send, TestTube, Trash2, Zap } from 'lucide-react'
+import { Bell, BellOff, Check, ChevronDown, ChevronRight, Copy, Eye, Globe, Plus, RefreshCw, Send, TestTube, Trash2, Zap } from 'lucide-react'
 import {
   useCreateWebhook,
   useDeleteWebhook,
   useRefs,
   useTestWebhook,
   useUpdateWebhook,
+  useWebhook,
   useWebhookDeliveries,
   useWebhooks,
   type CreateWebhookInput,
@@ -16,6 +17,7 @@ import {
 import { PageSpinner } from '../components/Spinner'
 import { EmptyState } from '../components/EmptyState'
 import { Modal } from '../components/Modal'
+import { DetailModal } from '../components/RecordActions'
 import { useToast } from '../lib/toast'
 import { fmtDatetime } from '../lib/format'
 import { LIMITS } from '../lib/limits'
@@ -73,11 +75,39 @@ function DeliveryPanel({ sub }: { sub: WebhookSubscription }) {
   )
 }
 
+// Rincian langganan dari GET /webhooks/:id (secret HMAC tidak pernah dikirim ulang oleh server).
+function WebhookDetailModal({ id, eventLabel, onClose }: { id: number; eventLabel: string; onClose: () => void }) {
+  const { data, isLoading, error } = useWebhook(id)
+  return (
+    <DetailModal
+      title="Detail webhook"
+      onClose={onClose}
+      isLoading={isLoading}
+      error={error ? (error instanceof Error ? error.message : 'Gagal memuat') : null}
+      rows={
+        data
+          ? [
+              ['Nama', data.name],
+              ['Peristiwa', eventLabel],
+              ['URL tujuan', <span key="u" className="break-all font-mono text-xs">{data.target_url}</span>],
+              ['Status', data.is_active ? 'Aktif' : 'Nonaktif'],
+              ['Keterangan', data.description],
+              ['UUID', <span key="id" className="font-mono text-xs">{data.subscription_uuid}</span>],
+              ['Dibuat', fmtDatetime(data.created_at)],
+              ['Diubah', fmtDatetime(data.updated_at)],
+            ]
+          : []
+      }
+    />
+  )
+}
+
 // ---- Subscription row ----
 
 function SubscriptionRow({ sub, eventLabel }: { sub: WebhookSubscription; eventLabel: string }) {
   const [expanded, setExpanded] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showDetail, setShowDetail] = useState(false)
   const updateMut = useUpdateWebhook()
   const deleteMut = useDeleteWebhook()
   const testMut = useTestWebhook()
@@ -177,6 +207,14 @@ function SubscriptionRow({ sub, eventLabel }: { sub: WebhookSubscription; eventL
               <Trash2 className="h-4 w-4" />
             </button>
             <button
+              onClick={() => setShowDetail(true)}
+              title="Detail webhook"
+              aria-label={`Detail webhook ${sub.name}`}
+              className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300 dark:text-slate-400"
+            >
+              <Eye className="h-4 w-4" />
+            </button>
+            <button
               onClick={() => setExpanded((v) => !v)}
               title={expanded ? 'Tutup delivery log' : 'Buka delivery log'}
               className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300 dark:text-slate-400"
@@ -185,6 +223,8 @@ function SubscriptionRow({ sub, eventLabel }: { sub: WebhookSubscription; eventL
             </button>
           </div>
         </div>
+
+        {showDetail && <WebhookDetailModal id={sub.id} eventLabel={eventLabel} onClose={() => setShowDetail(false)} />}
 
         {/* Delivery log (collapsible) */}
         {expanded && (

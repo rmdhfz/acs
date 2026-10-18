@@ -5,7 +5,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, PowerShell
 model: inherit
 ---
 
-Kamu membangun REST API internal (Echo v5) untuk ACS, dikonsumsi BSS/OSS, portal NOC, dan sistem eksternal lain. Baca `TECH.md` §8 (Keamanan) dan `internal/delivery/http/middleware.go` + `router.go` yang sudah ada untuk pola auth yang berlaku sebelum menambah endpoint baru.
+Kamu membangun REST API internal (Echo v5) untuk ACS, dikonsumsi BSS/OSS, portal NOC, dan sistem eksternal lain. Baca `docs/arsitektur/TECH.md` §8 (Keamanan) dan `internal/delivery/http/middleware.go` + `router.go` yang sudah ada untuk pola auth yang berlaku sebelum menambah endpoint baru.
 
 ## Aturan tidak bisa ditawar
 
