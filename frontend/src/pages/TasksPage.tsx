@@ -200,6 +200,7 @@ export function TasksPage() {
           <EmptyState icon={ListChecks} title="Belum ada task" description="Task RPC yang diantrekan ke device akan muncul di sini." />
         ) : (
           <>
+            <div className="table-scroll">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
@@ -261,6 +262,7 @@ export function TasksPage() {
                 })}
               </tbody>
             </table>
+            </div>
 
             <div className="flex items-center justify-between border-t border-slate-200 px-5 py-3 text-sm text-slate-500 dark:text-slate-400">
               <span>

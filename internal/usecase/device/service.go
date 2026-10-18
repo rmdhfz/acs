@@ -678,8 +678,10 @@ func (s *Service) TriggerConnectionRequest(ctx context.Context, actor domain.Act
 	if err != nil {
 		return err
 	}
-	if d.ConnectionRequestURL == nil || *d.ConnectionRequestURL == "" {
-		return fmt.Errorf("%w: device tidak memiliki connection_request_url terkonfigurasi", domain.ErrInvalidInput)
+	hasURL := d.ConnectionRequestURL != nil && *d.ConnectionRequestURL != ""
+	udpAddr := s.lookupUDPAddress(ctx, deviceID)
+	if !hasURL && udpAddr == "" {
+		return fmt.Errorf("%w: device tidak memiliki connection_request_url maupun alamat UDP connection request", domain.ErrInvalidInput)
 	}
 
 	var username, password string
@@ -692,6 +694,19 @@ func (s *Service) TriggerConnectionRequest(ctx context.Context, actor domain.Act
 			return fmt.Errorf("triggerConnectionRequest: gagal dekripsi password: %w", err)
 		}
 		password = plain
+	}
+
+	// CPE yang hanya mengiklankan alamat UDP (Annex G; umum di balik CGNAT): tidak ada URL TCP untuk dicoba.
+	if !hasURL {
+		if udpErr := s.sendUDPConnectionRequest(ctx, udpAddr, username, password); udpErr != nil {
+			s.log().Warn("cwmp: UDP Connection Request gagal", "device_id", deviceID, "error", udpErr)
+			return fmt.Errorf("%w: device tidak dapat dihubungi saat Connection Request", domain.ErrUpstreamUnavailable)
+		}
+		_ = s.activity.Record(ctx, &domain.ActivityLog{
+			UserID: actor.UserIDPtr(), TenantID: actor.TenantID,
+			Action: "TRIGGER_CONNECTION_REQUEST_UDP", EntityType: "device", EntityID: &deviceID,
+		})
+		return nil
 	}
 
 	// SSRF guard: tolak target loopback/link-local/multicast/unspecified
@@ -731,14 +746,6 @@ func (s *Service) TriggerConnectionRequest(ctx context.Context, actor domain.Act
 			resp.Body.Close()
 		}
 
-		// Alamat UDP bisa di bawah root TR-098 maupun TR-181 (jangan diasumsikan satu root).
-		var udpAddr string
-		for _, root := range []string{"InternetGatewayDevice.", "Device."} {
-			if p, perr := s.deviceParams.Get(ctx, deviceID, root+domainUDPParam); perr == nil && p != nil && p.ParameterValue != nil && *p.ParameterValue != "" {
-				udpAddr = *p.ParameterValue
-				break
-			}
-		}
 		if udpAddr != "" {
 			udpErr := s.sendUDPConnectionRequest(ctx, udpAddr, username, password)
 			if udpErr == nil {
@@ -775,6 +782,17 @@ func (s *Service) TriggerConnectionRequest(ctx context.Context, actor domain.Act
 		Action: "TRIGGER_CONNECTION_REQUEST", EntityType: "device", EntityID: &deviceID,
 	})
 	return nil
+}
+
+// lookupUDPAddress mengambil alamat UDP Connection Request device ("" bila tidak ada). Alamat bisa di bawah root
+// TR-098 maupun TR-181 (jangan diasumsikan satu root).
+func (s *Service) lookupUDPAddress(ctx context.Context, deviceID uint64) string {
+	for _, root := range []string{"InternetGatewayDevice.", "Device."} {
+		if p, err := s.deviceParams.Get(ctx, deviceID, root+domainUDPParam); err == nil && p != nil && p.ParameterValue != nil && *p.ParameterValue != "" {
+			return *p.ParameterValue
+		}
+	}
+	return ""
 }
 
 // domainUDPParam — akhiran nama parameter alamat UDP CR (tanpa root).

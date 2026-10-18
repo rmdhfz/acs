@@ -20,6 +20,7 @@ import { Spinner } from './Spinner'
 import { toCSV } from '../lib/csv'
 import { downloadText, fileStamp } from '../lib/exporter'
 import { errorMessage } from '../lib/clientAdapter'
+import { recordTransfer } from '../lib/transferLog'
 import {
   ImportFileError,
   maskSecret,
@@ -186,13 +187,29 @@ export function ImportWizard({ adapter, title, onClose, onChanged }: ImportWizar
     setProgress({ done: 0, total: todo.length })
     setResults([])
     setStep('running')
+    let finished: ExecResult[]
     try {
       const res = await adapter.execute(items, mode, { signal: ctrl.signal, onProgress: (done, total) => setProgress({ done, total }) })
       setResults(res)
+      finished = res
       if (res.some((r) => r.ok)) changedRef.current = true
     } catch (e) {
-      setResults(todo.map((t) => ({ rowNo: t.rowNo, label: t.label, action: t.action, ok: false, error: errorMessage(e) })))
+      finished = todo.map((t) => ({ rowNo: t.rowNo, label: t.label, action: t.action, ok: false, error: errorMessage(e) }))
+      setResults(finished)
     }
+    // Riwayat impor (database + email ke pelaku): jumlah baris berkas, berhasil, dan gagal (eksekusi + baris tak valid).
+    const okRows = finished.filter((r) => r.ok).length
+    const badRows = finished.length - okRows + (items ?? []).filter((i) => i.action === 'error').length
+    recordTransfer({
+      kind: 'IMPORT',
+      module: adapter.entity,
+      format: parsed?.format === 'json' ? 'json' : 'csv',
+      fileName: file?.name,
+      total: items.length,
+      success: okRows,
+      failed: badRows,
+      detail: finished.find((r) => !r.ok)?.error,
+    })
     setStep('done')
   }
 

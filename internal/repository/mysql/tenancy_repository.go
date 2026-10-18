@@ -162,7 +162,7 @@ func (r *userRepository) GetByID(ctx context.Context, id uint64) (*domain.User, 
 	if err != nil {
 		return nil, err
 	}
-	u.Roles = roles
+	u.Roles = nonNilRoles(roles) // JSON [] (bukan null) bila tanpa peran
 	return &u, nil
 }
 
@@ -175,7 +175,7 @@ func (r *userRepository) GetByUsername(ctx context.Context, username string) (*d
 	if err != nil {
 		return nil, err
 	}
-	u.Roles = roles
+	u.Roles = nonNilRoles(roles) // JSON [] (bukan null) bila tanpa peran
 	return &u, nil
 }
 
@@ -190,7 +190,7 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.
 	if err != nil {
 		return nil, err
 	}
-	u.Roles = roles
+	u.Roles = nonNilRoles(roles) // JSON [] (bukan null) bila tanpa peran
 	return &u, nil
 }
 
@@ -250,7 +250,7 @@ func (r *userRepository) attachRoles(ctx context.Context, rows []domain.User) er
 		byUser[p.UserID] = append(byUser[p.UserID], p.Code)
 	}
 	for i := range rows {
-		rows[i].Roles = byUser[rows[i].ID]
+		rows[i].Roles = nonNilRoles(byUser[rows[i].ID])
 	}
 	return nil
 }
@@ -577,4 +577,12 @@ func (r *activityLogRepository) ListByTenant(ctx context.Context, tenantID *uint
 		return nil, 0, translateErr(err)
 	}
 	return rows, total, nil
+}
+
+// nonNilRoles memastikan daftar peran berserial JSON sebagai [] (klien tidak boleh menerima null).
+func nonNilRoles(r []string) []string {
+	if r == nil {
+		return []string{}
+	}
+	return r
 }

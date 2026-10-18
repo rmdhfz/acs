@@ -368,7 +368,7 @@ function CreateWebhookModal({ onClose }: { onClose: () => void }) {
         <div className="space-y-4">
           <div>
             <label className={labelCls}>Nama *</label>
-            <input {...field('name')} required maxLength={LIMITS.webhook.name} placeholder="mis. BSS Fault Notifier" className={inputCls} />
+            <input pattern=".*\S.*" title="Tidak boleh kosong atau hanya spasi" {...field('name')} required maxLength={LIMITS.webhook.name} placeholder="mis. BSS Fault Notifier" className={inputCls} />
           </div>
           <div>
             <label className={labelCls}>Event Type *</label>

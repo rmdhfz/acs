@@ -132,6 +132,9 @@ func main() {
 		{"S22-notifikasi", scenarioNotify},
 		{"S23-billing-mati", scenarioBilling},
 		{"S24-validasi-masukan", scenarioValidation},
+		{"S25-udp-cr-rpc-cpe", scenarioCPEWake},
+		{"S26-console-idor", scenarioConsole},
+		{"S27-ont-nyata-hg6145f", scenarioRealOnt},
 	}
 
 	var results []result

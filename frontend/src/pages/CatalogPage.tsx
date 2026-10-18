@@ -1,4 +1,5 @@
 import { useI18n } from '../lib/i18n'
+import { Paginate } from '../components/Paginate'
 import { useState, type FormEvent } from 'react'
 import { Cable, Cpu, Plus, Route, X } from 'lucide-react'
 import { DeleteButton, DetailButton, DetailModal, EditButton } from '../components/RecordActions'
@@ -140,7 +141,8 @@ function VendorsTab() {
         ) : vendors.length === 0 ? (
           <EmptyState icon={Cable} title="Belum ada vendor" />
         ) : (
-          <table className="w-full text-left text-sm">
+          <Paginate items={vendors} label="vendor">{(rows, pager) => (<><div className="table-scroll">
+<table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                 <th className="px-5 py-3">Code</th>
@@ -151,7 +153,7 @@ function VendorsTab() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {vendors.map((v) => (
+              {rows.map((v) => (
                 <tr key={v.id}>
                   <td className="px-5 py-3.5 font-mono text-xs text-slate-700 dark:text-slate-300">{v.code}</td>
                   <td className="px-5 py-3.5 font-medium text-slate-900 dark:text-slate-100">{v.name}</td>
@@ -174,6 +176,7 @@ function VendorsTab() {
               ))}
             </tbody>
           </table>
+</div>{pager}</>)}</Paginate>
         )}
       </div>
 
@@ -338,11 +341,11 @@ function CreateVendorModal({ onClose }: { onClose: () => void }) {
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Code</label>
-          <input required maxLength={LIMITS.vendor.code} value={code} onChange={(e) => setCode(e.target.value)} placeholder="mis. ZTE" className={inputCls} />
+          <input pattern=".*\S.*" title="Tidak boleh kosong atau hanya spasi" required maxLength={LIMITS.vendor.code} value={code} onChange={(e) => setCode(e.target.value)} placeholder="mis. ZTE" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama</label>
-          <input required maxLength={LIMITS.vendor.name} value={name} onChange={(e) => setName(e.target.value)} placeholder="mis. ZTE Corporation" className={inputCls} />
+          <input pattern=".*\S.*" title="Tidak boleh kosong atau hanya spasi" required maxLength={LIMITS.vendor.name} value={name} onChange={(e) => setName(e.target.value)} placeholder="mis. ZTE Corporation" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Deskripsi (opsional)</label>
@@ -410,7 +413,7 @@ function EditVendorForm({ vendor, onClose }: { vendor: Vendor; onClose: () => vo
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama</label>
-          <input required maxLength={LIMITS.vendor.name} value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
+          <input pattern=".*\S.*" title="Tidak boleh kosong atau hanya spasi" required maxLength={LIMITS.vendor.name} value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Deskripsi</label>
@@ -533,7 +536,8 @@ function DeviceModelsTab() {
         ) : !models || models.length === 0 ? (
           <EmptyState icon={Cpu} title="Belum ada device model untuk vendor ini" />
         ) : (
-          <table className="w-full text-left text-sm">
+          <Paginate items={models} label="model perangkat">{(rows, pager) => (<><div className="table-scroll">
+<table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                 <th className="px-5 py-3">Model</th>
@@ -543,7 +547,7 @@ function DeviceModelsTab() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {models.map((m) => (
+              {rows.map((m) => (
                 <tr key={m.id}>
                   <td className="px-5 py-3.5 font-medium text-slate-900 dark:text-slate-100">{m.model_name}</td>
                   <td className="px-5 py-3.5 font-mono text-xs text-slate-600 dark:text-slate-400">{m.product_class ?? '-'}</td>
@@ -562,6 +566,7 @@ function DeviceModelsTab() {
               ))}
             </tbody>
           </table>
+</div>{pager}</>)}</Paginate>
         )}
       </div>
 
@@ -632,7 +637,7 @@ function EditDeviceModelForm({ model, onClose }: { model: DeviceModel; onClose: 
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama Model</label>
-          <input required maxLength={LIMITS.deviceModel.modelName} value={modelName} onChange={(e) => setModelName(e.target.value)} className={inputCls} />
+          <input pattern=".*\S.*" title="Tidak boleh kosong atau hanya spasi" required maxLength={LIMITS.deviceModel.modelName} value={modelName} onChange={(e) => setModelName(e.target.value)} className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Product Class</label>
@@ -720,7 +725,7 @@ function CreateDeviceModelModal({ vendorId, onClose }: { vendorId: number; onClo
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama Model</label>
-          <input required maxLength={LIMITS.deviceModel.modelName} value={modelName} onChange={(e) => setModelName(e.target.value)} placeholder="mis. F670L" className={inputCls} />
+          <input pattern=".*\S.*" title="Tidak boleh kosong atau hanya spasi" required maxLength={LIMITS.deviceModel.modelName} value={modelName} onChange={(e) => setModelName(e.target.value)} placeholder="mis. F670L" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Product Class (opsional)</label>
@@ -825,7 +830,8 @@ function MappingsTab() {
         ) : !mappings || mappings.length === 0 ? (
           <EmptyState icon={Route} title="Belum ada parameter mapping untuk vendor ini" />
         ) : (
-          <table className="w-full text-left text-sm">
+          <Paginate items={mappings} label="mapping parameter">{(rows, pager) => (<><div className="table-scroll">
+<table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                 <th className="px-5 py-3">Logical Key</th>
@@ -835,7 +841,7 @@ function MappingsTab() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {mappings.map((m) => (
+              {rows.map((m) => (
                 <tr key={m.id}>
                   <td className="px-5 py-3.5 font-mono text-xs text-slate-700 dark:text-slate-300">{m.logical_key}</td>
                   <td className="px-5 py-3.5 font-mono text-xs text-slate-500 dark:text-slate-400">{m.tr069_path}</td>
@@ -859,6 +865,7 @@ function MappingsTab() {
               ))}
             </tbody>
           </table>
+</div>{pager}</>)}</Paginate>
         )}
       </div>
 
@@ -937,7 +944,7 @@ function CreateMappingModal({ vendorId, onClose }: { vendorId: number; onClose: 
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Logical Key</label>
-          <input required maxLength={LIMITS.mapping.logicalKey} value={logicalKey} onChange={(e) => setLogicalKey(e.target.value)} placeholder="mis. wifi.5g.ssid" className={`${inputCls} font-mono text-xs`} />
+          <input pattern=".*\S.*" title="Tidak boleh kosong atau hanya spasi" required maxLength={LIMITS.mapping.logicalKey} value={logicalKey} onChange={(e) => setLogicalKey(e.target.value)} placeholder="mis. wifi.5g.ssid" className={`${inputCls} font-mono text-xs`} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">TR-069 Path</label>

@@ -144,11 +144,11 @@ function TenantStep({ onCreated }: { onCreated: (tenant: Tenant) => void }) {
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Code</label>
-          <input required maxLength={LIMITS.tenant.code} value={code} onChange={(e) => setCode(e.target.value)} placeholder="mis. ISP-JKT" className={inputCls} />
+          <input minLength={2} pattern="[A-Za-z0-9][A-Za-z0-9._\-]{1,31}" title="2-32 karakter: huruf, angka, titik, garis bawah, strip; tanpa spasi" autoComplete="off" required maxLength={LIMITS.tenant.code} value={code} onChange={(e) => setCode(e.target.value)} placeholder="mis. ISP-JKT" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama Perusahaan</label>
-          <input required maxLength={LIMITS.tenant.name} value={name} onChange={(e) => setName(e.target.value)} placeholder="mis. ISP Jakarta Sejahtera" className={inputCls} />
+          <input pattern=".*\S.*" title="Tidak boleh kosong atau hanya spasi" required maxLength={LIMITS.tenant.name} value={name} onChange={(e) => setName(e.target.value)} placeholder="mis. ISP Jakarta Sejahtera" className={inputCls} />
         </div>
         <div className="border-t border-slate-100 pt-3 dark:border-slate-800">
           <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
@@ -224,7 +224,7 @@ function AdminUserStep({ tenant, onCreated, onBack }: { tenant: Tenant; onCreate
         </p>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Username</label>
-          <input required maxLength={LIMITS.user.username} value={username} onChange={(e) => setUsername(e.target.value)} placeholder="mis. admin.jkt" className={inputCls} />
+          <input minLength={3} pattern="[A-Za-z0-9][A-Za-z0-9._@+\-]{2,63}" title="3-64 karakter: huruf, angka, titik, garis bawah, strip, @, +" autoComplete="off" required maxLength={LIMITS.user.username} value={username} onChange={(e) => setUsername(e.target.value)} placeholder="mis. admin.jkt" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama Lengkap</label>

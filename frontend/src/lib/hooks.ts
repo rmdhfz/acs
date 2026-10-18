@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from './api'
+import type { MenuLayout } from './menu'
 import type {
   ActivityLog,
   SaaSReport,
@@ -1863,5 +1864,177 @@ export function useUpdateBillingPlan() {
     mutationFn: ({ code, ...input }: BillingPlanInput & { code: string }) =>
       api.patch<BillingPlan>(`/billing/plans/${encodeURIComponent(code)}`, input),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['billing', 'plans'] }),
+  })
+}
+
+// ---- Fitur Console: layout menu, laporan bug, riwayat impor/ekspor (migrations/0033) ----
+
+
+export function useMenuLayout(enabled = true) {
+  return useQuery({
+    queryKey: ['menu-layout'],
+    queryFn: async () => (await api.get<{ layout: MenuLayout | null }>('/auth/menu-layout')).layout,
+    enabled,
+    staleTime: 5 * 60_000,
+  })
+}
+
+export function useSaveMenuLayout() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (layout: MenuLayout) => api.put<{ layout: MenuLayout }>('/auth/menu-layout', layout),
+    onSuccess: (r) => qc.setQueryData(['menu-layout'], r.layout),
+  })
+}
+
+export function useResetMenuLayout() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.del<void>('/auth/menu-layout'),
+    onSuccess: () => qc.setQueryData(['menu-layout'], null),
+  })
+}
+
+export type BugSeverity = 'MINOR' | 'MAJOR' | 'BLOCKER'
+export type BugStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'WONTFIX'
+
+export interface BugReport {
+  id: string
+  tenant_id: number | null
+  tenant_name: string | null
+  reporter: string
+  reporter_email?: string
+  impersonated: boolean
+  title: string
+  /** Apa yang terjadi. */
+  description: string
+  /** Apa yang diharapkan (kolom terpisah). */
+  expected: string
+  has_screenshot: boolean
+  page_path: string
+  user_agent: string
+  app_version: string
+  severity: BugSeverity
+  status: BugStatus
+  admin_note: string | null
+  emailed_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface BugReportInput {
+  title: string
+  description: string
+  expected: string
+  /** Tangkapan layar PNG/JPEG opsional (sudah diperkecil; server memvalidasi ulang). */
+  screenshot?: File | null
+  severity: BugSeverity
+  page_path: string
+  user_agent: string
+  app_version: string
+}
+
+export function useCreateBugReport() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: BugReportInput) => {
+      const form = new FormData()
+      form.set('title', input.title)
+      form.set('description', input.description)
+      form.set('expected', input.expected)
+      form.set('severity', input.severity)
+      form.set('page_path', input.page_path)
+      form.set('user_agent', input.user_agent)
+      form.set('app_version', input.app_version)
+      if (input.screenshot) form.set('screenshot', input.screenshot, input.screenshot.name)
+      return api.postForm<BugReport>('/bug-reports', form)
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['bug-reports'] }),
+  })
+}
+
+export function useBugReports(opts: { page: number; pageSize: number; status?: string; tenantId?: number | null }) {
+  const qs = new URLSearchParams({ page: String(opts.page), page_size: String(opts.pageSize) })
+  if (opts.status) qs.set('status', opts.status)
+  if (opts.tenantId) qs.set('tenant_id', String(opts.tenantId))
+  return useQuery({
+    queryKey: ['bug-reports', opts.page, opts.pageSize, opts.status ?? '', opts.tenantId ?? 0],
+    queryFn: async () => {
+      const r = await api.get<{ data: BugReport[]; meta: { total: number } }>(`/bug-reports?${qs}`)
+      return { data: r.data ?? [], total: r.meta?.total ?? 0 }
+    },
+  })
+}
+
+// Tangkapan layar laporan sebagai object URL (butuh header Authorization, jadi tidak bisa lewat <img src> langsung).
+export function useBugScreenshot(id: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ['bug-reports', 'screenshot', id],
+    queryFn: async () => URL.createObjectURL(await api.blob(`/bug-reports/${encodeURIComponent(id as string)}/screenshot`)),
+    enabled: !!id && enabled,
+    staleTime: Infinity,
+    gcTime: 5 * 60_000,
+  })
+}
+
+export function useBugReport(id: string | undefined) {
+  return useQuery({
+    queryKey: ['bug-reports', 'detail', id],
+    queryFn: () => api.get<BugReport>(`/bug-reports/${encodeURIComponent(id as string)}`),
+    enabled: !!id,
+  })
+}
+
+export function useUpdateBugReport() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, status, note }: { id: string; status: BugStatus; note: string | null }) =>
+      api.patch<BugReport>(`/bug-reports/${encodeURIComponent(id)}`, { status, note }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['bug-reports'] }),
+  })
+}
+
+export type TransferKind = 'IMPORT' | 'EXPORT'
+export type TransferStatus = 'COMPLETED' | 'PARTIAL' | 'FAILED'
+
+export interface DataTransfer {
+  id: string
+  tenant_id: number | null
+  tenant_name: string | null
+  user: string
+  impersonated: boolean
+  kind: TransferKind
+  status: TransferStatus
+  module: string
+  format: string
+  file_name: string | null
+  total_rows: number
+  success_rows: number
+  failed_rows: number
+  detail: string | null
+  source: 'SERVER' | 'CLIENT'
+  emailed_at: string | null
+  created_at: string
+}
+
+export function useDataTransfers(opts: { page: number; pageSize: number; kind?: string; module?: string; tenantId?: number | null }) {
+  const qs = new URLSearchParams({ page: String(opts.page), page_size: String(opts.pageSize) })
+  if (opts.kind) qs.set('kind', opts.kind)
+  if (opts.module) qs.set('module', opts.module)
+  if (opts.tenantId) qs.set('tenant_id', String(opts.tenantId))
+  return useQuery({
+    queryKey: ['data-transfers', opts.page, opts.pageSize, opts.kind ?? '', opts.module ?? '', opts.tenantId ?? 0],
+    queryFn: async () => {
+      const r = await api.get<{ data: DataTransfer[]; meta: { total: number } }>(`/data-transfers?${qs}`)
+      return { data: r.data ?? [], total: r.meta?.total ?? 0 }
+    },
+  })
+}
+
+export function useDataTransfer(id: string | undefined) {
+  return useQuery({
+    queryKey: ['data-transfers', 'detail', id],
+    queryFn: () => api.get<DataTransfer>(`/data-transfers/${encodeURIComponent(id as string)}`),
+    enabled: !!id,
   })
 }

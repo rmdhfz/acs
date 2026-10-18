@@ -1,4 +1,5 @@
 import { useI18n } from '../lib/i18n'
+import { Paginate } from '../components/Paginate'
 import { useEffect, useState, type FormEvent } from 'react'
 import { FileSliders, Plus, Radar, Trash2 } from 'lucide-react'
 import { EmptyState } from '../components/EmptyState'
@@ -138,7 +139,8 @@ function ProfilesTab({ canManage }: { canManage: boolean }) {
         ) : profiles.length === 0 ? (
           <EmptyState icon={FileSliders} title="Belum ada provisioning profile" description="Buat profil untuk mengisi parameter default saat device di-provisioning." />
         ) : (
-          <table className="w-full text-left text-sm">
+          <Paginate items={profiles} label="profil">{(rows, pager) => (<><div className="table-scroll">
+<table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                 <th className="px-5 py-3">Nama</th>
@@ -148,7 +150,7 @@ function ProfilesTab({ canManage }: { canManage: boolean }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {profiles.map((p) => (
+              {rows.map((p) => (
                 <tr key={p.id} onClick={() => canManage && setModalId(p.id)} className={canManage ? 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50' : ''}>
                   <td className="px-5 py-3.5">
                     <p className="font-medium text-slate-900 dark:text-slate-100">{p.name}</p>
@@ -181,6 +183,7 @@ function ProfilesTab({ canManage }: { canManage: boolean }) {
               ))}
             </tbody>
           </table>
+</div>{pager}</>)}</Paginate>
         )}
       </div>
 
@@ -266,7 +269,7 @@ function ProfileModal({ id, onClose }: { id: number | undefined; onClose: () => 
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama</label>
-            <input required maxLength={LIMITS.profile.name} value={name} onChange={(e) => setName(e.target.value)} placeholder="mis. Default PPPoE Jakarta" className={inputCls} />
+            <input pattern=".*\S.*" title="Tidak boleh kosong atau hanya spasi" required maxLength={LIMITS.profile.name} value={name} onChange={(e) => setName(e.target.value)} placeholder="mis. Default PPPoE Jakarta" className={inputCls} />
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Deskripsi</label>
@@ -424,7 +427,8 @@ function ZTRulesTab({ canManage }: { canManage: boolean }) {
         ) : !rules || rules.length === 0 ? (
           <EmptyState icon={Radar} title="Belum ada zero-touch rule" description="Device baru yang BOOTSTRAP tanpa rule yang cocok akan menunggu tindakan manual (FR-15)." />
         ) : (
-          <table className="w-full text-left text-sm">
+          <Paginate items={[...rules].sort((a, b) => a.priority - b.priority)} label="aturan ZTP">{(rows, pager) => (<><div className="table-scroll">
+<table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                 <th className="px-5 py-3">Prioritas</th>
@@ -436,9 +440,7 @@ function ZTRulesTab({ canManage }: { canManage: boolean }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {[...rules]
-                .sort((a, b) => a.priority - b.priority)
-                .map((r) => (
+              {rows.map((r) => (
                   <tr key={r.id} onClick={() => canManage && setModalId(r.id)} className={canManage ? 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50' : ''}>
                     <td className="px-5 py-3.5 tabular-nums text-slate-600 dark:text-slate-400">{r.priority}</td>
                     <td className="px-5 py-3.5 text-xs text-slate-600 dark:text-slate-400">
@@ -495,6 +497,7 @@ function ZTRulesTab({ canManage }: { canManage: boolean }) {
                 ))}
             </tbody>
           </table>
+</div>{pager}</>)}</Paginate>
         )}
       </div>
 

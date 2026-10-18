@@ -35,6 +35,7 @@ import (
 	"acs/internal/usecase/auth"
 	"acs/internal/usecase/billing"
 	"acs/internal/usecase/catalog"
+	"acs/internal/usecase/console"
 	"acs/internal/usecase/device"
 	"acs/internal/usecase/diagnostics"
 	"acs/internal/usecase/file"
@@ -265,6 +266,13 @@ func main() {
 		}
 		logger.Info("billing: pembayaran Xendit aktif", "base_url", cfg.XenditBaseURL, "invoice_hours", cfg.BillingInvoiceHours)
 	}
+	// Fitur Console (migrations/0033): layout menu, laporan bug (email ke operator), riwayat impor/ekspor (email ke pelaku).
+	smtpOn := cfg.SMTPHost != ""
+	menuSvc := console.NewMenuService(mysql.NewMenuLayoutRepository(db))
+	bugSvc := console.NewBugService(mysql.NewBugReportRepository(db), activityLogRepo, userRepo, tenantRepo, cfg.BugReportEmail, logger).
+		WithNotifier(notifSvc).WithEmail(mailNotifier, mailBuilder, smtpOn)
+	transferSvc := console.NewTransferService(mysql.NewDataTransferRepository(db), activityLogRepo, userRepo, logger).
+		WithEmail(mailNotifier, mailBuilder, smtpOn)
 	billingSvc := billing.NewService(mysql.NewBillingRepository(db), tenantRepo, userRepo, paymentGW, activityLogRepo, billingCfg, logger).WithNotifier(notifSvc)
 	if cfg.SMTPHost != "" {
 		billingSvc.WithEmail(mailNotifier, mailBuilder)
@@ -339,6 +347,9 @@ func main() {
 		SelfService:   selfServiceSvc,
 		Notifications: notifSvc,
 		Billing:       billingSvc,
+		Menu:          menuSvc,
+		Bugs:          bugSvc,
+		Transfers:     transferSvc,
 		WSHub:         wsHub,
 
 		WSAllowedOrigins: cfg.CORSAllowOrigins,

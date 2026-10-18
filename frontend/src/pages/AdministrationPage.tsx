@@ -1,4 +1,5 @@
 import { useI18n } from '../lib/i18n'
+import { Paginate } from '../components/Paginate'
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Building2, CreditCard, Gauge, KeyRound, Link2, LogIn, Palette, Plus, Shield, ShieldOff, Trash2, Upload, Users as UsersIcon, Wand2 } from 'lucide-react'
@@ -144,7 +145,7 @@ function UsersTab({ isSuperadmin }: { isSuperadmin: boolean }) {
   async function handleImpersonate(u: User) {
     const ok = await confirm({
       title: 'Masuk sebagai pengguna',
-      message: <>Anda akan bertindak sebagai <strong>{u.username}</strong> ({u.roles.join(', ')}). Semua aksi tercatat atas nama Anda di audit trail dan sesi berakhir otomatis dalam 30 menit. Ganti password, MFA, dan token API diblokir selama mode ini.</>,
+      message: <>Anda akan bertindak sebagai <strong>{u.username}</strong> ({(u.roles ?? []).join(', ')}). Semua aksi tercatat atas nama Anda di audit trail dan sesi berakhir otomatis dalam 30 menit. Ganti password, MFA, dan token API diblokir selama mode ini.</>,
       confirmLabel: 'Masuk sebagai',
     })
     if (!ok) return
@@ -236,7 +237,8 @@ function UsersTab({ isSuperadmin }: { isSuperadmin: boolean }) {
         ) : users.length === 0 ? (
           <EmptyState icon={UsersIcon} title="Belum ada user" />
         ) : (
-          <table className="w-full text-left text-sm">
+          <Paginate items={users} label="user">{(rows, pager) => (<><div className="table-scroll">
+<table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                 <th className="px-5 py-3">Username</th>
@@ -249,7 +251,7 @@ function UsersTab({ isSuperadmin }: { isSuperadmin: boolean }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {users.map((u) => {
+              {rows.map((u) => {
                 const isSelf = currentUser?.id === u.id
                 return (
                   <tr key={u.id}>
@@ -258,7 +260,7 @@ function UsersTab({ isSuperadmin }: { isSuperadmin: boolean }) {
                     <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{u.email || '-'}</td>
                     <td className="px-5 py-3.5">
                       <div className="flex flex-wrap gap-1">
-                        {u.roles.length === 0 ? <span className="text-xs text-slate-500 dark:text-slate-400">-</span> : u.roles.map((r) => <StatusBadge key={r} code="PROVISIONING" label={r} />)}
+                        {(u.roles ?? []).length === 0 ? <span className="text-xs text-slate-500 dark:text-slate-400">-</span> : (u.roles ?? []).map((r) => <StatusBadge key={r} code="PROVISIONING" label={r} />)}
                       </div>
                     </td>
                     <td className="px-5 py-3.5">
@@ -274,13 +276,13 @@ function UsersTab({ isSuperadmin }: { isSuperadmin: boolean }) {
                           items={[
                             { label: 'Reset password', icon: KeyRound, onClick: () => setPasswordTarget(u), title: 'Reset password user ini' },
                             { label: 'Kelola role', icon: Shield, onClick: () => setRolesTarget(u), title: 'Kelola role user ini' },
-                            { label: 'Perangkat portal', icon: Link2, onClick: () => setDevicesTarget(u), hidden: !u.roles.includes('ENDUSER'), title: 'Perangkat yang terlihat di portal WiFi Saya' },
+                            { label: 'Perangkat portal', icon: Link2, onClick: () => setDevicesTarget(u), hidden: !(u.roles ?? []).includes('ENDUSER'), title: 'Perangkat yang terlihat di portal WiFi Saya' },
                             {
                               label: 'Masuk sebagai',
                               icon: LogIn,
                               tone: 'brand',
                               onClick: () => handleImpersonate(u),
-                              hidden: !(canImpersonate && !isSelf && u.is_active && u.tenant_id !== null && !u.roles.includes('SUPERADMIN')),
+                              hidden: !(canImpersonate && !isSelf && u.is_active && u.tenant_id !== null && !(u.roles ?? []).includes('SUPERADMIN')),
                               title: 'Masuk sebagai pengguna ini (dukungan; teraudit)',
                             },
                             {
@@ -302,6 +304,7 @@ function UsersTab({ isSuperadmin }: { isSuperadmin: boolean }) {
               })}
             </tbody>
           </table>
+</div>{pager}</>)}</Paginate>
         )}
       </div>
 
@@ -346,7 +349,7 @@ function UserDetailModal({ id, onClose }: { id: number; onClose: () => void }) {
               ['Username', mono(data.username)],
               ['Nama', data.full_name],
               ['Email', data.email],
-              ['Role', data.roles.length ? data.roles.join(', ') : null],
+              ['Role', (data.roles ?? []).length ? (data.roles ?? []).join(', ') : null],
               ['Status', data.is_active ? 'Aktif' : 'Nonaktif'],
               ['Tenant', data.tenant_id == null ? 'Platform (tanpa tenant)' : `#${data.tenant_id}`],
               ['Login terakhir', data.last_login_at ? formatDateTime(data.last_login_at) : null],
@@ -637,7 +640,8 @@ function ApiTokensTab() {
         ) : tokens.length === 0 ? (
           <EmptyState icon={KeyRound} title="Belum ada API token" />
         ) : (
-          <table className="w-full text-left text-sm">
+          <Paginate items={tokens} label="token API">{(rows, pager) => (<><div className="table-scroll">
+<table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                 <th className="px-5 py-3">Nama</th>
@@ -648,7 +652,7 @@ function ApiTokensTab() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {tokens.map((t) => (
+              {rows.map((t) => (
                 <tr key={t.id}>
                   <td className="px-5 py-3.5 font-medium text-slate-900 dark:text-slate-100">{t.name}</td>
                   <td className="px-5 py-3.5">
@@ -679,6 +683,7 @@ function ApiTokensTab() {
               ))}
             </tbody>
           </table>
+</div>{pager}</>)}</Paginate>
         )}
       </div>
 
@@ -735,7 +740,7 @@ function IssueApiTokenModal({ onClose }: { onClose: () => void }) {
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama</label>
-          <input
+          <input pattern=".*\S.*" title="Tidak boleh kosong atau hanya spasi"
             required
             maxLength={LIMITS.apiToken.name}
             value={name}
@@ -855,7 +860,8 @@ function TenantsTab() {
         ) : tenants.length === 0 ? (
           <EmptyState icon={Building2} title="Belum ada tenant" />
         ) : (
-          <table className="w-full text-left text-sm">
+          <Paginate items={tenants} label="tenant">{(rows, pager) => (<><div className="table-scroll">
+<table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                 <th className="px-5 py-3">Code</th>
@@ -868,7 +874,7 @@ function TenantsTab() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {tenants.map((t) => (
+              {rows.map((t) => (
                 <tr key={t.id}>
                   <td className="px-5 py-3.5 font-mono text-xs text-slate-700 dark:text-slate-300">{t.code}</td>
                   <td className="px-5 py-3.5 font-medium text-slate-900 dark:text-slate-100">{t.name}</td>
@@ -914,6 +920,7 @@ function TenantsTab() {
               ))}
             </tbody>
           </table>
+</div>{pager}</>)}</Paginate>
         )}
       </div>
 
@@ -1003,7 +1010,7 @@ function EditTenantModal({ tenant, onClose }: { tenant: Tenant; onClose: () => v
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama</label>
-          <input required maxLength={LIMITS.tenant.name} value={name} onChange={(e) => setName(e.target.value)} placeholder="mis. ISP Jakarta Sejahtera" className={inputCls} />
+          <input pattern=".*\S.*" title="Tidak boleh kosong atau hanya spasi" required maxLength={LIMITS.tenant.name} value={name} onChange={(e) => setName(e.target.value)} placeholder="mis. ISP Jakarta Sejahtera" className={inputCls} />
         </div>
         <label className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-300">
           <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} className="mt-0.5" />
@@ -1059,11 +1066,11 @@ function CreateTenantModal({ onClose }: { onClose: () => void }) {
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Code</label>
-          <input required maxLength={LIMITS.tenant.code} value={code} onChange={(e) => setCode(e.target.value)} placeholder="mis. ISP-JKT" className={inputCls} />
+          <input minLength={2} pattern="[A-Za-z0-9][A-Za-z0-9._\-]{1,31}" title="2-32 karakter: huruf, angka, titik, garis bawah, strip; tanpa spasi" autoComplete="off" required maxLength={LIMITS.tenant.code} value={code} onChange={(e) => setCode(e.target.value)} placeholder="mis. ISP-JKT" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama</label>
-          <input required maxLength={LIMITS.tenant.name} value={name} onChange={(e) => setName(e.target.value)} placeholder="mis. ISP Jakarta Sejahtera" className={inputCls} />
+          <input pattern=".*\S.*" title="Tidak boleh kosong atau hanya spasi" required maxLength={LIMITS.tenant.name} value={name} onChange={(e) => setName(e.target.value)} placeholder="mis. ISP Jakarta Sejahtera" className={inputCls} />
         </div>
         <div className="border-t border-slate-100 pt-3">
           <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
@@ -1126,7 +1133,7 @@ function RotateCWMPCredentialsModal({ tenant, onClose }: { tenant: Tenant; onClo
         </p>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Username</label>
-          <input required maxLength={LIMITS.tenant.cwmpUsername} value={username} onChange={(e) => setUsername(e.target.value)} placeholder="username Inform yang akan diisi ke CPE" className={`${inputCls} font-mono text-xs`} />
+          <input minLength={3} pattern="[A-Za-z0-9._@\-]{3,128}" title="3-128 karakter tanpa spasi atau titik dua" autoComplete="off" required maxLength={LIMITS.tenant.cwmpUsername} value={username} onChange={(e) => setUsername(e.target.value)} placeholder="username Inform yang akan diisi ke CPE" className={`${inputCls} font-mono text-xs`} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Password Baru</label>

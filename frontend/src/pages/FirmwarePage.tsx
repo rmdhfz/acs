@@ -1,4 +1,5 @@
 import { useI18n } from '../lib/i18n'
+import { Paginate } from '../components/Paginate'
 import { useEffect, useState, type FormEvent } from 'react'
 import { HardDrive, Plus, Rocket } from 'lucide-react'
 import { EmptyState } from '../components/EmptyState'
@@ -156,8 +157,8 @@ function CatalogTab() {
         ) : files.length === 0 ? (
           <EmptyState icon={HardDrive} title="Belum ada firmware terdaftar" description="File firmware yang diupload di sini disimpan di object storage (MinIO)." />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+          <Paginate items={files} label="firmware">{(rows, pager) => (<><div className="table-scroll">
+<table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                   <th className="px-5 py-3">Versi</th>
@@ -170,7 +171,7 @@ function CatalogTab() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {files.map((f) => (
+                {rows.map((f) => (
                   <tr key={f.id}>
                     <td className="px-5 py-3.5 font-medium text-slate-900 dark:text-slate-100">{f.version}</td>
                     <td className="px-5 py-3.5 font-mono text-xs text-slate-600 dark:text-slate-400">{f.file_name}</td>
@@ -194,7 +195,7 @@ function CatalogTab() {
                 ))}
               </tbody>
             </table>
-          </div>
+</div>{pager}</>)}</Paginate>
         )}
       </div>
 
@@ -262,7 +263,7 @@ function EditFirmwareForm({ file, onClose }: { file: FirmwareFile; onClose: () =
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Versi</label>
-          <input required maxLength={64} value={version} onChange={(e) => setVersion(e.target.value)} className={inputCls} />
+          <input pattern=".*\S.*" title="Tidak boleh kosong atau hanya spasi" required maxLength={64} value={version} onChange={(e) => setVersion(e.target.value)} className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Catatan rilis</label>
@@ -350,8 +351,8 @@ function RolloutTab({ canManage }: { canManage: boolean }) {
         ) : batches.length === 0 ? (
           <EmptyState icon={Rocket} title="Belum ada rollout batch" description="Rollout batch menjadwalkan upgrade firmware ke populasi device (per vendor/model) secara bertahap dengan gerbang failure-rate antar wave." />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+          <Paginate items={batches} label="rollout">{(rows, pager) => (<><div className="table-scroll">
+<table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                   <th className="px-5 py-3">Target</th>
@@ -363,7 +364,7 @@ function RolloutTab({ canManage }: { canManage: boolean }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {batches.map((b) => {
+                {rows.map((b) => {
                   const code = statusCode(b.status_id)
                   const badge = ROLLOUT_STATUS_BADGE[code] ?? { code: 'PENDING', label: code || `#${b.status_id}` }
                   const canAct = canManage && (code === 'IN_PROGRESS' || code === 'PAUSED_FAILURE_THRESHOLD' || code === 'PENDING')
@@ -414,7 +415,7 @@ function RolloutTab({ canManage }: { canManage: boolean }) {
                 })}
               </tbody>
             </table>
-          </div>
+</div>{pager}</>)}</Paginate>
         )}
       </div>
 
@@ -644,7 +645,7 @@ function UploadFirmwareModal({ defaultVendorId, onClose }: { defaultVendorId: st
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Versi</label>
-          <input maxLength={64} required value={version} onChange={(e) => setVersion(e.target.value)} placeholder="mis. V5.3.0P2" className={inputCls} />
+          <input pattern=".*\S.*" title="Tidak boleh kosong atau hanya spasi" maxLength={64} required value={version} onChange={(e) => setVersion(e.target.value)} placeholder="mis. V5.3.0P2" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">File Firmware</label>

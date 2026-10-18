@@ -57,6 +57,12 @@ function findViolations(): string[] {
       const weakNew = /autoComplete="new-password"/.test(tag) && !/minLength/.test(tag)
       // angka wajib punya batas bawah juga (negatif/NaN tak boleh lolos sebagai nilai wajar)
       const noMin = type === 'number' && !/\bmin=/.test(tag)
+      // field WAJIB berteks harus punya minLength/pattern (atau type email/url yang divalidasi browser): spasi/1 huruf tidak lolos
+      const weakRequired = textual && /\brequired\b/.test(tag) && !['email', 'url', 'search'].includes(type) && !/minLength|pattern=/.test(tag) && !/autoComplete="current-password"/.test(tag)
+      if (weakRequired) {
+        const line = s.slice(0, m.index).split('\n').length
+        bad.push(`${path.relative(SRC, file).split(path.sep).join('/')}:${line} <${m[1]} ${type}> required tanpa minLength/pattern`)
+      }
       if ((textual && !/maxLength/.test(tag)) || (type === 'number' && !/\bmax=/.test(tag)) || weakNew || noMin) {
         const line = s.slice(0, m.index).split('\n').length
         bad.push(`${path.relative(SRC, file).split(path.sep).join('/')}:${line} <${m[1]} ${type}>`)

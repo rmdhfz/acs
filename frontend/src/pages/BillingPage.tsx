@@ -75,7 +75,7 @@ export function BillingPage() {
   const returnStatus = params.get('status')
 
   const tenants = useTenants(isSuper)
-  const sub = useBillingSubscription(tenantId, !isSuper || tenantId !== null)
+  const sub = useBillingSubscription(tenantId, !!user && (!isSuper || tenantId !== null))
   const plans = useBillingPlans()
   const [page, setPage] = useState(1)
   const invoices = useBillingInvoices({ tenantId, page, pageSize: PAGE_SIZE, enabled: canManage && (!isSuper || tenantId !== null) })
@@ -335,7 +335,8 @@ export function BillingPage() {
           ) : (invoices.data?.data.length ?? 0) === 0 ? (
             <EmptyState icon={CreditCard} title="Belum ada invoice" description="Invoice muncul di sini setelah Anda memilih paket." />
           ) : (
-            <div className={`${cardCls} overflow-x-auto p-0`}>
+            <div className={`${cardCls} p-0`}>
+              <div className="table-scroll">
               <table className="w-full text-left text-sm">
                 <thead className="border-b border-slate-200 text-xs uppercase text-slate-500 dark:border-slate-800 dark:text-slate-400">
                   <tr>
@@ -381,6 +382,7 @@ export function BillingPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
               {totalPages > 1 && (
                 <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-sm dark:border-slate-800">
                   <button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="rounded-full px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-800">Sebelumnya</button>

@@ -1,4 +1,5 @@
 import { useI18n } from '../lib/i18n'
+import { Paginate } from '../components/Paginate'
 import { useState, type FormEvent } from 'react'
 import { Tag as TagIcon, Plus, AlertCircle } from 'lucide-react'
 import { EditButton } from '../components/RecordActions'
@@ -76,8 +77,8 @@ export default function TagsPage() {
         ) : tags.length === 0 ? (
           <EmptyState icon={TagIcon} title="Belum ada tag" description="Buat tag pertama Anda untuk mulai mengelompokkan perangkat." />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+          <Paginate items={tags} label="tag">{(rows, pager) => (<><div className="table-scroll">
+<table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                   <th className="px-5 py-3">ID</th>
@@ -88,7 +89,7 @@ export default function TagsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {tags.map((t) => (
+                {rows.map((t) => (
                   <tr key={t.id}>
                     <td className="px-5 py-3.5 font-medium text-slate-900 dark:text-slate-100">#{t.id}</td>
                     <td className="px-5 py-3.5 font-medium text-slate-900 dark:text-slate-100">
@@ -127,7 +128,7 @@ export default function TagsPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+</div>{pager}</>)}</Paginate>
         )}
       </div>
 
@@ -195,7 +196,7 @@ function EditTagModal({ tag, onClose }: { tag: Tag; onClose: () => void }) {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-600 dark:text-slate-400">Nama Tag</label>
-          <input required maxLength={LIMITS.tag.name} value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
+          <input pattern=".*\S.*" title="Tidak boleh kosong atau hanya spasi" required maxLength={LIMITS.tag.name} value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-600 dark:text-slate-400">Warna (kosongkan untuk menghapus)</label>
@@ -249,7 +250,7 @@ function CreateTagModal({ onClose }: { onClose: () => void }) {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-600 dark:text-slate-400">Nama Tag</label>
-          <input required maxLength={LIMITS.tag.name} value={name} onChange={(e) => setName(e.target.value)} placeholder="Contoh: VIP, Suspended, Beta" className={inputCls} />
+          <input pattern=".*\S.*" title="Tidak boleh kosong atau hanya spasi" required maxLength={LIMITS.tag.name} value={name} onChange={(e) => setName(e.target.value)} placeholder="Contoh: VIP, Suspended, Beta" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-600 dark:text-slate-400">Warna (Opsional)</label>

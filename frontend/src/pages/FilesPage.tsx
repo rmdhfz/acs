@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { Paginate } from '../components/Paginate'
 import { FileText, Upload, Trash2, AlertCircle, Package } from 'lucide-react'
 import { useFiles, useUploadFile, useDeleteFile, useVendors } from '../lib/hooks'
 import { DataTools } from '../components/DataTools'
@@ -92,8 +93,8 @@ export default function FilesPage() {
         ) : files.length === 0 ? (
           <EmptyState icon={FileText} title="Belum ada file" description="Upload firmware atau file konfigurasi untuk mulai." />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+          <Paginate items={files} label="file">{(rows, pager) => (<><div className="table-scroll">
+<table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                   <th className="px-5 py-3">Nama file</th>
@@ -104,7 +105,7 @@ export default function FilesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {files.map((f) => (
+                {rows.map((f) => (
                   <tr key={f.id}>
                     <td className="px-5 py-3.5">
                       <span className="flex items-center gap-2.5 font-medium text-slate-900 dark:text-slate-100">
@@ -134,7 +135,7 @@ export default function FilesPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+</div>{pager}</>)}</Paginate>
         )}
       </div>
 

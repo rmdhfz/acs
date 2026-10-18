@@ -1,4 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
+import { Paginate } from '../components/Paginate'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Line, LineChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Activity, ArrowLeft, Cpu, Gauge, HardDrive, History, ListChecks, Radio, ScrollText, Sparkles, SlidersHorizontal, RefreshCcw, AlertTriangle, FileUp, Pencil, Trash2 } from 'lucide-react'
@@ -574,7 +575,8 @@ function TasksTab({ deviceId }: { deviceId: number }) {
 
   return (
     <Card>
-      <table className="w-full text-left text-sm">
+      <Paginate items={tasks} label="task perangkat">{(rows, pager) => (<><div className="table-scroll">
+<table className="w-full text-left text-sm">
         <thead>
           <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
             <th className="px-5 py-3">Status</th>
@@ -585,7 +587,7 @@ function TasksTab({ deviceId }: { deviceId: number }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-          {tasks.map((t) => {
+          {rows.map((t) => {
             const status = findRefById(statusRefs, t.task_status_id)
             const type = findRefById(typeRefs, t.task_type_id)
             return (
@@ -604,6 +606,7 @@ function TasksTab({ deviceId }: { deviceId: number }) {
           })}
         </tbody>
       </table>
+</div>{pager}</>)}</Paginate>
     </Card>
   )
 }
@@ -862,7 +865,8 @@ function FirmwareTab({ deviceId, vendorId, canSchedule }: { deviceId: number; ve
         <EmptyState icon={HardDrive} title="Belum ada histori upgrade firmware" />
       ) : (
         <Card>
-          <table className="w-full text-left text-sm">
+          <Paginate items={jobs} label="diagnostik">{(rows, pager) => (<><div className="table-scroll">
+<table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                 <th className="px-5 py-3">Status</th>
@@ -873,7 +877,7 @@ function FirmwareTab({ deviceId, vendorId, canSchedule }: { deviceId: number; ve
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {jobs.map((j) => {
+              {rows.map((j) => {
                 const status = findRefById(statusRefs, j.task_status_id)
                 return (
                   <tr key={j.id}>
@@ -891,6 +895,7 @@ function FirmwareTab({ deviceId, vendorId, canSchedule }: { deviceId: number; ve
               })}
             </tbody>
           </table>
+</div>{pager}</>)}</Paginate>
         </Card>
       )}
     </div>

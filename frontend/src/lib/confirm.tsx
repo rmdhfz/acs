@@ -1,5 +1,6 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { AlertTriangle } from 'lucide-react'
+import { useFocusTrap } from './focusTrap'
 
 // useConfirm() = pengganti window.confirm() yang blocking & tidak theme-aware.
 // Promise-based: `if (await confirm({ title, message })) { ... }`.
@@ -16,6 +17,17 @@ interface ConfirmOptions {
 type ConfirmFn = (opts: ConfirmOptions) => Promise<boolean>
 
 const ConfirmContext = createContext<ConfirmFn | null>(null)
+
+// Panel dialog konfirmasi dengan jebakan fokus (Tab berputar di dalam, fokus kembali ke pemicu saat ditutup).
+function ConfirmPanel({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useFocusTrap(ref)
+  return (
+    <div ref={ref} tabIndex={-1} className="w-full max-w-md rounded-xl bg-white shadow-xl outline-none dark:bg-slate-900">
+      {children}
+    </div>
+  )
+}
 
 interface PendingState extends ConfirmOptions {
   resolve: (value: boolean) => void
@@ -64,7 +76,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             if (e.target === e.currentTarget) settle(false)
           }}
         >
-          <div className="w-full max-w-md rounded-xl bg-white shadow-xl dark:bg-slate-900">
+          <ConfirmPanel>
             <div className="flex gap-3.5 px-5 py-5">
               <div
                 className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
@@ -99,7 +111,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                 {pending.confirmLabel ?? 'Lanjutkan'}
               </button>
             </div>
-          </div>
+          </ConfirmPanel>
         </div>
       )}
     </ConfirmContext.Provider>

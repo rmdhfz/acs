@@ -29,6 +29,37 @@ type Message struct {
 	Subject string
 	Text    string
 	HTML    string
+	// Attachments (opsional): lampiran gambar kecil, mis. tangkapan layar laporan bug. Hanya tipe di allowedAttachmentTypes.
+	Attachments []Attachment
+}
+
+// Attachment = satu lampiran email. Nama berkas dibersihkan (hanya [A-Za-z0-9._-]) dan tipe dibatasi supaya isi dari
+// pengguna tidak bisa menyisipkan header MIME atau tipe berbahaya.
+type Attachment struct {
+	Filename    string
+	ContentType string
+	Data        []byte
+}
+
+var allowedAttachmentTypes = map[string]bool{"image/png": true, "image/jpeg": true}
+
+func safeFilename(n string) string {
+	var b strings.Builder
+	for _, r := range n {
+		if r < 128 && (r == '.' || r == '-' || r == '_' || (r >= '0' && r <= '9') || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')) {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune('_')
+		}
+	}
+	if b.Len() == 0 {
+		return "lampiran"
+	}
+	out := b.String()
+	if len(out) > 64 {
+		out = out[:64]
+	}
+	return out
 }
 
 // Sender mengirim satu pesan secara sinkron.
@@ -118,6 +149,15 @@ func (s *SMTP) buildMessage(m Message, to []*mail.Address) ([]byte, error) {
 		domain = s.cfg.From[i+1:]
 	}
 	boundary := "acs-" + randomID()
+	for _, a := range m.Attachments {
+		if !allowedAttachmentTypes[a.ContentType] {
+			return nil, fmt.Errorf("mailer: tipe lampiran %q tidak diizinkan", a.ContentType)
+		}
+	}
+	mixed := ""
+	if len(m.Attachments) > 0 {
+		mixed = "acs-m-" + randomID()
+	}
 
 	var b strings.Builder
 	h := func(k, v string) { b.WriteString(k + ": " + v + "\r\n") }
@@ -128,6 +168,10 @@ func (s *SMTP) buildMessage(m Message, to []*mail.Address) ([]byte, error) {
 	h("Message-ID", "<"+randomID()+"@"+domain+">")
 	h("MIME-Version", "1.0")
 	h("Auto-Submitted", "auto-generated")
+	if mixed != "" {
+		h("Content-Type", `multipart/mixed; boundary="`+mixed+`"`)
+		b.WriteString("\r\n--" + mixed + "\r\n")
+	}
 	h("Content-Type", `multipart/alternative; boundary="`+boundary+`"`)
 	b.WriteString("\r\n")
 	part := func(ctype, body string) {
@@ -141,6 +185,17 @@ func (s *SMTP) buildMessage(m Message, to []*mail.Address) ([]byte, error) {
 		part("text/html", m.HTML)
 	}
 	b.WriteString("--" + boundary + "--\r\n")
+	if mixed != "" {
+		for _, a := range m.Attachments {
+			name := safeFilename(a.Filename)
+			b.WriteString("\r\n--" + mixed + "\r\n")
+			b.WriteString("Content-Type: " + a.ContentType + "; name=\"" + name + "\"\r\n")
+			b.WriteString("Content-Disposition: attachment; filename=\"" + name + "\"\r\n")
+			b.WriteString("Content-Transfer-Encoding: base64\r\n\r\n")
+			b.WriteString(wrapBase64(a.Data))
+		}
+		b.WriteString("--" + mixed + "--\r\n")
+	}
 	return []byte(b.String()), nil
 }
 

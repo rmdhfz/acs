@@ -22,3 +22,8 @@
 
 # Kredensial & state hasil scripts/demo-seed.mjs (lokal)
 /.demo-seed.local.json
+
+# graphify (indeks kode lokal; dibuat ulang oleh `graphify extract . --code-only` / `graphify update .`)
+graphify-out/
+.claude/skills/graphify/
+.claude/CLAUDE.md

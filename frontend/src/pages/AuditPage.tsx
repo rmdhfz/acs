@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Paginate } from '../components/Paginate'
 import { ScrollText, User, Cog } from 'lucide-react'
 import { EmptyState } from '../components/EmptyState'
 import { ExportMenu } from '../components/ExportMenu'
@@ -83,8 +84,8 @@ export default function AuditPage() {
         ) : rows.length === 0 ? (
           <EmptyState icon={ScrollText} title={t('audit.empty')} />
         ) : (
-          <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Tabel audit trail (dapat digulir)">
-            <table className="w-full text-left text-sm">
+          <Paginate items={rows} label="audit trail">{(pageRows, pager) => (<><div className="table-scroll" tabIndex={0} role="region" aria-label="Tabel audit trail (dapat digulir)">
+<table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                   <th className="px-5 py-3">{t('audit.who')}</th>
@@ -95,7 +96,7 @@ export default function AuditPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {rows.map((r) => (
+                {pageRows.map((r) => (
                   <tr key={r.id}>
                     <td className="px-5 py-3">
                       <span className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
@@ -119,7 +120,7 @@ export default function AuditPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+</div>{pager}</>)}</Paginate>
         )}
       </div>
     </div>

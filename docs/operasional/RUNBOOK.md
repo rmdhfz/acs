@@ -289,3 +289,10 @@ Login Google memakai alur OIDC yang sama dengan SSO lain (authorization code + `
 
 ### U. Struktur dokumen
 Semua dokumen ada di `docs/` (lihat `docs/README.md`). Perbarui PDF dengan `node scripts/build-docs-pdf.mjs` setelah mengubah HTML di `docs/panduan` atau `docs/pengujian`.
+
+### V. Menu, laporan bug, riwayat impor/ekspor
+- **Atur menu** (sidebar bawah): susunan per pengguna, tersimpan di server; "Kembalikan bawaan" menghapusnya. Menu baru yang kelak ditambahkan otomatis muncul di akhir bagi pengguna yang sudah punya susunan.
+- **Laporan bug**: ikon bug di bilah atas. Email dikirim ke `ACS_BUG_REPORT_EMAIL` (bawaan hfzrmd@gmail.com; set kosong untuk mematikan — laporan tetap tersimpan). Butuh SMTP (`ACS_SMTP_*`); tanpa SMTP kolom `emailed_at` tetap kosong. Kelola laporan di **Laporan bug** (SUPERADMIN).
+- **Riwayat impor/ekspor** (`/data-transfers`): tiap tenant melihat riwayat tenant-nya; SUPERADMIN semua. Email ringkasan ke pelaku (maks 20/jam/pengguna; tidak dikirim saat sesi impersonate). Tabel `data_transfer_logs` tidak ikut pembersihan retensi — pangkas manual bila perlu.
+- **Migrasi 0033**: jalankan `docker compose build migrate` lalu `docker compose run --rm --no-deps migrate` (image migrate terpisah dari acsd).
+- **Laporan bug**: dua isian terpisah (terjadi/diharapkan) + tangkapan layar opsional (PNG/JPEG ≤ 2 MB, tersimpan di DB, terlampir di email operator). Pelapor menerima notifikasi + email saat status berubah (butuh SMTP untuk emailnya). Migrasi 0034: `docker compose build migrate` lalu `docker compose run --rm --no-deps migrate`.

@@ -20,11 +20,15 @@ type SessionReport struct {
 	InformStatus int      `json:"inform_status"`
 	RPCsReceived []string `json:"rpcs_received"`
 	FaultsSent   []string `json:"faults_sent"`
-	Transfers    int      `json:"transfers"`
-	Turns        int      `json:"turns"`
-	DurationMS   int64    `json:"duration_ms"`
-	OK           bool     `json:"ok"`
-	ErrMsg       string   `json:"err,omitempty"`
+	// Hasil probe RPC yang DIINISIASI CPE (SessionOpts.CPEProbes): method yang diumumkan ACS lewat GetRPCMethods dan
+	// kode fault untuk method CPE-initiated yang tidak didukung (Kicked, RequestDownload).
+	ACSMethods      []string          `json:"acs_methods,omitempty"`
+	UnsupportedCode map[string]string `json:"unsupported_code,omitempty"`
+	Transfers       int               `json:"transfers"`
+	Turns           int               `json:"turns"`
+	DurationMS      int64             `json:"duration_ms"`
+	OK              bool              `json:"ok"`
+	ErrMsg          string            `json:"err,omitempty"`
 }
 
 func (r SessionReport) String() string {
@@ -65,6 +69,9 @@ type SessionOpts struct {
 	FaultParamSubstr string
 	MaxTurns         int
 	Verbose          bool
+	// CPEProbes: sesudah InformResponse, CPE mengirim GetRPCMethods, Kicked dan RequestDownload (RPC yang dimulai
+	// CPE) dan mencatat jawaban ACS ke SessionReport — lalu sesi berlanjut normal.
+	CPEProbes bool
 }
 
 type pendingXfer struct {
@@ -120,6 +127,12 @@ func RunSession(ctx context.Context, hc *http.Client, d *Device, o SessionOpts) 
 	}
 	if o.Verbose {
 		fmt.Printf("  <- InformResponse (%d cookie)\n", len(cookies))
+	}
+
+	if o.CPEProbes {
+		if err := runCPEProbes(ctx, hc, o, cookies, ns, &rep); err != nil {
+			return fail("probe RPC CPE: %v", err)
+		}
 	}
 
 	// --- 2. Loop RPC ---
@@ -295,4 +308,51 @@ func doPost(ctx context.Context, hc *http.Client, o SessionOpts, cookies []*http
 		}
 		return postResult{status: resp.StatusCode, body: b, cookies: resp.Cookies()}, nil
 	}
+}
+
+// runCPEProbes mengirim RPC yang dimulai CPE dan merekam jawaban ACS. ACS wajib menjawab GetRPCMethods dengan
+// daftar method yang didukungnya, dan membalas method opsional yang tidak didukung dengan SOAP Fault 9000.
+func runCPEProbes(ctx context.Context, hc *http.Client, o SessionOpts, cookies []*http.Cookie, ns string, rep *SessionReport) error {
+	send := func(b cwmpxml.Body) (*cwmpxml.Envelope, error) {
+		out, err := marshalBody(nextID(), ns, b)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := doPost(ctx, hc, o, cookies, out)
+		if err != nil {
+			return nil, err
+		}
+		if resp.status != http.StatusOK {
+			return nil, fmt.Errorf("HTTP %d %s", resp.status, snippet(resp.body))
+		}
+		return cwmpxml.Unmarshal(resp.body)
+	}
+
+	env, err := send(cwmpxml.Body{GetRPCMethods: &cwmpxml.GetRPCMethods{XMLName: cwmpxml.RPCName(ns, "GetRPCMethods")}})
+	if err != nil {
+		return fmt.Errorf("GetRPCMethods: %w", err)
+	}
+	if env.Body.GetRPCMethodsResponse == nil {
+		return fmt.Errorf("GetRPCMethods tidak dijawab GetRPCMethodsResponse")
+	}
+	rep.ACSMethods = env.Body.GetRPCMethodsResponse.MethodList.Items
+
+	rep.UnsupportedCode = map[string]string{}
+	faultOf := func(e *cwmpxml.Envelope) string {
+		if e.Body.Fault != nil && e.Body.Fault.Detail != nil {
+			return e.Body.Fault.Detail.CWMPFault.FaultCode
+		}
+		return ""
+	}
+	env, err = send(cwmpxml.Body{Kicked: &cwmpxml.Kicked{XMLName: cwmpxml.RPCName(ns, "Kicked"), Command: "probe", Referer: "sim", Next: "/"}})
+	if err != nil {
+		return fmt.Errorf("Kicked: %w", err)
+	}
+	rep.UnsupportedCode["Kicked"] = faultOf(env)
+	env, err = send(cwmpxml.Body{RequestDownload: &cwmpxml.RequestDownload{XMLName: cwmpxml.RPCName(ns, "RequestDownload"), FileType: "1 Firmware Upgrade Image"}})
+	if err != nil {
+		return fmt.Errorf("RequestDownload: %w", err)
+	}
+	rep.UnsupportedCode["RequestDownload"] = faultOf(env)
+	return nil
 }

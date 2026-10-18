@@ -18,6 +18,8 @@ import { CatalogPage } from './pages/CatalogPage'
 import { AdministrationPage } from './pages/AdministrationPage'
 import { ReportsPage } from './pages/ReportsPage'
 import { BillingPage } from './pages/BillingPage'
+import { BugReportsPage } from './pages/BugReportsPage'
+import { DataTransfersPage } from './pages/DataTransfersPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { SignupPage } from './pages/SignupPage'
 import { VerifySignupPage } from './pages/VerifySignupPage'
@@ -69,6 +71,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/catalog': 'Katalog Vendor — ACS Console',
   '/reports': 'Laporan SaaS — ACS Console',
   '/billing': 'Langganan & Tagihan — ACS Console',
+  '/bug-reports': 'Laporan Bug — ACS Console',
+  '/data-transfers': 'Riwayat Impor/Ekspor — ACS Console',
   '/administration': 'Administrasi — ACS Console',
   '/profile': 'Profil — ACS Console',
   '/notifications': 'Notifikasi — ACS Console',
@@ -127,6 +131,8 @@ function App() {
         <Route path="/catalog" element={<CatalogPage />} />
         <Route path="/reports" element={<ReportsPage />} />
         <Route path="/billing" element={<BillingPage />} />
+        <Route path="/bug-reports" element={<BugReportsPage />} />
+        <Route path="/data-transfers" element={<DataTransfersPage />} />
         <Route path="/administration" element={<AdministrationPage />} />
         <Route path="/administration/onboarding" element={<TenantOnboardingWizard />} />
       </Route>

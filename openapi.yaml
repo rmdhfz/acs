@@ -130,6 +130,8 @@ tags:
     description: Portal pelanggan (role `ENDUSER`) — hanya device yang dipetakan ke akun lewat `user_devices` (migrations/0020).
   - name: Notifications
     description: Notifikasi persisten (in-app + email) untuk staf Console — daftar, tandai baca, preferensi kanal, dan pengumuman SUPERADMIN (migrations/0030).
+  - name: Console
+    description: Fitur Console — susunan menu sidebar per pengguna, laporan bug (email ke operator), dan riwayat impor/ekspor per tenant (migrations/0033).
   - name: Billing
     description: Langganan SaaS lewat Xendit (Invoice API) — paket, status langganan, checkout, invoice, sinkronisasi, dan callback publik (migrations/0032). Bawaan MATI (`ACS_BILLING_ENABLED`).
   - name: Metrics
@@ -6380,6 +6382,375 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  /auth/menu-layout:
+    get:
+      operationId: getMenuLayout
+      tags: [Console]
+      summary: Susunan menu sidebar milik pengguna yang login
+      description: |
+        Hanya layout MILIK pemanggil (tidak ada parameter pemilik — tidak ada cara membaca layout orang lain, termasuk
+        oleh `SUPERADMIN`). `layout: null` = belum pernah diatur (Console memakai susunan bawaan). Semua peran masuk.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Layout atau `null`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MenuLayoutResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    put:
+      operationId: putMenuLayout
+      tags: [Console]
+      summary: Simpan susunan menu sidebar (urutan, sub menu, item disembunyikan)
+      description: |
+        Mengganti layout milik pemanggil. Divalidasi ketat: maks 8 KB, ≤60 simpul tingkat atas, ≤12 grup, ≤40 item
+        per grup, kedalaman 2 (grup → item), kunci `^[a-z][a-z0-9._-]{0,47}$` tanpa duplikat, nama grup 1–32 karakter
+        tanpa karakter kontrol, bidang tak dikenal ditolak. Hak akses menu TIDAK ditentukan layout (tetap oleh peran).
+        Ditolak **403** dalam sesi impersonate.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MenuLayout' }
+      responses:
+        '200':
+          description: Layout tersimpan (ternormalisasi).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MenuLayoutResponse' }
+        '400':
+          description: Bentuk/ukuran layout tidak valid.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Sesi impersonate.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '413':
+          description: Payload melebihi 9 KB.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    delete:
+      operationId: resetMenuLayout
+      tags: [Console]
+      summary: Kembalikan menu sidebar ke susunan bawaan
+      description: Soft delete layout milik pemanggil; idempoten. Ditolak **403** dalam sesi impersonate.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '204':
+          description: Layout dihapus (atau memang belum ada).
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Sesi impersonate.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /bug-reports:
+    post:
+      operationId: createBugReport
+      tags: [Console]
+      summary: Kirim laporan bug dari Console
+      description: |
+        Semua peran masuk (termasuk `ENDUSER`) boleh melapor. Tenant & pelapor SELALU dari token (bukan body). Laporan
+        disimpan di database, dikirim lewat email ke operator platform (`ACS_BUG_REPORT_EMAIL`), dan memicu notifikasi
+        in-app ke `SUPERADMIN`. Konteks (`page_path`, `user_agent`, `app_version`) yang tidak sah dikosongkan, bukan
+        menolak laporan. Batas **10 laporan per jam per pengguna** (**429**).
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        description: JSON, atau multipart/form-data dengan berkas `screenshot` opsional (PNG/JPEG, maks 2 MB; jenis & dimensi divalidasi dari ISI berkas). Field/berkas lain ditolak.
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BugReportCreate' }
+          multipart/form-data:
+            schema:
+              type: object
+              required: [title, description, expected]
+              properties:
+                title: { type: string, minLength: 5, maxLength: 120 }
+                description: { type: string, minLength: 10, maxLength: 4000 }
+                expected: { type: string, minLength: 5, maxLength: 2000 }
+                severity: { type: string, enum: [MINOR, MAJOR, BLOCKER] }
+                page_path: { type: string, maxLength: 512 }
+                user_agent: { type: string, maxLength: 512 }
+                app_version: { type: string, maxLength: 32 }
+                screenshot: { type: string, format: binary }
+      responses:
+        '201':
+          description: Laporan tersimpan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BugReport' }
+        '400':
+          description: Isi tidak valid (judul 5–120, deskripsi 10–4000 karakter, tanpa karakter kontrol; dampak MINOR/MAJOR/BLOCKER).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Batas laju laporan per jam.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    get:
+      operationId: listBugReports
+      tags: [Console]
+      summary: Daftar laporan bug
+      description: |
+        `SUPERADMIN` melihat SEMUA laporan (filter `tenant_id`/`status` opsional, email pelapor ikut). Peran lain hanya
+        melihat laporan MILIK SENDIRI — `tenant_id` dari klien diabaikan.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [OPEN, IN_PROGRESS, RESOLVED, WONTFIX] }
+        - $ref: '#/components/parameters/tenantIdQuery'
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: Daftar laporan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BugReportListResponse' }
+        '400':
+          description: Filter tidak valid.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /bug-reports/{uuid}:
+    parameters:
+      - name: uuid
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getBugReport
+      tags: [Console]
+      summary: Detail laporan bug
+      description: Pelapor sendiri atau `SUPERADMIN`. Laporan orang lain dijawab **404** (bukan 403) agar keberadaan UUID tidak bisa diprobing.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Detail laporan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BugReport' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Tidak ada atau bukan milik pemanggil.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    patch:
+      operationId: updateBugReport
+      tags: [Console]
+      summary: Ubah status penanganan laporan bug (SUPERADMIN)
+      description: Bila status BERUBAH, **pelapor diberi tahu** (notifikasi in-app `BUG_REPORT_UPDATE` + email; "sudah ditangani" untuk `RESOLVED`). Tidak ada pemberitahuan bila status sama atau laporan dibuat dalam sesi impersonate.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BugReportUpdate' }
+      responses:
+        '200':
+          description: Laporan terbarui.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BugReport' }
+        '400':
+          description: Status/catatan tidak valid.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Bukan `SUPERADMIN`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Laporan tidak ada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /bug-reports/{uuid}/screenshot:
+    parameters:
+      - name: uuid
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getBugReportScreenshot
+      tags: [Console]
+      summary: Tangkapan layar laporan bug
+      description: |
+        Hanya pelapor sendiri atau `SUPERADMIN`. Laporan orang lain, laporan tanpa gambar, atau UUID tak dikenal dijawab
+        **404**. Jenis konten ditetapkan server dari hasil validasi (`image/png` atau `image/jpeg`); header
+        `X-Content-Type-Options: nosniff` dan `Cache-Control: private, no-store`.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Gambar.
+          content:
+            image/png: { schema: { type: string, format: binary } }
+            image/jpeg: { schema: { type: string, format: binary } }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Tidak ada, tanpa gambar, atau bukan milik pemanggil.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /data-transfers:
+    post:
+      operationId: createDataTransfer
+      tags: [Console]
+      summary: Catat proses impor/ekspor yang dijalankan di Console
+      description: |
+        Console melaporkan ringkasan setiap proses impor/ekspor setelah selesai. Tenant & pelaku SELALU dari token.
+        Angka berasal dari klien dan hanya divalidasi kewajarannya (`success+failed ≤ total`, status konsisten dengan
+        angka). Isi baris TIDAK pernah dikirim/disimpan. Email ringkasan dikirim ke pelaku (kecuali sesi impersonate,
+        SMTP mati, atau batas 20 email/jam). Peran staf; `ENDUSER` **403**. Proses yang diproses server mencatat diri
+        sendiri dengan `source: SERVER`.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DataTransferCreate' }
+      responses:
+        '201':
+          description: Tercatat.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataTransfer' }
+        '400':
+          description: Isi tidak valid.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Bukan staf.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    get:
+      operationId: listDataTransfers
+      tags: [Console]
+      summary: Riwayat impor/ekspor
+      description: |
+        Staf tenant melihat riwayat TENANT-nya sendiri (`tenant_id` dari klien diabaikan). `SUPERADMIN` melihat semua
+        tenant (filter `tenant_id` opsional; baris platform bertenant `null`).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: kind
+          in: query
+          schema: { type: string, enum: [IMPORT, EXPORT] }
+        - name: module
+          in: query
+          schema: { type: string, pattern: '^[a-z][a-z0-9_]{1,47}$' }
+        - $ref: '#/components/parameters/tenantIdQuery'
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: Riwayat.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataTransferListResponse' }
+        '400':
+          description: Filter tidak valid.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Bukan staf atau ADMIN tanpa tenant.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /data-transfers/{uuid}:
+    parameters:
+      - name: uuid
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getDataTransfer
+      tags: [Console]
+      summary: Detail satu proses impor/ekspor
+      description: Baris tenant lain dijawab **404** (bukan 403) agar keberadaan UUID tidak bocor lintas tenant. `SUPERADMIN` boleh semua.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DataTransfer' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Tidak ada atau milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -6395,12 +6766,12 @@ components:
     page:
       name: page
       in: query
-      description: Halaman (1-based). Default 1.
+      description: Halaman 1–100000 (default 1). Nilai di luar rentang atau bukan angka ditolak **400**.
       schema: { type: integer, minimum: 1, default: 1 }
     pageSize:
       name: page_size
       in: query
-      description: Ukuran halaman. Default 50, maksimum 200 (nilai di luar rentang ini jatuh ke default 50).
+      description: Ukuran halaman 1–200 (default 50). Nilai di luar rentang atau bukan angka ditolak **400**.
       schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
     tenantIdQuery:
       name: tenant_id
@@ -6513,6 +6884,131 @@ components:
       schema: { type: integer, format: int64 }
 
   schemas:
+    MenuLayoutNode:
+      type: object
+      required: [type]
+      additionalProperties: false
+      properties:
+        type: { type: string, enum: [item, group] }
+        key: { type: string, pattern: '^[a-z][a-z0-9._-]{0,47}$', description: Hanya untuk `item`. }
+        id: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,23}$', description: Hanya untuk `group`; unik. }
+        label: { type: string, minLength: 1, maxLength: 32, description: Hanya untuk `group`. }
+        collapsed: { type: boolean }
+        children:
+          type: array
+          maxItems: 40
+          items: { type: string, pattern: '^[a-z][a-z0-9._-]{0,47}$' }
+    MenuLayout:
+      type: object
+      required: [version, nodes, hidden]
+      additionalProperties: false
+      properties:
+        version: { type: integer, enum: [1] }
+        nodes:
+          type: array
+          maxItems: 60
+          items: { $ref: '#/components/schemas/MenuLayoutNode' }
+        hidden:
+          type: array
+          maxItems: 60
+          items: { type: string, pattern: '^[a-z][a-z0-9._-]{0,47}$' }
+    MenuLayoutResponse:
+      type: object
+      properties:
+        layout:
+          type: object
+          nullable: true
+          description: Layout menu, atau null bila belum diatur.
+          allOf: [{ $ref: '#/components/schemas/MenuLayout' }]
+    BugReportCreate:
+      type: object
+      required: [title, description, expected]
+      additionalProperties: false
+      properties:
+        title: { type: string, minLength: 5, maxLength: 120 }
+        description: { type: string, minLength: 10, maxLength: 4000, description: Apa yang terjadi. }
+        expected: { type: string, minLength: 5, maxLength: 2000, description: Apa yang diharapkan (isian TERPISAH dari description). }
+        severity: { type: string, enum: [MINOR, MAJOR, BLOCKER], default: MINOR }
+        page_path: { type: string, maxLength: 512, description: Path Console saat melapor (query/fragmen dibuang; yang tak sah dikosongkan). }
+        user_agent: { type: string, maxLength: 512 }
+        app_version: { type: string, maxLength: 32 }
+    BugReportUpdate:
+      type: object
+      required: [status]
+      additionalProperties: false
+      properties:
+        status: { type: string, enum: [OPEN, IN_PROGRESS, RESOLVED, WONTFIX] }
+        note: { type: string, maxLength: 500, nullable: true }
+    BugReport:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tenant_id: { type: integer, format: int64, nullable: true }
+        tenant_name: { type: string, nullable: true }
+        reporter: { type: string, description: Username pelapor. }
+        reporter_email: { type: string, description: Hanya untuk `SUPERADMIN`. }
+        impersonated: { type: boolean }
+        title: { type: string }
+        description: { type: string, description: Apa yang terjadi. }
+        expected: { type: string, description: Apa yang diharapkan. }
+        has_screenshot: { type: boolean }
+        page_path: { type: string }
+        user_agent: { type: string }
+        app_version: { type: string }
+        severity: { type: string, enum: [MINOR, MAJOR, BLOCKER] }
+        status: { type: string, enum: [OPEN, IN_PROGRESS, RESOLVED, WONTFIX] }
+        admin_note: { type: string, nullable: true }
+        emailed_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    BugReportListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/BugReport' }
+        meta: { $ref: '#/components/schemas/PageMeta' }
+    DataTransferCreate:
+      type: object
+      required: [kind, status, module]
+      additionalProperties: false
+      properties:
+        kind: { type: string, enum: [IMPORT, EXPORT] }
+        status: { type: string, enum: [COMPLETED, PARTIAL, FAILED] }
+        module: { type: string, pattern: '^[a-z][a-z0-9_]{1,47}$', example: devices }
+        format: { type: string, enum: [csv, xlsx, json, pdf, txt], default: csv }
+        file_name: { type: string, maxLength: 255 }
+        total_rows: { type: integer, minimum: 0, maximum: 5000000 }
+        success_rows: { type: integer, minimum: 0, maximum: 5000000 }
+        failed_rows: { type: integer, minimum: 0, maximum: 5000000 }
+        detail: { type: string, maxLength: 500 }
+    DataTransfer:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tenant_id: { type: integer, format: int64, nullable: true }
+        tenant_name: { type: string, nullable: true }
+        user: { type: string }
+        impersonated: { type: boolean }
+        kind: { type: string, enum: [IMPORT, EXPORT] }
+        status: { type: string, enum: [COMPLETED, PARTIAL, FAILED] }
+        module: { type: string }
+        format: { type: string }
+        file_name: { type: string, nullable: true }
+        total_rows: { type: integer }
+        success_rows: { type: integer }
+        failed_rows: { type: integer }
+        detail: { type: string, nullable: true }
+        source: { type: string, enum: [SERVER, CLIENT] }
+        emailed_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+    DataTransferListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/DataTransfer' }
+        meta: { $ref: '#/components/schemas/PageMeta' }
     # ---------- Notifikasi (migrations/0030) ----------
     Notification:
       type: object

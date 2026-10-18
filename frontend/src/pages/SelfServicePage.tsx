@@ -208,12 +208,12 @@ function WiFiForm({ deviceId, onClose }: { deviceId: number; onClose: () => void
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
       <div>
-        <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama WiFi (SSID) baru</label>
-        <input maxLength={32} value={ssid} onChange={(e) => setSsid(e.target.value)} placeholder="Kosongkan bila tidak diubah" className={inputCls} />
+        <label htmlFor="ss-ssid" className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Nama WiFi (SSID) baru</label>
+        <input id="ss-ssid" maxLength={32} autoComplete="off" value={ssid} onChange={(e) => setSsid(e.target.value)} placeholder="Kosongkan bila tidak diubah" className={inputCls} />
       </div>
       <div>
-        <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Kata sandi WiFi baru</label>
-        <input maxLength={63}
+        <label htmlFor="ss-pass" className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Kata sandi WiFi baru</label>
+        <input id="ss-pass" minLength={8} maxLength={63} autoComplete="off"
           type="text"
           value={passphrase}
           onChange={(e) => setPassphrase(e.target.value)}
@@ -222,14 +222,14 @@ function WiFiForm({ deviceId, onClose }: { deviceId: number; onClose: () => void
         />
       </div>
       <div>
-        <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Terapkan ke</label>
-        <select value={band} onChange={(e) => setBand(e.target.value as '' | '2g' | '5g')} className={inputCls}>
+        <label htmlFor="ss-band" className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Terapkan ke</label>
+        <select id="ss-band" value={band} onChange={(e) => setBand(e.target.value as '' | '2g' | '5g')} className={inputCls}>
           <option value="">Semua band (2.4 GHz &amp; 5 GHz)</option>
           <option value="2g">Hanya 2.4 GHz</option>
           <option value="5g">Hanya 5 GHz</option>
         </select>
       </div>
-      {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+      {error && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{error}</p>}
       <div className="flex items-center gap-2 pt-1">
         <button type="submit" disabled={mut.isPending} className={primaryBtnCls}>
           {mut.isPending ? 'Menyimpan…' : 'Simpan perubahan'}

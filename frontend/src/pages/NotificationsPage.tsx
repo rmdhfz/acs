@@ -166,7 +166,7 @@ function Announce() {
       </p>
       <div>
         <label htmlFor="an-title" className="mb-1.5 block text-sm font-medium text-slate-800 dark:text-slate-200">Judul</label>
-        <input id="an-title" required maxLength={160} value={title} onChange={(e) => setTitle(e.target.value)} className={field} placeholder="mis. Pemeliharaan terjadwal Sabtu 22.00" />
+        <input pattern=".*\S.*" title="Tidak boleh kosong atau hanya spasi" id="an-title" required maxLength={160} value={title} onChange={(e) => setTitle(e.target.value)} className={field} placeholder="mis. Pemeliharaan terjadwal Sabtu 22.00" />
       </div>
       <div>
         <label htmlFor="an-body" className="mb-1.5 block text-sm font-medium text-slate-800 dark:text-slate-200">Isi pesan</label>
@@ -229,7 +229,7 @@ function Inbox({ unreadOnly }: { unreadOnly: boolean }) {
 
   if (items.length === 0) {
     return (
-      <div className="flex flex-col items-center rounded-3xl border border-dashed border-slate-300 px-6 py-16 text-center dark:border-slate-700">
+      <div className="flex flex-col items-center self-start rounded-3xl border border-dashed border-slate-300 px-6 py-16 text-center dark:border-slate-700">
         <span className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400" aria-hidden="true">
           <BellOff className="h-7 w-7" strokeWidth={1.5} />
         </span>
@@ -240,8 +240,9 @@ function Inbox({ unreadOnly }: { unreadOnly: boolean }) {
   }
 
   return (
-    <div>
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+    <div className="flex min-h-0 flex-1 flex-col">
+      {/* hanya DAFTAR notifikasi yang bergulir; judul, tab, dan paginasi tetap di tempat */}
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900" tabIndex={0} role="region" aria-label="Daftar notifikasi (dapat digulir)">
         <ul className="divide-y divide-slate-100 dark:divide-slate-800">
           {items.map((n) => (
             <li key={n.id}>
@@ -250,7 +251,7 @@ function Inbox({ unreadOnly }: { unreadOnly: boolean }) {
           ))}
         </ul>
       </div>
-      <div className="mt-4 flex items-center justify-between text-sm text-slate-600 dark:text-slate-400">
+      <div className="mt-3 flex shrink-0 items-center justify-between text-sm text-slate-600 dark:text-slate-400">
         <span>
           {total} notifikasi · halaman {page}/{pages}
           {isFetching ? ' · memuat…' : ''}
@@ -284,8 +285,8 @@ export function NotificationsPage() {
   ]
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+    <div className="mx-auto flex h-[calc(100dvh-8.5rem)] min-h-[26rem] max-w-4xl flex-col px-4 pb-2 pt-6 sm:px-6">
+      <div className="mb-4 flex shrink-0 flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-normal text-slate-900 dark:text-slate-100">Notifikasi</h1>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Kejadian penting di perangkat, task, firmware, dan keamanan akun Anda.</p>
@@ -301,7 +302,7 @@ export function NotificationsPage() {
         )}
       </div>
 
-      <div role="tablist" aria-label="Bagian notifikasi" className="mb-6 flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-800">
+      <div role="tablist" aria-label="Bagian notifikasi" className="mb-4 flex shrink-0 gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-800">
         {tabs.map(([k, label]) => (
           <button
             key={k}
@@ -320,8 +321,16 @@ export function NotificationsPage() {
 
       {tab === 'all' && <Inbox unreadOnly={false} />}
       {tab === 'unread' && <Inbox unreadOnly />}
-      {tab === 'preferences' && <Preferences />}
-      {tab === 'announce' && isSuper && <Announce />}
+      {tab === 'preferences' && (
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          <Preferences />
+        </div>
+      )}
+      {tab === 'announce' && isSuper && (
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          <Announce />
+        </div>
+      )}
     </div>
   )
 }

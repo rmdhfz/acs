@@ -1,4 +1,5 @@
 import { useI18n } from '../lib/i18n'
+import { Paginate } from '../components/Paginate'
 import { useMemo, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
@@ -12,6 +13,7 @@ import { useSaaSReport } from '../lib/hooks'
 import { useTheme } from '../lib/theme'
 import { useToast } from '../lib/toast'
 import { formatDateTime } from '../lib/format'
+import { recordTransfer } from '../lib/transferLog'
 import type { TenantReport } from '../lib/types'
 
 const cardCls = 'rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900'
@@ -68,8 +70,11 @@ function ReportsContent() {
       a.download = `laporan-saas-tenant-${new Date().toISOString().slice(0, 10)}.csv`
       a.click()
       URL.revokeObjectURL(a.href)
+      const rows = data?.tenants.length ?? 0
+      recordTransfer({ kind: 'EXPORT', module: 'saas_report', fileName: a.download, total: rows, success: rows, failed: 0 })
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Gagal mengunduh laporan')
+      recordTransfer({ kind: 'EXPORT', module: 'saas_report', total: 0, success: 0, failed: 0, outcome: 'FAILED', detail: err instanceof ApiError ? err.message : 'gagal mengunduh' })
     }
   }
 
@@ -191,8 +196,8 @@ function ReportsContent() {
             </select>
           </div>
         </div>
-        <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Tabel tenant (dapat digulir)">
-          <table className="w-full min-w-[900px] text-left text-sm">
+        <Paginate items={tenants} label="tenant (laporan)">{(rows, pager) => (<><div className="table-scroll" tabIndex={0} role="region" aria-label="Tabel tenant (dapat digulir)">
+<table className="w-full min-w-[900px] text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-xs font-medium uppercase tracking-wide text-slate-600 dark:border-slate-800 dark:text-slate-400">
                 <th className="py-2 pr-3">Tenant</th>
@@ -211,12 +216,12 @@ function ReportsContent() {
                   <td colSpan={8} className="py-6 text-center text-slate-600 dark:text-slate-400">Tidak ada tenant yang cocok.</td>
                 </tr>
               )}
-              {tenants.map((t) => (
+              {rows.map((t) => (
                 <TenantRow key={t.tenant_id} t={t} />
               ))}
             </tbody>
           </table>
-        </div>
+</div>{pager}</>)}</Paginate>
       </section>
     </div>
   )

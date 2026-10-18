@@ -34,7 +34,13 @@ export function mockFetch(handler: Handler) {
   const impl = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
     const method = (init?.method ?? 'GET').toUpperCase()
-    const body = init?.body ? JSON.parse(String(init.body)) : undefined
+    // FormData (multipart) diubah ke objek sederhana; berkas dicatat sebagai { file: nama, size, type }.
+    const body =
+      init?.body instanceof FormData
+        ? Object.fromEntries([...init.body.entries()].map(([k, v]) => [k, typeof v === 'string' ? v : { file: v.name, size: v.size, type: v.type }]))
+        : init?.body
+          ? JSON.parse(String(init.body))
+          : undefined
     calls.push({ url, method, body })
     const r = handler({ url, method, body }) ?? { status: 404, json: { message: `tidak ada mock untuk ${method} ${url}` } }
     return new Response(r.json === undefined ? null : JSON.stringify(r.json), {

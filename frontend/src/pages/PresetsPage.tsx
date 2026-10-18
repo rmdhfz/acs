@@ -1,4 +1,5 @@
 import { useI18n } from '../lib/i18n'
+import { Paginate } from '../components/Paginate'
 import { useState, type FormEvent } from 'react'
 import { SlidersHorizontal, Plus, AlertCircle, AlertTriangle, ShieldCheck } from 'lucide-react'
 import { EmptyState } from '../components/EmptyState'
@@ -89,8 +90,8 @@ export default function PresetsPage() {
         ) : presets.length === 0 ? (
           <EmptyState icon={SlidersHorizontal} title="Belum ada preset" description="Buat preset untuk menjaga konfigurasi device tetap sesuai standar." />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+          <Paginate items={presets} label="preset">{(rows, pager) => (<><div className="table-scroll">
+<table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                   <th className="px-5 py-3">Nama</th>
@@ -102,7 +103,7 @@ export default function PresetsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {presets.map((p) => (
+                {rows.map((p) => (
                   <tr key={p.id}>
                     <td className="px-5 py-3.5 font-medium text-slate-900 dark:text-slate-100">
                       {p.name}
@@ -143,7 +144,7 @@ export default function PresetsPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+</div>{pager}</>)}</Paginate>
         )}
       </div>
 
@@ -284,7 +285,7 @@ function PresetModal({ preset, onClose }: { preset: Preset | null; onClose: () =
         <div className="grid grid-cols-3 gap-3">
           <div className="col-span-2">
             <label className="mb-1 block text-sm font-medium text-slate-600 dark:text-slate-400">Nama</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} required maxLength={LIMITS.preset.name} placeholder="mis. WiFi default pelanggan retail" />
+            <input pattern=".*\S.*" title="Tidak boleh kosong atau hanya spasi" value={name} onChange={(e) => setName(e.target.value)} className={inputCls} required maxLength={LIMITS.preset.name} placeholder="mis. WiFi default pelanggan retail" />
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-600 dark:text-slate-400">Weight</label>

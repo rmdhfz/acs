@@ -65,7 +65,7 @@ const dev = (await (await fetch(`${API}/devices?page_size=1`, { headers: auth })
 const ROUTES = [
   '/dashboard', '/devices', dev ? `/devices/${dev.id}` : null, '/tasks', '/provisioning', '/firmware',
   '/presets', '/audit', '/profile', '/webhooks', '/catalog', '/administration', '/reports',
-  '/billing', '/notifications', '/notifications?tab=preferences', '/notifications?tab=announce', '/halaman-tidak-ada',
+  '/billing', '/bug-reports', '/data-transfers', '/notifications', '/notifications?tab=preferences', '/notifications?tab=announce', '/halaman-tidak-ada',
   // halaman publik (tanpa login); /signup diaudit dalam keadaan AKTIF (config dipaksa lewat intersepsi di bawah)
   '/signup', '/terms', '/privacy', '/verify-signup',
 ].filter(Boolean)
@@ -192,6 +192,28 @@ for (const theme of THEMES) {
     for (const v of (await axeRun(page, '[role="menu"]')) ?? []) findings.push({ where: `rowmenu/${theme}${route}`, kind: `axe:${v.id}`, detail: `${v.n} node (${v.impact}) ${v.nodes[0]}` })
     await page.keyboard.press('Escape')
     await sleep(200)
+  }
+  // dialog global di app bar/sidebar: laporan bug & pengelola menu (Atur menu) — termasuk jebakan fokus (fokus di dalam dialog)
+  for (const [label, sel] of [['bug', 'button[aria-label="Laporkan bug"]'], ['atur-menu', 'aside button']]) {
+    await page.goto(APP + '/dashboard', { waitUntil: 'networkidle2', timeout: 25000 }).catch(() => {})
+    await sleep(500)
+    const opened = await page.evaluate((l, q) => {
+      const b = l === 'bug' ? document.querySelector(q) : [...document.querySelectorAll(q)].find((x) => /atur menu/i.test(x.textContent || ''))
+      if (!b) return false
+      b.click()
+      return true
+    }, label, sel)
+    if (!opened) { findings.push({ where: `dialog/${theme}/${label}`, kind: 'tidak-ada-tombol', detail: 'tombol pembuka dialog tidak ditemukan' }); continue }
+    await sleep(500)
+    views++
+    for (const v of (await axeRun(page, '[role="dialog"]')) ?? []) findings.push({ where: `dialog/${theme}/${label}`, kind: `axe:${v.id}`, detail: `${v.n} node (${v.impact}) ${v.nodes[0]}` })
+    const inside = await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'))
+    if (!inside) findings.push({ where: `dialog/${theme}/${label}`, kind: 'fokus', detail: 'fokus tidak berada di dalam dialog saat dibuka' })
+    for (let i = 0; i < 12; i++) await page.keyboard.press('Tab')
+    const still = await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'))
+    if (!still) findings.push({ where: `dialog/${theme}/${label}`, kind: 'fokus', detail: 'Tab berulang membuat fokus keluar dari dialog (jebakan fokus gagal)' })
+    await page.keyboard.press('Escape')
+    await sleep(250)
   }
   await page.goto(APP + '/dashboard', { waitUntil: 'networkidle2' }).catch(() => {})
   await sleep(500)

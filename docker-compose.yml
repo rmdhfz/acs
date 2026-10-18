@@ -133,6 +133,8 @@ services:
       # Ambang notifikasi proaktif (evaluator tiap 5 menit): rasio perangkat offline & jumlah task gagal dalam 30 menit.
       ACS_NOTIFY_OFFLINE_RATIO: ${ACS_NOTIFY_OFFLINE_RATIO:-0.30}
       ACS_NOTIFY_FAILED_TASKS: ${ACS_NOTIFY_FAILED_TASKS:-5}
+      # Penerima email laporan bug dari Console (tombol bug di navbar). Kosongkan (ACS_BUG_REPORT_EMAIL=) untuk mematikan email; laporan tetap tersimpan.
+      ACS_BUG_REPORT_EMAIL: ${ACS_BUG_REPORT_EMAIL-hfzrmd@gmail.com}
       # Langganan SaaS via Xendit (bawaan MATI). Aktifkan hanya dengan kunci dari dashboard Xendit; JANGAN commit nilainya.
       ACS_BILLING_ENABLED: ${ACS_BILLING_ENABLED:-false}
       ACS_XENDIT_SECRET_KEY: ${ACS_XENDIT_SECRET_KEY:-}

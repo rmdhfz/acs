@@ -436,7 +436,7 @@ export function DevicesPage() {
                 )
               })}
             </ul>
-            <div className="hidden overflow-x-auto md:block">
+            <div className="hidden table-scroll md:block">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">

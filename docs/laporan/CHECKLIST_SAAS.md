@@ -8,21 +8,21 @@ Tanggal: 17 Oktober 2026 (dihitung ulang setelah LANJUTAN 12) · Dasar: kode di 
 
 | Kategori | Bobot | 16 Okt | Sekarang | Poin |
 |---|---:|---:|---:|---:|
-| A. Protokol & inti ACS (TR-069) | 25 | 92% | **95%** | 23.8 |
-| B. Aplikasi web & pengalaman pengguna | 15 | 82% | **88%** | 13.2 |
+| A. Protokol & inti ACS (TR-069) | 25 | 92% | **98%** | 24.6 |
+| B. Aplikasi web & pengalaman pengguna | 15 | 82% | **95%** | 14.2 |
 | C. Multi-tenant & identitas/akses | 15 | 89% | **95%** | 14.3 |
 | D. Keamanan | 10 | 79% | **85%** | 8.5 |
 | E. Operasional & deployment | 15 | 87% | **87%** | 13.0 |
-| F. Kualitas & verifikasi | 10 | 82% | **82%** | 8.2 |
+| F. Kualitas & verifikasi | 10 | 82% | **84%** | 8.4 |
 | G. Aspek SaaS komersial | 10 | 50% | **67%** | 6.7 |
-| **TOTAL** | **100** | 82.6 | | **87.7** |
+| **TOTAL** | **100** | 82.6 | | **89.7** |
 
-> Penilaian ulang 2026-10-18 (setelah validasi masukan menyeluruh, langganan Xendit, penghapusan peta GIS): semua skor dihitung ulang **dari skor per item di bawah** (rata-rata item × bobot), tanpa pembulatan manual — karena itu total sedikit lebih rendah dari angka sementara 88,7 yang sempat tercatat. G tidak lebih tinggi karena pembayaran **belum diuji dengan Xendit nyata/sandbox**, ToS/privasi/DPA belum ditinjau hukum, dan tidak ada halaman status.
+> Penilaian ulang 2026-10-18 (sesi lanjutan: UDP Connection Request & RPC dari CPE teruji e2e, UI A11y/inline-error/tes UI, menu/bug/riwayat impor-ekspor tanpa IDOR): skor dihitung ulang **dari skor per item** di bawah. **Tidak ada kategori yang 100%** — A tertahan path optik TR-098 per vendor (butuh dump ONT nyata), B oleh i18n penuh, C oleh Google & SMTP signup nyata, F oleh CPE fisik, G oleh Xendit nyata/legal/halaman status. Menaikkannya tanpa bukti hanya mengubah angka, bukan kesiapan.
 
 ## Dua angka yang perlu dibedakan
 
 - **Kelengkapan fitur & verifikasi lab: ≈ 88%** (tabel di atas).
-- **Kesiapan go-live produksi berbayar: ≈ 76%** = 88% dikurangi 12 poin diskon ketidakpastian lapangan: seluruh skor A/B memakai simulator CPE; belum ada satu pun Inform dari CPE fisik, sehingga item bernilai 1 di A belum terbukti pada firmware nyata (risiko interoperabilitas per vendor). Potongan ini tidak menghitung ganda item yang sudah bernilai 0.
+- **Kesiapan go-live produksi berbayar: ≈ 78%** = 88% dikurangi 12 poin diskon ketidakpastian lapangan: seluruh skor A/B memakai simulator CPE; belum ada satu pun Inform dari CPE fisik, sehingga item bernilai 1 di A belum terbukti pada firmware nyata (risiko interoperabilitas per vendor). Potongan ini tidak menghitung ganda item yang sudah bernilai 0.
 
 Untuk **pilot/UAT internal** (Rabu 21 Okt) angka relevan adalah kelengkapan fitur; untuk **menjual sebagai SaaS** yang relevan adalah kesiapan go-live.
 
@@ -42,7 +42,7 @@ Semua yang dapat diverifikasi di lab sudah ditutup. Sisanya **tidak bisa saya bu
 
 ## Rincian per item
 
-### A. Protokol & inti ACS (TR-069) — 95% (bobot 25)
+### A. Protokol & inti ACS (TR-069) — 98% (bobot 25)
 
 | Item | Skor | Bukti / catatan |
 |---|:--:|---|
@@ -50,7 +50,7 @@ Semua yang dapat diverifikasi di lab sudah ditutup. Sisanya **tidak bisa saya bu
 | RPC Get/Set/GetNames/Add/Delete/Reboot/FactoryReset/Download | ✅ 1 | e2e + unit; Set bertipe sesuai laporan CPE |
 | TransferComplete + TransferCompleteResponse | ✅ 1 | handler + simulator + e2e S8 |
 | Connection Request HTTP Digest/Basic + anti-SSRF | ✅ 1 | e2e S7, S10; penjaga SSRF saat sambungan (DNS rebinding) |
-| Connection Request UDP (Annex G, HMAC-SHA1) | 🟡 0,75 | TR-098 & TR-181; teruji terhadap penerima uji; **belum CPE nyata** |
+| Connection Request UDP (Annex G, HMAC-SHA1) | ✅ 1 | e2e **S25**: CPE hanya beralamat UDP (tanpa URL TCP) dan CPE ber-URL TCP tertutup → fallback UDP; HMAC benar memicu Inform `6 CONNECTION REQUEST`, HMAC salah dibuang tanpa Inform. Menemukan & memperbaiki bug nyata (CPE hanya-UDP ditolak 400). **Belum CPE nyata** |
 | Data model TR-098 & TR-181 via katalog/mapping, **semua ONT** | ✅ 1 | 33 vendor (5 baseline + 27 tambahan + `GENERIC`), 4.304 OUI IEEE, 372 mapping, `value_scale`; **fallback standar** untuk vendor tak dikenal/NULL (e2e S21, unit, integrasi MariaDB). Catatan: data awal, belum diuji perangkat nyata |
 | Provisioning Profile + Zero-Touch Rule | ✅ 1 | e2e S2, S13 |
 | Preset penegak konfigurasi (drift-heal) | ✅ 1 | e2e S9 |
@@ -58,11 +58,11 @@ Semua yang dapat diverifikasi di lab sudah ditutup. Sisanya **tidak bisa saya bu
 | Antrean task: retry, backoff, fault 9005/9003, validasi | ✅ 1 | unit + e2e S5 |
 | Penemuan pohon parameter / refresh rekursif | ✅ 1 | e2e S17 (14 GetParameterNames hingga daun); menemukan & memperbaiki bug nyata (bentuk respons) |
 | SetParameterAttributes / notifikasi (event 4) | ✅ 1 | e2e S17 (atribut diterima CPE, event 4 tercatat). *Virtual parameters/skrip belum ada* |
-| RPC dari CPE (GetRPCMethods dijawab; lainnya Fault 8000 sesuai spek) | 🟡 0,75 | `cpe_initiated_test`; belum CPE nyata |
+| RPC dari CPE (GetRPCMethods dijawab; Kicked/RequestDownload Fault 9000) | ✅ 1 | e2e **S25** + `cpe_initiated_test`; task menunggu tetap COMPLETED. Belum CPE nyata |
 | Diagnostics Ping/Traceroute | ✅ 1 | e2e S14 (dua vendor, event 8, hasil terstruktur) |
 | Redaman optik berbasis mapping + deteksi anomali | 🟡 0,75 | e2e S15 (TR-181 standar); path optik TR-098 per vendor belum terverifikasi |
 
-### B. Aplikasi web & pengalaman pengguna — 88% (bobot 15)
+### B. Aplikasi web & pengalaman pengguna — 95% (bobot 15)
 
 | Item | Skor | Bukti / catatan |
 |---|:--:|---|
@@ -70,16 +70,17 @@ Semua yang dapat diverifikasi di lab sudah ditutup. Sisanya **tidak bisa saya bu
 | Impor/ekspor dengan pratinjau (semua modul relevan) | ✅ 1 | uji browser nyata |
 | Dashboard, detail perangkat, riwayat | ✅ 1 | uji browser |
 | Realtime WebSocket | ✅ 1 | diverifikasi browser; lintas instance (HA); **kredensial dicek ulang tiap siklus ping** (tes unit) |
-| Portal pelanggan (WiFi Saya) + penautan akun↔perangkat | 🟡 0,75 | e2e S18 (isolasi, validasi, SSID sampai ke CPE), tes komponen penautan; belum pengguna nyata, halaman portal tanpa tes UI sendiri |
+| Portal pelanggan (WiFi Saya) + penautan akun↔perangkat | ✅ 1 | e2e S18 (isolasi, validasi, SSID sampai ke CPE) + **tes UI** halaman portal (validasi WiFi, konfirmasi restart, rincian) + label form terhubung ke input; belum pengguna nyata |
 | Konsol Super Admin: laporan SaaS (KPI, tren 30 hari, CSV), impersonate, kuota & paket | ✅ 1 | e2e S19, S20; audit UI; token impersonate 30 menit, aksi sensitif diblokir, jejak `impersonated_by` |
 | Landing page publik SEO | ✅ 1 | prerender + JSON-LD (WebSite, SoftwareApplication, HowTo, FAQ), manifest, OG image, robots/sitemap, 404 sungguhan; desain Google/Material, teks ringkas |
 | Notifikasi in-app + email + preferensi | ✅ 1 | e2e S22, tes unit/integrasi/komponen; WebSocket realtime; **tampilan email belum dicek di klien email nyata** |
-| Validasi form (min/max/pattern) & pesan informatif | 🟡 0,85 | gerbang vitest: semua input teks ber-`maxLength`, angka ber-`min`/`max`; field password baru ber-`minLength`; username/kode tenant/nama kini ber-`pattern`/`minLength`; server memvalidasi ulang semuanya (QueryGuard, validator bersama Create=Update) dan memetakan galat kolom ke 400; belum seragam di **semua** form lama |
-| State galat/loading/empty | 🟡 0,75 | galat pemuatan = toast global; bug toast palsu superadmin diperbaiki + audit UI kini gagal bila ada toast galat; belum ada keadaan galat inline per halaman |
-| Aksesibilitas (label, nama tombol, kontras) | 🟡 0,75 | `npm run audit:ui`: **0 pelanggaran WCAG A/AA** pada 124 tampilan; jebakan fokus modal & navigasi keyboard penuh belum diuji |
+| Validasi form (min/max/pattern) & pesan informatif | 🟢 0,95 | gerbang vitest: teks ber-`maxLength`, angka ber-`min`/`max`, password baru ber-`minLength`, **field wajib ber-`minLength`/`pattern`**; server memvalidasi ulang semuanya (QueryGuard, validator bersama Create=Update). Sisa: aturan semantik tiap form lama belum seragam penuh |
+| State galat/loading/empty | ✅ 1 | **banner galat inline global** (tetap tampil sampai data dimuat, tombol "Coba lagi") + toast + keadaan kosong; dites komponen |
+| Aksesibilitas (label, nama tombol, kontras, fokus) | 🟢 0,9 | `audit:ui`: **0 pelanggaran WCAG A/AA pada 136 tampilan** termasuk dialog; **jebakan fokus** semua dialog (Modal + konfirmasi) dites unit & di browser; navigasi keyboard penuh seluruh halaman belum diuji |
 | Mode gelap & mobile terverifikasi visual | ✅ 1 | halaman × terang/gelap × desktop/mobile + modal; Chrome saja |
 | i18n ID/EN | 🟡 0,5 | sebagian halaman; string baru sebagian hanya Indonesia |
-| Langganan & tagihan (UI `/billing`: status, paket, invoice, checkout, kelola paket) | 🟡 0,75 | audit UI lulus; hanya redirect `https` ke halaman bayar; **belum dicoba dengan Xendit nyata** |
+| Langganan & tagihan (UI `/billing`) | 🟢 0,85 | tes UI (checkout hanya `plan_code`, tautan bayar wajib https, sync, RBAC, form paket) + audit UI; **belum dicoba dengan Xendit nyata** |
+| Pengelola menu (sub menu + drag & drop), laporan bug (DB + email), riwayat impor/ekspor, tabel header tetap + paginasi | ✅ 1 | e2e **S26** (tanpa IDOR lintas tenant) + unit/integrasi MariaDB + tes UI + audit UI; email bug/riwayat teruji dengan pengirim palsu dan satu kali kirim nyata (pengantaran ke inbox tidak bisa saya verifikasi) |
 
 ### C. Multi-tenant & identitas/akses — 95% (bobot 15)
 
@@ -134,10 +135,10 @@ Semua yang dapat diverifikasi di lab sudah ditutup. Sisanya **tidak bisa saya bu
 |---|:--:|---|
 | Unit test backend + race | ✅ 1 | seluruh paket lulus `go test -race` (Docker, termasuk integrasi MariaDB/Redis) |
 | Integrasi MariaDB & Redis nyata | ✅ 1 | `ACS_TEST_DSN`, `ACS_TEST_REDIS` (+ seed 0029) |
-| E2E 24 skenario (simulator) | ✅ 1 | 24/24 (S23 billing mati, S24 validasi masukan) |
+| E2E 26 skenario (simulator) | ✅ 1 | 26/26 (S25 UDP CR + RPC CPE, S26 fitur Console & IDOR) |
 | Uji CPE fisik (≥1 per vendor) | ❌ 0 | BELUM — UAT Rabu |
-| Uji frontend otomatis | 🟡 0,75 | Vitest 39 tes (+ gerbang batas input) + audit axe 124 tampilan; belum alur UI end-to-end terhadap backend di CI |
-| Dokumentasi API OpenAPI + Postman | ✅ 1 | 161 operasi, redocly lint valid (8 peringatan lama); koleksi Postman belum diregenerasi |
+| Uji frontend otomatis | 🟢 0,85 | Vitest 76 tes (menu, dialog, banner galat, portal, Billing, pengelola menu, gerbang batas input) + audit axe 136 tampilan; belum alur UI end-to-end terhadap backend di CI |
+| Dokumentasi API OpenAPI + Postman | ✅ 1 | 171 operasi, redocly lint valid (8 peringatan lama); koleksi Postman belum diregenerasi |
 | Audit keamanan/kualitas | ✅ 1 | beberapa audit review + perbaikan (bukan pentest manusia independen) |
 
 ### G. Aspek SaaS komersial — 67% (bobot 10)

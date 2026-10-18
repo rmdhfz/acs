@@ -1,18 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
-  BarChart3,
   Bell,
+  Bug,
   EyeOff,
-  Building2,
-  CreditCard,
-  Cable,
-  FileSliders,
-  FolderArchive,
-  HardDrive,
-  LayoutDashboard,
-  LayoutGrid,
-  ListChecks,
   LogOut,
   KeyRound,
   Languages,
@@ -20,12 +11,9 @@ import {
   Monitor,
   Moon,
   Radio,
-  ScrollText,
   Search,
   ShieldCheck,
-  SlidersHorizontal,
   Sun,
-  Tag,
   X,
 } from 'lucide-react'
 import { useAuth } from '../lib/auth'
@@ -37,25 +25,10 @@ import { NotificationBell } from './NotificationBell'
 import { NavClock } from './NavClock'
 import { ChangePasswordModal } from './ChangePasswordModal'
 import { NotificationProvider } from '../lib/notifications'
+import { QueryErrorBanner } from './QueryErrorBanner'
+import { SidebarNav } from './SidebarNav'
+import { BugReportModal } from './BugReportModal'
 import { CreditFooter } from './CreditFooter'
-
-const NAV_ITEMS: { to: string; key: string; icon: typeof LayoutGrid; requireRole?: string }[] = [
-  { to: '/self-service', key: 'nav.myWifi', icon: Radio, requireRole: 'ENDUSER' },
-  { to: '/dashboard', key: 'nav.dashboard', icon: LayoutDashboard, requireRole: 'VIEWER' },
-  { to: '/devices', key: 'nav.devices', icon: LayoutGrid, requireRole: 'VIEWER' },
-  { to: '/tasks', key: 'nav.tasks', icon: ListChecks, requireRole: 'VIEWER' },
-  { to: '/provisioning', key: 'nav.provisioning', icon: FileSliders, requireRole: 'VIEWER' },
-  { to: '/presets', key: 'nav.presets', icon: SlidersHorizontal, requireRole: 'ADMIN' },
-  { to: '/firmware', key: 'nav.firmware', icon: HardDrive, requireRole: 'VIEWER' },
-  { to: '/files', key: 'nav.files', icon: FolderArchive, requireRole: 'VIEWER' },
-  { to: '/tags', key: 'nav.tags', icon: Tag, requireRole: 'ADMIN' },
-  { to: '/webhooks', key: 'nav.webhooks', icon: Bell, requireRole: 'ADMIN' },
-  { to: '/audit', key: 'nav.auditTrail', icon: ScrollText, requireRole: 'ADMIN' },
-  { to: '/catalog', key: 'nav.catalog', icon: Cable, requireRole: 'SUPERADMIN' },
-  { to: '/reports', key: 'nav.reports', icon: BarChart3, requireRole: 'SUPERADMIN' },
-  { to: '/billing', key: 'nav.billing', icon: CreditCard, requireRole: 'ADMIN' },
-  { to: '/administration', key: 'nav.administration', icon: Building2, requireRole: 'ADMIN' },
-]
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform ?? navigator.userAgent)
 
@@ -224,13 +197,13 @@ function AccountMenu({ onChangePassword }: { onChangePassword: () => void }) {
 }
 
 export function Layout() {
-  const { user, hasRole } = useAuth()
+  const { user } = useAuth()
   const { t } = useI18n()
   const location = useLocation()
-  const visibleNavItems = NAV_ITEMS.filter((item) => !item.requireRole || hasRole(item.requireRole))
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [pwOpen, setPwOpen] = useState(false)
+  const [bugOpen, setBugOpen] = useState(false)
 
   // White-labeling (ROADMAP.md Fase 2) — null/undefined utk superadmin global
   // (tanpa tenant) atau tenant yang belum set branding -> fallback default.
@@ -272,29 +245,7 @@ export function Layout() {
     </Link>
   )
 
-  const nav = (
-    <nav aria-label="Navigasi utama" className="flex-1 space-y-0.5 overflow-y-auto py-3 pr-3">
-      {visibleNavItems.map((item) => (
-        <NavLink
-          key={item.to}
-          to={item.to}
-          className={({ isActive }) =>
-            `flex h-11 items-center gap-4 rounded-r-full pl-6 pr-4 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-indigo-600 ${
-              isActive
-                ? accentStyle
-                  ? accentTextCls
-                  : 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300'
-                : 'text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-            }`
-          }
-          style={({ isActive }: { isActive: boolean }) => (isActive ? accentStyle : undefined)}
-        >
-          <item.icon className="h-5 w-5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
-          <span className="truncate">{t(item.key)}</span>
-        </NavLink>
-      ))}
-    </nav>
-  )
+  const nav = <SidebarNav accentStyle={accentStyle} accentTextCls={accentTextCls} />
 
   return (
     <NotificationProvider>
@@ -325,6 +276,9 @@ export function Layout() {
             <span className="mr-2 hidden xl:block">
               <NavClock />
             </span>
+            <button type="button" onClick={() => setBugOpen(true)} title="Laporkan bug" aria-label="Laporkan bug" className={iconBtn}>
+              <Bug className="h-5 w-5" strokeWidth={1.75} />
+            </button>
             <ThemeToggle />
             <NotificationBell />
             <AccountMenu onChangePassword={() => setPwOpen(true)} />
@@ -350,12 +304,16 @@ export function Layout() {
 
         <main className="min-w-0 pt-16 md:pl-64">
           {user?.impersonator_id ? <ImpersonationBanner /> : null}
+          <div className="px-6 pt-4 empty:hidden">
+            <QueryErrorBanner />
+          </div>
           <Outlet />
           <CreditFooter className="px-6 pb-6 pt-2 text-center print:hidden" />
         </main>
 
         <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
         {pwOpen && <ChangePasswordModal onClose={() => setPwOpen(false)} />}
+        {bugOpen && <BugReportModal onClose={() => setBugOpen(false)} />}
       </div>
     </NotificationProvider>
   )

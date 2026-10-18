@@ -14,6 +14,7 @@ import (
 	"acs/internal/usecase/auth"
 	"acs/internal/usecase/billing"
 	"acs/internal/usecase/catalog"
+	"acs/internal/usecase/console"
 	"acs/internal/usecase/device"
 	"acs/internal/usecase/diagnostics"
 	"acs/internal/usecase/file"
@@ -67,7 +68,11 @@ type Router struct {
 	// Billing — langganan SaaS lewat Xendit (nil = rute billing tidak dipasang; bila ada tetapi dimatikan lewat
 	// konfigurasi, endpoint mutasi menjawab 409 dan webhook 404).
 	Billing *billing.Service
-	WSHub   *ws.Hub
+	// Fitur Console (migrations/0033): layout menu per pengguna, laporan bug, riwayat impor/ekspor (nil = rute tak dipasang).
+	Menu      *console.MenuService
+	Bugs      *console.BugService
+	Transfers *console.TransferService
+	WSHub     *ws.Hub
 	// WSAllowedOrigins = origin Console yang boleh membuka WebSocket (sama
 	// dengan ACS_CORS_ALLOW_ORIGINS).
 	WSAllowedOrigins []string
@@ -372,6 +377,8 @@ func (r *Router) Register(e *echo.Echo) {
 
 	// Langganan SaaS (paket, status, checkout, invoice, sync). Sengaja TANPA denyImpersonation (lihat billing_handler.go).
 	r.mountBillingRoutes(authed)
+	// Layout menu, laporan bug, riwayat impor/ekspor (authedSelf = semua peran masuk; authed = staf).
+	r.mountConsoleRoutes(authedSelf, authed)
 
 	r.mountSelfServiceRoutes(api)
 }

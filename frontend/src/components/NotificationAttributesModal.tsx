@@ -44,7 +44,7 @@ export function NotificationAttributesModal({ deviceId, initialNames, onClose }:
           <label htmlFor="attr-names" className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
             Parameter (satu per baris; logical key atau raw path)
           </label>
-          <textarea id="attr-names" required rows={5} value={names} onChange={(e) => setNames(e.target.value)} maxLength={20000}
+          <textarea minLength={3} id="attr-names" required rows={5} value={names} onChange={(e) => setNames(e.target.value)} maxLength={20000}
             placeholder={'wifi.ssid\nInternetGatewayDevice.DeviceInfo.SoftwareVersion'} className={`${inputCls} font-mono text-xs`} />
         </div>
         <div>

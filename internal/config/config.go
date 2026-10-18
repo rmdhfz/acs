@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net"
+	"net/mail"
 	"net/url"
 	"os"
 	"strconv"
@@ -110,6 +111,9 @@ type Config struct {
 	SMTPPassword string
 	SMTPFrom     string
 	SMTPFromName string
+	// BugReportEmail — penerima email laporan bug dari Console (bawaan operator platform). Kosong (env diisi kosong)
+	// = tidak ada email; laporan tetap tersimpan di database.
+	BugReportEmail string
 	// PublicURL — origin frontend yang dipakai membangun tautan di email
 	// (mis. https://acs.example.com). Tanpa slash akhir.
 	PublicURL string
@@ -305,6 +309,15 @@ func Load() (*Config, error) {
 	cfg.SMTPPassword = os.Getenv("ACS_SMTP_PASSWORD")
 	cfg.SMTPFrom = getEnv("ACS_SMTP_FROM", cfg.SMTPUsername)
 	cfg.SMTPFromName = getEnv("ACS_SMTP_FROM_NAME", "ACS Console")
+	cfg.BugReportEmail = DefaultBugReportEmail
+	if v, ok := os.LookupEnv("ACS_BUG_REPORT_EMAIL"); ok {
+		cfg.BugReportEmail = strings.TrimSpace(v)
+	}
+	if cfg.BugReportEmail != "" {
+		if a, err := mail.ParseAddress(cfg.BugReportEmail); err != nil || a.Address != cfg.BugReportEmail {
+			return nil, fmt.Errorf("config: ACS_BUG_REPORT_EMAIL bukan alamat email polos yang valid")
+		}
+	}
 	if cfg.SelfSignup && cfg.SMTPHost == "" {
 		return nil, fmt.Errorf("config: ACS_SELF_SIGNUP=true butuh email (ACS_SMTP_HOST) untuk verifikasi pendaftaran")
 	}
@@ -399,6 +412,9 @@ func parseUintEnv(name, def string) (uint, error) {
 	}
 	return uint(v), nil
 }
+
+// DefaultBugReportEmail = penerima laporan bug bila ACS_BUG_REPORT_EMAIL tidak diatur.
+const DefaultBugReportEmail = "hfzrmd@gmail.com"
 
 func getEnv(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {

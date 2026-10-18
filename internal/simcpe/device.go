@@ -14,6 +14,7 @@ type Device struct {
 	Profile      Profile
 	SerialNumber string
 	ConnReqURL   string // diisi bila listener Connection Request aktif
+	UDPAddr      string // "host:port" listener UDP Connection Request (Annex G); dilaporkan saat Inform bila diisi
 
 	mu     sync.Mutex
 	params map[string]string
@@ -137,6 +138,11 @@ func (d *Device) InformParams() []NameValue {
 		key := r + "ManagementServer.ConnectionRequestURL"
 		d.params[key] = d.ConnReqURL
 		out = append(out, NameValue{Name: key, Value: d.ConnReqURL})
+	}
+	if d.UDPAddr != "" {
+		key := r + "ManagementServer.UDPConnectionRequestAddress"
+		d.params[key] = d.UDPAddr
+		out = append(out, NameValue{Name: key, Value: d.UDPAddr})
 	}
 	return out
 }

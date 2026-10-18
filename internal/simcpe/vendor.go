@@ -76,6 +76,15 @@ var Profiles = map[string]Profile{
 		ModelName: "AN5506-04-FA", Namespace: "urn:dslforum-org:cwmp-1-1",
 		DataModel: TR098, HardwareVer: "WKE2.094.331", SoftwareVer: "RP2521",
 	},
+	// "hg6145f": FiberHome HG6145F NYATA — OUI, model, versi firmware/hardware dibaca dari halaman web ONT milik pengguna
+	// (2026-10-18). Hanya identitas yang dari perangkat nyata; namespace CWMP dan nama parameter TR-069 TETAP asumsi
+	// (akun pengguna ONT tidak punya akses TR-069/diagnostik, jadi pohon parameter aslinya belum pernah terlihat).
+	// Tidak termasuk ProfileKeys (S1 memakai OUI sintetis); dipakai skenario S27 dan cpesim -profile hg6145f.
+	"hg6145f": {
+		Key: "hg6145f", Manufacturer: "FiberHome", OUI: "58AEF1", ProductClass: "HG6145F",
+		ModelName: "HG6145F", Namespace: "urn:dslforum-org:cwmp-1-0",
+		DataModel: TR098, HardwareVer: "WKE2.094.373A01", SoftwareVer: "RP2951",
+	},
 	"nokia": {
 		Key: "nokia", Manufacturer: "Nokia", OUI: "NOK1AF", ProductClass: "BeaconG6",
 		ModelName: "G-1425G-A", Namespace: "urn:dslforum-org:cwmp-1-2",

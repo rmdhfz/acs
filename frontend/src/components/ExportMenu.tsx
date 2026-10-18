@@ -4,6 +4,7 @@ import { buildCSV, buildJSON, downloadText, fileStamp, type ExportColumn } from 
 import { useToast } from '../lib/toast'
 import { errorMessage } from '../lib/clientAdapter'
 import { Spinner } from './Spinner'
+import { recordTransfer } from '../lib/transferLog'
 
 export interface ExportContext {
   signal: AbortSignal
@@ -65,8 +66,12 @@ export function ExportMenu<T>({ filename, columns, getRows, disabled, hint, labe
       if (format === 'csv') downloadText(name, buildCSV(columns, rows), 'text/csv')
       else downloadText(name, buildJSON(columns, rows), 'application/json')
       toast.success(`${rows.length.toLocaleString('id-ID')} baris diekspor ke ${name}`)
+      recordTransfer({ kind: 'EXPORT', module: filename, format, fileName: name, total: rows.length, success: rows.length, failed: 0 })
     } catch (e) {
-      if (!(e instanceof DOMException && e.name === 'AbortError')) toast.error(errorMessage(e), 'Ekspor gagal')
+      if (!(e instanceof DOMException && e.name === 'AbortError')) {
+        toast.error(errorMessage(e), 'Ekspor gagal')
+        recordTransfer({ kind: 'EXPORT', module: filename, format, total: 0, success: 0, failed: 0, outcome: 'FAILED', detail: errorMessage(e) })
+      }
     } finally {
       setBusy(false)
       setProgress(null)

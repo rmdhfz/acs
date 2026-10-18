@@ -2,6 +2,8 @@
 
 Panduan kerja untuk Claude (dan Claude Code) saat membantu mengembangkan proyek ACS ini. Baca `docs/produk/PRD.md` untuk konteks bisnis dan `docs/arsitektur/TECH.md` untuk keputusan arsitektur sebelum mengubah kode secara signifikan.
 
+> **Mulai sesi dari `docs/arsitektur/PETA_KODE.md`** (indeks otomatis: paket Go, endpoint, tabel, halaman, skenario e2e) — jangan menjelajah ulang seluruh repo. Setelah menambah paket/endpoint/tabel/halaman jalankan `node scripts/gen-code-map.mjs`.
+
 ## Ringkasan Proyek
 
 ACS multi-vendor (TR-069/CWMP) untuk manajemen CPE (ONT/ONU/router) lintas brand — ZTE, Huawei, FiberHome, Nokia, dan vendor lain yang ditambahkan kemudian. Backend Go, database MariaDB.
@@ -62,3 +64,14 @@ docs/                          dokumentasi (indeks & aturan: docs/README.md)
 - Strategi partisi tabel log (`device_events`, `device_optical_metrics`) — menunggu data volume produksi.
 
 Bila mengerjakan area yang keputusannya belum final di atas, tanyakan dulu ke pengguna alih-alih mengasumsikan satu pendekatan.
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+Rules:
+- When graphify-out/graph.json exists, run `graphify query "<question>"` before your first grep, search or source-file read for a codebase question, and put this rule in every subagent prompt that explores code. Read raw files only for lines the graph or an earlier read already located. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+- A committed graphify-out/graph.json is rewritten whole on every build, so a large diff to it in a pull request is expected. Do not flag it as churn or suggest skipping the graph rebuild or its hooks.

@@ -114,8 +114,40 @@ func (c *Client) status(method, path string, body any) (int, string) {
 	return 0, err.Error()
 }
 
+// getRaw mengambil respons mentah (mis. gambar): kode status, Content-Type, dan isi.
+func (c *Client) getRaw(path string) (int, string, []byte, error) {
+	req, err := http.NewRequest(http.MethodGet, c.base+path, nil)
+	if err != nil {
+		return 0, "", nil, err
+	}
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return 0, "", nil, err
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, resp.Header.Get("Content-Type"), raw, nil
+}
+
 // uploadMultipart mengirim form multipart (untuk POST /firmware).
 func (c *Client) uploadMultipart(path string, fields map[string]string, fileField, fileName string, data []byte, out any) error {
+	// Ulangi saat dibatasi laju (429) — sama seperti do(): satu IP e2e memicu banyak permintaan beruntun.
+	var err error
+	for attempt := 0; attempt < 5; attempt++ {
+		err = c.uploadMultipartOnce(path, fields, fileField, fileName, data, out)
+		if ae, ok := err.(*apiError); ok && ae.Status == http.StatusTooManyRequests {
+			time.Sleep(time.Duration(attempt+1) * 700 * time.Millisecond)
+			continue
+		}
+		return err
+	}
+	return err
+}
+
+func (c *Client) uploadMultipartOnce(path string, fields map[string]string, fileField, fileName string, data []byte, out any) error {
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
 	for k, v := range fields {

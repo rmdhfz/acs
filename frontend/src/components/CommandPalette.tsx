@@ -2,9 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Building2,
+  Bug,
   Cable,
   FileSliders,
   HardDrive,
+  History,
   LayoutDashboard,
   LayoutGrid,
   ListChecks,
@@ -29,6 +31,8 @@ const QUICK_LINKS: QuickLink[] = [
   { label: 'Provisioning', to: '/provisioning', icon: FileSliders },
   { label: 'Firmware', to: '/firmware', icon: HardDrive },
   { label: 'Notifikasi', to: '/notifications', icon: Bell },
+  { label: 'Riwayat impor/ekspor', to: '/data-transfers', icon: History },
+  { label: 'Laporan bug', to: '/bug-reports', icon: Bug },
   { label: 'Catalog Vendor', to: '/catalog', icon: Cable, requireRole: 'SUPERADMIN' },
   { label: 'Administration', to: '/administration', icon: Building2, requireRole: 'ADMIN' },
 ]
