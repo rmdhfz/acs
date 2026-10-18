@@ -9,20 +9,20 @@ Tanggal: 17 Oktober 2026 (dihitung ulang setelah LANJUTAN 12) · Dasar: kode di 
 | Kategori | Bobot | 16 Okt | Sekarang | Poin |
 |---|---:|---:|---:|---:|
 | A. Protokol & inti ACS (TR-069) | 25 | 92% | **95%** | 23.8 |
-| B. Aplikasi web & pengalaman pengguna | 15 | 82% | **90%** | 13.5 |
+| B. Aplikasi web & pengalaman pengguna | 15 | 82% | **88%** | 13.2 |
 | C. Multi-tenant & identitas/akses | 15 | 89% | **95%** | 14.3 |
-| D. Keamanan | 10 | 79% | **86%** | 8.6 |
+| D. Keamanan | 10 | 79% | **85%** | 8.5 |
 | E. Operasional & deployment | 15 | 87% | **87%** | 13.0 |
-| F. Kualitas & verifikasi | 10 | 82% | **84%** | 8.4 |
-| G. Aspek SaaS komersial | 10 | 50% | **70%** | 7.0 |
-| **TOTAL** | **100** | 82.6 | | **88.7** |
+| F. Kualitas & verifikasi | 10 | 82% | **82%** | 8.2 |
+| G. Aspek SaaS komersial | 10 | 50% | **67%** | 6.7 |
+| **TOTAL** | **100** | 82.6 | | **87.7** |
 
-> Pembaruan 2026-10-18: validasi masukan menyeluruh (D, F: e2e 24/24), langganan Xendit + UI /billing (G). G tidak lebih tinggi karena pembayaran **belum diuji dengan Xendit nyata/sandbox**, belum ada aspek legal/pajak, dan pemutusan layanan otomatis sengaja tidak ada.
+> Penilaian ulang 2026-10-18 (setelah validasi masukan menyeluruh, langganan Xendit, penghapusan peta GIS): semua skor dihitung ulang **dari skor per item di bawah** (rata-rata item × bobot), tanpa pembulatan manual — karena itu total sedikit lebih rendah dari angka sementara 88,7 yang sempat tercatat. G tidak lebih tinggi karena pembayaran **belum diuji dengan Xendit nyata/sandbox**, ToS/privasi/DPA belum ditinjau hukum, dan tidak ada halaman status.
 
 ## Dua angka yang perlu dibedakan
 
 - **Kelengkapan fitur & verifikasi lab: ≈ 88%** (tabel di atas).
-- **Kesiapan go-live produksi berbayar: ≈ 75%** = 88% dikurangi 12 poin diskon ketidakpastian lapangan: seluruh skor A/B memakai simulator CPE; belum ada satu pun Inform dari CPE fisik, sehingga item bernilai 1 di A belum terbukti pada firmware nyata (risiko interoperabilitas per vendor). Potongan ini tidak menghitung ganda item yang sudah bernilai 0.
+- **Kesiapan go-live produksi berbayar: ≈ 76%** = 88% dikurangi 12 poin diskon ketidakpastian lapangan: seluruh skor A/B memakai simulator CPE; belum ada satu pun Inform dari CPE fisik, sehingga item bernilai 1 di A belum terbukti pada firmware nyata (risiko interoperabilitas per vendor). Potongan ini tidak menghitung ganda item yang sudah bernilai 0.
 
 Untuk **pilot/UAT internal** (Rabu 21 Okt) angka relevan adalah kelengkapan fitur; untuk **menjual sebagai SaaS** yang relevan adalah kesiapan go-live.
 
@@ -66,19 +66,20 @@ Semua yang dapat diverifikasi di lab sudah ditutup. Sisanya **tidak bisa saya bu
 
 | Item | Skor | Bukti / catatan |
 |---|:--:|---|
-| CRUD seluruh modul tersambung ke API | ✅ 1 | api-parity: 139 endpoint relevan, 4 sengaja tanpa UI |
+| CRUD seluruh modul tersambung ke API | ✅ 1 | api-parity: **156/156 endpoint relevan dipakai UI** (5 sengaja bukan lewat `api.*`: WebSocket, metrik, redirect OIDC, webhook Xendit) |
 | Impor/ekspor dengan pratinjau (semua modul relevan) | ✅ 1 | uji browser nyata |
-| Dashboard, detail perangkat, peta, riwayat | ✅ 1 | uji browser |
+| Dashboard, detail perangkat, riwayat | ✅ 1 | uji browser |
 | Realtime WebSocket | ✅ 1 | diverifikasi browser; lintas instance (HA); **kredensial dicek ulang tiap siklus ping** (tes unit) |
 | Portal pelanggan (WiFi Saya) + penautan akun↔perangkat | 🟡 0,75 | e2e S18 (isolasi, validasi, SSID sampai ke CPE), tes komponen penautan; belum pengguna nyata, halaman portal tanpa tes UI sendiri |
 | Konsol Super Admin: laporan SaaS (KPI, tren 30 hari, CSV), impersonate, kuota & paket | ✅ 1 | e2e S19, S20; audit UI; token impersonate 30 menit, aksi sensitif diblokir, jejak `impersonated_by` |
 | Landing page publik SEO | ✅ 1 | prerender + JSON-LD (WebSite, SoftwareApplication, HowTo, FAQ), manifest, OG image, robots/sitemap, 404 sungguhan; desain Google/Material, teks ringkas |
 | Notifikasi in-app + email + preferensi | ✅ 1 | e2e S22, tes unit/integrasi/komponen; WebSocket realtime; **tampilan email belum dicek di klien email nyata** |
-| Validasi form (min/max/pattern) & pesan informatif | 🟡 0,75 | **gerbang vitest: 147 input semuanya ber-`maxLength`/`max`**; backend memetakan galat kolom ke 400; min/pattern belum seragam di semua form |
+| Validasi form (min/max/pattern) & pesan informatif | 🟡 0,85 | gerbang vitest: semua input teks ber-`maxLength`, angka ber-`min`/`max`; field password baru ber-`minLength`; username/kode tenant/nama kini ber-`pattern`/`minLength`; server memvalidasi ulang semuanya (QueryGuard, validator bersama Create=Update) dan memetakan galat kolom ke 400; belum seragam di **semua** form lama |
 | State galat/loading/empty | 🟡 0,75 | galat pemuatan = toast global; bug toast palsu superadmin diperbaiki + audit UI kini gagal bila ada toast galat; belum ada keadaan galat inline per halaman |
-| Aksesibilitas (label, nama tombol, kontras) | 🟡 0,75 | `npm run audit:ui`: **0 pelanggaran WCAG A/AA** pada 88 tampilan; jebakan fokus modal & navigasi keyboard penuh belum diuji |
+| Aksesibilitas (label, nama tombol, kontras) | 🟡 0,75 | `npm run audit:ui`: **0 pelanggaran WCAG A/AA** pada 124 tampilan; jebakan fokus modal & navigasi keyboard penuh belum diuji |
 | Mode gelap & mobile terverifikasi visual | ✅ 1 | halaman × terang/gelap × desktop/mobile + modal; Chrome saja |
 | i18n ID/EN | 🟡 0,5 | sebagian halaman; string baru sebagian hanya Indonesia |
+| Langganan & tagihan (UI `/billing`: status, paket, invoice, checkout, kelola paket) | 🟡 0,75 | audit UI lulus; hanya redirect `https` ke halaman bayar; **belum dicoba dengan Xendit nyata** |
 
 ### C. Multi-tenant & identitas/akses — 95% (bobot 15)
 
@@ -96,13 +97,13 @@ Semua yang dapat diverifikasi di lab sudah ditutup. Sisanya **tidak bisa saya bu
 | MFA TOTP | ✅ 1 | unit (RFC 6238), integrasi MariaDB, e2e S16, tes komponen |
 | Pendaftaran tenant mandiri (self-signup, verifikasi email) | 🟡 0,75 | **bawaan MATI** (`ACS_SELF_SIGNUP`, butuh SMTP); unit + integrasi MariaDB (tenant dibuat atomik, token sekali pakai), e2e S20 hanya jalur "mati → 403"; jalur aktif end-to-end dengan email nyata belum diuji |
 
-### D. Keamanan — 83% (bobot 10)
+### D. Keamanan — 85% (bobot 10)
 
 | Item | Skor | Bukti / catatan |
 |---|:--:|---|
 | Otorisasi & isolasi (OWASP A01) | ✅ 1 | audit + perbaikan; impersonate dibatasi SUPERADMIN, aksi sensitif diblokir |
 | Autentikasi & manajemen sesi (A07) | ✅ 1 | JWT ber-`purpose`, MFA, lockout bersama, WS dicek ulang, pesan seragam |
-| Validasi input & SQL aman (A03) | 🟡 0,75 | parameter terikat; validasi mayoritas; penetralan formula CSV; batas input FE terpusat |
+| Validasi input & SQL aman (A03) | 🟡 0,9 | parameter terikat; **audit validasi read-only + perbaikan**: query-string rusak → 400, batas jumlah/ukuran parameter task/preset/Inform, isi Inform CPE divalidasi, unggahan divalidasi sebelum streaming, kebijakan password satu pintu; e2e S24. Sisa: strict-decode JSON, kuota storage, transfer kepemilikan pra-registrasi (T4) |
 | Kredensial terenkripsi, rahasia disamarkan | 🟡 0,9 | tenant/CR/TOTP/nilai Preset & Profil AES-GCM; respons task disamarkan; nilai yang *dilaporkan CPE* (`device_parameters`) masih plaintext di DB (disamarkan di API) |
 | Rate limit & anti brute-force | ✅ 1 | per-IP (REST `ACS_REST_RATE_LIMIT` bawaan 100/dtk, CWMP) + pembatas ketat login/MFA/reset/signup + lockout + terdistribusi (Redis) |
 | TLS (REST & CWMP) | 🟡 0,75 | overlay Caddy diuji fungsional (sertifikat internal); Let's Encrypt & CPE nyata belum |
@@ -131,21 +132,21 @@ Semua yang dapat diverifikasi di lab sudah ditutup. Sisanya **tidak bisa saya bu
 
 | Item | Skor | Bukti / catatan |
 |---|:--:|---|
-| Unit test backend + race | ✅ 1 | 32 paket lulus; race via Docker pada paket yang disentuh |
+| Unit test backend + race | ✅ 1 | seluruh paket lulus `go test -race` (Docker, termasuk integrasi MariaDB/Redis) |
 | Integrasi MariaDB & Redis nyata | ✅ 1 | `ACS_TEST_DSN`, `ACS_TEST_REDIS` (+ seed 0029) |
-| E2E 21 skenario (simulator) | ✅ 1 | 21/21 |
+| E2E 24 skenario (simulator) | ✅ 1 | 24/24 (S23 billing mati, S24 validasi masukan) |
 | Uji CPE fisik (≥1 per vendor) | ❌ 0 | BELUM — UAT Rabu |
-| Uji frontend otomatis | 🟡 0,75 | Vitest 25 tes (+ gerbang batas input) + audit axe 88 tampilan; belum alur UI end-to-end terhadap backend di CI |
-| Dokumentasi API OpenAPI + Postman | ✅ 1 | 147 operasi, redocly lint valid (8 peringatan lama) |
+| Uji frontend otomatis | 🟡 0,75 | Vitest 39 tes (+ gerbang batas input) + audit axe 124 tampilan; belum alur UI end-to-end terhadap backend di CI |
+| Dokumentasi API OpenAPI + Postman | ✅ 1 | 161 operasi, redocly lint valid (8 peringatan lama); koleksi Postman belum diregenerasi |
 | Audit keamanan/kualitas | ✅ 1 | beberapa audit review + perbaikan (bukan pentest manusia independen) |
 
-### G. Aspek SaaS komersial — 63% (bobot 10)
+### G. Aspek SaaS komersial — 67% (bobot 10)
 
 | Item | Skor | Bukti / catatan |
 |---|:--:|---|
 | Onboarding tenant (wizard) & panduan pengguna | ✅ 1 | ada + buku panduan |
 | Landing page & materi pemasaran dasar | ✅ 1 | ada |
-| Paket/plan, metering penggunaan, penagihan | 🟡 0,5 | batas perangkat & kuota task per tenant ditegakkan + laporan penggunaan per tenant; **tanpa harga, metering berbayar, atau penagihan** |
+| Paket/plan, penagihan (Xendit), batas pemakaian | 🟡 0,75 | batas perangkat & kuota task per tenant ditegakkan; **checkout Invoice Xendit, webhook idempoten (token + verifikasi ulang), perpanjangan masa aktif, notifikasi/email, tanpa pemutusan otomatis** — bawaan MATI, diuji dengan server tiruan + MariaDB nyata, **bukan Xendit nyata**; harga paket contoh placeholder; tanpa metering berbasis pemakaian/pajak |
 | Halaman status / SLA / dukungan (helpdesk) | ❌ 0 | belum (`/readyz` bisa dipakai uptime checker eksternal) |
 | Syarat layanan, kebijakan privasi, DPA | 🔴 0,25 | halaman draf ada, **bertanda belum ditinjau hukum**; DPA tidak ada |
 | Notifikasi email transaksional | ✅ 1 | ada |
@@ -153,6 +154,7 @@ Semua yang dapat diverifikasi di lab sudah ditutup. Sisanya **tidak bisa saya bu
 ## Prioritas berikutnya (nilai ÷ usaha)
 
 1. **UAT Rabu dengan CPE fisik** — membuka −12 poin; hasilnya menentukan perbaikan katalog/mapping/path optik (termasuk vendor baru).
+1b. **Uji billing di mode test Xendit** (buat invoice, bayar lewat simulator, pastikan callback + "Periksa status" memperpanjang masa aktif) sebelum `ACS_BILLING_ENABLED=true` di produksi.
 2. **SSO dengan IdP nyata** (+ ikat akun lewat `sub`) dan uji jalur aktif self-signup dengan SMTP nyata (C).
 3. **Pentest independen** sebelum membuka ke tenant yang tidak dikenal (D).
 4. **Load test dengan profil Inform realistis** dan multi-instance (E).

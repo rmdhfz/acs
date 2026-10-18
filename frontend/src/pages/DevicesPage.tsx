@@ -7,8 +7,6 @@ import {
   ChevronRight,
   Clock3,
   HardDrive,
-  List,
-  MapPin,
   Pencil,
   Plus,
   Power,
@@ -28,7 +26,6 @@ import { StatCard } from '../components/StatCard'
 import { StatusBadge } from '../components/StatusBadge'
 import { EmptyState } from '../components/EmptyState'
 import { Modal } from '../components/Modal'
-import { DeviceMap } from '../components/DeviceMap'
 import { DeviceFormModal } from '../components/DeviceFormModal'
 import { ExportMenu } from '../components/ExportMenu'
 import { ImportWizard } from '../components/ImportWizard'
@@ -85,7 +82,6 @@ export function DevicesPage() {
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [bulkAction, setBulkAction] = useState<'profile' | 'firmware' | 'reboot' | null>(null)
-  const [viewMode, setViewMode] = useState<'table' | 'map'>('table')
 
   const { data: statusRefs } = useRefs('ref_device_status')
   useStatusParam(statusRefs, setStatusFilter)
@@ -377,33 +373,8 @@ export function DevicesPage() {
         </div>
       )}
 
-      <div className="mb-4 flex items-center justify-end gap-2">
-        <button
-          onClick={() => setViewMode('table')}
-          className={`flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-medium transition-colors ${
-            viewMode === 'table'
-              ? 'border-blue-600 bg-blue-50 text-blue-700 dark:border-blue-500 dark:bg-blue-900/30 dark:text-blue-400'
-              : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
-          }`}
-        >
-          <List className="h-4 w-4" /> Tabel
-        </button>
-        <button
-          onClick={() => setViewMode('map')}
-          className={`flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-medium transition-colors ${
-            viewMode === 'map'
-              ? 'border-blue-600 bg-blue-50 text-blue-700 dark:border-blue-500 dark:bg-blue-900/30 dark:text-blue-400'
-              : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
-          }`}
-        >
-          <MapPin className="h-4 w-4" /> Peta (GIS)
-        </button>
-      </div>
-
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        {viewMode === 'map' ? (
-          <DeviceMap devices={devices} />
-        ) : isLoading ? (
+        {isLoading ? (
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="flex items-center gap-4 px-5 py-4">
