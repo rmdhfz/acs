@@ -6,6 +6,7 @@ import { ApiError } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { useToast } from '../lib/toast'
 import { useCreateDevice, useDeviceModels, useTenants, useUpdateDevice, useVendors } from '../lib/hooks'
+import { LIMITS } from '../lib/limits'
 import type { Device } from '../lib/types'
 
 const inputCls =
@@ -64,12 +65,12 @@ export function DeviceFormModal({ mode, device, onClose, onSaved }: Props) {
     const e: Record<string, string> = {}
     if (!isEdit) {
       if (isSuper && !tenantId) e.tenant = 'Pilih tenant pemilik perangkat.'
-      if (!/^[0-9A-Za-z]{6}$/.test(oui.trim())) e.oui = 'OUI harus 6 karakter huruf/angka (mis. 00D0D0).'
+      if (!new RegExp(`^[0-9A-Za-z]{${LIMITS.device.oui}}$`).test(oui.trim())) e.oui = `OUI harus ${LIMITS.device.oui} karakter huruf/angka (mis. 00D0D0).`
       if (serial.trim() === '') e.serial = 'Serial number wajib diisi.'
-      else if (serial.trim().length > 128) e.serial = 'Maks. 128 karakter.'
+      else if (serial.trim().length > LIMITS.device.serialNumber) e.serial = `Maks. ${LIMITS.device.serialNumber} karakter.`
     }
     if (mac.trim() !== '' && !MAC_RE.test(mac.trim())) e.mac = 'Format MAC tidak valid (mis. AA:BB:CC:DD:EE:FF).'
-    if (notes.length > 255) e.notes = 'Maks. 255 karakter.'
+    if (notes.length > LIMITS.device.notes) e.notes = `Maks. ${LIMITS.device.notes} karakter.`
     const hasLat = lat.trim() !== ''
     const hasLon = lon.trim() !== ''
     if (hasLat !== hasLon) e.lat = 'Latitude dan longitude harus diisi berpasangan.'
@@ -185,7 +186,7 @@ export function DeviceFormModal({ mode, device, onClose, onSaved }: Props) {
                   id="df-oui"
                   value={oui}
                   onChange={(e) => setOui(e.target.value.toUpperCase())}
-                  maxLength={6}
+                  maxLength={LIMITS.device.oui}
                   placeholder="00D0D0"
                   autoComplete="off"
                   spellCheck={false}
@@ -202,7 +203,7 @@ export function DeviceFormModal({ mode, device, onClose, onSaved }: Props) {
                   id="df-serial"
                   value={serial}
                   onChange={(e) => setSerial(e.target.value)}
-                  maxLength={128}
+                  maxLength={LIMITS.device.serialNumber}
                   placeholder="ZTEGC8A1B2C3"
                   autoComplete="off"
                   spellCheck={false}
@@ -254,13 +255,13 @@ export function DeviceFormModal({ mode, device, onClose, onSaved }: Props) {
             <label htmlFor="df-pc" className={labelCls}>
               Product class
             </label>
-            <input id="df-pc" value={productClass} onChange={(e) => setProductClass(e.target.value)} maxLength={128} placeholder="F670L" className={inputCls} />
+            <input id="df-pc" value={productClass} onChange={(e) => setProductClass(e.target.value)} maxLength={LIMITS.device.productClass} placeholder="F670L" className={inputCls} />
           </div>
           <div>
             <label htmlFor="df-mac" className={labelCls}>
               MAC address
             </label>
-            <input maxLength={17} id="df-mac" value={mac} onChange={(e) => setMac(e.target.value)} placeholder="AA:BB:CC:DD:EE:FF" autoComplete="off" className={`${inputCls} font-mono`} aria-invalid={!!fieldErrors.mac} />
+            <input maxLength={LIMITS.device.macAddress} id="df-mac" value={mac} onChange={(e) => setMac(e.target.value)} placeholder="AA:BB:CC:DD:EE:FF" autoComplete="off" className={`${inputCls} font-mono`} aria-invalid={!!fieldErrors.mac} />
             {fe('mac')}
           </div>
         </div>
@@ -269,10 +270,10 @@ export function DeviceFormModal({ mode, device, onClose, onSaved }: Props) {
           <label htmlFor="df-notes" className={labelCls}>
             Catatan
           </label>
-          <textarea id="df-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} maxLength={255} placeholder="mis. ONT lantai 2 ruang server, pelanggan korporat" className={inputCls} />
+          <textarea id="df-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} maxLength={LIMITS.device.notes} placeholder="mis. ONT lantai 2 ruang server, pelanggan korporat" className={inputCls} />
           <div className="flex justify-between">
             {fe('notes') ?? <span />}
-            <span className="mt-1 text-xs text-slate-500 dark:text-slate-400">{notes.length}/255</span>
+            <span className="mt-1 text-xs text-slate-500 dark:text-slate-400">{notes.length}/{LIMITS.device.notes}</span>
           </div>
         </div>
 
@@ -304,7 +305,7 @@ export function DeviceFormModal({ mode, device, onClose, onSaved }: Props) {
               <label htmlFor="df-crurl" className={labelCls}>
                 URL
               </label>
-              <input maxLength={255} id="df-crurl" value={crUrl} onChange={(e) => setCrUrl(e.target.value)} placeholder="http://203.0.113.7:7547/" className={`${inputCls} font-mono`} aria-invalid={!!fieldErrors.crUrl} />
+              <input maxLength={LIMITS.device.connectionRequestUrl} id="df-crurl" value={crUrl} onChange={(e) => setCrUrl(e.target.value)} placeholder="http://203.0.113.7:7547/" className={`${inputCls} font-mono`} aria-invalid={!!fieldErrors.crUrl} />
               {fieldErrors.crUrl ? fe('crUrl') : <p className={hintCls}>Biasanya terisi otomatis dari Inform; isi manual untuk skenario NAT.</p>}
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -312,13 +313,13 @@ export function DeviceFormModal({ mode, device, onClose, onSaved }: Props) {
                 <label htmlFor="df-cruser" className={labelCls}>
                   Username
                 </label>
-                <input maxLength={128} id="df-cruser" value={crUser} onChange={(e) => setCrUser(e.target.value)} autoComplete="off" placeholder={isEdit ? '(tersimpan — isi untuk mengganti)' : ''} className={inputCls} />
+                <input maxLength={LIMITS.device.connectionRequestUsername} id="df-cruser" value={crUser} onChange={(e) => setCrUser(e.target.value)} autoComplete="off" placeholder={isEdit ? '(tersimpan — isi untuk mengganti)' : ''} className={inputCls} />
               </div>
               <div>
                 <label htmlFor="df-crpass" className={labelCls}>
                   Password
                 </label>
-                <input maxLength={128} id="df-crpass" type="password" value={crPass} onChange={(e) => setCrPass(e.target.value)} autoComplete="off" placeholder={isEdit ? '(tersimpan — isi untuk mengganti)' : ''} className={inputCls} />
+                <input maxLength={LIMITS.device.connectionRequestPassword} id="df-crpass" type="password" value={crPass} onChange={(e) => setCrPass(e.target.value)} autoComplete="off" placeholder={isEdit ? '(tersimpan — isi untuk mengganti)' : ''} className={inputCls} />
               </div>
             </div>
             <p className={`${hintCls} -mt-2`}>Disimpan terenkripsi dan tidak pernah ditampilkan kembali. ACS menjawab tantangan Digest/Basic dari CPE memakai kredensial ini.</p>

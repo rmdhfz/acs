@@ -36,14 +36,26 @@ info:
     request datang lewat https (langsung atau lewat proxy dengan
     `X-Forwarded-Proto: https`).
 
-    Empat endpoint publik tanpa autentikasi, semuanya READ-ONLY atau titik masuk
-    login (tidak ada endpoint MUTASI tanpa autentikasi): `POST /auth/login`
-    dan `POST /auth/mfa/verify` (untuk mendapatkan token, rate-limit khusus per-IP),
-    `GET /auth/config` (konfigurasi publik tanpa rahasia), `GET /auth/oidc/login`
-    dan `GET /auth/oidc/callback` (alur login OIDC — identitas dibawa oleh
-    `code` dari IdP, bukan Bearer), serta `GET /metrics` (scrape Prometheus
-    read-only, lihat catatan di endpoint tsb soal kenapa ini pengecualian yang
-    aman).
+    Endpoint tanpa header `Authorization: Bearer` (`security: []` di operation
+    masing-masing) — tidak ada yang benar-benar tanpa kontrol, hanya memakai
+    mekanisme non-Bearer sesuai konteksnya:
+    - **Titik masuk otentikasi** (mutasi, tapi tidak mungkin mewajibkan Bearer
+      karena sesi belum ada): `POST /auth/login`, `POST /auth/mfa/verify`
+      (tahap kedua MFA), `POST /auth/signup` & `POST /auth/signup/verify`
+      (pendaftaran tenant mandiri), `POST /auth/forgot-password` & `POST
+      /auth/reset-password` (reset via email). Kontrolnya: rate-limit ketat
+      per-IP, lockout akun, token sekali-pakai berumur pendek, dan respons
+      seragam (anti-enumeration) — lihat `description` tiap operation.
+    - **Callback pihak ketiga**: `POST /billing/xendit/webhook` — Xendit tidak
+      membawa JWT, diverifikasi lewat header `X-CALLBACK-TOKEN` (perbandingan
+      waktu-konstan) + verifikasi ulang status/nominal ke gateway.
+    - **Read-only/konfigurasi publik**: `GET /auth/config` (konfigurasi publik
+      tanpa rahasia), `GET /auth/oidc/login` & `GET /auth/oidc/callback`
+      (alur login OIDC — identitas dibawa oleh `code` dari IdP, bukan Bearer),
+      serta `GET /metrics` (scrape Prometheus read-only, lihat catatan di
+      endpoint tsb soal kenapa ini pengecualian yang aman).
+
+    Di luar daftar ini, **tidak ada endpoint MUTASI tanpa autentikasi**.
 
     Token yang valid tapi tenant pemiliknya sudah dinonaktifkan (`is_active=false`)
     akan ditolak dengan `401` (`auth: tenant tidak aktif, hubungi administrator`)

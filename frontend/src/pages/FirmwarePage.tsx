@@ -11,6 +11,7 @@ import { useAuth } from '../lib/auth'
 import { ApiError } from '../lib/api'
 import { useToast } from '../lib/toast'
 import { useConfirm } from '../lib/confirm'
+import { LIMITS } from '../lib/limits'
 import {
   useAdvanceRolloutBatch,
   useCancelRolloutBatch,
@@ -263,11 +264,11 @@ function EditFirmwareForm({ file, onClose }: { file: FirmwareFile; onClose: () =
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Versi</label>
-          <input pattern=".*\S.*" title="Tidak boleh kosong atau hanya spasi" required maxLength={64} value={version} onChange={(e) => setVersion(e.target.value)} className={inputCls} />
+          <input pattern=".*\S.*" title="Tidak boleh kosong atau hanya spasi" required maxLength={LIMITS.firmware.version} value={version} onChange={(e) => setVersion(e.target.value)} className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Catatan rilis</label>
-          <textarea maxLength={5000} value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} className={inputCls} />
+          <textarea maxLength={LIMITS.firmware.releaseNotes} value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} className={inputCls} />
         </div>
         <label className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-300">
           <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} className="mt-0.5" />
@@ -645,7 +646,7 @@ function UploadFirmwareModal({ defaultVendorId, onClose }: { defaultVendorId: st
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Versi</label>
-          <input pattern=".*\S.*" title="Tidak boleh kosong atau hanya spasi" maxLength={64} required value={version} onChange={(e) => setVersion(e.target.value)} placeholder="mis. V5.3.0P2" className={inputCls} />
+          <input pattern=".*\S.*" title="Tidak boleh kosong atau hanya spasi" maxLength={LIMITS.firmware.version} required value={version} onChange={(e) => setVersion(e.target.value)} placeholder="mis. V5.3.0P2" className={inputCls} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">File Firmware</label>
@@ -658,7 +659,7 @@ function UploadFirmwareModal({ defaultVendorId, onClose }: { defaultVendorId: st
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Release Notes (opsional)</label>
-          <textarea maxLength={5000} value={releaseNotes} onChange={(e) => setReleaseNotes(e.target.value)} rows={2} className={inputCls} />
+          <textarea maxLength={LIMITS.firmware.releaseNotes} value={releaseNotes} onChange={(e) => setReleaseNotes(e.target.value)} rows={2} className={inputCls} />
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
         <button type="submit" disabled={uploadMutation.isPending} className={`${primaryBtnCls} w-full`}>

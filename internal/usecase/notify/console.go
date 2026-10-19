@@ -2,6 +2,7 @@ package notify
 
 import (
 	"fmt"
+	"html/template"
 	"strings"
 	"time"
 
@@ -19,43 +20,72 @@ func clip(s string, n int) string {
 	return string(r)
 }
 
-// BugReport — email ke operator platform saat pengguna melaporkan bug.
-func (b *Builder) BugReport(to, severityLabel, title, description, expected, reporter, reporterEmail, tenant, role, page, version, userAgent, reportID string, impersonated, hasScreenshot bool) mailer.Message {
-	paras := []string{
-		"Laporan bug baru dari Console.",
-		"Judul: " + clip(title, 120),
-		"Dampak: " + severityLabel,
-		fmt.Sprintf("Pelapor: %s (%s), peran %s", clip(reporter, 64), clip(reporterEmail, 191), clip(role, 32)),
-		"Tenant: " + clip(tenant, 128),
-		"Halaman: " + clip(page, 255),
-		"Versi Console: " + clip(version, 32),
-		"Browser: " + clip(userAgent, 255),
+// bugSeverityStyle — chip keparahan laporan bug (label Indonesia dari
+// severityLabels di usecase/console: RINGAN/SEDANG/BERAT). Terpisah dari
+// severityStyle (nilai INFO/WARNING/CRITICAL milik notifikasi biasa) karena
+// domainnya beda; input bukan dari pengguna (dipetakan dari enum severity),
+// nilai tak dikenal jatuh ke gaya info biar tak pernah 500/kosong.
+func bugSeverityStyle(label string) (fg, bg template.CSS) {
+	switch strings.ToUpper(label) {
+	case "BERAT":
+		return "#a50e0e", "#fce8e6"
+	case "SEDANG":
+		return "#b06000", "#fef7e0"
+	default: // RINGAN & lainnya
+		return "#1967d2", "#e8f0fe"
 	}
+}
+
+// bugReportLines — pecah body jadi baris non-kosong, tiap baris dipotong
+// terpisah (dipakai APA YANG TERJADI / APA YANG DIHARAPKAN).
+func bugReportLines(body string) []string {
+	var lines []string
+	for _, line := range strings.Split(strings.TrimSpace(body), "\n") {
+		if l := strings.TrimSpace(line); l != "" {
+			lines = append(lines, clip(l, 1000))
+		}
+	}
+	return lines
+}
+
+// BugReport — email ke operator platform saat pengguna melaporkan bug. Judul
+// jadi H1 (tanpa duplikasi di badan), keparahan jadi chip warna (bukan baris
+// teks "Dampak: ..."), dan metadata (pelapor/tenant/halaman/versi/browser)
+// jadi satu kartu label-nilai ringkas alih-alih tiap field jadi paragraf
+// lepas bermargin besar — sebelumnya tampak seperti daftar rata tak
+// terstruktur (dilaporkan pengguna 2026-10-19).
+func (b *Builder) BugReport(to, severityLabel, title, description, expected, reporter, reporterEmail, tenant, role, page, version, userAgent, reportID string, impersonated, hasScreenshot bool) mailer.Message {
+	rows := [][2]string{
+		{"Pelapor", fmt.Sprintf("%s (%s), peran %s", clip(reporter, 64), clip(reporterEmail, 191), clip(role, 32))},
+		{"Tenant", clip(tenant, 128)},
+		{"Halaman", clip(page, 255)},
+		{"Versi Console", clip(version, 32)},
+		{"Browser", clip(userAgent, 255)},
+	}
+	var paras []string
 	if impersonated {
 		paras = append(paras, "Catatan: dikirim dalam sesi impersonate (SUPERADMIN bertindak sebagai pengguna ini).")
 	}
-	// Dua bagian TERPISAH: apa yang terjadi vs apa yang diharapkan (tiap baris di-escape).
-	section := func(head, body string) {
-		paras = append(paras, head)
-		for _, line := range strings.Split(strings.TrimSpace(body), "\n") {
-			if l := strings.TrimSpace(line); l != "" {
-				paras = append(paras, clip(l, 1000))
-			}
-		}
-	}
-	section("APA YANG TERJADI:", description)
-	section("APA YANG DIHARAPKAN:", expected)
 	if hasScreenshot {
 		paras = append(paras, "Tangkapan layar terlampir pada email ini dan tersimpan di laporan.")
 	}
-	subject := fmt.Sprintf("[Bug %s] %s", severityLabel, clip(title, 80))
-	return b.render(to, subject, layout{
+	l := layout{
+		Title:      clip(title, 120),
 		Greeting:   "Halo operator,",
+		MetaRows:   rows,
 		Paragraphs: paras,
-		Button:     "Buka laporan",
-		ButtonURL:  b.PublicURL + "/bug-reports",
-		Footnote:   "ID laporan: " + clip(reportID, 36) + ". Laporan tersimpan di database dan dapat ditangani dari menu Laporan Bug.",
-	})
+		Sections: []section{
+			{Heading: "Apa yang terjadi", Lines: bugReportLines(description)},
+			{Heading: "Apa yang diharapkan", Lines: bugReportLines(expected)},
+		},
+		Button:    "Buka laporan",
+		ButtonURL: b.PublicURL + "/bug-reports",
+		Footnote:  "ID laporan: " + clip(reportID, 36) + ". Laporan tersimpan di database dan dapat ditangani dari menu Laporan Bug.",
+	}
+	l.SevLabel = severityLabel
+	l.SevFG, l.SevBG = bugSeverityStyle(severityLabel)
+	subject := fmt.Sprintf("[Bug %s] %s", severityLabel, clip(title, 80))
+	return b.render(to, subject, l)
 }
 
 // DataTransfer — email ke pelaku setiap proses impor/ekspor selesai. Hanya hitungan & ringkasan; tanpa isi berkas.

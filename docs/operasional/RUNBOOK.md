@@ -221,6 +221,7 @@ Nilai parameter bernama sensitif (`password|passphrase|psk|secret|token|key`) di
 | `ACS_OPTICAL_POLL_MINUTES` | 360 | interval polling redaman optik per perangkat (0 = mati, minimum 15) |
 | `ACS_LOG_RETENTION_DAYS` | 90 | pangkas tabel log lama (audit `activity_logs` tidak dipangkas); 0 = mati |
 | `ACS_OIDC_*` | kosong | SSO OIDC (issuer, client id/secret, redirect URL) — akun dipetakan lewat **email** |
+| `ACS_DB_MAX_OPEN_CONNS` / `_MAX_IDLE_CONNS` / `_CONN_MAX_LIFETIME_MINUTES` | 50 / 10 / 30 | ukuran connection pool MariaDB (`db.SetMaxOpenConns` dkk). Load test 2026-10-18 menemukan throughput CWMP plateau ~450–480 sesi/dtk dgn bawaan 50, terlepas dari concurrency, sebelum CPU acsd/MariaDB jenuh (LANJUTAN 14) — naikkan di produksi/HA bila profil beban nyata menunjukkan pola serupa; idle tidak boleh melebihi open |
 
 ### K. MFA (TOTP) & pemulihan akun
 Pengguna mengaktifkan sendiri di Profil → Keamanan (QR + 10 kode pemulihan sekali pakai). Kehilangan perangkat **dan** kode pemulihan: ADMIN tenant yang sama atau SUPERADMIN memakai tombol **Lepas MFA** (Administrasi → Users) atau `DELETE /api/v1/users/{id}/mfa` — rahasia & kode dihapus, sesi akun dicabut, tercatat `MFA_RESET`. Kode TOTP salah ikut lockout akun (5× → 15 menit). Rahasia TOTP terenkripsi dengan `ACS_CREDENTIAL_ENC_KEY`. SSO tidak menambah MFA lokal.

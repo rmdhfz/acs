@@ -57,16 +57,32 @@ type layout struct {
 	Title      string
 	Greeting   string
 	Paragraphs []string
+	// MetaRows — daftar label/nilai ringkas (mis. "Pelapor", "Tenant") dirender
+	// sebagai satu kartu tabel 2 kolom rapat, dipakai saat email punya beberapa
+	// field metadata (BugReport) alih-alih tiap field jadi <p> terpisah dengan
+	// margin besar (tampak seperti daftar rata tak terstruktur).
+	MetaRows [][2]string
+	// Sections — blok "judul kecil + isi" (mis. "Apa yang terjadi"), dirender
+	// dengan label huruf kecil-kapital redup lalu isi di dalam kotak latar
+	// abu agar terlihat sebagai satu kelompok, bukan paragraf lepas.
+	Sections   []section
 	Button     string
 	ButtonURL  string
 	Footnote   string
 	CreditName string
 	CreditURL  string
 	Year       int
-	// Chip keparahan (opsional; hanya email notifikasi). Warna bukan input pengguna: dipilih dari tabel tetap.
+	// Chip keparahan (opsional). Warna bukan input pengguna: dipilih dari tabel tetap.
 	SevLabel string
 	SevFG    template.CSS
 	SevBG    template.CSS
+}
+
+// section — lihat layout.Sections. Lines sudah dipotong/divalidasi pemanggil
+// (clip per baris), satu entri = satu baris non-kosong dari body asli.
+type section struct {
+	Heading string
+	Lines   []string
 }
 
 // htmlTpl — gaya Google/Material: kartu putih bersudut 16px di atas latar abu terang, header ringan (bukan blok
@@ -84,7 +100,17 @@ var htmlTpl = template.Must(template.New("mail").Parse(`<!doctype html>
 {{if .SevLabel}}<p style="margin:0 0 12px"><span style="display:inline-block;background:{{.SevBG}};color:{{.SevFG}};border-radius:12px;padding:3px 12px;font-size:12px;font-weight:500;line-height:18px">{{.SevLabel}}</span></p>{{end}}
 <h1 style="margin:0 0 16px;font-size:22px;line-height:1.35;font-weight:400;color:#202124;font-family:'Google Sans',Roboto,Arial,sans-serif">{{.Title}}</h1>
 <p style="margin:0 0 14px;font-size:14px;line-height:1.6;color:#202124">{{.Greeting}}</p>
+{{if .MetaRows}}<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 18px;background:#f8f9fa;border-radius:12px;border:1px solid #e8eaed">
+{{range $r := .MetaRows}}<tr>
+<td style="padding:7px 8px 7px 14px;font-size:12px;color:#5f6368;white-space:nowrap;vertical-align:top;width:1%">{{index $r 0}}</td>
+<td style="padding:7px 14px 7px 0;font-size:13px;color:#202124;word-break:break-word">{{index $r 1}}</td>
+</tr>{{end}}
+</table>{{end}}
 {{range .Paragraphs}}<p style="margin:0 0 14px;font-size:14px;line-height:1.6;color:#202124">{{.}}</p>{{end}}
+{{range .Sections}}<p style="margin:16px 0 6px;font-size:11px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;color:#5f6368">{{.Heading}}</p>
+<div style="margin:0 0 4px;padding:4px 14px;background:#f8f9fa;border-radius:10px;border:1px solid #e8eaed">
+{{range .Lines}}<p style="margin:8px 0;font-size:14px;line-height:1.55;color:#202124">{{.}}</p>{{end}}
+</div>{{end}}
 {{if .ButtonURL}}<p style="margin:24px 0"><a href="{{.ButtonURL}}" style="display:inline-block;background:#1a73e8;color:#ffffff;text-decoration:none;font-weight:500;font-size:14px;line-height:20px;padding:10px 24px;border-radius:20px;font-family:'Google Sans',Roboto,Arial,sans-serif">{{.Button}}</a></p>
 <p style="margin:0 0 14px;font-size:12px;line-height:1.6;color:#5f6368">Jika tombol tidak berfungsi, salin tautan ini ke browser:<br><span style="word-break:break-all;color:#1a73e8">{{.ButtonURL}}</span></p>{{end}}
 {{if .Footnote}}<p style="margin:20px 0 0;padding-top:16px;border-top:1px solid #e8eaed;font-size:12px;line-height:1.6;color:#5f6368">{{.Footnote}}</p>{{end}}
@@ -102,8 +128,21 @@ func (b *Builder) render(to, subject string, l layout) mailer.Message {
 
 	var t strings.Builder
 	t.WriteString(l.Greeting + "\n\n")
+	for _, r := range l.MetaRows {
+		t.WriteString(r[0] + ": " + r[1] + "\n")
+	}
+	if len(l.MetaRows) > 0 {
+		t.WriteString("\n")
+	}
 	for _, p := range l.Paragraphs {
 		t.WriteString(p + "\n\n")
+	}
+	for _, s := range l.Sections {
+		t.WriteString(strings.ToUpper(s.Heading) + ":\n")
+		for _, ln := range s.Lines {
+			t.WriteString(ln + "\n")
+		}
+		t.WriteString("\n")
 	}
 	if l.ButtonURL != "" {
 		t.WriteString(l.Button + ":\n" + l.ButtonURL + "\n\n")

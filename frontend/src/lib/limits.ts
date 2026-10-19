@@ -63,6 +63,24 @@ export const LIMITS = {
     name: 128, // webhook_subscriptions.name VARCHAR(128)
     targetUrl: 500, // webhook_subscriptions.target_url VARCHAR(500)
   },
+  device: {
+    oui: 6, // devices.oui CHAR(6)
+    serialNumber: 128, // devices.serial_number VARCHAR(128)
+    productClass: 128, // devices.product_class VARCHAR(128)
+    macAddress: 17, // devices.mac_address VARCHAR(17) — "AA:BB:CC:DD:EE:FF"
+    notes: 255, // devices.notes VARCHAR(255)
+    connectionRequestUrl: 255, // internal/usecase/device/provision.go maxCRURLLen (kolom VARCHAR(255))
+    connectionRequestUsername: 128, // maxCRUserLen (kolom VARCHAR(128))
+    connectionRequestPassword: 128, // maxCRPassLen — batas input plaintext; disimpan terenkripsi (VARBINARY)
+  },
+  firmware: {
+    version: 64, // firmware_files.version VARCHAR(64)
+    // release_notes TEXT (tanpa batas kolom praktis) tapi dibatasi di aplikasi
+    // (internal/delivery/http/firmware_handler.go checkMaxLen) agar konsisten
+    // antara upload & edit — sebelumnya form di sini pakai 5000, backend 4000
+    // (submit >4000 ditolak 400 setelah user mengetik panjang).
+    releaseNotes: 4000,
+  },
   // Kolom `description VARCHAR(255)` dipakai di banyak tabel (ref_vendors,
   // device_models, vendor_parameter_mappings, provisioning_profiles,
   // webhook_subscriptions) — satu konstanta untuk semuanya.

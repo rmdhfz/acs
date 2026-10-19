@@ -131,6 +131,16 @@ type Config struct {
 	XenditBaseURL string
 	// BillingInvoiceHours — masa berlaku invoice sebelum kedaluwarsa (jam, 1..168).
 	BillingInvoiceHours int
+	// DBMaxOpenConns/DBMaxIdleConns/DBConnMaxLifetimeMinutes — ukuran connection
+	// pool mysql.Connect(). Bawaan (50/10/30) dipertahankan sama seperti sebelum
+	// dikonfigurasi; load test 2026-10-18 menemukan throughput plateau ~450-480
+	// sesi/dtk terlepas dari concurrency krn 50 koneksi hardcoded jadi bottleneck
+	// (CPU acsd/MariaDB masih longgar saat idle pasca-tes) — lihat
+	// docs/laporan/PROGRESS.md LANJUTAN 14. Operator produksi/HA yang perlu
+	// menaikkannya kini bisa lewat env tanpa rebuild.
+	DBMaxOpenConns           int
+	DBMaxIdleConns           int
+	DBConnMaxLifetimeMinutes int
 }
 
 func Load() (*Config, error) {
@@ -141,6 +151,16 @@ func Load() (*Config, error) {
 	}
 	if cfg.DBDSN == "" {
 		return nil, fmt.Errorf("config: ACS_DB_DSN wajib diisi")
+	}
+	var err error
+	if cfg.DBMaxOpenConns, err = strconv.Atoi(getEnv("ACS_DB_MAX_OPEN_CONNS", "50")); err != nil || cfg.DBMaxOpenConns < 1 || cfg.DBMaxOpenConns > 10000 {
+		return nil, fmt.Errorf("config: ACS_DB_MAX_OPEN_CONNS harus bilangan 1..10000")
+	}
+	if cfg.DBMaxIdleConns, err = strconv.Atoi(getEnv("ACS_DB_MAX_IDLE_CONNS", "10")); err != nil || cfg.DBMaxIdleConns < 0 || cfg.DBMaxIdleConns > cfg.DBMaxOpenConns {
+		return nil, fmt.Errorf("config: ACS_DB_MAX_IDLE_CONNS harus bilangan 0..ACS_DB_MAX_OPEN_CONNS")
+	}
+	if cfg.DBConnMaxLifetimeMinutes, err = strconv.Atoi(getEnv("ACS_DB_CONN_MAX_LIFETIME_MINUTES", "30")); err != nil || cfg.DBConnMaxLifetimeMinutes < 1 || cfg.DBConnMaxLifetimeMinutes > 1440 {
+		return nil, fmt.Errorf("config: ACS_DB_CONN_MAX_LIFETIME_MINUTES harus bilangan 1..1440")
 	}
 
 	cfg.JWTSecret = []byte(os.Getenv("ACS_JWT_SECRET"))

@@ -104,7 +104,7 @@ Semua yang dapat diverifikasi di lab sudah ditutup. Sisanya **tidak bisa saya bu
 |---|:--:|---|
 | Otorisasi & isolasi (OWASP A01) | ✅ 1 | audit + perbaikan; impersonate dibatasi SUPERADMIN, aksi sensitif diblokir |
 | Autentikasi & manajemen sesi (A07) | ✅ 1 | JWT ber-`purpose`, MFA, lockout bersama, WS dicek ulang, pesan seragam |
-| Validasi input & SQL aman (A03) | 🟡 0,9 | parameter terikat; **audit validasi read-only + perbaikan**: query-string rusak → 400, batas jumlah/ukuran parameter task/preset/Inform, isi Inform CPE divalidasi, unggahan divalidasi sebelum streaming, kebijakan password satu pintu; e2e S24. Sisa: strict-decode JSON, kuota storage, transfer kepemilikan pra-registrasi (T4) |
+| Validasi input & SQL aman (A03) | 🟢 0,95 | parameter terikat; **audit validasi read-only + perbaikan**: query-string rusak → 400, batas jumlah/ukuran parameter task/preset/Inform, isi Inform CPE divalidasi, unggahan divalidasi sebelum streaming, kebijakan password satu pintu; e2e S24. **2026-10-19: strict-decode JSON** (`StrictJSONSerializer`, `restEcho` — field asing & sampah di belakang nilai JSON ditolak 400 alih-alih diam-diam diabaikan; CWMP/USP tidak tersentuh, pakai XML/SOAP), diverifikasi e2e 27/27 + `-race`. Sisa: kuota storage, transfer kepemilikan pra-registrasi (T4) |
 | Kredensial terenkripsi, rahasia disamarkan | 🟡 0,9 | tenant/CR/TOTP/nilai Preset & Profil AES-GCM; respons task disamarkan; nilai yang *dilaporkan CPE* (`device_parameters`) masih plaintext di DB (disamarkan di API) |
 | Rate limit & anti brute-force | ✅ 1 | per-IP (REST `ACS_REST_RATE_LIMIT` bawaan 100/dtk, CWMP) + pembatas ketat login/MFA/reset/signup + lockout + terdistribusi (Redis) |
 | TLS (REST & CWMP) | 🟡 0,75 | overlay Caddy diuji fungsional (sertifikat internal); Let's Encrypt & CPE nyata belum |
@@ -125,7 +125,7 @@ Semua yang dapat diverifikasi di lab sudah ditutup. Sisanya **tidak bisa saya bu
 | Health/readiness endpoint | ✅ 1 | `/healthz`, `/readyz` (DB mati → 503, pulih sendiri); healthcheck compose |
 | Multi-instance/HA | 🟡 0,9 | `ACS_HA`: fan-out WS, rate limit, kunci leader sweeper; diuji 2 `acsd` nyata; belum uji beban multi-instance/chaos |
 | Reverse proxy TLS siap pakai di repo | 🟡 0,9 | `docker-compose.tls.yml` + Caddyfile, diuji fungsional |
-| Skala: load test kapasitas | 🟡 0,75 | ~550–620 sesi/dtk, p95 99 ms @50; minimal Inform, satu instance, laptop |
+| Skala: load test kapasitas | 🟡 0,8 | Diukur ulang 2026-10-18 (`cmd/loadtest`, satu instance, laptop): p95 **memenuhi target <300ms** sampai concurrency ≈100 (p95 231ms @100); di atas itu p95 melebihi target karena antrean, **bukan error** (0 gagal sampai concurrency 1000). Throughput **plateau ~450–480 sesi/dtk** berapa pun concurrency-nya — akar penyebab: `db.SetMaxOpenConns(50)`, bukan CPU (acsd 36%, MariaDB 54% saat idle pasca-tes). **2026-10-19: dijadikan configurable** (`ACS_DB_MAX_OPEN_CONNS`/`_MAX_IDLE_CONNS`/`_CONN_MAX_LIFETIME_MINUTES`, bawaan tetap 50/10/30 — lihat RUNBOOK §J); belum diukur ulang dengan nilai dinaikkan untuk konfirmasi throughput naik. Minimal Inform saja, satu instance; belum multi-instance/HA, belum profil RPC penuh |
 | Orkestrasi (K8s/helm), autoscaling | ❌ 0 | belum; probe `/healthz` `/readyz` sudah siap dipakai |
 | Runbook insiden & panduan operasional | ✅ 1 | RUNBOOK §F–L (+ variabel lingkungan baru) + buku panduan |
 
@@ -138,7 +138,7 @@ Semua yang dapat diverifikasi di lab sudah ditutup. Sisanya **tidak bisa saya bu
 | E2E 26 skenario (simulator) | ✅ 1 | 26/26 (S25 UDP CR + RPC CPE, S26 fitur Console & IDOR) |
 | Uji CPE fisik (≥1 per vendor) | ❌ 0 | BELUM — UAT Rabu |
 | Uji frontend otomatis | 🟢 0,85 | Vitest 76 tes (menu, dialog, banner galat, portal, Billing, pengelola menu, gerbang batas input) + audit axe 136 tampilan; belum alur UI end-to-end terhadap backend di CI |
-| Dokumentasi API OpenAPI + Postman | ✅ 1 | 171 operasi, redocly lint valid (8 peringatan lama); koleksi Postman belum diregenerasi |
+| Dokumentasi API OpenAPI + Postman | ✅ 1 | 172 operasi, redocly lint valid (8 peringatan lama, by design); spec sudah 1:1 dgn `router.go` (diaudit dua arah 2026-10-19, 0 drift path/method/payload). **Koleksi Postman diregenerasi** 2026-10-19 (sempat stale di 147 request sejak sebelum endpoint menu-layout/bug-reports/data-transfers ditambahkan) → kini 172 request, `_postman_id` dipertahankan |
 | Audit keamanan/kualitas | ✅ 1 | beberapa audit review + perbaikan (bukan pentest manusia independen) |
 
 ### G. Aspek SaaS komersial — 67% (bobot 10)

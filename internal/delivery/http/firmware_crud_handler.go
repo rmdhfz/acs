@@ -15,6 +15,13 @@ import (
 // maxFirmwareVersion — firmware_files.version VARCHAR(64) NOT NULL.
 const maxFirmwareVersion = 64
 
+// maxFirmwareReleaseNotes — firmware_files.release_notes TEXT (kolom tanpa
+// batas praktis), tapi dibatasi di aplikasi agar konsisten dgn uploadFirmware
+// (lihat firmware_handler.go) — sebelumnya PATCH tidak membatasi sama sekali
+// sementara upload membatasi 4000, jadi edit bisa menyimpan nilai yang
+// upload tidak akan pernah terima.
+const maxFirmwareReleaseNotes = 4000
+
 func (r *Router) getFirmware(c *echo.Context) error {
 	id, err := parseUint64Param(c, "id")
 	if err != nil {
@@ -45,7 +52,10 @@ func (r *Router) updateFirmware(c *echo.Context) error {
 	if req.Version == nil && req.ReleaseNotes == nil && req.IsActive == nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "minimal satu field (version, release_notes, is_active) harus diisi")
 	}
-	if err := checkMaxLen(lenRule{"version", optStr(req.Version), maxFirmwareVersion}); err != nil {
+	if err := checkMaxLen(
+		lenRule{"version", optStr(req.Version), maxFirmwareVersion},
+		lenRule{"release_notes", optStr(req.ReleaseNotes), maxFirmwareReleaseNotes},
+	); err != nil {
 		return err
 	}
 	f, err := r.Firmware.UpdateFirmware(c.Request().Context(), ActorFrom(c), id, firmware.UpdateFirmwareInput(req))

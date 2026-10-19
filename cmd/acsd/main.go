@@ -75,7 +75,7 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: parseLogLevel(cfg.LogLevel)}))
 	slog.SetDefault(logger)
 
-	db, err := mysql.Connect(cfg.DBDSN)
+	db, err := mysql.ConnectWithPool(cfg.DBDSN, cfg.DBMaxOpenConns, cfg.DBMaxIdleConns, time.Duration(cfg.DBConnMaxLifetimeMinutes)*time.Minute)
 	if err != nil {
 		log.Fatalf("db: %v", err)
 	}
@@ -296,6 +296,11 @@ func main() {
 
 	// ---- REST API internal (BSS/OSS, portal NOC) ----
 	restEcho := echo.New()
+	// Strict-decode: field asing di body JSON ditolak 400 alih-alih diam-diam
+	// diabaikan (audit R9, CHECKLIST_SAAS.md §D) — lihat
+	// internal/delivery/http/strict_json.go. Endpoint CWMP/USP pakai XML/SOAP,
+	// tidak lewat JSONSerializer ini (dipasang di cwmpEcho terpisah di bawah).
+	restEcho.JSONSerializer = deliveryhttp.StrictJSONSerializer{}
 	restEcho.Use(middleware.Recover())
 	setClientIPExtractor(restEcho, cfg.TrustedProxies)
 	restEcho.Use(redactingRequestLogger(logger))
