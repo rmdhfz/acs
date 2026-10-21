@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Laporan UAT ACS — 21 Oktober 2026</title>
+<style>
+  @page { size: A4; margin: 16mm 14mm 16mm 14mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; font-size: 10.5pt; line-height: 1.45; color: #0f172a; margin: 0; }
+  h1 { font-size: 22pt; margin: 0 0 4px; letter-spacing: -0.3px; }
+  h2 { font-size: 14pt; margin: 22px 0 8px; padding-bottom: 4px; border-bottom: 2px solid #1e293b; break-after: avoid; }
+  h3 { font-size: 11.5pt; margin: 16px 0 6px; break-after: avoid; }
+  p { margin: 6px 0; }
+  code { font-family: Consolas, "Courier New", monospace; font-size: 9pt; background: #f1f5f9; padding: 0 3px; border-radius: 3px; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0 12px; font-size: 9.2pt; }
+  th, td { border: 1px solid #cbd5e1; padding: 4px 6px; vertical-align: top; text-align: left; }
+  th { background: #e2e8f0; font-weight: 600; }
+  tr { break-inside: avoid; }
+  td.c, th.c { text-align: center; }
+  td.nw { white-space: nowrap; }
+  .meta td:first-child { width: 28%; background: #f8fafc; font-weight: 600; }
+  .cover { border-left: 6px solid #4f46e5; padding: 4px 0 4px 14px; margin-bottom: 14px; }
+  .cover .sub { color: #475569; font-size: 11pt; }
+  .verdict { border: 2px solid #f59e0b; background: #fffbeb; border-radius: 8px; padding: 10px 14px; margin: 12px 0; break-inside: avoid; }
+  .verdict strong.t { display: block; font-size: 11.5pt; margin-bottom: 4px; }
+  .st { display: inline-block; margin-right: 4px; font-weight: 700; }
+  .kpi { display: flex; gap: 8px; margin: 10px 0; }
+  .kpi div { flex: 1; border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 10px; text-align: center; break-inside: avoid; }
+  .kpi b { display: block; font-size: 20pt; line-height: 1.1; }
+  .kpi span { font-size: 8.5pt; color: #475569; }
+  .kpi .ok b { color: #047857; } .kpi .warn b { color: #b45309; } .kpi .bad b { color: #b91c1c; } .kpi .todo b { color: #475569; }
+  tr.f-bad td { background: #fef2f2; } tr.f-warn td { background: #fffbeb; }
+  tr.extra td { color: #475569; font-style: italic; }
+  ul, ol { margin: 6px 0 6px 20px; padding: 0; } li { margin: 2px 0; }
+  .todo-list li { list-style: none; margin-left: -18px; } .todo-list li::before { content: "☐ "; }
+  .note { font-size: 9pt; color: #475569; }
+  .pb { break-before: page; }
+  footer.end { margin-top: 20px; padding-top: 8px; border-top: 1px solid #cbd5e1; font-size: 8.5pt; color: #64748b; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <h1>Laporan Pengujian UAT</h1>
+  <div class="sub">ACS multi-vendor (TR-069/CWMP) — uji pertama ke ONT fisik · Rabu, 21 Oktober 2026</div>
+</div>
+
+<table class="meta">
+  <tr><td>Penguji</td><td>Hafiz Ramadhan (operator ACS), dibantu Claude Code untuk perbaikan dan pencatatan</td></tr>
+  <tr><td>Sistem yang diuji</td><td>ACS Console + endpoint CWMP (Go, MariaDB), cabang <code>dev</code> — basis kode commit <code>d07a948</code>, skema database versi 36</td></tr>
+  <tr><td>Perangkat</td><td>3 ONT fisik (root TR-098): ZTE F660, ZTE F609, Optictimes RXP4-AC1200; semuanya ProvisioningCode <code>TLCO.GRP2</code> (Telkom)</td></tr>
+  <tr><td>Lingkungan</td><td>ACS di laptop (Docker Desktop); tenant uji <code>DEPOK UAT</code>; ONT diarahkan ke ACS ini dengan Periodic Inform 300 detik</td></tr>
+  <tr><td>Acuan test case</td><td>Checklist 55 test case (<code>CHECKLIST_UAT_ZTE_F609.xlsx</code>); hasil sistem otomatis di <code>PENGUJIAN_E2E.md</code></td></tr>
+  <tr><td>Dasar bukti</td><td>Task <code>COMPLETED</code> di database, tangkapan layar, log, dan hasil tes otomatis yang dijalankan pada sesi ini. Yang tidak punya bukti ditandai ⏳ (belum diuji), bukan lulus</td></tr>
+</table>
+
+<h2>1. Kesimpulan</h2>
+<div class="verdict">
+  <strong class="t">Layak melanjutkan UAT dengan syarat — belum layak dinyatakan lulus penuh.</strong>
+  Jalur inti CWMP (ONT terhubung → ACS membaca konfigurasi → ACS mengubah konfigurasi) <b>terbukti pada ONT nyata</b>, termasuk satu
+  bug protokol yang hanya muncul di firmware asli dan sudah diperbaiki. Namun yang terbukti menulis ke ONT baru <b>SSID dan password pada
+  ZTE F660</b> serta <b>reboot</b>; redaman optik ZTE, uji tulis lanjutan (aktif/nonaktif, Hide, Max Clients), dan uji tulis pada F609 serta
+  Optictimes <b>belum dilakukan</b>. Lingkungan uji juga belum dipulihkan (lihat bagian 6).
+</div>
+
+<div class="kpi">
+  <div class="ok"><b>27</b><span>test case lulus (49%)</span></div>
+  <div class="warn"><b>12</b><span>lulus dengan catatan (22%)</span></div>
+  <div class="bad"><b>3</b><span>gagal / belum berfungsi</span></div>
+  <div class="todo"><b>11</b><span>belum diuji (20%)</span></div>
+  <div class="todo"><b>2</b><span>tidak relevan</span></div>
+</div>
+
+<h3>Yang terbukti di ONT fisik</h3>
+<table>
+  <thead><tr><th>Kemampuan</th><th>Hasil</th><th>Keterangan</th></tr></thead>
+  <tbody>
+    <tr><td>Inform dari ONT fisik</td><td><span class="st ok">✅</span></td><td>3 ONT tercatat di tenant <code>DEPOK UAT</code>; vendor ZTE dikenali otomatis; event <code>0 BOOTSTRAP</code>, <code>1 BOOT</code>, <code>2 PERIODIC</code>, <code>4 VALUE CHANGE</code>, <code>M Reboot</code> tersimpan persis</td></tr>
+    <tr><td>Baca SSID, klien WiFi, username PPPoE</td><td><span class="st ok">✅</span></td><td>4 SSID F660 beserta klien tersambung (nama, IP, MAC, RSSI); username PPPoE tampil di daftar perangkat</td></tr>
+    <tr><td>Ubah SSID dan password</td><td><span class="st ok">✅</span></td><td>ZTE F660, dikonfirmasi pengguna — <b>setelah</b> perbaikan bug protokol T-07</td></tr>
+    <tr><td>Reboot dari ACS</td><td><span class="st ok">✅</span></td><td>ZTE F660: task <code>COMPLETED</code>, Inform <code>1 BOOT</code> setelahnya</td></tr>
+    <tr><td>Refresh ONT (Connection Request, tanpa reboot)</td><td><span class="st ok">✅</span></td><td>Optictimes OPTIF600C9E0 pukul 14.14 dan 14.15 WIB: event <code>6 CONNECTION REQUEST</code>, ONT online dan task selesai. F660/F609 belum diuji kirim</td></tr>
+    <tr><td>Redaman optik ZTE</td><td><span class="st bad">❌</span></td><td>Path TR-098 vendor-extension belum ditemukan dari ONT; alat penemuannya sudah dibuat tetapi belum dijalankan di ONT (T-10)</td></tr>
+    <tr><td>Aktif/nonaktif SSID, Hide, Max Clients, Isolation, Priority</td><td><span class="st todo">⏳</span></td><td>Fitur ada dan lulus tes otomatis; belum dicoba di ONT fisik. Isolation/Priority tidak dilaporkan F660</td></tr>
+  </tbody>
+</table>
+
+<h2>2. Rekap hasil per kategori</h2>
+<table>
+  <thead><tr><th>Kategori</th><th class="c">✅ Lulus</th><th class="c">⚠️ Catatan</th><th class="c">❌ Gagal</th><th class="c">⏳ Belum</th><th class="c">➖ N/A</th><th class="c">Jumlah</th></tr></thead>
+  <tbody><tr><td>A. Persiapan</td><td class="c">9</td><td class="c">4</td><td class="c">0</td><td class="c">1</td><td class="c">0</td><td class="c">14</td></tr><tr><td>B. Koneksi (Inform)</td><td class="c">7</td><td class="c">3</td><td class="c">0</td><td class="c">0</td><td class="c">0</td><td class="c">10</td></tr><tr><td>C. Baca-saja</td><td class="c">2</td><td class="c">1</td><td class="c">2</td><td class="c">2</td><td class="c">0</td><td class="c">7</td></tr><tr><td>D. Connection Request</td><td class="c">2</td><td class="c">1</td><td class="c">0</td><td class="c">2</td><td class="c">1</td><td class="c">6</td></tr><tr><td>E. Tulis</td><td class="c">2</td><td class="c">0</td><td class="c">0</td><td class="c">2</td><td class="c">1</td><td class="c">5</td></tr><tr><td>F. Keamanan &amp; isolasi</td><td class="c">3</td><td class="c">1</td><td class="c">0</td><td class="c">1</td><td class="c">0</td><td class="c">5</td></tr><tr><td>G. Stabilitas &amp; observasi</td><td class="c">1</td><td class="c">1</td><td class="c">0</td><td class="c">3</td><td class="c">0</td><td class="c">5</td></tr><tr><td>H. Pemulihan</td><td class="c">1</td><td class="c">1</td><td class="c">1</td><td class="c">0</td><td class="c">0</td><td class="c">3</td></tr><tr><td><strong>Total</strong></td><td class="c"><strong>27</strong></td><td class="c"><strong>12</strong></td><td class="c"><strong>3</strong></td><td class="c"><strong>11</strong></td><td class="c"><strong>2</strong></td><td class="c"><strong>55</strong></td></tr></tbody>
+</table>
+
+<h3>Uji otomatis (di luar perangkat fisik, simulator CPE)</h3>
+<table>
+  <thead><tr><th>Uji</th><th>Hasil</th></tr></thead>
+  <tbody>
+    <tr><td><code>go build</code>, <code>go vet</code>, <code>go test ./...</code> (termasuk integrasi MariaDB nyata)</td><td><span class="st ok">✅</span> seluruh paket lulus</td></tr>
+    <tr><td>e2e <code>cmd/e2e</code> — 28 skenario dengan simulator CPE multi-vendor</td><td><span class="st ok">✅</span> 28 lulus · 0 gagal · 0 dilewati (run terakhir, setelah semua perubahan hari ini)</td></tr>
+    <tr><td>Frontend: <code>tsc</code> dan vitest</td><td><span class="st ok">✅</span> 157 tes lulus (33 berkas)</td></tr>
+    <tr><td>OpenAPI lint, paritas API frontend↔backend</td><td><span class="st ok">✅</span> spec valid (176 operation) · 171 dari 171 endpoint dipakai frontend, 0 panggilan yatim</td></tr>
+    <tr><td>Validasi migrasi di MariaDB nyata (up → down → up, <code>schema.sql</code>)</td><td><span class="st ok">✅</span> migrasi 0035 dan 0036</td></tr>
+  </tbody>
+</table>
+<p class="note"><b>Batas klaim:</b> simulator bukan firmware nyata. Lulus di simulator berarti alur ACS benar; itu <b>bukan</b> bukti kompatibilitas ONT.</p>
+
+<h2 class="pb">3. Temuan dan tindak lanjut</h2>
+<p>22 temuan: <b>12</b> sudah diperbaiki, <b>4</b> diperbaiki/diatasi sebagian atau butuh tindakan lingkungan, <b>1</b> belum diselesaikan dan berisiko, <b>5</b> menunggu uji lanjutan.</p>
+<table>
+  <thead><tr><th>#</th><th>Temuan</th><th>Dampak</th><th>Status</th></tr></thead>
+  <tbody><tr class="f-ok"><td class="nw"><strong>T-01</strong></td><td> Docker Desktop mati saat sesi dimulai </td><td> stack tidak jalan </td><td><span class="st ok">✅</span> diatasi</td></tr><tr class="f-ok"><td class="nw"><strong>T-02</strong></td><td> Image <code>acsd</code> basi (dibangun sebelum commit terakhir) </td><td> yang diuji bukan kode terbaru </td><td><span class="st ok">✅</span> rebuild</td></tr><tr class="f-warn"><td class="nw"><strong>T-03</strong></td><td> <strong>Windows Firewall dimatikan total</strong> untuk uji </td><td> laptop terbuka </td><td><span class="st warn">⚠️</span> <strong>Nyalakan lagi</strong> + rule <code>TCP 17547</code> (perintah ada di sesi)</td></tr><tr class="f-warn"><td class="nw"><strong>T-04</strong></td><td> IP laptop berubah antar-jaringan </td><td> ACS URL di ONT jadi salah </td><td><span class="st warn">⚠️</span> gunakan IP tetap/reservasi</td></tr><tr class="f-ok"><td class="nw"><strong>T-05</strong></td><td> ONT tak punya rute ke laptop </td><td> Inform tak masuk </td><td><span class="st ok">✅</span> static route di router</td></tr><tr class="f-ok"><td class="nw"><strong>T-06</strong></td><td> IP sumber terbaca <code>172.21.0.1</code> (NAT Docker) → CR URL tak tersimpan </td><td> "Percepat" nonaktif; CR tak jalan otomatis </td><td><span class="st ok">✅</span> <strong>diperbaiki</strong>: opt-in <code>ACS_CR_TRUSTED_CIDRS</code> (default ketat; hanya literal IP di rentang tepercaya &amp; lolos netguard). Terbukti di F609. Tinggal isi kredensial CR ONT di Device Detail untuk uji kirim CR</td></tr><tr class="f-ok"><td class="nw"><strong>T-07</strong></td><td> <strong>SetParameterValues → Fault 9002</strong> pada ZTE F660 </td><td> tidak bisa ubah apa pun </td><td><span class="st ok">✅</span> <strong>diperbaiki</strong>: atribut tipe XML <code>_XMLSchema-instance:type</code> → <code>xsi:type</code> literal (commit <code>fix(cwmp)</code>); lulus e2e &amp; ONT nyata</td></tr><tr class="f-ok"><td class="nw"><strong>T-08</strong></td><td> ParameterKey 36 karakter (batas TR-069: 32) </td><td> potensi tolak di firmware ketat </td><td><span class="st ok">✅</span> diperbaiki (32 hex)</td></tr><tr class="f-ok"><td class="nw"><strong>T-09</strong></td><td> Optictimes tampil "Belum dikenal" (OUI <code>9028F6</code> tak ada di katalog) </td><td> vendor/model kosong </td><td><span class="st ok">✅</span> migrasi 0035 (vendor + OUI + model RXP4-AC1200/F609/F660) + fitur <strong>Tetapkan vendor</strong> di Console. <strong>Catatan:</strong> IEEE mendaftarkan 9028F6 atas *Wuhan Yangtze Optical Technology Co.,Ltd.*, bukan "Optictimes" — pemetaan berdasarkan ONT fisik; mohon konfirmasi</td></tr><tr class="f-todo"><td class="nw"><strong>T-10</strong></td><td> Path redaman optik ZTE TR-098 belum dipetakan </td><td> kolom/tab Redaman kosong </td><td><span class="st todo">⏳</span> <strong>alat bantu sudah dibuat</strong> (asisten sumber redaman optik di tab Redaman Optik); path ZTE/Optictimes <strong>belum ditemukan</strong> dari ONT — jalankan asisten lalu cocokkan dengan GUI ONT</td></tr><tr class="f-todo"><td class="nw"><strong>T-11</strong></td><td> Isolation &amp; Priority tidak dilaporkan F660 di cabang WLAN </td><td> tidak bisa diatur </td><td><span class="st todo">⏳</span> tombol "Cari pengaturan lanjutan" menelusuri cabang lain; path <strong>tidak ditebak</strong></td></tr><tr class="f-ok"><td class="nw"><strong>T-12</strong></td><td> <code>tasks.parameters</code> menyimpan password WiFi plaintext (hanya diredaksi di API untuk non-ADMIN) </td><td> rahasia tersimpan di DB </td><td><span class="st ok">✅</span> <strong>diperbaiki</strong> untuk task baru: nilai sensitif dienkripsi (<code>enc:v1:</code>), dibuka saat dikirim; API tak pernah mengembalikannya (semua role). <strong>Sisa:</strong> task lama (mis. 887) masih plaintext — belum ada backfill</td></tr><tr class="f-ok"><td class="nw"><strong>T-13</strong></td><td> Log WARN <code>Inform ditolak (unauthorized)</code> tiap Inform (ONT mencoba tanpa kredensial dulu) </td><td> kebisingan log, menyamarkan penolakan sungguhan </td><td><span class="st ok">✅</span> <strong>diperbaiki</strong>: percobaan tanpa kredensial = DEBUG; kredensial salah tetap WARN</td></tr><tr class="f-bad"><td class="nw"><strong>T-14</strong></td><td> Ketiga ONT masih diarahkan ke ACS ini; ACS Telkom (<code>acs.telkom.net:9090</code>) tidak mengelolanya </td><td> layanan yang dikelola Telkom bisa terganggu </td><td><span class="st bad">❌</span> <strong>kembalikan sebelum selesai</strong> (RST-01); pastikan password ACS Telkom diketahui</td></tr><tr class="f-todo"><td class="nw"><strong>T-15</strong></td><td> Akun <code>e2e-super</code> memakai password uji yang tertulis di dokumen </td><td> risiko bila ACS diekspos </td><td><span class="st todo">⏳</span> ganti/nonaktifkan</td></tr><tr class="f-todo"><td class="nw"><strong>T-16</strong></td><td> Fault <code>9002</code> pada task Ping (<code>882</code>) terjadi sebelum perbaikan T-07 </td><td> belum tahu apakah Ping sekarang berhasil </td><td><span class="st todo">⏳</span> klik <strong>Coba lagi</strong> pada task itu</td></tr><tr class="f-warn"><td class="nw"><strong>T-17</strong></td><td> <strong>Laptop masuk Modern Standby 12.22–13.00</strong> (idle timeout) → ACS tak terjangkau, ketiga ONT tampak OFFLINE saat sesi lanjutan dimulai; setelah bangun, ONT baru Inform lagi menurut jeda retry-nya (F609 13.30; F660 &amp; Optictimes belum) </td><td> uji tersendat; bukan bug ACS </td><td><span class="st warn">⚠️</span> matikan sleep selama UAT: <code>powercfg /change standby-timeout-ac 0</code> (dan <code>monitor-timeout</code>); reboot ONT untuk mempercepat Inform</td></tr><tr class="f-ok"><td class="nw"><strong>T-18</strong></td><td> Tampilan WiFi Optictimes: band "-", channel 0, "6d lalu" ambigu; ONT tak punya <code>SSIDAdvertisementEnabled</code> (hide lewat <code>X_CT-COM_SSIDHide</code>) </td><td> informasi menyesatkan; tombol Hide bisa menulis path yang tak ada </td><td><span class="st ok">✅</span> <strong>diperbaiki</strong> (data nyata): band dari ChannelsInUse/Standard, channel "11 (auto)", hide mengikuti parameter yang DILAPORKAN ONT (standar terbalik / vendor langsung), waktu "dtk/mnt/jam/hari". Isolasi standar (<code>IsolationEnable</code>) &amp; <code>MaxUserNum</code> Optictimes terdeteksi otomatis</td></tr><tr class="f-todo"><td class="nw"><strong>T-19</strong></td><td>Console <code>localhost:5173</code> tidak bisa dibuka saat VPN aktif: dev server Vite hanya mendengarkan <code>::1</code>, sementara browser di bawah VPN me-resolve <code>localhost</code> ke 127.0.0.1</td><td>pengujian lewat UI terhenti selama VPN aktif</td><td><span class="st todo">⏳</span> jalan keluar: buka <code>http://[::1]:5173</code>. Perbaikan permanen (ikat server ke <code>127.0.0.1</code>) <strong>belum diterapkan</strong></td></tr><tr class="f-ok"><td class="nw"><strong>T-20</strong></td><td>Halaman Langganan &amp; Tagihan tanpa padding (konten menempel di sidebar, kolom kanan terpotong pada zoom browser)</td><td>tampilan rusak</td><td><span class="st ok">✅</span> <strong>diperbaiki</strong> (commit <code>169e1e6</code>)</td></tr><tr class="f-warn"><td class="nw"><strong>T-21</strong></td><td>Setiap run e2e menambah data uji (tenant, perangkat simulator, paket "S23 uji") yang ikut tampil di Console</td><td>daftar perangkat/paket tercemar data uji</td><td><span class="st warn">⚠️</span> paket uji kini dihapus e2e sendiri (fitur hapus paket, <code>98583c8</code>); perangkat &amp; tenant uji masih dibersihkan <strong>manual</strong> dengan skrip ber-backup — otomatisasi belum ada</td></tr><tr class="f-ok"><td class="nw"><strong>T-22</strong></td><td>Panel Riwayat Konfigurasi tampak "belum muncul": perbandingan butuh dua snapshot tetapi pesan tidak menjelaskan; dua snapshot identik menampilkan tabel kosong</td><td>terlihat seperti bug</td><td><span class="st ok">✅</span> <strong>diperbaiki</strong> (commit <code>8f4b47e</code>)</td></tr></tbody>
+</table>
+
+<h3>Temuan yang paling penting</h3>
+<ul>
+  <li><b>T-07 — Fault 9002 pada SetParameterValues (ZTE F660).</b> Akar masalah: pustaka XML menulis atribut tipe sebagai <code>_XMLSchema-instance:type</code>; firmware ketat menolaknya. Diperbaiki menjadi <code>xsi:type</code> literal, lulus di e2e dan di ONT nyata. Pelajaran: XML yang sah secara namespace belum tentu diterima firmware.</li>
+  <li><b>T-14 — Ketiga ONT masih diarahkan ke ACS ini.</b> ACS Telkom tidak mengelolanya selama itu; harus dikembalikan sebelum UAT ditutup.</li>
+  <li><b>T-03 — Windows Firewall dimatikan total</b> selama uji. Harus dinyalakan lagi dengan rule khusus TCP 17547.</li>
+  <li><b>T-12 — Password WiFi tersimpan plaintext di database</b> untuk task. Task baru kini dienkripsi; task lama belum di-backfill.</li>
+</ul>
+
+<h2>4. Perbaikan dan fitur yang diselesaikan hari ini</h2>
+<p>32 commit terarah di cabang <code>dev</code> (belum di-push). Pengelompokan:</p>
+<ul>
+  <li><b>Protokol:</b> <code>xsi:type</code> literal; <code>ParameterKey</code> ≤ 32 karakter; rincian fault per parameter di pesan error task; Connection Request otomatis di balik NAT (opt-in <code>ACS_CR_TRUSTED_CIDRS</code>, tetap anti-SSRF); nilai rahasia task dienkripsi; log WARN "unauthorized" yang berisik dihilangkan.</li>
+  <li><b>Console — perangkat:</b> tab WiFi lengkap (semua SSID, klien, aktif/nonaktif, ubah SSID/password, Hide, Max Clients, Isolation/Priority bila dilaporkan ONT); halaman Overview; kolom Model, Redaman, dan Username PPPoE di daftar; "Segarkan data"; "Refresh ONT" tanpa reboot; "Tetapkan vendor" untuk merek yang belum dikenal; filter daftar menurut level redaman dan vendor belum dikenal.</li>
+  <li><b>Task:</b> ringkasan "apa yang dikerjakan" dan tombol <b>Coba lagi</b> pada task yang sama.</li>
+  <li><b>Redaman optik:</b> asisten penemuan sumber optik (path tidak ditebak: kandidat dikenali dari parameter yang benar-benar dilaporkan ONT, dipetakan per model oleh SUPERADMIN); penyegaran PPPoE berkala; notifikasi <code>OPTICAL_ALERT</code> (waspada di bawah −25 dBm, kritis di bawah −27 atau di atas −8 dBm) dan webhook <code>DEVICE_FAULT</code>.</li>
+  <li><b>Dashboard:</b> wawasan armada — mode PON, kualitas optik RX, suhu ONU, uptime, lama offline — dengan tautan ke daftar perangkat terfilter.</li>
+  <li><b>Data dan katalog:</b> vendor Optictimes beserta OUI dan model (migrasi 0035); jenis notifikasi <code>OPTICAL_ALERT</code> (migrasi 0036); hapus paket langganan (soft delete); <code>value_scale</code> pada API mapping.</li>
+  <li><b>Operasional:</b> pembersihan data uji (backup tersedia), checklist Excel 55 test case, perbaikan tampilan Langganan & Tagihan dan Riwayat Konfigurasi.</li>
+</ul>
+<p class="note">Seluruh fitur tambahan sore hari (asisten optik, filter, peringatan, dashboard) <b>lulus di simulator dan MariaDB nyata, tetapi belum diuji di ONT fisik</b>.</p>
+
+<h2>5. Belum diuji dan risiko terbuka</h2>
+<ul>
+  <li><b>Uji tulis lanjutan di ONT fisik:</b> aktif/nonaktif SSID, Hide SSID, Max Clients, pengembalian SSID asli, ubah interval Inform.</li>
+  <li><b>Uji tulis di F609 dan Optictimes</b> — belum pernah.</li>
+  <li><b>Connection Request ke ZTE F660/F609</b> (biasanya meminta Digest; kredensial CR belum diisi di ACS) dan penolakan kredensial CR salah.</li>
+  <li><b>Diagnostik Ping</b> — gagal 9002 sebelum perbaikan T-07; belum diulang lewat "Coba lagi" (T-16).</li>
+  <li><b>Redaman optik ZTE</b> dan <b>suhu ONU</b> — dashboard menampilkan "Tidak diketahui" sampai mapping per model ditemukan lewat asisten optik.</li>
+  <li><b>Stabilitas jangka panjang</b> (Periodic Inform berhari-hari), audit trail, sesi tidak menumpuk — belum dinilai.</li>
+  <li><b>Sengaja tidak diuji:</b> factory reset, firmware upgrade, push kredensial PPPoE pelanggan asli, aksi massal ke banyak perangkat, kompatibilitas selain tiga ONT di atas (28 vendor katalog lain masih data awal tanpa uji perangkat).</li>
+  <li><b>Ditunda dengan sengaja:</b> aksi massal tulis dengan pratinjau (berisiko sebelum uji tulis fisik dinyatakan aman) dan ekspor/impor hasil UAT.</li>
+</ul>
+
+<h2>6. Pemulihan lingkungan (wajib sebelum UAT ditutup)</h2>
+<ul class="todo-list">
+  <li>Kembalikan setelan TR-069 <b>ketiga ONT</b> ke ACS Telkom (<code>acs.telkom.net:9090</code>, interval 43200); pastikan password ACS Telkom diketahui lebih dulu (T-14).</li>
+  <li>Nyalakan lagi <b>Windows Firewall</b> dan tambahkan rule masuk khusus TCP 17547 (T-03).</li>
+  <li>Ganti atau nonaktifkan akun <code>e2e-super</code> yang memakai password uji (T-15).</li>
+  <li>Matikan sleep/Modern Standby laptop selama sesi uji berikutnya (T-17); gunakan IP tetap atau reservasi DHCP (T-04).</li>
+  <li>Kembalikan SSID asli ZTE F660 #2 (<code>SSID2</code>, nonaktif) bila perlu (WR-02).</li>
+  <li>Putuskan pembersihan task lama yang masih menyimpan password plaintext (T-12).</li>
+</ul>
+
+<h2>7. Rekomendasi langkah berikutnya</h2>
+<ol>
+  <li>Selesaikan pemulihan lingkungan (bagian 6) — risiko operasional tertinggi.</li>
+  <li>Jalankan <b>asisten sumber redaman optik</b> pada ZTE F660 dan Optictimes (telusuri cabang <code>WANDevice</code>, cocokkan nilai dengan GUI ONT, simpan mapping per model).</li>
+  <li>Ulangi task Ping lewat "Coba lagi", lalu uji tulis bertahap di F660 → F609 → Optictimes, selalu dengan pengembalian nilai asli.</li>
+  <li>Isi kredensial Connection Request ZTE dan uji "Refresh ONT" pada F660/F609.</li>
+  <li>Setelah butir 2–4 terbukti, nilai ulang apakah aksi massal tulis (dengan pratinjau) aman dikerjakan.</li>
+  <li>Putuskan kebijakan data uji e2e: pisahkan lingkungan uji dari lingkungan UAT agar daftar perangkat tidak tercemar.</li>
+</ol>
+
+<h2 class="pb">Lampiran A — Hasil per test case (55 TC)</h2>
+<p class="note">Legenda: ✅ lulus (bukti ada) · ⚠️ lulus dengan catatan / sebagian · ❌ gagal / belum berfungsi · ⏳ belum diuji · ➖ tidak relevan. Baris miring = pengamatan tambahan di luar daftar 55 TC.</p>
+<h3>A. Persiapan</h3><table class="tc"><thead><tr><th>Test case</th><th>Hasil</th><th>Bukti / catatan</th></tr></thead><tbody><tr><td class="nw"> PRE-01 Stack Docker sehat </td><td class="c"><span class="st ok">✅</span></td><td> Docker Desktop awalnya mati → dinyalakan; mariadb/redis/minio/acsd sehat </td></tr><tr><td class="nw"> PRE-02 Health endpoint </td><td class="c"><span class="st ok">✅</span></td><td> <code>/readyz</code> 200 (db ok, redis ok); POST kosong <code>/cwmp</code> → 204 </td></tr><tr><td class="nw"> PRE-03 Versi kode &amp; skema </td><td class="c"><span class="st ok">✅</span></td><td> image <code>acsd</code> ternyata basi → di-rebuild dari HEAD; skema 34 → 35 </td></tr><tr><td class="nw"> PRE-04 Console &amp; login </td><td class="c"><span class="st ok">✅</span></td><td> <code>:5173</code> </td></tr><tr><td class="nw"> PRE-05 Tenant pilot baru </td><td class="c"><span class="st ok">✅</span></td><td> <code>DEPOK UAT</code> </td></tr><tr><td class="nw"> PRE-06 Kredensial CWMP </td><td class="c"><span class="st ok">✅</span></td><td> username <code>depok</code> (password dirotasi setelah uji) </td></tr><tr><td class="nw"> PRE-07 Backup DB </td><td class="c"><span class="st warn">⚠️</span></td><td> backup penuh dibuat <strong>sebelum pembersihan data</strong> (<code>bin/backup_sebelum_bersih_20261021.sql</code>, 14,5 MB), bukan backup pra-UAT bernama standar </td></tr><tr><td class="nw"> PRE-08 IP &amp; firewall </td><td class="c"><span class="st warn">⚠️</span></td><td> IP berubah; firewall dimatikan total (belum diganti rule khusus port 17547) </td></tr><tr><td class="nw"> PRE-09 Gladi jangkauan </td><td class="c"><span class="st ok">✅</span></td><td> 204 via IP LAN laptop; ONT → laptop bisa di-ping setelah firewall dimatikan </td></tr><tr><td class="nw"> PRE-10 Gladi Inform simulator </td><td class="c"><span class="st ok">✅</span></td><td> 200 dgn kredensial benar, 401 salah; 409 pada serial milik tenant lain (perilaku benar) </td></tr><tr><td class="nw"> PRE-11 Gladi Connection Request </td><td class="c"><span class="st todo">⏳</span></td><td> </td></tr><tr><td class="nw"> PRE-12 OUI di katalog </td><td class="c"><span class="st warn">⚠️</span></td><td> OUI ZTE ada; OUI Optictimes <strong>belum ada</strong> → ditambah (T-09) </td></tr><tr><td class="nw"> PRE-13 Rencana rollback </td><td class="c"><span class="st warn">⚠️</span></td><td> setelan awal TR-069 Telkom difoto; konfirmasi password asli ACS Telkom belum </td></tr><tr><td class="nw"> PRE-14 Ping ONT → ACS </td><td class="c"><span class="st ok">✅</span></td><td> berhasil setelah firewall dimatikan (penyebab sebelumnya: firewall) </td></tr></tbody></table><h3>B. Koneksi (Inform)</h3><table class="tc"><thead><tr><th>Test case</th><th>Hasil</th><th>Bukti / catatan</th></tr></thead><tbody><tr><td class="nw"> INF-01 Setelan TR-069 awal </td><td class="c"><span class="st ok">✅</span></td><td> foto: <code>acs.telkom.net:9090</code>, interval 43200 </td></tr><tr><td class="nw"> INF-02 Arahkan ONT ke ACS </td><td class="c"><span class="st ok">✅</span></td><td> 3 ONT </td></tr><tr><td class="nw"> INF-03 Inform pertama muncul </td><td class="c"><span class="st ok">✅</span></td><td> setelah routing + firewall + reboot </td></tr><tr><td class="nw"> INF-04 Vendor teridentifikasi </td><td class="c"><span class="st warn">⚠️</span></td><td> ZTE otomatis ✅; Optictimes ❌ "Belum dikenal" → diperbaiki (T-09) </td></tr><tr><td class="nw"> INF-05 Data model </td><td class="c"><span class="st ok">✅</span></td><td> TR-098 </td></tr><tr><td class="nw"> INF-06 Identitas terbaca </td><td class="c"><span class="st ok">✅</span></td><td> serial, SW, HW; model kosong pada awal → kini terisi (migrasi 0035) </td></tr><tr><td class="nw"> INF-07 Event kode persis </td><td class="c"><span class="st ok">✅</span></td><td> <code>0 BOOTSTRAP</code>, <code>1 BOOT</code>, <code>2 PERIODIC</code>, <code>4 VALUE CHANGE</code>, <code>M Reboot</code> </td></tr><tr><td class="nw"> INF-08 IP sumber &amp; CR URL tersimpan </td><td class="c"><span class="st warn">⚠️</span></td><td> IP sumber tetap terbaca <code>172.21.0.1</code> (NAT Docker), tetapi setelah <code>ACS_CR_TRUSTED_CIDRS=10.0.0.0/8</code> CR URL F609 <strong>tersimpan otomatis</strong> (<code>http://10.0.123.22:58000/…</code>); F660 &amp; Optictimes menyusul pada Inform berikutnya (T-06) </td></tr><tr><td class="nw"> INF-09 Kredensial salah → 401 </td><td class="c"><span class="st ok">✅</span></td><td> lewat simulator </td></tr><tr><td class="nw"> INF-10 Periodic Inform stabil </td><td class="c"><span class="st warn">⚠️</span></td><td> F660 terlihat Inform tiap 5 menit; 3 siklus belum didokumentasikan sistematis </td></tr></tbody></table><h3>C. Baca-saja</h3><table class="tc"><thead><tr><th>Test case</th><th>Hasil</th><th>Bukti / catatan</th></tr></thead><tbody><tr><td class="nw"> RD-01 Refresh pohon </td><td class="c"><span class="st warn">⚠️</span></td><td> GetParameterNames 1× selesai; pohon penuh belum ditelusuri </td></tr><tr><td class="nw"> RD-02 Info perangkat </td><td class="c"><span class="st ok">✅</span></td><td> SW/HW/ProvisioningCode dari Inform </td></tr><tr><td class="nw"> RD-03 SSID &amp; PPPoE </td><td class="c"><span class="st ok">✅</span></td><td> 4 SSID F660 (+ klien tersambung: nama, IP, MAC, RSSI); username PPPoE <code>0010030xxxxx@dukodu.id</code> di daftar </td></tr><tr><td class="nw"> RD-04 Path palsu → Fault 9005 </td><td class="c"><span class="st todo">⏳</span></td><td> lulus di simulator (e2e S5), belum di ONT </td></tr><tr><td class="nw"> RD-05 Redaman optik </td><td class="c"><span class="st bad">❌</span></td><td> tidak terbaca: path optik TR-098 ZTE belum dipetakan (T-10) </td></tr><tr><td class="nw"> RD-06 Snapshot konfigurasi </td><td class="c"><span class="st todo">⏳</span></td><td> </td></tr><tr><td class="nw"> RD-07 Diagnostik Ping </td><td class="c"><span class="st bad">❌</span></td><td> Fault 9002 (penyebab sama dengan T-07); <strong>belum diulang</strong> setelah perbaikan </td></tr></tbody></table><h3>D. Connection Request</h3><table class="tc"><thead><tr><th>Test case</th><th>Hasil</th><th>Bukti / catatan</th></tr></thead><tbody><tr><td class="nw"> CR-01 Kredensial CR diisi </td><td class="c"><span class="st warn">⚠️</span></td><td> belum diisi untuk satu pun ONT; UI kini memandu (banner + konfirmasi) </td></tr><tr><td class="nw"> CR-02 Connection Request ACS → ONT </td><td class="c"><span class="st ok">✅</span></td><td> <strong>Optictimes OPTIF600C9E0</strong> 14.14 &amp; 14.15 WIB: event <code>6 CONNECTION REQUEST</code>, status online, task baca selesai — ONT ini tidak mewajibkan autentikasi CR. F660/F609 (ZTE, biasanya Digest) belum diuji </td></tr><tr><td class="nw"> CR-03 Password CR salah ditolak </td><td class="c"><span class="st todo">⏳</span></td><td> </td></tr><tr><td class="nw"> CR-04 Task terkirim di Inform berikutnya </td><td class="c"><span class="st ok">✅</span></td><td> semua task Set/Get dieksekusi pada Periodic Inform </td></tr><tr><td class="nw"> CR-05 Isi CR URL manual </td><td class="c"><span class="st na">➖</span></td><td> tidak lagi diperlukan: URL tersimpan otomatis (T-06) dan diisi dari parameter saat detail dibuka </td></tr><tr><td class="nw"> CR-06 UDP/STUN </td><td class="c"><span class="st todo">⏳</span></td><td> </td></tr></tbody></table><h3>E. Tulis</h3><table class="tc"><thead><tr><th>Test case</th><th>Hasil</th><th>Bukti / catatan</th></tr></thead><tbody><tr><td class="nw"> WR-01 Ubah SSID </td><td class="c"><span class="st ok">✅</span></td><td> SSID #2 F660 → "Hafiz Ramadhan" dikonfirmasi pengguna (task COMPLETED) </td></tr><tr><td class="nw"> WR-02 Kembalikan SSID asli </td><td class="c"><span class="st todo">⏳</span></td><td> belum dikonfirmasi (SSID asli #2: <code>SSID2</code>, nonaktif) </td></tr><tr><td class="nw"> WR-03 Ubah interval Inform </td><td class="c"><span class="st todo">⏳</span></td><td> </td></tr><tr><td class="nw"> WR-04 Reboot via ACS </td><td class="c"><span class="st ok">✅</span></td><td> F660: task COMPLETED, Inform <code>1 BOOT</code> setelahnya </td></tr><tr><td class="nw"> WR-05 Fault 9006/9007 (tipe) </td><td class="c"><span class="st na">➖</span></td><td> tidak ditemui; yang ditemui 9002 → T-07 </td></tr><tr class="extra"><td> (tambahan) Aktif/nonaktif SSID, Hide, Max Clients </td><td><span class="st todo">⏳</span></td><td> tes otomatis lulus; belum di ONT </td></tr></tbody></table><h3>F. Keamanan &amp; isolasi</h3><table class="tc"><thead><tr><th>Test case</th><th>Hasil</th><th>Bukti / catatan</th></tr></thead><tbody><tr><td class="nw"> SEC-01 Isolasi tenant </td><td class="c"><span class="st warn">⚠️</span></td><td> lulus di e2e (S6); belum diuji dengan akun tenant lain pada ONT </td></tr><tr><td class="nw"> SEC-02 Kredensial tak plaintext </td><td class="c"><span class="st ok">✅</span></td><td> API &amp; UI menutup password; nilai rahasia task baru <strong>dienkripsi</strong> di <code>tasks.parameters</code> (T-12 diperbaiki; task lama sebelum perubahan tetap plaintext). Log acsd belum diperiksa khusus </td></tr><tr><td class="nw"> SEC-03 REST tanpa token </td><td class="c"><span class="st ok">✅</span></td><td> 401 (<code>/devices</code>, <code>/devices/refresh-summary</code>, <code>/tasks/:id/retry</code>) </td></tr><tr><td class="nw"> SEC-04 Rate limit </td><td class="c"><span class="st ok">✅</span></td><td> tidak ada 429 untuk 3 ONT </td></tr><tr><td class="nw"> SEC-05 ENDUSER </td><td class="c"><span class="st todo">⏳</span></td><td> lulus di e2e (S10) </td></tr></tbody></table><h3>G. Stabilitas &amp; observasi</h3><table class="tc"><thead><tr><th>Test case</th><th>Hasil</th><th>Bukti / catatan</th></tr></thead><tbody><tr><td class="nw"> OBS-01 Log acsd bersih </td><td class="c"><span class="st warn">⚠️</span></td><td> ada ERROR fault 9002 (sudah dijelaskan); WARN "unauthorized" tiap Inform sudah dihilangkan (T-13) </td></tr><tr><td class="nw"> OBS-02 Dashboard akurat </td><td class="c"><span class="st ok">✅</span></td><td> status online/offline sesuai </td></tr><tr><td class="nw"> OBS-03 Audit trail </td><td class="c"><span class="st todo">⏳</span></td><td> </td></tr><tr><td class="nw"> OBS-04 Console tanpa error </td><td class="c"><span class="st todo">⏳</span></td><td> </td></tr><tr><td class="nw"> OBS-05 Sesi tidak menumpuk </td><td class="c"><span class="st todo">⏳</span></td><td> </td></tr></tbody></table><h3>H. Pemulihan</h3><table class="tc"><thead><tr><th>Test case</th><th>Hasil</th><th>Bukti / catatan</th></tr></thead><tbody><tr><td class="nw"> RST-01 Kembalikan setelan TR-069 ONT </td><td class="c"><span class="st bad">❌</span></td><td> <strong>belum</strong> (T-14) </td></tr><tr><td class="nw"> RST-02 Bersihkan data uji </td><td class="c"><span class="st ok">✅</span></td><td> 151 tenant sintetis + 19.910 device uji dihapus, integritas relasi diverifikasi (0 yatim); backup tersedia </td></tr><tr><td class="nw"> RST-03 Kumpulkan bukti &amp; laporan </td><td class="c"><span class="st warn">⚠️</span></td><td> dokumen ini; log/screenshot belum dikumpulkan ke satu folder </td></tr></tbody></table>
+
+<footer class="end">
+  Laporan UAT ACS — 21 Oktober 2026. Disusun dari catatan sesi, hasil tes otomatis, dan bukti di database; Hafiz Ramadhan (penguji) dengan bantuan Claude Code.
+  Dokumen sumber: <code>docs/pengujian/LAPORAN_UAT_2026-10-21.html</code>; draf kerja siang hari: <code>LAPORAN_UAT_SEMENTARA_2026-10-21.md</code>.
+</footer>
+</body>
+</html>
