@@ -416,6 +416,16 @@ func (r *deviceParameterRepository) Get(ctx context.Context, deviceID uint64, na
 	return &p, nil
 }
 
+func (r *deviceParameterRepository) GetBySuffix(ctx context.Context, deviceID uint64, suffix string) (*domain.DeviceParameter, error) {
+	var p domain.DeviceParameter
+	err := r.db.GetContext(ctx, &p,
+		`SELECT * FROM device_parameters WHERE device_id = ? AND parameter_name LIKE ? ORDER BY id DESC LIMIT 1`, deviceID, "%"+likeEscape(suffix))
+	if err != nil {
+		return nil, translateErr(err)
+	}
+	return &p, nil
+}
+
 // ---- DeviceConfigSnapshot ----
 
 type deviceConfigSnapshotRepository struct{ db *sqlx.DB }

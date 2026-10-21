@@ -33,6 +33,9 @@ type Device struct {
 	// asumsi), jadi menyembunyikannya tidak menghilangkan fungsi UI apa pun.
 	ConnectionRequestUsername    *string    `db:"connection_request_username" json:"-"`
 	ConnectionRequestPasswordEnc []byte     `db:"connection_request_password_enc" json:"-"`
+	// CRCredentialsSet — TURUNAN (bukan kolom; diisi Service.Get): username & password Connection Request sudah diisi.
+	// Hanya penanda untuk UI; kredensialnya sendiri tidak pernah diekspos.
+	CRCredentialsSet bool `db:"-" json:"connection_request_credentials_set"`
 	InformUsername               *string    `db:"inform_username" json:"inform_username"`
 	InformPasswordEnc            []byte     `db:"inform_password_enc" json:"-"`
 	LastInformAt                 *time.Time `db:"last_inform_at" json:"last_inform_at"`
@@ -118,6 +121,9 @@ type DeviceParameterRepository interface {
 	// PPPoEUsernames: username PPPoE (parameter standar TR-098 WANPPPConnection.N.Username / TR-181 PPP.Interface.N.Username,
 	// instance mana pun) untuk banyak device sekaligus; hanya yang terisi. Dipakai kolom daftar perangkat.
 	PPPoEUsernames(ctx context.Context, deviceIDs []uint64) (map[uint64]string, error)
+	// GetBySuffix: parameter terbaru milik device yang namanya berakhiran suffix (mis. ".ManagementServer.ConnectionRequestURL"
+	// — lintas TR-098/TR-181); ErrNotFound bila tak ada.
+	GetBySuffix(ctx context.Context, deviceID uint64, suffix string) (*DeviceParameter, error)
 }
 
 // DeviceConfigSnapshot menyimpan status parameter full pada waktu tertentu

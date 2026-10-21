@@ -165,7 +165,32 @@ func (s *Service) Get(ctx context.Context, actor domain.Actor, id uint64) (*doma
 	if err := auth.RequireTenantScope(actor, d.TenantID); err != nil {
 		return nil, err
 	}
+	s.backfillCRURL(ctx, d)
+	d.CRCredentialsSet = d.ConnectionRequestUsername != nil && *d.ConnectionRequestUsername != "" && len(d.ConnectionRequestPasswordEnc) > 0
 	return d, nil
+}
+
+// backfillCRURL mengisi connection_request_url dari parameter ManagementServer.ConnectionRequestURL yang SUDAH pernah
+// dilaporkan CPE bila kolomnya masih kosong — mis. CPE yang Inform sebelum ACS_CR_TRUSTED_CIDRS diaktifkan, sehingga
+// "Refresh/Connection Request" tidak menunggu Inform berikutnya. Aturan keamanan sama dengan jalur Inform
+// (safeInformConnectionRequestURL): hanya aktif bila rentang tepercaya dikonfigurasi, dan host harus lolos aturan itu.
+func (s *Service) backfillCRURL(ctx context.Context, d *domain.Device) {
+	if len(s.crTrusted) == 0 || d.IPAddress == nil || (d.ConnectionRequestURL != nil && *d.ConnectionRequestURL != "") {
+		return
+	}
+	p, err := s.deviceParams.GetBySuffix(ctx, d.ID, ".ManagementServer.ConnectionRequestURL")
+	if err != nil || p == nil || p.ParameterValue == nil {
+		return
+	}
+	crURL, ok := safeInformConnectionRequestURL(*p.ParameterValue, *d.IPAddress, s.crTrusted)
+	if !ok {
+		return
+	}
+	d.ConnectionRequestURL = &crURL
+	if err := s.devices.Update(ctx, d); err != nil {
+		s.log().Warn("device: gagal menyimpan connection_request_url dari parameter", "device_id", d.ID, "error", err)
+		d.ConnectionRequestURL = nil
+	}
 }
 
 // Delete — soft delete device (dekomisioning/salah daftar). ADMIN+ pada tenant

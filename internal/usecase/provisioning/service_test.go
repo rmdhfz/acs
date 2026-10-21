@@ -115,6 +115,9 @@ func (f *fakeDeviceParamRepoPV) HasPrefix(context.Context, uint64, string) (bool
 func (f *fakeDeviceParamRepoPV) UpsertBatch(context.Context, []domain.DeviceParameter) error {
 	return nil
 }
+func (f *fakeDeviceParamRepoPV) GetBySuffix(context.Context, uint64, string) (*domain.DeviceParameter, error) {
+	return nil, domain.ErrNotFound
+}
 func (f *fakeDeviceParamRepoPV) PPPoEUsernames(context.Context, []uint64) (map[uint64]string, error) {
 	return nil, nil
 }
