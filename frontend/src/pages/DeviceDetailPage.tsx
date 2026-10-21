@@ -8,6 +8,7 @@ import { EmptyState } from '../components/EmptyState'
 import { PageSpinner } from '../components/Spinner'
 import { ParameterTree } from '../components/ParameterTree'
 import { ConfigHistory } from '../components/ConfigHistory'
+import { RetryTaskButton, TaskSummaryView } from '../components/TaskParts'
 import { Modal } from '../components/Modal'
 import { RowMenu } from '../components/RowMenu'
 import { DeviceFormModal } from '../components/DeviceFormModal'
@@ -561,10 +562,10 @@ function EventsTab({ deviceId }: { deviceId: number }) {
   )
 }
 
+            <th className="px-5 py-3"><span className="sr-only">Aksi</span></th>
 function TasksTab({ deviceId }: { deviceId: number }) {
   const { data, isLoading } = useDeviceTasks(deviceId)
   const { data: statusRefs } = useRefs('ref_task_status')
-  const { data: typeRefs } = useRefs('ref_task_types')
 
   if (isLoading) return <PageSpinner />
   const tasks = data?.data ?? []
@@ -580,8 +581,8 @@ function TasksTab({ deviceId }: { deviceId: number }) {
         <thead>
           <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
             <th className="px-5 py-3">Status</th>
-            <th className="px-5 py-3">Tipe</th>
-            <th className="px-5 py-3">Retry</th>
+            <th className="px-5 py-3">Tugas</th>
+            <th className="px-5 py-3">Percobaan</th>
             <th className="px-5 py-3">Dibuat</th>
             <th className="px-5 py-3">Error</th>
           </tr>
@@ -589,18 +590,18 @@ function TasksTab({ deviceId }: { deviceId: number }) {
         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
           {rows.map((t) => {
             const status = findRefById(statusRefs, t.task_status_id)
-            const type = findRefById(typeRefs, t.task_type_id)
             return (
               <tr key={t.id}>
                 <td className="px-5 py-3">
                   <StatusBadge code={status?.code} label={status?.name ?? '-'} />
                 </td>
-                <td className="px-5 py-3 text-slate-700 dark:text-slate-300">{type?.name ?? type?.code ?? '-'}</td>
+                <td className="px-5 py-3 text-slate-700 dark:text-slate-300"><TaskSummaryView task={t} /></td>
                 <td className="px-5 py-3 text-slate-500 dark:text-slate-400">
                   {t.retry_count}/{t.max_retries}
                 </td>
                 <td className="px-5 py-3 text-slate-500 dark:text-slate-400">{formatRelativeTime(t.created_at)}</td>
-                <td className="max-w-xs truncate px-5 py-3 text-xs text-red-600">{t.error_message ?? '-'}</td>
+                <td className="max-w-xs px-5 py-3 text-xs text-red-600">{t.error_message && status?.code !== 'COMPLETED' ? t.error_message : '-'}</td>
+                <td className="px-5 py-3 text-right"><RetryTaskButton task={t} /></td>
               </tr>
             )
           })}

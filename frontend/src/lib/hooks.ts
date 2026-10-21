@@ -295,6 +295,18 @@ export function useVendorOUIs(vendorId: number | undefined) {
     queryKey: ['vendor-ouis', vendorId],
     queryFn: () => api.get<VendorOUI[]>(`/vendors/${vendorId}/ouis`),
     enabled: vendorId !== undefined,
+// Coba ulang task yang gagal/dibatalkan/timeout (atau kirim sekarang yang menunggu retry) — task yang sama, bukan baru.
+export function useRetryTask() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api.post<Task>(`/tasks/${id}/retry`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] })
+      qc.invalidateQueries({ queryKey: ['device'] })
+    },
+  })
+}
+
   })
 }
 

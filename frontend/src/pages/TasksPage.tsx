@@ -8,6 +8,7 @@ import { useAuth } from '../lib/auth'
 import { ApiError } from '../lib/api'
 import { useToast } from '../lib/toast'
 import { useConfirm } from '../lib/confirm'
+import { RetryTaskButton, TaskSummaryView } from '../components/TaskParts'
 import { findRefById, useCancelTask, useCreateTask, useRefs, useTask, useTasks, type TaskFilters } from '../lib/hooks'
 import type { Task } from '../lib/types'
 import { DataTools } from '../components/DataTools'
@@ -205,7 +206,7 @@ export function TasksPage() {
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                   <th className="px-5 py-3">Status</th>
-                  <th className="px-5 py-3">Tipe</th>
+                  <th className="px-5 py-3">Tugas</th>
                   <th className="px-5 py-3">Device ID</th>
                   <th className="px-5 py-3">Prioritas</th>
                   <th className="px-5 py-3">Retry</th>
@@ -228,7 +229,10 @@ export function TasksPage() {
                         <td className="px-5 py-3.5">
                           <StatusBadge code={status?.code} label={status?.name ?? '-'} />
                         </td>
-                        <td className="px-5 py-3.5 text-slate-700 dark:text-slate-300">{type?.name ?? type?.code ?? '-'}</td>
+                        <td className="px-5 py-3.5 text-slate-700 dark:text-slate-300">
+                          <TaskSummaryView task={t} />
+                          <p className="mt-0.5 text-xs text-slate-400">{type?.name ?? type?.code ?? '-'}</p>
+                        </td>
                         <td className="px-5 py-3.5 font-mono text-xs text-slate-500 dark:text-slate-400">#{t.device_id}</td>
                         <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{t.priority}</td>
                         <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">
@@ -236,6 +240,7 @@ export function TasksPage() {
                         </td>
                         <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{formatRelativeTime(t.created_at)}</td>
                         <td className="px-5 py-3.5 text-right">
+                          <RetryTaskButton task={t} />
                           {canManage && isCancellable && (
                             <button
                               onClick={(e) => {
