@@ -170,6 +170,8 @@ type upsertMappingRequest struct {
 	TR069Path              string  `json:"tr069_path"`
 	ParameterTypeID        *uint64 `json:"parameter_type_id"`
 	Description            *string `json:"description"`
+	// ValueScale — pengali nilai mentah CPE -> satuan kanonik (mis. 0.001 untuk 0,001 dBm). Kosong/0 = 1.
+	ValueScale *float64 `json:"value_scale"`
 }
 
 // upsertParameterMapping — menambah vendor/model baru adalah operasi data
@@ -196,6 +198,9 @@ func (r *Router) upsertParameterMapping(c *echo.Context) error {
 		VendorID: req.VendorID, DataModelVersionID: req.DataModelVersionID, DeviceModelID: req.DeviceModelID,
 		SoftwareVersionPattern: req.SoftwareVersionPattern,
 		LogicalKey:             req.LogicalKey, TR069Path: req.TR069Path, ParameterTypeID: req.ParameterTypeID, Description: req.Description,
+	}
+	if req.ValueScale != nil {
+		m.ValueScale = *req.ValueScale
 	}
 	if err := r.Catalog.UpsertParameterMapping(c.Request().Context(), actor, m); err != nil {
 		return handleErr(c, err)

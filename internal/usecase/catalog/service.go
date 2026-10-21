@@ -9,6 +9,7 @@ package catalog
 import (
 	"context"
 	"fmt"
+	"math"
 	"regexp"
 	"strings"
 
@@ -108,6 +109,12 @@ func (s *Service) CreateDeviceModel(ctx context.Context, actor domain.Actor, m *
 	return nil
 }
 
+// Batas wajar pengali satuan (0,00001 s.d. 1.000.000): cukup untuk mV->V, 0,01 dBm, dst.; menolak nol/negatif/tak hingga.
+const (
+	minValueScale = 1e-5
+	maxValueScale = 1e6
+)
+
 // UpsertParameterMapping membuat/mengganti mapping untuk vendor aktif. Bila
 // device_model_id diisi, model itu harus ada dan milik vendor yang sama.
 func (s *Service) UpsertParameterMapping(ctx context.Context, actor domain.Actor, m *domain.VendorParameterMapping) error {
@@ -123,6 +130,10 @@ func (s *Service) UpsertParameterMapping(ctx context.Context, actor domain.Actor
 	// fault 9005). Root data model hanya TR-098 atau TR-181 dan tanpa spasi/karakter aneh.
 	if !tr069PathFormat.MatchString(m.TR069Path) {
 		return fmt.Errorf("%w: tr069_path harus berawalan InternetGatewayDevice. atau Device. dan hanya berisi huruf, angka, titik, _ , -", domain.ErrInvalidInput)
+	}
+	// value_scale: pengali nilai mentah -> satuan kanonik. 0 = belum diisi (jadi 1 di repository); selain itu harus positif & wajar.
+	if m.ValueScale != 0 && (math.IsNaN(m.ValueScale) || math.IsInf(m.ValueScale, 0) || m.ValueScale < minValueScale || m.ValueScale > maxValueScale) {
+		return fmt.Errorf("%w: value_scale harus antara %g dan %g", domain.ErrInvalidInput, minValueScale, maxValueScale)
 	}
 	if _, err := s.requireActiveVendor(ctx, m.VendorID); err != nil {
 		return err

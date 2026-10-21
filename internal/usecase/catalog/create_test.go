@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"errors"
+	"math"
 	"testing"
 
 	"acs/internal/domain"
@@ -184,5 +185,30 @@ func TestFormatOUIDanPathMapping(t *testing.T) {
 	}
 	if !ouiFormat.MatchString("00D0D0") {
 		t.Error("OUI 00D0D0 harus diterima")
+	}
+}
+
+// value_scale (mis. 0,001 untuk nilai optik 0,001 dBm) harus positif & wajar; 0/kosong = belum diisi (jadi 1 di repository).
+func TestUpsertParameterMapping_ValueScale(t *testing.T) {
+	svc, _, _, maps, _, _ := createRig()
+	ctx := context.Background()
+	mk := func(scale float64) *domain.VendorParameterMapping {
+		return &domain.VendorParameterMapping{VendorID: 1, LogicalKey: "optical.rx_power", TR069Path: "InternetGatewayDevice.WANDevice.1.X_CT-COM_GponInterfaceConfig.RXPower", ValueScale: scale}
+	}
+	for _, bad := range []float64{-1, -0.001, 1e-9, 1e7, math.NaN(), math.Inf(1)} {
+		if err := svc.UpsertParameterMapping(ctx, superadmin, mk(bad)); !errors.Is(err, domain.ErrInvalidInput) {
+			t.Errorf("value_scale %v harus 400, dapat %v", bad, err)
+		}
+	}
+	if len(maps.upserted) != 0 {
+		t.Fatal("penolakan tidak boleh menyimpan mapping")
+	}
+	for _, ok := range []float64{0, 1, 0.001, 0.0001, 0.01, 1000} {
+		if err := svc.UpsertParameterMapping(ctx, superadmin, mk(ok)); err != nil {
+			t.Errorf("value_scale %v harus lolos: %v", ok, err)
+		}
+	}
+	if len(maps.upserted) != 6 {
+		t.Fatalf("tersimpan %d, ingin 6", len(maps.upserted))
 	}
 }

@@ -250,7 +250,7 @@ func (r *vendorParameterMappingRepository) Upsert(ctx context.Context, m *domain
 		(vendor_id, data_model_version_id, device_model_id, software_version_pattern, logical_key, tr069_path, parameter_type_id, value_scale, description, created_at, updated_at, created_by)
 		VALUES (:vendor_id, :data_model_version_id, :device_model_id, :software_version_pattern, :logical_key, :tr069_path, :parameter_type_id, :value_scale, :description, :created_at, :updated_at, :created_by)
 		ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id), tr069_path = VALUES(tr069_path), parameter_type_id = VALUES(parameter_type_id),
-			description = VALUES(description), updated_at = VALUES(updated_at), is_deleted = 0, deleted_at = NULL, deleted_by = NULL`
+			value_scale = VALUES(value_scale), description = VALUES(description), updated_at = VALUES(updated_at), is_deleted = 0, deleted_at = NULL, deleted_by = NULL`
 	// `id = LAST_INSERT_ID(id)` membuat LastInsertId() mengembalikan id baris
 	// yang BENAR baik saat INSERT baru maupun saat meng-update baris yang sudah
 	// ada — tanpanya respons POST /vendor-parameter-mappings membawa id 0 dan

@@ -8330,6 +8330,7 @@ components:
         logical_key: { type: string, example: wifi.5g.ssid }
         tr069_path: { type: string, example: "InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.SSID" }
         parameter_type_id: { type: integer, format: int64, nullable: true }
+        value_scale: { type: number, format: double, description: "Pengali nilai mentah CPE -> satuan kanonik ACS (mis. 0.001 untuk 0,001 dBm; 1 = tanpa konversi)." }
         description: { type: string, nullable: true }
       allOf:
         - $ref: '#/components/schemas/Audit'
@@ -8345,6 +8346,7 @@ components:
         logical_key: { type: string, maxLength: 128 }
         tr069_path: { type: string, maxLength: 512 }
         parameter_type_id: { type: integer, format: int64, nullable: true }
+        value_scale: { type: number, format: double, nullable: true, minimum: 0.00001, maximum: 1000000, description: "Pengali nilai mentah CPE -> satuan kanonik (mis. 0.001 untuk 0,001 dBm). Kosong/null = 1. Di luar rentang = 400." }
         description: { type: string, nullable: true, maxLength: 255 }
       required: [vendor_id, data_model_version_id, logical_key, tr069_path]
 
