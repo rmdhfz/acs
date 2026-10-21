@@ -9,6 +9,7 @@ import { PageSpinner } from '../components/Spinner'
 import { ParameterTree } from '../components/ParameterTree'
 import { ConfigHistory } from '../components/ConfigHistory'
 import { DeviceWifiTab } from '../components/DeviceWifiTab'
+import { DeviceOverview } from '../components/DeviceOverview'
 import { RetryTaskButton, TaskSummaryView } from '../components/TaskParts'
 import { Modal } from '../components/Modal'
 import { RowMenu } from '../components/RowMenu'
@@ -53,8 +54,8 @@ type Tab = 'overview' | 'wifi' | 'parameters' | 'optical' | 'events' | 'tasks' |
 
 const TABS: { key: Tab; label: string; icon: typeof Cpu }[] = [
   { key: 'overview', label: 'Overview', icon: Cpu },
-  { key: 'parameters', label: 'Parameter', icon: SlidersHorizontal },
   { key: 'wifi', label: 'WiFi', icon: Wifi },
+  { key: 'parameters', label: 'Parameter', icon: SlidersHorizontal },
   { key: 'optical', label: 'Redaman Optik', icon: Gauge },
   { key: 'events', label: 'Event', icon: History },
   { key: 'tasks', label: 'Task', icon: ListChecks },
@@ -289,7 +290,17 @@ export function DeviceDetailPage() {
       </div>
 
       <div className="mt-6">
-        {tab === 'overview' && <OverviewTab device={device} canEdit={hasRole('ADMIN', 'NOC')} onEdit={() => setShowEditDevice(true)} />}
+        {tab === 'overview' && (
+          <DeviceOverview
+            device={device}
+            vendorName={vendor?.name ?? null}
+            statusCode={status?.code}
+            statusLabel={status?.name ?? '-'}
+            canEdit={hasRole('ADMIN', 'NOC')}
+            onEdit={() => setShowEditDevice(true)}
+            onGoTo={setTab}
+          />
+        )}
         {tab === 'wifi' && <DeviceWifiTab device={device} />}
         {tab === 'parameters' && <ParametersTab deviceId={deviceId} />}
         {tab === 'optical' && <OpticalMetricsTab deviceId={deviceId} />}
@@ -386,42 +397,6 @@ function DeviceTagsBar({ deviceId, canManage }: { deviceId: number; canManage: b
       )}
       {err && <span className="text-xs text-red-600 dark:text-red-400">{err}</span>}
     </div>
-  )
-}
-
-function OverviewTab({ device, canEdit, onEdit }: { device: NonNullable<ReturnType<typeof useDevice>['data']>; canEdit: boolean; onEdit: () => void }) {
-  const rows: [string, string][] = [
-    ['Device UUID', device.device_uuid],
-    ['OUI', device.oui ?? '-'],
-    ['Product Class', device.product_class ?? '-'],
-    ['Hardware Version', device.hardware_version ?? '-'],
-    ['Software Version', device.software_version ?? '-'],
-    ['Connection Request URL', device.connection_request_url ?? '-'],
-    ['Terakhir Boot', formatDateTime(device.last_boot_event_at)],
-    ['Pertama Terdaftar', formatDateTime(device.created_at)],
-    ['Latitude', device.latitude?.toString() ?? '-'],
-    ['Longitude', device.longitude?.toString() ?? '-'],
-    ['Catatan', device.notes ?? '-'],
-  ]
-  return (
-    <Card>
-      <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 px-5 py-3">
-        <h3 className="font-medium text-sm text-slate-900 dark:text-slate-100">Detail Perangkat</h3>
-        {canEdit && (
-          <button onClick={onEdit} className="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400">
-            Edit
-          </button>
-        )}
-      </div>
-      <dl className="divide-y divide-slate-100 dark:divide-slate-800">
-        {rows.map(([label, value]) => (
-          <div key={label} className="grid grid-cols-3 gap-4 px-5 py-3 text-sm">
-            <dt className="text-slate-500 dark:text-slate-400">{label}</dt>
-            <dd className="col-span-2 break-all font-mono text-xs text-slate-800 dark:text-slate-200">{value}</dd>
-          </div>
-        ))}
-      </dl>
-    </Card>
   )
 }
 
@@ -565,7 +540,6 @@ function EventsTab({ deviceId }: { deviceId: number }) {
   )
 }
 
-            <th className="px-5 py-3"><span className="sr-only">Aksi</span></th>
 function TasksTab({ deviceId }: { deviceId: number }) {
   const { data, isLoading } = useDeviceTasks(deviceId)
   const { data: statusRefs } = useRefs('ref_task_status')
@@ -588,6 +562,7 @@ function TasksTab({ deviceId }: { deviceId: number }) {
             <th className="px-5 py-3">Percobaan</th>
             <th className="px-5 py-3">Dibuat</th>
             <th className="px-5 py-3">Error</th>
+            <th className="px-5 py-3"><span className="sr-only">Aksi</span></th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
