@@ -381,6 +381,8 @@ export interface UpsertMappingInput {
   logical_key: string
   tr069_path: string
   parameter_type_id?: number
+  // Pengali nilai mentah CPE -> satuan kanonik (mis. 0.001); kosong = 1.
+  value_scale?: number
   description?: string
 }
 

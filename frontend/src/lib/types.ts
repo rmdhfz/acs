@@ -232,6 +232,7 @@ export interface VendorParameterMapping {
   logical_key: string
   tr069_path: string
   parameter_type_id: number | null
+  value_scale?: number
   description: string | null
 }
 

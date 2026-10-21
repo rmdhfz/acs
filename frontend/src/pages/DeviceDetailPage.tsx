@@ -9,6 +9,7 @@ import { PageSpinner } from '../components/Spinner'
 import { ParameterTree } from '../components/ParameterTree'
 import { ConfigHistory } from '../components/ConfigHistory'
 import { DeviceWifiTab } from '../components/DeviceWifiTab'
+import { OpticalDiscovery } from '../components/OpticalDiscovery'
 import { useWakeDevice } from '../lib/wake'
 import { DeviceOverview } from '../components/DeviceOverview'
 import { RetryTaskButton, TaskSummaryView } from '../components/TaskParts'
@@ -48,7 +49,7 @@ import {
   useRemoveDeviceTag,
 } from '../lib/hooks'
 import { formatJSONField, formatDateTime, formatRelativeTime } from '../lib/format'
-import type { DeviceDiagnostic } from '../lib/types'
+import type { Device, DeviceDiagnostic } from '../lib/types'
 
 type Tab = 'overview' | 'wifi' | 'parameters' | 'optical' | 'events' | 'tasks' | 'diagnostics' | 'firmware' | 'timeline' | 'config'
 
@@ -291,7 +292,7 @@ export function DeviceDetailPage() {
         )}
         {tab === 'wifi' && <DeviceWifiTab device={device} />}
         {tab === 'parameters' && <ParametersTab deviceId={deviceId} />}
-        {tab === 'optical' && <OpticalMetricsTab deviceId={deviceId} />}
+        {tab === 'optical' && <OpticalMetricsTab device={device} />}
         {tab === 'events' && <EventsTab deviceId={deviceId} />}
         {tab === 'tasks' && <TasksTab deviceId={deviceId} />}
         {tab === 'diagnostics' && <DiagnosticsTab deviceId={deviceId} canTrigger={hasRole('ADMIN', 'NOC')} />}
@@ -422,8 +423,8 @@ function ParametersTab({ deviceId }: { deviceId: number }) {
   )
 }
 
-function OpticalMetricsTab({ deviceId }: { deviceId: number }) {
-  const { data, isLoading } = useDeviceOpticalMetrics(deviceId)
+function OpticalMetricsTab({ device }: { device: Device }) {
+  const { data, isLoading } = useDeviceOpticalMetrics(device.id)
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
   const metrics = data?.data ?? []
@@ -431,11 +432,14 @@ function OpticalMetricsTab({ deviceId }: { deviceId: number }) {
   if (isLoading) return <PageSpinner />
   if (metrics.length === 0) {
     return (
-      <EmptyState
-        icon={Gauge}
-        title="Belum ada data redaman optik"
-        description="Metrik RX/TX power tersinkron dari parameter TR-069 saat tersedia (mis. via diagnostic OPTICAL_POWER atau parameter sync ONT GPON/EPON)."
-      />
+      <div className="space-y-4">
+        <EmptyState
+          icon={Gauge}
+          title="Belum ada data redaman optik"
+          description="Metrik RX/TX power tersinkron dari parameter TR-069 saat tersedia (mis. via diagnostic OPTICAL_POWER atau parameter sync ONT GPON/EPON). Bila ONT ini memakai path ekstensi vendor, temukan sumbernya di bawah."
+        />
+        <OpticalDiscovery device={device} />
+      </div>
     )
   }
 
@@ -481,6 +485,7 @@ function OpticalMetricsTab({ deviceId }: { deviceId: number }) {
           </ResponsiveContainer>
         </div>
       </Card>
+      <OpticalDiscovery device={device} />
     </div>
   )
 }
