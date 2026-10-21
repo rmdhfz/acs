@@ -2,12 +2,13 @@ import { useState, type FormEvent, type ReactNode } from 'react'
 import { Paginate } from '../components/Paginate'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Line, LineChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { Activity, ArrowLeft, Cpu, Gauge, HardDrive, History, ListChecks, Radio, ScrollText, Sparkles, SlidersHorizontal, RefreshCcw, AlertTriangle, FileUp, Pencil, Trash2 } from 'lucide-react'
+import { Activity, ArrowLeft, Cpu, Gauge, HardDrive, History, ListChecks, Radio, ScrollText, Sparkles, Wifi, SlidersHorizontal, RefreshCcw, AlertTriangle, FileUp, Pencil, Trash2 } from 'lucide-react'
 import { StatusBadge } from '../components/StatusBadge'
 import { EmptyState } from '../components/EmptyState'
 import { PageSpinner } from '../components/Spinner'
 import { ParameterTree } from '../components/ParameterTree'
 import { ConfigHistory } from '../components/ConfigHistory'
+import { DeviceWifiTab } from '../components/DeviceWifiTab'
 import { RetryTaskButton, TaskSummaryView } from '../components/TaskParts'
 import { Modal } from '../components/Modal'
 import { RowMenu } from '../components/RowMenu'
@@ -48,11 +49,12 @@ import {
 import { formatJSONField, formatDateTime, formatRelativeTime } from '../lib/format'
 import type { DeviceDiagnostic } from '../lib/types'
 
-type Tab = 'overview' | 'parameters' | 'optical' | 'events' | 'tasks' | 'diagnostics' | 'firmware' | 'timeline' | 'config'
+type Tab = 'overview' | 'wifi' | 'parameters' | 'optical' | 'events' | 'tasks' | 'diagnostics' | 'firmware' | 'timeline' | 'config'
 
 const TABS: { key: Tab; label: string; icon: typeof Cpu }[] = [
   { key: 'overview', label: 'Overview', icon: Cpu },
   { key: 'parameters', label: 'Parameter', icon: SlidersHorizontal },
+  { key: 'wifi', label: 'WiFi', icon: Wifi },
   { key: 'optical', label: 'Redaman Optik', icon: Gauge },
   { key: 'events', label: 'Event', icon: History },
   { key: 'tasks', label: 'Task', icon: ListChecks },
@@ -288,6 +290,7 @@ export function DeviceDetailPage() {
 
       <div className="mt-6">
         {tab === 'overview' && <OverviewTab device={device} canEdit={hasRole('ADMIN', 'NOC')} onEdit={() => setShowEditDevice(true)} />}
+        {tab === 'wifi' && <DeviceWifiTab device={device} />}
         {tab === 'parameters' && <ParametersTab deviceId={deviceId} />}
         {tab === 'optical' && <OpticalMetricsTab deviceId={deviceId} />}
         {tab === 'events' && <EventsTab deviceId={deviceId} />}
