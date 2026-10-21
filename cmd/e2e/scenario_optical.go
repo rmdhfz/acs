@@ -190,5 +190,38 @@ func opticalAlertAndFilter(ctx context.Context, w *World, dev *simcpe.Device, id
 	if got, err := has("&optical_level=ok"); err != nil || !got {
 		return failr("setelah pulih, filter optical_level=ok harus memuat perangkat (err=%v)", err)
 	}
+	// Wawasan armada dashboard: perangkat ini online dengan RX normal (sudah dipulihkan) terhitung di keranjang "ok";
+	// admin tenant lain tidak melihat satu pun perangkat (isolasi), dan bentuk keranjang selalu lengkap.
+	type bucket struct {
+		Key   string `json:"key"`
+		Count int    `json:"count"`
+	}
+	type insights struct {
+		Online, Offline, Other int
+		OpticalRX              []bucket `json:"optical_rx"`
+		Temperature            []bucket `json:"temperature"`
+		PonMode                []bucket `json:"pon_mode"`
+		Uptime                 []bucket `json:"uptime"`
+		OfflineAge             []bucket `json:"offline_age"`
+	}
+	var mine, other insights
+	if err := w.pilotAdmin.do(http.MethodGet, "/api/v1/devices/insights", nil, &mine); err != nil {
+		return failr("GET /devices/insights: %v", err)
+	}
+	okRX := 0
+	for _, bk := range mine.OpticalRX {
+		if bk.Key == "ok" {
+			okRX = bk.Count
+		}
+	}
+	if mine.Online < 1 || okRX < 1 || len(mine.OpticalRX) != 5 || len(mine.Temperature) != 5 || len(mine.PonMode) != 3 || len(mine.Uptime) != 5 || len(mine.OfflineAge) != 6 {
+		return failr("insights tenant pilot janggal (online=%d rx_ok=%d): %+v", mine.Online, okRX, mine)
+	}
+	if err := w.pilot2Admin.do(http.MethodGet, "/api/v1/devices/insights", nil, &other); err != nil {
+		return failr("GET /devices/insights (tenant lain): %v", err)
+	}
+	if other.Online+other.Offline+other.Other != 0 {
+		return failr("insights tenant lain harus kosong (isolasi), dapat %+v", other)
+	}
 	return pass("")
 }

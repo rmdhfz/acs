@@ -59,6 +59,15 @@ func (r *Router) deviceStats(c *echo.Context) error {
 	return c.JSON(http.StatusOK, stats)
 }
 
+// deviceInsights — GET /devices/insights: distribusi armada untuk dashboard (mode PON, uptime, redaman, suhu, lama offline).
+func (r *Router) deviceInsights(c *echo.Context) error {
+	in, err := r.Devices.Insights(c.Request().Context(), ActorFrom(c))
+	if err != nil {
+		return handleErr(c, err)
+	}
+	return c.JSON(http.StatusOK, in)
+}
+
 func (r *Router) countOpenSessions(c *echo.Context) error {
 	// SUPERADMIN: seluruh platform (load balancer CWMP). ADMIN/NOC: hanya sesi perangkat tenantnya.
 	count, err := r.Sessions.CountOpenSessionsFor(c.Request().Context(), ActorFrom(c))

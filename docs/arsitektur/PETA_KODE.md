@@ -4,7 +4,7 @@
 > "apa ada di mana" tanpa menjelajah ulang repo. Konteks bisnis: `docs/produk/PRD.md`; keputusan arsitektur: `docs/arsitektur/TECH.md`;
 > aturan kerja & konvensi: `CLAUDE.md`. Perbarui setelah menambah paket/endpoint/tabel/halaman (`--check` untuk memeriksa).
 
-Ringkasan: 175 operasi REST • 61 tabel • 36 migrasi (terakhir `0036_notification_optical_alert`) • 28 skenario e2e.
+Ringkasan: 176 operasi REST • 61 tabel • 36 migrasi (terakhir `0036_notification_optical_alert`) • 28 skenario e2e.
 
 ## Alur & lapisan (Clean Architecture)
 `domain` (entitas + antarmuka) → `usecase/*` (aturan bisnis) → `repository/mysql` (query sqlx) / `delivery/{cwmp,http,ws,usp}` (adapter masuk).
@@ -26,7 +26,7 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | `internal/delivery/http` | 37 | delivery layer REST (Echo) untuk konsumsi internal/BSS (TECH.md §2). |
 | `internal/delivery/usp` | 1 | — |
 | `internal/delivery/ws` | 1 | — |
-| `internal/domain` | 24 | berisi entities dan interface kontrak (repository & usecase) sesuai Clean Architecture yang dipakai proyek ini — lihat TECH.md §2. |
+| `internal/domain` | 25 | berisi entities dan interface kontrak (repository & usecase) sesuai Clean Architecture yang dipakai proyek ini — lihat TECH.md §2. |
 | `internal/metrics` | 2 | berisi custom Prometheus Collector untuk endpoint GET /api/v1/metrics (ROADMAP.md Fase 2, TECH.md §10 Observability). |
 | `internal/payment/xendit` | 1 | klien HTTP kecil untuk Xendit Invoice API v2 (membuat dan membaca invoice). |
 | `internal/repository/mysql` | 30 | berisi implementasi sqlx dari interface repository yang didefinisikan di internal/domain. |
@@ -37,7 +37,7 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | `internal/usecase/billing/billingtest` | 1 | berisi fake in-memory untuk menguji usecase/billing dan handler billing tanpa MariaDB/Xendit. |
 | `internal/usecase/catalog` | 1 | mengelola data referensi vendor CPE (vendor, OUI, device model, vendor parameter mapping) — operasi data, bukan kode (CLAUDE.md, TECH.md §5). |
 | `internal/usecase/console` | 3 | fitur Console bertabel sendiri (migrations/0033): layout menu per pengguna, laporan bug, dan riwayat impor/ekspor. |
-| `internal/usecase/device` | 4 | menangani inventory & status CPE (TECH.md §11, FR-22/FR-23/FR-25). |
+| `internal/usecase/device` | 5 | menangani inventory & status CPE (TECH.md §11, FR-22/FR-23/FR-25). |
 | `internal/usecase/diagnostics` | 1 | menangani diagnostik TR-069 standar yang dijalankan CPE (Ping & Traceroute): memicu lewat SetParameterValues, menunggu event "8 DIAGNOSTICS COMPLETE", mengambil hasil lewat GetParameterValues, lalu me |
 | `internal/usecase/file` | 1 | — |
 | `internal/usecase/firmware` | 1 | menangani upload firmware sungguhan ke object storage (MinIO/S3-compatible, ROADMAP.md Fase 2) dan penjadwalan upgrade (TECH.md §7, FR-19/FR-20/FR-21). |
@@ -149,7 +149,7 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | GET | `/data-transfers` | Riwayat impor/ekspor |
 | GET | `/data-transfers/{uuid}` | Detail satu proses impor/ekspor |
 
-**Devices** (26)
+**Devices** (27)
 
 | Method | Path | Ringkasan |
 |---|---|---|
@@ -158,6 +158,7 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | POST | `/devices/refresh-summary` | Antre pembacaan ringkasan daftar (username PPPoE & level optik) untuk banyak device |
 | POST | `/devices/import` | Impor massal perangkat (pra-registrasi) dengan dry-run |
 | GET | `/devices/stats` | Agregat jumlah device per status dan per vendor |
+| GET | `/devices/insights` | Distribusi armada untuk dashboard (mode PON, uptime, redaman RX, suhu ONU, lama offline) |
 | DELETE | `/devices/{id}` | Hapus (soft-delete) device |
 | GET | `/devices/{id}` | Detail satu device |
 | PATCH | `/devices/{id}` | Update catatan/kredensial connection request device |
@@ -459,11 +460,11 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | `/` | PublicHome |
 | `*` | NotFoundPage |
 
-**Komponen** (`frontend/src/components`, 41): AssignVendorModal, AuthShell, BugReportModal, CatalogDataTools, ChangePasswordModal, CommandPalette, ConfigHistory, CopyButton, CreditFooter, DataTools, DeviceFormModal, DeviceOverview, DeviceWifiTab, EmptyState, ExportMenu, GoogleSignInButton, ImportWizard, Layout, MenuManagerModal, MfaCard, Modal, NavClock, NotificationAttributesModal, NotificationBell, OpticalCell, OpticalDiscovery, Pager, Paginate, ParameterTree, PasswordStrengthBar, ProtectedRoute, QueryErrorBanner, QueryErrorToaster, RecordActions, RowMenu, SidebarNav, Spinner, StatCard, StatusBadge, TaskParts, UserDevicesModal
+**Komponen** (`frontend/src/components`, 42): AssignVendorModal, AuthShell, BugReportModal, CatalogDataTools, ChangePasswordModal, CommandPalette, ConfigHistory, CopyButton, CreditFooter, DataTools, DeviceFormModal, DeviceOverview, DeviceWifiTab, EmptyState, ExportMenu, FleetInsights, GoogleSignInButton, ImportWizard, Layout, MenuManagerModal, MfaCard, Modal, NavClock, NotificationAttributesModal, NotificationBell, OpticalCell, OpticalDiscovery, Pager, Paginate, ParameterTree, PasswordStrengthBar, ProtectedRoute, QueryErrorBanner, QueryErrorToaster, RecordActions, RowMenu, SidebarNav, Spinner, StatCard, StatusBadge, TaskParts, UserDevicesModal
 
 **Lib/hooks** (`frontend/src/lib`, 34): api, auth, autolabel, clientAdapter, clipboard, confirm, csv, exporter, focusTrap, format, hooks, i18n.extra, i18n, importer, limits, menu, notifications, optical, opticalDiscovery, password, pool, queryErrors, screenshot, session, taskSummary, theme, toast, transferLog, types, usePaged, useStatusParam, wake, wifi, ws
 
-Berkas tes frontend: 32.
+Berkas tes frontend: 33.
 
 ## Skenario e2e (`cmd/e2e`)
 | Skenario | Fungsi |

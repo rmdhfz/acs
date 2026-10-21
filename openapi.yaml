@@ -2048,6 +2048,38 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  /devices/insights:
+    get:
+      operationId: deviceInsights
+      tags: [Devices]
+      summary: Distribusi armada untuk dashboard (mode PON, uptime, redaman RX, suhu ONU, lama offline)
+      description: |
+        Semua role terautentikasi, tenant-scoped sama seperti `GET /devices` (SUPERADMIN: seluruh platform). Redaman RX, suhu,
+        uptime, dan mode PON dihitung dari perangkat **ONLINE** (perangkat offline membawa nilai basi); lama offline dari perangkat
+        **OFFLINE** menurut Inform terakhir. Keranjang selalu lengkap dan berurutan tetap (yang kosong bernilai 0).
+
+        Ambang: RX `ok` -25..-8 dBm, `warn` -27..-25, `bad` < -27, `overload` > -8; suhu `warning` ≥ 60 °C, `high` ≥ 70, `critical` ≥ 80.
+        Satuan RX mentah ditebak (dBm / 0,01 / 0,001); yang tak masuk akal secara fisik = `unknown`. Mode PON terdeteksi dari nama
+        parameter yang dilaporkan perangkat (`*Gpon*` / `*Epon*`), bukan dari konfigurasi; `unknown` bila tak terdeteksi. Suhu
+        `unknown` sampai mapping `optical.temperature` model tersebut ada (asisten sumber optik di tab Redaman Optik).
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Wawasan armada.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FleetInsights' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Actor non-superadmin tanpa `tenant_id`."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   /devices/{id}:
     delete:
       operationId: deleteDevice
@@ -7854,6 +7886,24 @@ components:
             optical_at: { type: string, format: date-time, nullable: true, description: "Waktu metrik optik terakhir dicatat." }
             pppoe_username: { type: string, nullable: true, description: "Username PPPoE dari parameter standar yang sudah tersinkron; null bila belum terbaca." }
 
+    BucketCount:
+      type: object
+      properties:
+        key: { type: string, description: "Kunci keranjang (mis. gpon, lt1d, ok, warning); label dibuat di klien." }
+        count: { type: integer }
+      required: [key, count]
+    FleetInsights:
+      type: object
+      properties:
+        online: { type: integer }
+        offline: { type: integer }
+        other: { type: integer, description: "Perangkat berstatus lain (belum terdaftar, bermasalah, dst.) — tidak ikut distribusi." }
+        pon_mode: { type: array, items: { $ref: '#/components/schemas/BucketCount' }, description: "gpon, epon, unknown (perangkat online)." }
+        uptime: { type: array, items: { $ref: '#/components/schemas/BucketCount' }, description: "lt1d, d1_7, d7_30, gt30d, unknown (perangkat online)." }
+        optical_rx: { type: array, items: { $ref: '#/components/schemas/BucketCount' }, description: "ok, warn, bad, overload, unknown (perangkat online)." }
+        temperature: { type: array, items: { $ref: '#/components/schemas/BucketCount' }, description: "normal, warning, high, critical, unknown (perangkat online)." }
+        offline_age: { type: array, items: { $ref: '#/components/schemas/BucketCount' }, description: "lt1d, d1_3, d3_7, d7_30, gt30d, unknown (perangkat offline)." }
+      required: [online, offline, other, pon_mode, uptime, optical_rx, temperature, offline_age]
     DeviceStats:
       type: object
       properties:

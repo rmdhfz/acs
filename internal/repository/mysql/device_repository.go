@@ -608,6 +608,39 @@ func (r *deviceEventRepository) ListByDevice(ctx context.Context, deviceID uint6
 	return rows, total, nil
 }
 
+// ---- Wawasan armada (dashboard) ----
+
+type fleetInsightsRepository struct{ db *sqlx.DB }
+
+func NewFleetInsightsRepository(db *sqlx.DB) domain.FleetInsightsRepository {
+	return &fleetInsightsRepository{db: db}
+}
+
+// FleetRows: satu baris ringan per perangkat (status, Inform terakhir, RX & suhu terakhir, uptime, penanda GPON/EPON).
+// Subquery berkorelasi memakai indeks (device_id, ...) sehingga biaya linear terhadap jumlah perangkat; pengelompokan ke
+// keranjang dilakukan di usecase. Untuk armada sangat besar (>100 ribu) pertimbangkan agregat berkala/cache.
+func (r *fleetInsightsRepository) FleetRows(ctx context.Context, tenantID *uint64) ([]domain.FleetRow, error) {
+	q := `SELECT s.code AS status, d.last_inform_at,
+		(SELECT m.rx_power_dbm FROM device_optical_metrics m WHERE m.device_id = d.id ORDER BY m.recorded_at DESC, m.id DESC LIMIT 1) AS rx,
+		(SELECT m.temperature_celsius FROM device_optical_metrics m WHERE m.device_id = d.id ORDER BY m.recorded_at DESC, m.id DESC LIMIT 1) AS temp,
+		(SELECT p.parameter_value FROM device_parameters p WHERE p.device_id = d.id
+		   AND p.parameter_name IN ('InternetGatewayDevice.DeviceInfo.UpTime', 'Device.DeviceInfo.UpTime') LIMIT 1) AS uptime,
+		EXISTS (SELECT 1 FROM device_parameters p WHERE p.device_id = d.id AND p.parameter_name LIKE '%Gpon%') AS gpon,
+		EXISTS (SELECT 1 FROM device_parameters p WHERE p.device_id = d.id AND p.parameter_name LIKE '%Epon%') AS epon
+		FROM devices d JOIN ref_device_status s ON s.id = d.device_status_id
+		WHERE d.is_deleted = 0`
+	args := []interface{}{}
+	if tenantID != nil {
+		q += " AND d.tenant_id = ?"
+		args = append(args, *tenantID)
+	}
+	var rows []domain.FleetRow
+	if err := r.db.SelectContext(ctx, &rows, q, args...); err != nil {
+		return nil, translateErr(err)
+	}
+	return rows, nil
+}
+
 // ---- DeviceOpticalMetric ----
 
 type deviceOpticalMetricRepository struct{ db *sqlx.DB }

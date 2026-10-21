@@ -242,6 +242,7 @@ func main() {
 	iamSvc.WithNotifier(notifSvc)
 	signupSvc.WithNotifier(notifSvc)
 	deviceSvc.WithNotifier(notifSvc)
+	deviceSvc.WithFleetInsights(mysql.NewFleetInsightsRepository(db))
 	sessionSvc.WithNotifier(notifSvc)
 	firmwareSvc.WithNotifier(notifSvc)
 

@@ -234,6 +234,7 @@ func (r *Router) Register(e *echo.Echo) {
 
 	authed.GET("/devices", r.listDevices)
 	authed.GET("/devices/stats", r.deviceStats)
+	authed.GET("/devices/insights", r.deviceInsights)
 	authed.GET("/devices/:id", r.getDevice)
 	// Pra-registrasi perangkat (sebelum CPE pertama kali Inform) & impor massal.
 	authed.POST("/devices", r.createDevice, RequireRoles(admin...))
