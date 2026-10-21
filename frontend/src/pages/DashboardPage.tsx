@@ -22,6 +22,7 @@ import {
   Zap,
 } from 'lucide-react'
 import { StatCard } from '../components/StatCard'
+import { FleetInsights } from '../components/FleetInsights'
 import { StatusBadge } from '../components/StatusBadge'
 import { PageSpinner } from '../components/Spinner'
 import { EmptyState } from '../components/EmptyState'
@@ -389,6 +390,9 @@ export function DashboardPage() {
             </li>
           ))}
       </ul>
+
+      {/* Wawasan armada: mode PON, redaman RX, suhu ONU, uptime, lama offline */}
+      <FleetInsights tooltipStyle={tooltipStyle} />
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         {/* Aktivitas task 24 jam */}

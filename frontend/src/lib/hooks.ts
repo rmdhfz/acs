@@ -215,6 +215,31 @@ export function useDeviceStats() {
   })
 }
 
+export interface BucketCount {
+  key: string
+  count: number
+}
+
+// Distribusi armada (GET /devices/insights): keranjang selalu lengkap & berurutan tetap.
+export interface FleetInsightsData {
+  online: number
+  offline: number
+  other: number
+  pon_mode: BucketCount[]
+  uptime: BucketCount[]
+  optical_rx: BucketCount[]
+  temperature: BucketCount[]
+  offline_age: BucketCount[]
+}
+
+export function useDeviceInsights() {
+  return useQuery({
+    queryKey: ['devices', 'insights'],
+    queryFn: () => api.get<FleetInsightsData>('/devices/insights'),
+    refetchInterval: LIVE_REFRESH_MS,
+  })
+}
+
 // enabled=false untuk role di luar ADMIN/NOC (endpoint ini 403 bagi mereka).
 export function useCwmpSessionsCount(enabled = true) {
   return useQuery({

@@ -1,6 +1,6 @@
 import { useI18n } from '../lib/i18n'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   CheckCircle2,
   ChevronLeft,
@@ -85,7 +85,12 @@ export function DevicesPage() {
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [vendorFilter, setVendorFilter] = useState<string>('')
   const [tagFilter, setTagFilter] = useState<string>('')
-  const [opticalFilter, setOpticalFilter] = useState<string>('')
+  // Deep-link dari dashboard: /devices?optical_level=bad (nilai tak dikenal diabaikan).
+  const [urlParams] = useSearchParams()
+  const [opticalFilter, setOpticalFilter] = useState<string>(() => {
+    const v = urlParams.get('optical_level')
+    return v === 'ok' || v === 'warn' || v === 'bad' || v === 'unknown' ? v : ''
+  })
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [bulkAction, setBulkAction] = useState<'profile' | 'firmware' | 'reboot' | null>(null)
