@@ -34,6 +34,8 @@ type Service struct {
 	// negatif (vendor/model tanpa mapping optical.*) agar tidak menambah query tiap Inform.
 	opticalPollEvery time.Duration
 	opticalSkip      sync.Map // "vendor:model" -> time.Time kedaluwarsa cache
+	// notifier — notifikasi in-app OPTICAL_ALERT (opsional, WithNotifier); nil = hanya activity log & webhook.
+	notifier domain.Notifier
 	// pppoePollEvery — interval penyegaran username PPPoE (0 = nonaktif); pppoeNext = device id -> waktu poll berikutnya
 	// (di memori: setelah restart tiap device disegarkan sekali pada Inform pertamanya, lalu berkala).
 	pppoePollEvery time.Duration
@@ -358,9 +360,9 @@ func (s *Service) HandleInform(ctx context.Context, in InformInput) (*InformResu
 	}
 
 	s.maybePollOptical(ctx, dev)
+	s.maybePollPPPoE(ctx, dev)
 
 	_ = s.deviceSvc.MarkOnline(ctx, dev)
-	s.maybePollPPPoE(ctx, dev)
 
 	if s.publisher != nil && dev.TenantID != nil {
 		s.publisher.BroadcastToTenant(*dev.TenantID, "DEVICE_ONLINE", map[string]interface{}{
@@ -668,8 +670,12 @@ func (s *Service) WithOpticalPoll(every time.Duration) *Service {
 	return s
 }
 
-// maybePollOptical mengantre pembacaan optik (GetParameterValues terpetakan) bila sudah lewat
-// intervalnya. Hanya berjalan bila vendor/model punya mapping optical.*; hasil negatif
+// WithNotifier memasang notifikasi persisten untuk redaman optik waspada/kritis.
+func (s *Service) WithNotifier(n domain.Notifier) *Service {
+	s.notifier = n
+	return s
+}
+
 // WithPPPoEPoll mengaktifkan penyegaran berkala username PPPoE (interval 0 = mati).
 func (s *Service) WithPPPoEPoll(every time.Duration) *Service {
 	s.pppoePollEvery = every
@@ -701,6 +707,8 @@ func (s *Service) maybePollPPPoE(ctx context.Context, dev *domain.Device) {
 	}
 }
 
+// maybePollOptical mengantre pembacaan optik (GetParameterValues terpetakan) bila sudah lewat
+// intervalnya. Hanya berjalan bila vendor/model punya mapping optical.*; hasil negatif
 // di-cache 1 jam per vendor/model.
 func (s *Service) maybePollOptical(ctx context.Context, dev *domain.Device) {
 	if s.opticalPollEvery <= 0 || dev.VendorID == nil {
@@ -1043,29 +1051,55 @@ func (s *Service) recordOptical(ctx context.Context, dev *domain.Device, rxPower
 	}
 
 	if rxPower != nil {
-		rx := *rxPower
-		isAnomaly := false
-		// Jika formatnya ribuan (e.g., -2800 = -28.0 dBm)
-		if rx < -2700 || (rx < -27.0 && rx > -100.0) {
-			isAnomaly = true
-		}
-
-		if isAnomaly {
-			desc := fmt.Sprintf("Redaman optik kritis (RxPower: %v) terdeteksi pada parameter %s", rx, paramName)
-			s.recordActivity(ctx, &domain.ActivityLog{
-				TenantID:    dev.TenantID,
-				Action:      "ANOMALY_DETECTED",
-				EntityType:  "device",
-				EntityID:    &dev.ID,
-				Description: &desc,
-			})
-			s.log().Warn("cwmp: anomaly redaman optik terdeteksi", "device_id", dev.ID, "rx_power", rx)
-			s.notifyWebhook(ctx, domain.WebhookEventDeviceFault, dev.TenantID, map[string]any{
-				"device_id":    dev.ID,
-				"anomaly_type": "OPTICAL_POWER",
-				"rx_power":     rx,
-				"message":      desc,
-			})
-		}
+		s.alertOptical(ctx, dev, *rxPower, paramName)
 	}
+}
+
+// alertOptical menilai RX terhadap ambang waspada (-25 dBm) & kritis (-27 dBm atau overload > -8 dBm; domain.OpticalLevelOf).
+// Kritis: activity log + webhook DEVICE_FAULT (perilaku lama) + notifikasi CRITICAL. Waspada: hanya notifikasi WARNING.
+// Notifikasi ditekan 24 jam per (perangkat, level) sehingga polling berkala tidak membanjiri; naik level tetap dikabarkan.
+// Satuan yang tak dapat ditebak (di luar rentang fisik) diabaikan — alarm palsu lebih merugikan daripada terlewat.
+func (s *Service) alertOptical(ctx context.Context, dev *domain.Device, rawRX float64, paramName string) {
+	rx, ok := domain.NormalizeRXDBM(rawRX)
+	if !ok {
+		s.log().Debug("cwmp: nilai RX di luar rentang fisik, tidak dinilai", "device_id", dev.ID, "rx_raw", rawRX)
+		return
+	}
+	level := domain.OpticalLevelOf(&rx)
+	if level != domain.OpticalBad && level != domain.OpticalWarn {
+		return
+	}
+	if level == domain.OpticalBad {
+		desc := fmt.Sprintf("Redaman optik kritis (RxPower: %.2f dBm) terdeteksi pada parameter %s", rx, paramName)
+		s.recordActivity(ctx, &domain.ActivityLog{
+			TenantID:    dev.TenantID,
+			Action:      "ANOMALY_DETECTED",
+			EntityType:  "device",
+			EntityID:    &dev.ID,
+			Description: &desc,
+		})
+		s.log().Warn("cwmp: anomaly redaman optik terdeteksi", "device_id", dev.ID, "rx_power", rx)
+		s.notifyWebhook(ctx, domain.WebhookEventDeviceFault, dev.TenantID, map[string]any{
+			"device_id":    dev.ID,
+			"anomaly_type": "OPTICAL_POWER",
+			"rx_power":     rx,
+			"level":        level,
+			"message":      desc,
+		})
+	}
+	if s.notifier == nil || dev.TenantID == nil {
+		return
+	}
+	severity, title, threshold := domain.NotificationSeverityWarning, "Redaman optik waspada", "ambang waspada -25 dBm"
+	if level == domain.OpticalBad {
+		severity, title, threshold = domain.NotificationSeverityCritical, "Redaman optik kritis", "di luar rentang aman -27..-8 dBm"
+	}
+	_ = s.notifier.Notify(ctx, domain.NotificationEvent{
+		TypeCode: domain.NotifOpticalAlert, TenantID: dev.TenantID, SeverityOverride: severity,
+		Title:      title,
+		Body:       fmt.Sprintf("Perangkat %s: RX %.2f dBm (%s). Periksa konektor, tikungan kabel, dan splitter.", dev.SerialNumber, rx, threshold),
+		Link:       fmt.Sprintf("/devices/%d", dev.ID),
+		EntityType: "device", EntityID: &dev.ID,
+		DedupeKey: fmt.Sprintf("optical:%d:%s", dev.ID, level), DedupeWindow: 24 * time.Hour,
+	})
 }

@@ -24,6 +24,8 @@ const (
 	NotifDeviceLimitReached = "DEVICE_LIMIT_REACHED"
 	NotifNewTenantSignup    = "NEW_TENANT_SIGNUP"
 	NotifAnnouncement       = "ANNOUNCEMENT"
+	// Redaman optik perangkat melewati ambang waspada/kritis (migrations/0036).
+	NotifOpticalAlert = "OPTICAL_ALERT"
 	// Langganan SaaS (migrations/0032).
 	NotifBillingPaid     = "BILLING_PAID"
 	NotifBillingExpiring = "BILLING_EXPIRING"

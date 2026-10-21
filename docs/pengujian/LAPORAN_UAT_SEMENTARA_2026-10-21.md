@@ -193,6 +193,12 @@
 - **Overview perangkat** baru; **Tetapkan vendor** untuk merek yang belum dikenal.
 - **Data:** vendor OPTICTIMES + OUI + model (migrasi 0035); 4 migrasi lain tidak berubah.
 - **Operasional:** pembersihan data uji, checklist Excel (55 TC), 10 commit terarah.
+- **Tambahan sore hari (belum diuji di ONT fisik, lulus di simulator + MariaDB nyata):**
+  - **Asisten sumber redaman optik** (tab Redaman Optik): menelusuri cabang optik ONT, mengenali kandidat RX/TX/suhu/tegangan/bias dari parameter yang benar-benar dilaporkan, pratinjau skala, SUPERADMIN menyimpan mapping per model (API mapping kini menerima `value_scale`). Path optik ZTE/Optictimes TIDAK ditebak.
+  - **Filter daftar perangkat:** `optical_level` (ok/warn/bad/unknown; ambang -25/-27/-8 dBm) dan `no_vendor` ("Belum dikenal").
+  - **Penyegaran PPPoE berkala** (`ACS_PPPOE_POLL_MINUTES`, bawaan 1440; 0 = mati) pada Inform; polling optik berkala sudah ada (`ACS_OPTICAL_POLL_MINUTES`).
+  - **Peringatan redaman:** notifikasi in-app `OPTICAL_ALERT` (WARNING di bawah -25 dBm, CRITICAL di bawah -27 / di atas -8 dBm; ditekan 24 jam per perangkat+level; migrasi 0036) + webhook DEVICE_FAULT untuk kritis.
+  - **Sengaja ditunda:** aksi massal tulis dengan pratinjau (berisiko sebelum uji tulis fisik aman) dan ekspor/impor hasil UAT.
 
 ---
 

@@ -7158,7 +7158,7 @@ components:
         type:
           type: string
           description: Kode jenis.
-          enum: [SECURITY_ALERT, DEVICE_OFFLINE_SPIKE, TASK_FAILURES, ROLLOUT_PAUSED, DEVICE_LIMIT_REACHED, NEW_TENANT_SIGNUP, ANNOUNCEMENT]
+          enum: [SECURITY_ALERT, DEVICE_OFFLINE_SPIKE, TASK_FAILURES, ROLLOUT_PAUSED, DEVICE_LIMIT_REACHED, NEW_TENANT_SIGNUP, ANNOUNCEMENT, BILLING_PAID, BILLING_EXPIRING, BILLING_EXPIRED, BILLING_FAILED, BUG_REPORT_UPDATE, OPTICAL_ALERT]
         type_name: { type: string, example: Pengumuman }
         severity: { type: string, enum: [INFO, WARNING, CRITICAL] }
         title: { type: string, maxLength: 160 }

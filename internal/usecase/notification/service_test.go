@@ -51,6 +51,7 @@ func newFakeRepo() *fakeRepo {
 	add(5, domain.NotifDeviceLimitReached, "WARNING", true, true, false)
 	add(6, domain.NotifNewTenantSignup, "INFO", true, true, false)
 	add(7, domain.NotifAnnouncement, "INFO", true, true, false)
+	add(8, domain.NotifOpticalAlert, "WARNING", true, false, false)
 	return r
 }
 
@@ -361,6 +362,7 @@ func TestAudiens_PerJenis(t *testing.T) {
 	}{
 		{"offline spike -> ADMIN+NOC tenant, bukan viewer/enduser/nonaktif/tenant lain", domain.NotifDeviceOfflineSpike, u64(1), []uint64{10, 11}},
 		{"task failures -> ADMIN+NOC", domain.NotifTaskFailures, u64(1), []uint64{10, 11}},
+		{"redaman optik -> ADMIN+NOC tenant perangkat", domain.NotifOpticalAlert, u64(1), []uint64{10, 11}},
 		{"rollout paused -> ADMIN saja", domain.NotifRolloutPaused, u64(1), []uint64{10}},
 		{"device limit -> ADMIN tenant + SUPERADMIN", domain.NotifDeviceLimitReached, u64(1), []uint64{1, 10}},
 		{"signup -> SUPERADMIN", domain.NotifNewTenantSignup, u64(1), []uint64{1}},
@@ -492,7 +494,7 @@ func TestPreferensi_APIListDanUpdate(t *testing.T) {
 	e := newEnv(t, true)
 	actor := domain.Actor{UserID: 10}
 	list, err := e.svc.ListPreferences(ctx, actor)
-	if err != nil || len(list) != 7 {
+	if err != nil || len(list) != 8 {
 		t.Fatalf("list: %d %v", len(list), err)
 	}
 	byType := map[string]PreferenceView{}

@@ -242,6 +242,7 @@ func main() {
 	iamSvc.WithNotifier(notifSvc)
 	signupSvc.WithNotifier(notifSvc)
 	deviceSvc.WithNotifier(notifSvc)
+	sessionSvc.WithNotifier(notifSvc)
 	firmwareSvc.WithNotifier(notifSvc)
 
 	// ---- Langganan SaaS lewat Xendit (migrations/0032). Bawaan MATI (ACS_BILLING_ENABLED=false): klien gateway tidak

@@ -85,6 +85,18 @@ func OpticalLevelOf(rx *float64) string {
 	}
 }
 
+// NormalizeRXDBM menebak satuan pembacaan RX mentah yang belum dikonversi: dBm langsung (-23,5), per 0,01 dBm (-2350)
+// atau per 0,001 dBm (-23500, mis. TR-181 OpticalSignalLevel). Memakai skala pertama yang masuk akal secara fisik
+// (-60..+15 dBm); ok=false bila tak ada — jangan membunyikan alarm dari satuan yang tidak jelas.
+func NormalizeRXDBM(raw float64) (dbm float64, ok bool) {
+	for _, scale := range []float64{1, 0.01, 0.001} {
+		if v := raw * scale; v >= -60 && v <= 15 {
+			return v, true
+		}
+	}
+	return 0, false
+}
+
 // ValidOpticalLevel — nilai filter yang diterima (kosong tidak termasuk).
 func ValidOpticalLevel(v string) bool {
 	return v == OpticalOK || v == OpticalWarn || v == OpticalBad || v == OpticalUnknown

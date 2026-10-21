@@ -6325,3 +6325,8 @@ CREATE TABLE bug_report_screenshots (
 INSERT INTO ref_notification_types (code, name, description, severity_id, default_in_app, default_email, is_mandatory) VALUES
     ('BUG_REPORT_UPDATE', 'Status laporan bug berubah', 'Laporan bug yang Anda kirim sedang ditangani atau sudah selesai.',
         (SELECT id FROM ref_notification_severity WHERE code = 'INFO'), 1, 0, 0);
+
+-- OPTICAL_ALERT (migrations/0036)
+INSERT INTO ref_notification_types (code, name, description, severity_id, default_in_app, default_email, is_mandatory) VALUES
+    ('OPTICAL_ALERT', 'Redaman optik perangkat', 'Redaman optik (RX) perangkat melewati ambang waspada atau kritis.',
+        (SELECT id FROM ref_notification_severity WHERE code = 'WARNING'), 1, 0, 0);
