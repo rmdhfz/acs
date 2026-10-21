@@ -20,6 +20,11 @@ func (r *Router) listDevices(c *echo.Context) error {
 		DeviceStatusID: queryUint64(c, "device_status_id"),
 		TenantID:       queryUint64(c, "tenant_id"),
 		TagID:          queryUint64(c, "tag_id"),
+		OpticalLevel:   c.QueryParam("optical_level"),
+		NoVendor:       c.QueryParam("no_vendor") == "true",
+	}
+	if f.OpticalLevel != "" && !domain.ValidOpticalLevel(f.OpticalLevel) {
+		return echo.NewHTTPError(http.StatusBadRequest, "optical_level harus ok, warn, bad, atau unknown")
 	}
 	devices, total, err := r.Devices.ListWithSummary(c.Request().Context(), actor, f, paginationFromQuery(c))
 	if err != nil {

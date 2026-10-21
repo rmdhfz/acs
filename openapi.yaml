@@ -1852,6 +1852,16 @@ paths:
             Tetap tenant-scoped — filter tag DAN tenant di-AND. Kelola tag lewat
             `POST /devices/:id/tags`.
           schema: { type: integer, format: int64 }
+        - name: optical_level
+          in: query
+          description: |
+            Saring menurut RX pembacaan optik terakhir: `ok` (-25..-8 dBm), `warn` (-27..-25), `bad` (< -27 atau > -8,
+            receiver overload), `unknown` (belum ada pembacaan RX). Nilai lain = 400.
+          schema: { type: string, enum: [ok, warn, bad, unknown] }
+        - name: no_vendor
+          in: query
+          description: "`true` = hanya device yang vendornya belum terpetakan (tampil \"Belum dikenal\")."
+          schema: { type: boolean }
         - $ref: '#/components/parameters/tenantIdQuery'
         - $ref: '#/components/parameters/page'
         - $ref: '#/components/parameters/pageSize'

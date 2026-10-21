@@ -52,12 +52,15 @@ import {
   useTags,
   useTenants,
   useVendors,
+  type DeviceFilters,
 } from '../lib/hooks'
 import { formatRelativeTime } from '../lib/format'
 import { useStatusParam } from '../lib/useStatusParam'
 import type { Device } from '../lib/types'
 
 const PAGE_SIZE = 20
+// Nilai khusus filter vendor: perangkat yang vendornya belum terpetakan ("Belum dikenal").
+const NO_VENDOR = 'none'
 const inputCls =
   'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
 const primaryBtnCls =
@@ -82,6 +85,7 @@ export function DevicesPage() {
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [vendorFilter, setVendorFilter] = useState<string>('')
   const [tagFilter, setTagFilter] = useState<string>('')
+  const [opticalFilter, setOpticalFilter] = useState<string>('')
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [bulkAction, setBulkAction] = useState<'profile' | 'firmware' | 'reboot' | null>(null)
@@ -102,17 +106,20 @@ export function DevicesPage() {
   const { data: taskStatusRefs } = useRefs('ref_task_status')
   const pendingId = findRefIdByCode(taskStatusRefs, 'PENDING')
 
-  const filters = useMemo(
-    () => ({
+  // Filter aktif (tanpa paginasi) — dipakai daftar & ekspor agar keduanya selalu sama.
+  const activeFilters = useMemo(
+    (): DeviceFilters => ({
       search: search.trim() || undefined,
       device_status_id: statusFilter ? Number(statusFilter) : undefined,
-      vendor_id: vendorFilter ? Number(vendorFilter) : undefined,
+      // "none" = vendor belum dikenal (vendor_id NULL), bukan id vendor.
+      vendor_id: vendorFilter && vendorFilter !== NO_VENDOR ? Number(vendorFilter) : undefined,
+      no_vendor: vendorFilter === NO_VENDOR ? true : undefined,
       tag_id: tagFilter ? Number(tagFilter) : undefined,
-      page,
-      page_size: PAGE_SIZE,
+      optical_level: (opticalFilter || undefined) as DeviceFilters['optical_level'],
     }),
-    [search, statusFilter, vendorFilter, tagFilter, page],
+    [search, statusFilter, vendorFilter, tagFilter, opticalFilter],
   )
+  const filters = useMemo(() => ({ ...activeFilters, page, page_size: PAGE_SIZE }), [activeFilters, page])
 
   const { data: devicesResp, isLoading, isFetching, dataUpdatedAt } = useDevices(filters)
   const { data: totalResp } = useDevices({ page_size: 1 })
@@ -147,7 +154,7 @@ export function DevicesPage() {
   // device "terpilih" secara tidak kasat mata dari filter/halaman sebelumnya.
   useEffect(() => {
     setSelected(new Set())
-  }, [search, statusFilter, vendorFilter, tagFilter, page])
+  }, [search, statusFilter, vendorFilter, tagFilter, opticalFilter, page])
 
   async function handleDelete(d: Device) {
     const ok = await confirm({
@@ -242,12 +249,7 @@ export function DevicesPage() {
             hint="Mengekspor semua perangkat sesuai filter yang aktif (bukan hanya halaman ini)."
             getRows={(ctx) =>
               loadDeviceExportRows(
-                {
-                  search: search.trim() || undefined,
-                  device_status_id: statusFilter ? Number(statusFilter) : undefined,
-                  vendor_id: vendorFilter ? Number(vendorFilter) : undefined,
-                  tag_id: tagFilter ? Number(tagFilter) : undefined,
-                },
+                { ...activeFilters, no_vendor: activeFilters.no_vendor ? 'true' : undefined },
                 { vendors, tenants, tenantName: currentTenant?.name, statuses: statusRefs ?? [] },
                 ctx,
               )
@@ -338,11 +340,27 @@ export function DevicesPage() {
           className="min-w-[140px] flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 sm:flex-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
         >
           <option value="">Semua vendor</option>
+          <option value={NO_VENDOR}>Belum dikenal</option>
           {vendors.map((v) => (
             <option key={v.id} value={v.id}>
               {v.name}
             </option>
           ))}
+        </select>
+        <select
+          value={opticalFilter}
+          aria-label="Filter redaman"
+          onChange={(e) => {
+            setOpticalFilter(e.target.value)
+            resetToFirstPage()
+          }}
+          className="min-w-[140px] flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 sm:flex-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+        >
+          <option value="">Semua redaman</option>
+          <option value="bad">Kritis (&lt; -27 / &gt; -8 dBm)</option>
+          <option value="warn">Waspada (-27 s.d. -25 dBm)</option>
+          <option value="ok">Normal</option>
+          <option value="unknown">Belum terbaca</option>
         </select>
         {tags.length > 0 && (
           <select

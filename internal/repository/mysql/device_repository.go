@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -147,6 +148,28 @@ func (r *deviceRepository) List(ctx context.Context, f domain.DeviceFilter, p do
 		// bila (hipotetis) ada >1 relasi, dan tidak mengubah bentuk SELECT *.
 		where = append(where, "EXISTS (SELECT 1 FROM device_tags dt WHERE dt.device_id = devices.id AND dt.tag_id = ?)")
 		args = append(args, *f.TagID)
+	}
+	if f.NoVendor {
+		where = append(where, "vendor_id IS NULL")
+	}
+	if f.OpticalLevel != "" {
+		// RX dari pembacaan terakhir (urutan sama dengan ringkasan daftar); tanpa pembacaan/RX NULL = unknown.
+		const rx = "(SELECT m.rx_power_dbm FROM device_optical_metrics m WHERE m.device_id = devices.id ORDER BY m.recorded_at DESC, m.id DESC LIMIT 1)"
+		switch f.OpticalLevel {
+		case domain.OpticalUnknown:
+			where = append(where, rx+" IS NULL")
+		case domain.OpticalBad:
+			where = append(where, "("+rx+" < ? OR "+rx+" > ?)")
+			args = append(args, domain.OpticalRXBadBelowDBM, domain.OpticalRXOverloadAboveDBM)
+		case domain.OpticalWarn:
+			where = append(where, "("+rx+" >= ? AND "+rx+" < ?)")
+			args = append(args, domain.OpticalRXBadBelowDBM, domain.OpticalRXWarnBelowDBM)
+		case domain.OpticalOK:
+			where = append(where, "("+rx+" >= ? AND "+rx+" <= ?)")
+			args = append(args, domain.OpticalRXWarnBelowDBM, domain.OpticalRXOverloadAboveDBM)
+		default:
+			return nil, 0, fmt.Errorf("%w: optical_level tidak dikenal", domain.ErrInvalidInput)
+		}
 	}
 	whereSQL := strings.Join(where, " AND ")
 

@@ -92,6 +92,26 @@ describe('DevicesPage — kolom ringkasan', () => {
     expect(calls.filter((c) => c.url.endsWith('/devices/refresh-summary'))[1].body).toEqual({ device_ids: [2] })
   })
 
+  it('filter redaman & vendor "Belum dikenal" diteruskan ke API dan kembali ke halaman 1', async () => {
+    login(['ADMIN'])
+    const calls = mockFetch(handler())
+    renderApp(ui)
+    const u = userEvent.setup()
+    await screen.findAllByText('ELWGC09C2814')
+
+    await u.selectOptions(screen.getByLabelText('Filter redaman'), 'bad')
+    await waitFor(() => expect(calls.some((c) => c.url.includes('/devices?') && c.url.includes('optical_level=bad'))).toBe(true))
+
+    await u.selectOptions(screen.getByLabelText('Filter vendor'), 'none')
+    await waitFor(() => expect(calls.some((c) => c.url.includes('no_vendor=true') && c.url.includes('optical_level=bad'))).toBe(true))
+    // "none" bukan id vendor: tidak boleh bocor sebagai vendor_id
+    expect(calls.some((c) => c.url.includes('vendor_id=none') || c.url.includes('vendor_id=NaN'))).toBe(false)
+
+    await u.selectOptions(screen.getByLabelText('Filter redaman'), '')
+    await u.selectOptions(screen.getByLabelText('Filter vendor'), '')
+    await waitFor(() => expect(calls[calls.length - 1].url).not.toMatch(/optical_level|no_vendor/))
+  })
+
   it('VIEWER tidak melihat tombol Segarkan data', async () => {
     login(['VIEWER'])
     mockFetch(handler())

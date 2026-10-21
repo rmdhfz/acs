@@ -80,6 +80,9 @@ export interface DeviceFilters {
   device_status_id?: number
   vendor_id?: number
   tag_id?: number
+  // Level RX terakhir (ambang -25/-27 dBm, lihat lib/optical.ts) dan "vendor belum dikenal".
+  optical_level?: 'ok' | 'warn' | 'bad' | 'unknown'
+  no_vendor?: boolean
   page?: number
   page_size?: number
 }

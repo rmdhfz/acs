@@ -53,6 +53,41 @@ type DeviceFilter struct {
 	DeviceStatusID *uint64
 	Search         string  // cocok ke serial_number/mac_address
 	TagID          *uint64 // hanya device yang punya tag ini (device_tags, migrations/0019)
+	// OpticalLevel menyaring berdasarkan RX terakhir (kosong = semua): OpticalOK/Warn/Bad/Unknown.
+	OpticalLevel string
+	// NoVendor — hanya device yang vendornya belum terpetakan (vendor_id NULL, tampil "Belum dikenal").
+	NoVendor bool
+}
+
+// Level redaman optik (RX) — satu sumber ambang untuk filter daftar & peringatan; frontend mencerminkannya di lib/optical.ts.
+const (
+	OpticalOK      = "ok"
+	OpticalWarn    = "warn"
+	OpticalBad     = "bad"
+	OpticalUnknown = "unknown" // belum ada pembacaan RX
+
+	OpticalRXWarnBelowDBM     = -25.0 // lebih lemah dari ini = waspada
+	OpticalRXBadBelowDBM      = -27.0 // lebih lemah dari ini = kritis (dekat sensitivitas penerima)
+	OpticalRXOverloadAboveDBM = -8.0  // lebih kuat dari ini = kritis (receiver overload)
+)
+
+// OpticalLevelOf mengklasifikasi RX (dBm); nil = OpticalUnknown.
+func OpticalLevelOf(rx *float64) string {
+	switch {
+	case rx == nil:
+		return OpticalUnknown
+	case *rx < OpticalRXBadBelowDBM || *rx > OpticalRXOverloadAboveDBM:
+		return OpticalBad
+	case *rx < OpticalRXWarnBelowDBM:
+		return OpticalWarn
+	default:
+		return OpticalOK
+	}
+}
+
+// ValidOpticalLevel — nilai filter yang diterima (kosong tidak termasuk).
+func ValidOpticalLevel(v string) bool {
+	return v == OpticalOK || v == OpticalWarn || v == OpticalBad || v == OpticalUnknown
 }
 
 // DeviceStatusCount/DeviceVendorCount — hasil agregasi utk dashboard analitik
