@@ -139,7 +139,7 @@ export function BillingPage() {
   const currentCode = sub.data?.plan?.code
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-7xl space-y-6 px-6 py-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Langganan & Tagihan</h1>
