@@ -16,7 +16,7 @@
 | Baca konfigurasi dari ONT (SSID, klien WiFi, PPPoE username) | ✅ |
 | Ubah konfigurasi di ONT (SSID & password) | ✅ — **setelah** perbaikan bug protokol (lihat T-07) |
 | Reboot dari ACS | ✅ (ZTE F660) |
-| Connection Request (ACS → ONT, "Percepat") | ⚠️ URL kini **tersimpan otomatis** (T-06 diperbaiki; terbukti di ZTE F609); uji kirim CR masih butuh kredensial CR ONT |
+| Refresh ONT / Connection Request (ACS → ONT, tanpa reboot) | ✅ **terbukti pada Optictimes** (event `6 CONNECTION REQUEST` ×2, ONT online & task selesai) — tanpa kredensial CR di ACS; F660/F609 belum diuji kirim |
 | Redaman optik ZTE | ❌ kosong — path TR-098 ZTE belum dipetakan (T-10) |
 | Aktif/nonaktif SSID, Hide SSID, Max Clients | ⏳ fitur sudah ada & lulus tes otomatis; **belum dicoba di ONT fisik** |
 | Isolation SSID, Priority | ⏳ path tidak dilaporkan F660; belum bisa (T-11) |
@@ -109,9 +109,11 @@
 
 | ID | Hasil | Catatan |
 |---|---|---|
-| CR-01 s.d. CR-03 | ⏳ | CR URL belum terisi, kredensial CR belum diuji |
+| CR-01 Kredensial CR diisi | ⚠️ | belum diisi untuk satu pun ONT; UI kini memandu (banner + konfirmasi) |
+| CR-02 Connection Request ACS → ONT | ✅ | **Optictimes OPTIF600C9E0** 14.14 & 14.15 WIB: event `6 CONNECTION REQUEST`, status online, task baca selesai — ONT ini tidak mewajibkan autentikasi CR. F660/F609 (ZTE, biasanya Digest) belum diuji |
+| CR-03 Password CR salah ditolak | ⏳ | |
 | CR-04 Task terkirim di Inform berikutnya | ✅ | semua task Set/Get dieksekusi pada Periodic Inform |
-| CR-05 Isi CR URL manual | ⏳ | nilai sudah diketahui: `http://10.0.123.11:58000` (F660), `http://10.0.123.22:58000/9931c0a99324ecce` (F609) |
+| CR-05 Isi CR URL manual | ➖ | tidak lagi diperlukan: URL tersimpan otomatis (T-06) dan diisi dari parameter saat detail dibuka |
 | CR-06 UDP/STUN | ⏳ | |
 
 ### E. Tulis
@@ -178,6 +180,7 @@
 | T-15 | Akun `e2e-super` memakai password uji yang tertulis di dokumen | risiko bila ACS diekspos | ⏳ ganti/nonaktifkan |
 | T-16 | Fault `9002` pada task Ping (`882`) terjadi sebelum perbaikan T-07 | belum tahu apakah Ping sekarang berhasil | ⏳ klik **Coba lagi** pada task itu |
 | T-17 | **Laptop masuk Modern Standby 12.22–13.00** (idle timeout) → ACS tak terjangkau, ketiga ONT tampak OFFLINE saat sesi lanjutan dimulai; setelah bangun, ONT baru Inform lagi menurut jeda retry-nya (F609 13.30; F660 & Optictimes belum) | uji tersendat; bukan bug ACS | ⚠️ matikan sleep selama UAT: `powercfg /change standby-timeout-ac 0` (dan `monitor-timeout`); reboot ONT untuk mempercepat Inform |
+| T-18 | Tampilan WiFi Optictimes: band "-", channel 0, "6d lalu" ambigu; ONT tak punya `SSIDAdvertisementEnabled` (hide lewat `X_CT-COM_SSIDHide`) | informasi menyesatkan; tombol Hide bisa menulis path yang tak ada | ✅ **diperbaiki** (data nyata): band dari ChannelsInUse/Standard, channel "11 (auto)", hide mengikuti parameter yang DILAPORKAN ONT (standar terbalik / vendor langsung), waktu "dtk/mnt/jam/hari". Isolasi standar (`IsolationEnable`) & `MaxUserNum` Optictimes terdeteksi otomatis |
 
 ---
 
