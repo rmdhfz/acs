@@ -104,6 +104,9 @@ services:
       # Reverse proxy/LB tepercaya (IP/CIDR, pisahkan koma). WAJIB diisi bila ACS di belakang
       # proxy agar IP klien benar; kosong = X-Forwarded-For diabaikan.
       ACS_TRUSTED_PROXIES: ${ACS_TRUSTED_PROXIES:-}
+      # Rentang IP tepercaya untuk ConnectionRequestURL yang dilaporkan CPE walau BUKAN IP sumber Inform. Isi bila ACS di balik
+      # NAT/port-forward (Docker Desktop: semua CPE terlihat 172.x) mis. 10.0.0.0/8. Kosong = ketat (host == IP sumber).
+      ACS_CR_TRUSTED_CIDRS: ${ACS_CR_TRUSTED_CIDRS:-}
       # Pendaftaran tenant mandiri (bawaan mati; WAJIB ACS_SMTP_HOST untuk email verifikasi). Tenant baru mulai dengan
       # batas paket awal di bawah (0 = tak dibatasi); superadmin menaikkannya lewat PATCH /tenants/:id/device-limit.
       ACS_SELF_SIGNUP: ${ACS_SELF_SIGNUP:-false}

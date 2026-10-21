@@ -216,6 +216,7 @@ Nilai parameter bernama sensitif (`password|passphrase|psk|secret|token|key`) di
 | `ACS_SIGNUP_MAX_DEVICES` | 25 | batas perangkat awal tenant hasil self-signup (0 = tak dibatasi) |
 | `ACS_SIGNUP_MAX_PENDING_TASKS` | 50 | kuota task menunggu awal tenant hasil self-signup (0 = tak dibatasi) |
 | `ACS_TRUSTED_PROXIES` | kosong | CIDR proxy yang boleh menentukan IP klien lewat `X-Forwarded-For` (wajib di belakang proxy) |
+| `ACS_CR_TRUSTED_CIDRS` | kosong | CIDR yang boleh menjadi host `ConnectionRequestURL` walau bukan IP sumber Inform (ACS di balik NAT/Docker Desktop, mis. `10.0.0.0/8`). Tetap hanya literal IP & lolos netguard; kosong = ketat |
 | `ACS_WEBHOOK_BLOCK_PRIVATE` | false | SaaS publik: tolak target webhook di RFC1918/ULA/CGNAT (validasi **dan** saat menyambung — menutup DNS rebinding) |
 | `ACS_HA` | false | mode multi-instance (§H) |
 | `ACS_OPTICAL_POLL_MINUTES` | 360 | interval polling redaman optik per perangkat (0 = mati, minimum 15) |

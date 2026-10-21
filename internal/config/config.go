@@ -50,6 +50,13 @@ type Config struct {
 	// ip_address device salah, Connection Request URL tak tertangkap).
 	TrustedProxies []*net.IPNet
 
+	// CRTrustedCIDRs — rentang IP yang boleh menjadi host ConnectionRequestURL walau BUKAN alamat sumber Inform.
+	// Kosong (default) = ketat: host harus sama dengan IP sumber Inform (anti-SSRF). Diisi bila IP sumber tidak mewakili
+	// CPE (ACS di balik NAT/port-forward, mis. Docker Desktop: semua CPE terlihat 172.x) sementara URL yang dilaporkan CPE
+	// berada di jaringan manajemen yang dikenal (mis. 10.0.0.0/8). Tetap hanya literal IP dan lolos netguard (loopback,
+	// link-local/metadata, dst. ditolak) — tidak pernah nama DNS.
+	CRTrustedCIDRs []*net.IPNet
+
 	// USPEnabled — mengaktifkan endpoint WebSocket /usp (TR-369) yang masih
 	// kerangka & tanpa autentikasi. Default MATI.
 	USPEnabled bool
@@ -257,6 +264,26 @@ func Load() (*Config, error) {
 			return nil, fmt.Errorf("config: ACS_TRUSTED_PROXIES tidak valid (%q): harus IP atau CIDR", p)
 		}
 		cfg.TrustedProxies = append(cfg.TrustedProxies, n)
+	}
+	for _, p := range strings.Split(os.Getenv("ACS_CR_TRUSTED_CIDRS"), ",") {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if !strings.Contains(p, "/") {
+			if ip := net.ParseIP(p); ip != nil {
+				if ip.To4() != nil {
+					p += "/32"
+				} else {
+					p += "/128"
+				}
+			}
+		}
+		_, n, perr := net.ParseCIDR(p)
+		if perr != nil {
+			return nil, fmt.Errorf("config: ACS_CR_TRUSTED_CIDRS tidak valid (%q): harus IP atau CIDR", p)
+		}
+		cfg.CRTrustedCIDRs = append(cfg.CRTrustedCIDRs, n)
 	}
 	uspEnabled, err := strconv.ParseBool(getEnv("ACS_USP_ENABLED", "false"))
 	if err != nil {

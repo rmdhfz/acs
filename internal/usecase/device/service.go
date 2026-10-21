@@ -33,9 +33,13 @@ import (
 // service internal), IP privat yang bukan si device — adalah anomali /
 // upaya menjadikan ACS proxy permintaan, dan DITOLAK (URL tidak disimpan).
 //
+// Pengecualian TERBATAS (opt-in, ACS_CR_TRUSTED_CIDRS): bila ACS di balik NAT/port-forward sehingga RemoteIP tidak
+// mewakili CPE (mis. Docker Desktop: semua CPE terlihat sebagai gateway 172.x), host boleh berbeda dari RemoteIP asalkan
+// literal IP di dalam rentang tepercaya DAN lolos netguard (loopback, link-local/metadata, 0.0.0.0, multicast ditolak).
+//
 // ok=false → jangan ubah nilai yang sudah ada; biarkan operator mengisinya
 // manual lewat PATCH /devices/:id bila memang perlu (mis. skenario NAT).
-func safeInformConnectionRequestURL(rawURL, remoteIP string) (string, bool) {
+func safeInformConnectionRequestURL(rawURL, remoteIP string, trusted []*net.IPNet) (string, bool) {
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" || remoteIP == "" {
 		return "", false
@@ -47,10 +51,26 @@ func safeInformConnectionRequestURL(rawURL, remoteIP string) (string, bool) {
 	host := u.Hostname()
 	hostIP := net.ParseIP(host)
 	remote := net.ParseIP(remoteIP)
-	if hostIP == nil || remote == nil || !hostIP.Equal(remote) {
+	if hostIP == nil || remote == nil {
 		return "", false
 	}
-	return rawURL, true
+	if hostIP.Equal(remote) {
+		return rawURL, true
+	}
+	if inAnyCIDR(trusted, hostIP) && netguard.CheckHostPort(u.Host) == nil {
+		return rawURL, true
+	}
+	return "", false
+}
+
+// inAnyCIDR melaporkan apakah ip berada di salah satu rentang (daftar kosong = tidak pernah).
+func inAnyCIDR(nets []*net.IPNet, ip net.IP) bool {
+	for _, n := range nets {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 type Service struct {
@@ -75,6 +95,15 @@ type Service struct {
 	quota   domain.TenantQuotaRepository // opsional (WithQuota): batas perangkat per tenant
 
 	notifier domain.Notifier // opsional (WithNotifier): notifikasi DEVICE_LIMIT_REACHED
+
+	// crTrusted — rentang IP tepercaya untuk host ConnectionRequestURL di luar IP sumber Inform (WithCRTrustedCIDRs).
+	crTrusted []*net.IPNet
+}
+
+// WithCRTrustedCIDRs mengaktifkan pengecualian terbatas pada anti-SSRF Connection Request (lihat safeInformConnectionRequestURL).
+func (s *Service) WithCRTrustedCIDRs(nets []*net.IPNet) *Service {
+	s.crTrusted = nets
+	return s
 }
 
 // WithNotifier memasang notifikasi persisten saat Inform perangkat baru ditolak karena batas perangkat tenant.
@@ -494,7 +523,7 @@ func (s *Service) FindOrCreateFromInform(ctx context.Context, info InformDeviceI
 		if existing.TenantID == nil && info.TenantID != nil {
 			existing.TenantID = info.TenantID
 		}
-		if crURL, ok := safeInformConnectionRequestURL(info.ConnectionRequestURL, info.RemoteIP); ok &&
+		if crURL, ok := safeInformConnectionRequestURL(info.ConnectionRequestURL, info.RemoteIP, s.crTrusted); ok &&
 			(existing.ConnectionRequestURL == nil || *existing.ConnectionRequestURL != crURL) {
 			existing.ConnectionRequestURL = &crURL
 		}
@@ -527,7 +556,7 @@ func (s *Service) FindOrCreateFromInform(ctx context.Context, info InformDeviceI
 		IPAddress:       &info.RemoteIP,
 		LastInformAt:    &now,
 	}
-	if crURL, ok := safeInformConnectionRequestURL(info.ConnectionRequestURL, info.RemoteIP); ok {
+	if crURL, ok := safeInformConnectionRequestURL(info.ConnectionRequestURL, info.RemoteIP, s.crTrusted); ok {
 		d.ConnectionRequestURL = &crURL
 	}
 
