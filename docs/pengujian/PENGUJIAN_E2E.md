@@ -20,7 +20,7 @@ nyata dan tidak punya kuirk per-firmware. Gunanya:
 
 ---
 
-## 1. Yang Diuji (22 skenario)
+## 1. Yang Diuji (29 skenario)
 
 | # | Skenario | Yang dibuktikan |
 |---|---|---|
@@ -52,6 +52,7 @@ nyata dan tidak punya kuirk per-firmware. Gunanya:
 | S26 | Fitur Console & IDOR | Layout menu per pengguna (tenant lain/superadmin tak melihat; bentuk jahat 400); laporan bug (dua kolom terpisah, tenant/pelapor dari token, body/field multipart bertenant_id 400, tangkapan layar: PNG sah diterima & diambil pelapor/SUPERADMIN, teks/SVG/PNG rusak 400, gambar tenant lain 404, lintas tenant 404, hanya SUPERADMIN ubah status, pelapor menerima notifikasi "sudah ditangani"); riwayat impor/ekspor (daftar dikunci ke tenant, tenant_id klien diabaikan, lintas tenant 404, SUPERADMIN lihat semua, angka tak wajar 400) |
 | S27 | ONT nyata HG6145F (identitas) | Identitas ONT FiberHome HG6145F milik pengguna (OUI **58AEF1** dari seed IEEE tanpa OUI palsu, firmware RP2951): vendor ter-resolve ke FIBERHOME, versi tersimpan, logical key `wifi.ssid` → path TR-098 via mapping vendor diterima CPE tanpa fault. **Bukan bukti perangkat fisik** — lihat `CATATAN_ONT_HG6145F.md` |
 | S28 | Ringkasan daftar perangkat | `POST /devices/refresh-summary`: `device_ids` kosong/>100 → 400, device tenant lain dilewati (tidak diantre), pemilik diantre; CPE menjawab `GetParameterValues` cabang PPP (path parsial) → `GET /devices` membawa `pppoe_username`; pencarian lewat username menemukan device (tenant lain tidak). S15 juga memastikan daftar membawa `rx_power_dbm`/`tx_power_dbm` terakhir |
+| S29 | Capture sesi CWMP | Saklar capture per perangkat (nyala/mati/maks 60 menit, validasi 400, RBAC & isolasi tenant); pesan SOAP dua arah terekam; **passphrase disamarkan** di daftar, detail, dan ekspor NDJSON; ACS mengirim SetParameterValues dengan `xsi:type` literal (regresi T-07); setelah dimatikan tidak ada pesan baru |
 
 Status terakhir: **24/24 PASS** (2026-10-18), termasuk run ulang penuh setelah penambahan vendor generik/OUI, revalidasi WebSocket, hitungan sesi per tenant, dan batas laju REST yang dapat diatur. Catatan jujur: seluruh skenario memakai **simulator** — bukan bukti perilaku pada firmware nyata (lihat `docs/pengujian/PENGUJIAN_LAPANGAN.md`).
 
@@ -60,8 +61,7 @@ Status terakhir: **24/24 PASS** (2026-10-18), termasuk run ulang penuh setelah p
 ## 2. Prasyarat
 
 - Docker + Docker Compose.
-- Stack ACS hidup: `docker compose up -d` (menjalankan migrasi `0001`→`0029`).
-- Satu user `SUPERADMIN` sudah di-seed.
+- Docker + Compose; berkas `.env` di akar repo. **Stack e2e dinaikkan sendiri oleh `scripts/e2e.sh`** sebagai proyek compose terpisah (`acs-e2e`, lihat `docker-compose.e2e.yml`) — **bukan** stack dev/UAT.
 - Node 20+ opsional (hanya untuk gerbang frontend, tidak dipakai harness ini).
 
 Host **tidak** perlu Go toolchain — semua build lewat image `golang:1.26.9`.
@@ -70,15 +70,23 @@ Host **tidak** perlu Go toolchain — semua build lewat image `golang:1.26.9`.
 
 ## 3. Cara Menjalankan
 
-### Windows (PowerShell) — satu perintah
+### Satu perintah (Git Bash / Linux / macOS; di Windows bisa lewat PowerShell)
 
-```powershell
-pwsh scripts/e2e.ps1
+```bash
+scripts/e2e.sh              # semua skenario di stack e2e TERPISAH
+scripts/e2e.sh --fresh      # mulai dari database kosong
+scripts/e2e.sh --run S1     # hanya skenario yang namanya memuat "S1" (mis. S15 butuh S1: --run S1 menjalankan keduanya)
+scripts/e2e.sh --down       # setelah selesai, matikan stack e2e dan hapus datanya
+# PowerShell: pwsh scripts/e2e.ps1 [opsi yang sama]  (pembungkus tipis atas e2e.sh)
 ```
 
-Skrip ini: menyalakan stack bila belum, men-seed superadmin bila belum,
-membangun binary `e2e` lewat Docker, menjalankannya di jaringan compose, lalu
-menulis ringkasan JSON ke `bin/e2e-result.json`.
+Skrip ini menaikkan stack **terpisah** (proyek `acs-e2e`: database, volume, dan jaringan sendiri; REST `127.0.0.1:28080`,
+CWMP `127.0.0.1:27547`, semua hanya loopback) sehingga **data uji tidak pernah masuk ke stack dev/UAT** dan keduanya bisa
+berjalan bersamaan. Ia juga men-seed superadmin, membangun binary `e2e` lewat Docker, menjalankannya di jaringan
+`acs-e2e_default`, dan menulis ringkasan JSON ke `/tmp/e2e.json` di dalam kontainer runner.
+
+> Image MinIO: bila `minio/minio:latest` tidak ada secara lokal, skrip memakai `cgr.dev/chainguard/minio:latest` (image yang
+> dipakai stack dev) lewat `ACS_E2E_MINIO_IMAGE`.
 
 ### Manual (POSIX / detail)
 
@@ -161,9 +169,8 @@ ekspektasi).
 - **Load test terbatas rate limiter `/cwmp`** (5 req/s per IP). Dari satu
   mesin/IP, "ribuan sesi concurrent" tidak bisa diukur murni — butuh rig
   multi-IP. Harness ini memvalidasi *kebenaran alur*, bukan *kapasitas puncak*.
-- **Data uji menumpuk di DB dev.** Tiap run membuat tenant + device + task baru
-  (di-prefix run-id acak). Tidak ada cleanup otomatis (tidak ada endpoint hard
-  delete). Bersihkan manual bila perlu, atau `docker compose down -v` untuk
-  reset total (HATI-HATI: menghapus semua data dev).
+- **Data uji menumpuk di DB e2e** (bukan lagi DB dev/UAT). Tiap run membuat tenant + device + task baru
+  (di-prefix run-id acak). Bersihkan dengan `scripts/e2e.sh --fresh` atau `--down`. Menjalankan e2e **langsung ke stack
+  dev/UAT** (flag `-rest`/`-cwmp` manual) tidak dianjurkan: data uji akan tercampur dengan perangkat nyata.
 - **`InsecureSkipVerify: true`** di simulator & e2e client — untuk dev/e2e yang
   memakai HTTP polos atau self-signed. Jangan pakai pola ini di kode produksi.

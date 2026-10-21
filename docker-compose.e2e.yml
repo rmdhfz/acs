@@ -1,0 +1,45 @@
+# Stack e2e TERPISAH dari stack dev/UAT (docker-compose.yml).
+#
+# Mengapa: e2e membuat tenant/perangkat/paket uji. Di stack dev/UAT itu mencemari daftar perangkat dan harus dibersihkan
+# manual (terjadi 3x pada UAT 21 Okt 2026). Overlay ini dijalankan sebagai PROYEK compose lain (`-p acs-e2e`): volume,
+# jaringan, dan database-nya terpisah total, port host berbeda (semua hanya 127.0.0.1) sehingga bisa berjalan bersamaan
+# dengan stack dev tanpa bentrok.
+#
+#   scripts/e2e.sh            # naikkan stack e2e, jalankan semua skenario
+#   scripts/e2e.sh --fresh    # mulai dari database kosong (down -v dulu)
+#   scripts/e2e.sh --down     # setelah selesai, matikan dan hapus datanya
+#
+# Rahasia (.env) dipakai bersama, tetapi basis datanya instans lain. Prometheus/Grafana tidak dinaikkan.
+name: acs-e2e
+
+services:
+  mariadb:
+    restart: "no"
+    ports: !override
+      - "127.0.0.1:23306:3306"
+  minio:
+    restart: "no"
+    # Image minio/minio dapat tidak ada/tak bisa di-pull di mesin dev; scripts/e2e.sh memilih image lokal yang tersedia lewat
+    # ACS_E2E_MINIO_IMAGE. Healthcheck dimatikan (image minimal tanpa mc); acsd menunggu minio hanya sampai start.
+    image: ${ACS_E2E_MINIO_IMAGE:-minio/minio:latest}
+    healthcheck:
+      disable: true
+    ports: !override
+      - "127.0.0.1:29000:9000"
+      - "127.0.0.1:29001:9001"
+  redis:
+    restart: "no"
+    ports: !override
+      - "127.0.0.1:26379:6379"
+  acsd:
+    restart: on-failure
+    depends_on: !override
+      migrate:
+        condition: service_completed_successfully
+      minio:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    ports: !override
+      - "127.0.0.1:28080:8080"
+      - "127.0.0.1:27547:7547"
