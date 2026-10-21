@@ -4,10 +4,28 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 
 	"acs/internal/domain"
 	"acs/pkg/cwmpxml"
 )
+
+// maxKeyLen: TR-069 membatasi ParameterKey/CommandKey string(32). UUID task (36 karakter berhubung tanda hubung)
+// ditolak firmware yang ketat — mis. ZTE F660 menjawab Fault 9002 "Internal error" pada SetParameterValues.
+const maxKeyLen = 32
+
+// paramKey menurunkan ParameterKey <= 32 karakter dari UUID task: tanda hubung dibuang (UUID -> 32 hex). Nilai yang sudah
+// cukup pendek dipakai apa adanya. ParameterKey hanya dikembalikan CPE pada Inform berikutnya dan tidak dipakai mencocokkan task.
+func paramKey(taskUUID string) string {
+	if len(taskUUID) <= maxKeyLen {
+		return taskUUID
+	}
+	k := strings.ReplaceAll(taskUUID, "-", "")
+	if len(k) > maxKeyLen {
+		k = k[:maxKeyLen]
+	}
+	return k
+}
 
 // BuildRequestBody menerjemahkan payload JSON task.Parameters (dibentuk
 // usecase/task sesuai TaskType, lihat OutboundRPC di usecase/session) menjadi
@@ -61,7 +79,7 @@ func BuildRequestBody(taskTypeCode, taskUUID string, parameters []byte, ns strin
 		pl.ArrayType = fmt.Sprintf("cwmp:ParameterValueStruct[%d]", len(pl.Values))
 		key := p.ParameterKey
 		if key == "" {
-			key = taskUUID
+			key = paramKey(taskUUID)
 		}
 		return cwmpxml.Body{SetParameterValues: &cwmpxml.SetParameterValues{
 			XMLName: cwmpxml.RPCName(ns, "SetParameterValues"), ParameterList: pl, ParameterKey: key,
@@ -87,7 +105,7 @@ func BuildRequestBody(taskTypeCode, taskUUID string, parameters []byte, ns strin
 			return cwmpxml.Body{}, err
 		}
 		return cwmpxml.Body{AddObject: &cwmpxml.AddObject{
-			XMLName: cwmpxml.RPCName(ns, "AddObject"), ObjectName: p.ObjectName, ParameterKey: taskUUID,
+			XMLName: cwmpxml.RPCName(ns, "AddObject"), ObjectName: p.ObjectName, ParameterKey: paramKey(taskUUID),
 		}}, nil
 
 	case domain.TaskTypeDeleteObject:
@@ -98,7 +116,7 @@ func BuildRequestBody(taskTypeCode, taskUUID string, parameters []byte, ns strin
 			return cwmpxml.Body{}, err
 		}
 		return cwmpxml.Body{DeleteObject: &cwmpxml.DeleteObject{
-			XMLName: cwmpxml.RPCName(ns, "DeleteObject"), ObjectName: p.ObjectName, ParameterKey: taskUUID,
+			XMLName: cwmpxml.RPCName(ns, "DeleteObject"), ObjectName: p.ObjectName, ParameterKey: paramKey(taskUUID),
 		}}, nil
 
 	case domain.TaskTypeReboot:

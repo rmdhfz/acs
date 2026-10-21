@@ -213,3 +213,44 @@ func TestBuildParameterAttributes(t *testing.T) {
 		t.Fatalf("%v %+v", err, g)
 	}
 }
+
+// UUID task asli (36 karakter) melampaui batas string(32) TR-069 untuk ParameterKey; firmware ketat (ZTE F660)
+// menjawab Fault 9002. ParameterKey harus <= 32 karakter dan tetap unik per task.
+func TestBuildParameterKey_UUIDDipangkasKe32(t *testing.T) {
+	const uuid = "0b6f2a4e-8c1d-4f3a-9e57-1a2b3c4d5e6f"
+	cases := map[string]struct {
+		typ    string
+		params string
+		key    func(b cwmpxml.Body) string
+	}{
+		"set":    {domain.TaskTypeSetParameterValues, `{"values":{"A":"1"}}`, func(b cwmpxml.Body) string { return b.SetParameterValues.ParameterKey }},
+		"add":    {domain.TaskTypeAddObject, `{"object_name":"X.PM."}`, func(b cwmpxml.Body) string { return b.AddObject.ParameterKey }},
+		"delete": {domain.TaskTypeDeleteObject, `{"object_name":"X.PM.2."}`, func(b cwmpxml.Body) string { return b.DeleteObject.ParameterKey }},
+	}
+	for name, c := range cases {
+		body, err := BuildRequestBody(c.typ, uuid, []byte(c.params), "")
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if got := c.key(body); len(got) != 32 || strings.Contains(got, "-") || got != "0b6f2a4e8c1d4f3a9e571a2b3c4d5e6f" {
+			t.Fatalf("%s: ParameterKey = %q (len %d), mau 32 hex tanpa tanda hubung", name, got, len(got))
+		}
+	}
+}
+
+func TestFaultMessage_RincianPerParameter(t *testing.T) {
+	f := &cwmpxml.CWMPFault{FaultCode: "9002", FaultString: "Internal error"}
+	if got := faultMessage(f); got != "Internal error" {
+		t.Fatalf("tanpa rincian harus apa adanya: %q", got)
+	}
+	f.SetParameterValuesFaults = []cwmpxml.SetParameterValuesFault{
+		{ParameterName: "A.SSID", FaultCode: "9007", FaultString: "Invalid parameter value"},
+		{ParameterName: "A.Key", FaultCode: "9008", FaultString: "Attempt to set non-writable"},
+		{ParameterName: "A.C", FaultCode: "9005"},
+		{ParameterName: "A.D", FaultCode: "9005"},
+	}
+	want := "Internal error [A.SSID: 9007 Invalid parameter value; A.Key: 9008 Attempt to set non-writable; A.C: 9005; +1 lainnya]"
+	if got := faultMessage(f); got != want {
+		t.Fatalf("got  %q\nwant %q", got, want)
+	}
+}

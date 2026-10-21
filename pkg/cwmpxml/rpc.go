@@ -34,6 +34,23 @@ type ValueType struct {
 	Value string `xml:",chardata"`
 }
 
+// MarshalXML menulis atribut tipe sebagai `xsi:type` literal. Dengan tag namespace di atas, encoding/xml Go menghasilkan
+// prefix buatan (`_XMLSchema-instance:type` + xmlns lokal): sah secara XML-namespace, tetapi parser CPE yang sederhana
+// (mis. ZTE F660 — SetParameterValues dijawab Fault 9002 "Internal error") hanya mengenali `xsi:type`. Prefix xsi sudah
+// dideklarasikan di elemen Envelope (NewEnvelope). Unmarshal tetap lewat tag di atas (membaca atribut ber-namespace).
+func (v ValueType) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+	if v.Type != "" {
+		start.Attr = append(start.Attr, xml.Attr{Name: xml.Name{Local: "xsi:type"}, Value: v.Type})
+	}
+	if err := e.EncodeToken(start); err != nil {
+		return err
+	}
+	if err := e.EncodeToken(xml.CharData(v.Value)); err != nil {
+		return err
+	}
+	return e.EncodeToken(start.End())
+}
+
 type ParameterValue struct {
 	Name  string    `xml:"Name"`
 	Value ValueType `xml:"Value"`

@@ -366,6 +366,24 @@ func (h *Handler) logRPCResponse(token string, resp session.RPCResponse) {
 	}
 }
 
+// faultMessage = FaultString + (bila CPE menyertakan) rincian per parameter SetParameterValuesFault, mis.
+// "Internal error [InternetGatewayDevice...SSID: 9007 Invalid parameter value]", agar operator tahu parameter mana yang ditolak.
+func faultMessage(f *cwmpxml.CWMPFault) string {
+	msg := f.FaultString
+	var parts []string
+	for i, d := range f.SetParameterValuesFaults {
+		if i == 3 {
+			parts = append(parts, fmt.Sprintf("+%d lainnya", len(f.SetParameterValuesFaults)-3))
+			break
+		}
+		parts = append(parts, strings.TrimSpace(fmt.Sprintf("%s: %s %s", clampRunes(d.ParameterName, 200), d.FaultCode, clampRunes(d.FaultString, 80))))
+	}
+	if len(parts) > 0 {
+		msg += " [" + strings.Join(parts, "; ") + "]"
+	}
+	return msg
+}
+
 // buildRPCResponse menerjemahkan Body respons CPE menjadi session.RPCResponse
 // polos. Ini satu-satunya tempat yang tahu bentuk XML respons.
 func buildRPCResponse(token string, env *cwmpxml.Envelope) session.RPCResponse {
@@ -377,7 +395,7 @@ func buildRPCResponse(token string, env *cwmpxml.Envelope) session.RPCResponse {
 		code, msg := "", b.Fault.FaultString
 		if b.Fault.Detail != nil {
 			code = b.Fault.Detail.CWMPFault.FaultCode
-			msg = b.Fault.Detail.CWMPFault.FaultString
+			msg = faultMessage(&b.Fault.Detail.CWMPFault)
 		}
 		resp.Fault = &session.FaultInfo{Code: code, Message: msg}
 		return resp

@@ -196,7 +196,7 @@ func TestTransferComplete_SuksesDanGagal(t *testing.T) {
 
 func TestFaultDariCPE(t *testing.T) {
 	// Fault SOAP yang membungkus cwmp:Fault, plus SetParameterValuesFault turunan
-	// (diabaikan parser tapi tidak boleh merusak parse).
+	// (rincian per parameter ikut dibaca).
 	body := `<soapenv:Fault><faultcode>Client</faultcode><faultstring>CWMP fault</faultstring><detail>` +
 		`<cwmp:Fault><FaultCode>9005</FaultCode><FaultString>Invalid parameter name</FaultString>` +
 		`<SetParameterValuesFault><ParameterName>X.Y</ParameterName><FaultCode>9005</FaultCode><FaultString>Invalid parameter name</FaultString></SetParameterValuesFault>` +
@@ -208,6 +208,9 @@ func TestFaultDariCPE(t *testing.T) {
 	}
 	if f.Detail == nil || f.Detail.CWMPFault.FaultCode != "9005" || f.Detail.CWMPFault.FaultString != "Invalid parameter name" {
 		t.Fatalf("cwmp:Fault detail salah: %+v", f.Detail)
+	}
+	if d := f.Detail.CWMPFault.SetParameterValuesFaults; len(d) != 1 || d[0].ParameterName != "X.Y" || d[0].FaultCode != "9005" {
+		t.Fatalf("SetParameterValuesFault per parameter harus terbaca: %+v", d)
 	}
 	if ns := env.Body.Namespace(); ns != "" {
 		t.Fatalf("Fault bukan elemen ber-namespace cwmp, Namespace() harus kosong, dapat %q", ns)
@@ -543,4 +546,36 @@ func FuzzUnmarshal(f *testing.F) {
 			_ = env.Body.Namespace()
 		}
 	})
+}
+
+// Atribut tipe nilai harus `xsi:type` literal (bukan prefix buatan Go `_XMLSchema-instance`), tetap terbaca balik
+// sebagai atribut ber-namespace XSI, dan nilai dengan karakter khusus tetap di-escape.
+func TestSetParameterValues_XsiTypeLiteral(t *testing.T) {
+	body := Body{SetParameterValues: &SetParameterValues{
+		XMLName: RPCName(NSCWMP, "SetParameterValues"),
+		ParameterList: ParameterValueList{
+			ArrayType: "cwmp:ParameterValueStruct[2]",
+			Values: []ParameterValue{
+				{Name: "A.SSID", Value: ValueType{Type: "xsd:string", Value: "Rumah <&> Budi"}},
+				{Name: "A.Enable", Value: ValueType{Type: "xsd:boolean", Value: "1"}},
+			},
+		},
+		ParameterKey: "k",
+	}}
+	out, err := Marshal(NewEnvelope("id", NSCWMP, body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	x := string(out)
+	if strings.Contains(x, "_XMLSchema") {
+		t.Fatalf("prefix buatan Go masih ada:\n%s", x)
+	}
+	if !strings.Contains(x, `xsi:type="xsd:string">Rumah &lt;&amp;&gt; Budi</Value>`) || !strings.Contains(x, `xsi:type="xsd:boolean">1</Value>`) {
+		t.Fatalf("xsi:type literal tidak ditemukan:\n%s", x)
+	}
+	env := mustParse(t, x)
+	vals := env.Body.SetParameterValues.ParameterList.Values
+	if len(vals) != 2 || vals[0].Value.Type != "xsd:string" || vals[0].Value.Value != "Rumah <&> Budi" || vals[1].Value.Type != "xsd:boolean" {
+		t.Fatalf("round-trip salah: %+v", vals)
+	}
 }

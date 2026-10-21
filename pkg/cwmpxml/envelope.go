@@ -115,6 +115,14 @@ type FaultDetail struct {
 type CWMPFault struct {
 	FaultCode   string `xml:"FaultCode"`
 	FaultString string `xml:"FaultString"`
+	// Rincian per parameter (TR-069 §A.3.2.1) — CPE menyebut parameter mana yang ditolak dan alasannya.
+	SetParameterValuesFaults []SetParameterValuesFault `xml:"SetParameterValuesFault"`
+}
+
+type SetParameterValuesFault struct {
+	ParameterName string `xml:"ParameterName"`
+	FaultCode     string `xml:"FaultCode"`
+	FaultString   string `xml:"FaultString"`
 }
 
 // Unmarshal mem-parse body HTTP POST CWMP. Body kosong (POST kosong penanda
