@@ -1925,6 +1925,66 @@ export function useUpdateBillingPlan() {
   })
 }
 
+// ---- Capture sesi CWMP per perangkat (migrations/0037) ----
+
+export interface CaptureStatus {
+  active: boolean
+  until: string | null
+}
+
+export interface CaptureMessage {
+  id: string
+  session_ref: string | null
+  from_cpe: boolean
+  rpc_name: string
+  http_status: number | null
+  body?: string
+  body_bytes: number
+  body_truncated: boolean
+  created_at: string
+}
+
+export function useCaptureStatus(deviceId: number) {
+  return useQuery({
+    queryKey: ['device', deviceId, 'capture'],
+    queryFn: () => api.get<CaptureStatus>(`/devices/${deviceId}/capture`),
+    refetchInterval: 15_000,
+  })
+}
+
+// Daftar dimuat ulang tiap 5 dtk selama capture aktif agar pesan baru muncul tanpa menekan apa pun.
+export function useCaptures(deviceId: number, page: number, pageSize: number, live: boolean) {
+  return useQuery({
+    queryKey: ['device', deviceId, 'captures', page, pageSize],
+    queryFn: () => api.get<ListResponse<CaptureMessage>>(`/devices/${deviceId}/captures${buildQuery({ page, page_size: pageSize })}`),
+    refetchInterval: live ? 5_000 : false,
+  })
+}
+
+export function useCaptureMessage(deviceId: number, uuid: string | null) {
+  return useQuery({
+    queryKey: ['device', deviceId, 'captures', 'msg', uuid],
+    queryFn: () => api.get<CaptureMessage>(`/devices/${deviceId}/captures/${encodeURIComponent(uuid as string)}`),
+    enabled: uuid !== null,
+  })
+}
+
+export function useEnableCapture() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ deviceId, minutes }: { deviceId: number; minutes: number }) => api.post<CaptureStatus>(`/devices/${deviceId}/capture`, { minutes }),
+    onSuccess: (_d, v) => qc.invalidateQueries({ queryKey: ['device', v.deviceId, 'capture'] }),
+  })
+}
+
+export function useDisableCapture() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (deviceId: number) => api.del<void>(`/devices/${deviceId}/capture`),
+    onSuccess: (_d, deviceId) => qc.invalidateQueries({ queryKey: ['device', deviceId, 'capture'] }),
+  })
+}
+
 // Hapus paket (SUPERADMIN, soft delete). 409 bila masih dipakai tenant / punya invoice menunggu pembayaran.
 export function useDeleteBillingPlan() {
   const qc = useQueryClient()

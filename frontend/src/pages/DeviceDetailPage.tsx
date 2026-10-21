@@ -2,7 +2,7 @@ import { useState, type FormEvent, type ReactNode } from 'react'
 import { Paginate } from '../components/Paginate'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Line, LineChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { Activity, ArrowLeft, Cpu, Gauge, HardDrive, History, ListChecks, Radio, ScrollText, Sparkles, Wifi, SlidersHorizontal, RefreshCcw, AlertTriangle, FileUp, Pencil, Trash2 } from 'lucide-react'
+import { Activity, ArrowLeft, ArrowLeftRight, Cpu, Gauge, HardDrive, History, ListChecks, Radio, ScrollText, Sparkles, Wifi, SlidersHorizontal, RefreshCcw, AlertTriangle, FileUp, Pencil, Trash2 } from 'lucide-react'
 import { StatusBadge } from '../components/StatusBadge'
 import { EmptyState } from '../components/EmptyState'
 import { PageSpinner } from '../components/Spinner'
@@ -10,6 +10,7 @@ import { ParameterTree } from '../components/ParameterTree'
 import { ConfigHistory } from '../components/ConfigHistory'
 import { DeviceWifiTab } from '../components/DeviceWifiTab'
 import { OpticalDiscovery } from '../components/OpticalDiscovery'
+import { SessionCapture } from '../components/SessionCapture'
 import { useWakeDevice } from '../lib/wake'
 import { DeviceOverview } from '../components/DeviceOverview'
 import { RetryTaskButton, TaskSummaryView } from '../components/TaskParts'
@@ -51,7 +52,7 @@ import {
 import { formatJSONField, formatDateTime, formatRelativeTime } from '../lib/format'
 import type { Device, DeviceDiagnostic } from '../lib/types'
 
-type Tab = 'overview' | 'wifi' | 'parameters' | 'optical' | 'events' | 'tasks' | 'diagnostics' | 'firmware' | 'timeline' | 'config'
+type Tab = 'overview' | 'wifi' | 'parameters' | 'optical' | 'events' | 'tasks' | 'diagnostics' | 'firmware' | 'timeline' | 'config' | 'capture'
 
 const TABS: { key: Tab; label: string; icon: typeof Cpu }[] = [
   { key: 'overview', label: 'Overview', icon: Cpu },
@@ -64,6 +65,7 @@ const TABS: { key: Tab; label: string; icon: typeof Cpu }[] = [
   { key: 'firmware', label: 'Firmware', icon: HardDrive },
   { key: 'timeline', label: 'Audit', icon: ScrollText },
   { key: 'config', label: 'Konfigurasi', icon: FileUp },
+  { key: 'capture', label: 'Capture', icon: ArrowLeftRight },
 ]
 
 const ACTIVITY_LABELS: Record<string, string> = {
@@ -260,7 +262,7 @@ export function DeviceDetailPage() {
 
       {/* Baris tab dapat digulir: di layar sempit 9 tab tidak muat (sebelumnya melebarkan seluruh halaman). */}
       <div role="tablist" aria-label="Bagian detail device" className="mb-4 flex gap-0.5 overflow-x-auto border-b border-slate-200 dark:border-slate-800">
-        {TABS.map((t) => (
+        {TABS.filter((t) => t.key !== 'capture' || hasRole('ADMIN')).map((t) => (
           <button
             key={t.key}
             role="tab"
@@ -299,6 +301,7 @@ export function DeviceDetailPage() {
         {tab === 'firmware' && <FirmwareTab deviceId={deviceId} vendorId={device.vendor_id} canSchedule={hasRole('ADMIN')} />}
         {tab === 'timeline' && <TimelineTab deviceId={deviceId} />}
         {tab === 'config' && <ConfigHistory deviceId={deviceId} />}
+        {tab === 'capture' && hasRole('ADMIN') && <SessionCapture deviceId={deviceId} />}
       </div>
     </div>
   )
