@@ -13,6 +13,10 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     port: 5173,
+    // Ikat ke 127.0.0.1 eksplisit: "localhost" di Node 17+ hanya mendengarkan ::1, dan saat VPN aktif browser sering me-resolve
+    // localhost ke 127.0.0.1 sehingga ditolak (ERR_CONNECTION_REFUSED). Tetap loopback saja: tidak terbuka ke jaringan/VPN.
+    host: '127.0.0.1',
+    strictPort: true,
   },
   // Tes komponen (Vitest + Testing Library). csv.test.mjs tetap dijalankan oleh node --test (lihat "test").
   test: {

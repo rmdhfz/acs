@@ -1,0 +1,10 @@
+# Overlay benchmark untuk ACS kita (dipakai bersama docker-compose.e2e.yml): menaikkan batas laju CWMP/REST per IP agar
+# benchmark dari satu mesin tidak kena 429. Batas bawaan (5 req/dtk per IP di /cwmp) adalah mitigasi brute-force yang
+# disengaja — JANGAN dipakai di stack yang menjaga kredensial sungguhan.
+#
+#   docker compose -p acs-bench -f docker-compose.yml -f docker-compose.e2e.yml -f docker-compose.bench.yml up -d --build mariadb minio redis acsd
+services:
+  acsd:
+    environment:
+      ACS_CWMP_RATE_LIMIT: "100000"
+      ACS_REST_RATE_LIMIT: "100000"

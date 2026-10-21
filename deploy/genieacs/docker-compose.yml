@@ -1,0 +1,54 @@
+# GenieACS sebagai pembanding benchmark (BUKAN bagian produk). Proyek compose terpisah: `genieacs-bench`.
+#
+#   docker compose -p genieacs-bench -f deploy/genieacs/docker-compose.yml up -d --build
+#   docker compose -p genieacs-bench -f deploy/genieacs/docker-compose.yml down -v
+#
+# Port host (hanya loopback): CWMP 37547, NBI (REST) 37557, UI 37567. Konfigurasi bawaan GenieACS 1.2.x apa adanya:
+# tanpa preset/provision, tanpa autentikasi CWMP (lihat docs/pengujian/BENCHMARK_GENIEACS.md soal implikasinya).
+name: genieacs-bench
+
+x-genieacs: &genieacs
+  build: .
+  restart: "no"
+  environment: &genieacs-env
+    GENIEACS_MONGODB_CONNECTION_URL: mongodb://mongo/genieacs
+    GENIEACS_UI_JWT_SECRET: bench-only-not-a-secret
+    GENIEACS_CWMP_INTERFACE: 0.0.0.0
+    GENIEACS_NBI_INTERFACE: 0.0.0.0
+    GENIEACS_FS_INTERFACE: 0.0.0.0
+    GENIEACS_UI_INTERFACE: 0.0.0.0
+  depends_on:
+    mongo:
+      condition: service_healthy
+
+services:
+  mongo:
+    image: mongo:6
+    restart: "no"
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  genieacs-cwmp:
+    <<: *genieacs
+    command: ["genieacs-cwmp"]
+    ports:
+      - "127.0.0.1:37547:7547"
+
+  genieacs-nbi:
+    <<: *genieacs
+    command: ["genieacs-nbi"]
+    ports:
+      - "127.0.0.1:37557:7557"
+
+  genieacs-fs:
+    <<: *genieacs
+    command: ["genieacs-fs"]
+
+  genieacs-ui:
+    <<: *genieacs
+    command: ["genieacs-ui"]
+    ports:
+      - "127.0.0.1:37567:3000"
