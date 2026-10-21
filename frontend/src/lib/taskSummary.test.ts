@@ -42,6 +42,12 @@ describe('summarizeTask', () => {
     )
   })
 
+  it('hide langsung (X_CT-COM_SSIDHide): 1 = tersembunyi (kebalikan SSIDAdvertisementEnabled)', () => {
+    const s = summarizeTask('SET_PARAMETER_VALUES', { values: { [`${W}.1.X_CT-COM_SSIDHide`]: '1' } })
+    expect(s).toEqual({ title: 'Ubah WiFi #1', details: ['Siaran SSID WiFi #1 → tersembunyi'] })
+    expect(summarizeTask('SET_PARAMETER_VALUES', { values: { [`${W}.1.X_CT-COM_SSIDHide`]: '0' } }).details).toEqual(['Siaran SSID WiFi #1 → terlihat'])
+  })
+
   it('ping diagnostik dikenali dari Host', () => {
     const s = summarizeTask('SET_PARAMETER_VALUES', { values: { 'InternetGatewayDevice.IPPingDiagnostics.Host': '8.8.8.8', 'InternetGatewayDevice.IPPingDiagnostics.NumberOfRepetitions': '4' } })
     expect(s.title).toBe('Jalankan Ping ke 8.8.8.8')

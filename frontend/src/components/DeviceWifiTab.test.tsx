@@ -188,6 +188,56 @@ describe('DeviceWifiTab', () => {
     })
   })
 
+  // ONT tanpa SSIDAdvertisementEnabled (mis. Optictimes): hide lewat X_CT-COM_SSIDHide (1 = tersembunyi); SSID tanpa field hide: dijelaskan.
+  it('hide lewat parameter vendor X_CT-COM_SSIDHide: nilai langsung (centang = 1); band/channel dari ChannelsInUse & Standard', async () => {
+    login(['ADMIN'])
+    const optic = (n: number, std: string, inUse: string, hide: boolean) =>
+      [
+        [`${W}.${n}.SSID`, `TC-${n}`],
+        [`${W}.${n}.Enable`, 'true'],
+        [`${W}.${n}.Channel`, '0'],
+        [`${W}.${n}.ChannelsInUse`, inUse],
+        [`${W}.${n}.Standard`, std],
+        ...(hide ? [[`${W}.${n}.X_CT-COM_SSIDHide`, 'false']] : []),
+      ].map(([name, value], i) => ({ id: n * 100 + i, device_id: 5, parameter_name: name, parameter_value: value, writable: true, created_at: '', updated_at: '2026-10-21T03:00:00Z' }))
+    const calls = mockFetch((r) => {
+      if (r.url.includes('/devices/5/parameters')) return { json: [...optic(1, 'b,g,n', '11', true), ...optic(5, 'a,n,ac', '56', false)] }
+      if (r.url.includes('/tasks?')) return { json: { data: [], total: 0 } }
+      if (r.url.endsWith('/refs/ref_task_status')) return { json: [{ id: 1, code: 'PENDING', name: 'Pending' }] }
+      if (r.url.endsWith('/refs/ref_task_types')) return { json: [{ id: 1, code: 'SET_PARAMETER_VALUES', name: 'Set' }] }
+      if (r.url.endsWith('/tasks/set-parameter-values') || r.url.endsWith('/tasks/get-parameter-values')) return { status: 202, json: { message: 'ok' } }
+    })
+    renderApp(ui)
+    const u = userEvent.setup()
+    expect(await screen.findByText('TC-1')).toBeTruthy()
+    expect(screen.getByText('2,4 GHz')).toBeTruthy()
+    expect(screen.getByText('5 GHz')).toBeTruthy()
+    expect(screen.getByText('11 (auto)')).toBeTruthy()
+    expect(screen.getByText('56 (auto)')).toBeTruthy()
+
+    await u.click(screen.getByRole('button', { name: /ubah wifi 1/i }))
+    const d1 = await screen.findByRole('dialog')
+    await u.click(within(d1).getByRole('checkbox', { name: /sembunyikan ssid/i }))
+    await u.click(within(d1).getByRole('button', { name: /terapkan ke perangkat/i }))
+    await u.click(await screen.findByRole('button', { name: /^ubah wifi$/i }))
+    await waitFor(() => expect(calls.some((c) => c.url.endsWith('/tasks/set-parameter-values'))).toBe(true))
+    expect(calls.find((c) => c.url.endsWith('/tasks/set-parameter-values'))?.body).toEqual({ values: { [`${W}.1.X_CT-COM_SSIDHide`]: '1' } })
+  })
+
+  it('SSID yang tidak melaporkan parameter hide: tidak ada kotak centang, ada penjelasan (path tidak ditebak)', async () => {
+    login(['ADMIN'])
+    mockFetch((r) => {
+      if (r.url.includes('/devices/5/parameters')) return { json: [{ id: 1, device_id: 5, parameter_name: `${W}.1.SSID`, parameter_value: 'POLOS', writable: true, created_at: '', updated_at: '' }] }
+      if (r.url.includes('/tasks?')) return { json: { data: [], total: 0 } }
+      if (r.url.includes('/refs/')) return { json: [] }
+    })
+    renderApp(ui)
+    await userEvent.setup().click(await screen.findByRole('button', { name: /ubah wifi 1/i }))
+    const d = await screen.findByRole('dialog')
+    expect(within(d).queryByRole('checkbox', { name: /sembunyikan ssid/i })).toBeNull()
+    expect(within(d).getByText(/sembunyikan ssid: tidak dilaporkan ont ini/i)).toBeTruthy()
+  })
+
   it('SSID yang tidak melaporkan isolasi/prioritas: dialog menjelaskan, bukan menebak path', async () => {
     login(['ADMIN'])
     mockFetch(handler('x'))

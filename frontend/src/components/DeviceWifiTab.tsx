@@ -97,8 +97,9 @@ function EditWifiModal({ device, row, readNames, onQueued, onClose }: { device: 
       values[row.passphrasePath] = p
       changes.push('password baru')
     }
-    if (hide !== (row.hidden === true)) {
-      values[row.advertisePath] = hide ? '0' : '1'
+    if (row.hidePath && hide !== (row.hidden === true)) {
+      // nilai parameter berarti "siarkan" (SSIDAdvertisementEnabled: terbalik) atau "sembunyikan" (*SSIDHide: langsung)
+      values[row.hidePath] = hide !== row.hideInverted ? '1' : '0'
       changes.push(hide ? 'SSID disembunyikan' : 'SSID ditampilkan')
     }
     if (row.isolationPath && isolate !== (row.isolation === true)) {
@@ -186,10 +187,14 @@ function EditWifiModal({ device, row, readNames, onQueued, onClose }: { device: 
 
         <fieldset className="space-y-3">
           <legend className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Lanjutan</legend>
-          <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
-            <input type="checkbox" checked={hide} onChange={(e) => setHide(e.target.checked)} className={checkCls} />
-            Sembunyikan SSID (tidak disiarkan)
-          </label>
+          {row.hidePath ? (
+            <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+              <input type="checkbox" checked={hide} onChange={(e) => setHide(e.target.checked)} className={checkCls} />
+              Sembunyikan SSID (tidak disiarkan)
+            </label>
+          ) : (
+            <Unreported>Sembunyikan SSID: tidak dilaporkan ONT ini.</Unreported>
+          )}
           {row.isolationPath ? (
             <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
               <input type="checkbox" checked={isolate} onChange={(e) => setIsolate(e.target.checked)} className={checkCls} />

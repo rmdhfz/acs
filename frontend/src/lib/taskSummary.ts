@@ -22,7 +22,7 @@ export function friendlyParamName(path: string): string {
     if (/\.SSID$/.test(path)) return `SSID WiFi #${idx}`
     if (/\.Enable$/.test(path)) return `Status aktif WiFi #${idx}`
     if (/\.Channel$/.test(path)) return `Channel WiFi #${idx}`
-    if (/SSIDAdvertisementEnabled$/.test(path)) return `Siaran SSID WiFi #${idx}`
+    if (/SSIDAdvertisementEnabled$|SSIDHide$|HideSSID$/i.test(path)) return `Siaran SSID WiFi #${idx}`
     if (/(?:MaxUserNum|MaxAssociatedDevices|MaxStations|MaxClients)$/.test(path)) return `Maks. klien WiFi #${idx}`
     if (/Isolat\w*$/i.test(path)) return `Isolasi SSID WiFi #${idx}`
     if (/(?:^|[._])Priority$/.test(path)) return `Prioritas WiFi #${idx}`
@@ -43,6 +43,7 @@ function showValue(name: string, value: unknown): string {
   const off = v === '0' || v.toLowerCase() === 'false'
   if ((on || off) && WIFI_IDX.test(name)) {
     if (/SSIDAdvertisementEnabled$/.test(name)) return on ? 'terlihat' : 'tersembunyi'
+    if (/SSIDHide$|HideSSID$/i.test(name)) return on ? 'tersembunyi' : 'terlihat'
     if (/\.Enable$|Isolat\w*$/i.test(name)) return on ? 'aktif' : 'nonaktif'
   }
   return v === '' ? '(kosong)' : v.length > 60 ? v.slice(0, 57) + '…' : v

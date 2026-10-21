@@ -69,7 +69,8 @@ describe('parseWifi TR-098', () => {
     ]).rows
     expect(rows[0]).toMatchObject({
       hidden: true,
-      advertisePath: `${W}.1.SSIDAdvertisementEnabled`,
+      hidePath: `${W}.1.SSIDAdvertisementEnabled`,
+      hideInverted: true,
       maxClients: '16',
       maxClientsPath: `${W}.1.X_ZTE-COM_MaxUserNum`,
       isolation: true,
@@ -81,8 +82,8 @@ describe('parseWifi TR-098', () => {
     expect(rows[1]).toMatchObject({ hidden: false, maxClients: '32', isolation: null, isolationPath: null, priority: null, priorityPath: null })
   })
 
-  it('hide belum terbaca → null, tetapi path standar SSIDAdvertisementEnabled tetap dibentuk dari instance (TR-098 & TR-181)', () => {
-    expect(parseWifi([p(`${W}.3.SSID`, 'C')]).rows[0]).toMatchObject({ hidden: null, advertisePath: `${W}.3.SSIDAdvertisementEnabled`, maxClientsPath: null })
+  it('hide yang TIDAK dilaporkan ONT → null tanpa path (tidak ditebak); TR-181 memakai AccessPoint', () => {
+    expect(parseWifi([p(`${W}.3.SSID`, 'C')]).rows[0]).toMatchObject({ hidden: null, hidePath: null, maxClientsPath: null })
     const r181 = parseWifi([
       p('Device.DeviceInfo.X', '1'),
       p('Device.WiFi.SSID.1.SSID', 'K'),
@@ -90,7 +91,39 @@ describe('parseWifi TR-098', () => {
       p('Device.WiFi.AccessPoint.1.MaxAssociatedDevices', '20'),
       p('Device.WiFi.AccessPoint.1.IsolationEnable', 'true'),
     ]).rows[0]
-    expect(r181).toMatchObject({ hidden: true, maxClients: '20', isolation: true, isolationPath: 'Device.WiFi.AccessPoint.1.IsolationEnable' })
+    expect(r181).toMatchObject({ hidden: true, hidePath: 'Device.WiFi.AccessPoint.1.SSIDAdvertisementEnabled', maxClients: '20', isolation: true, isolationPath: 'Device.WiFi.AccessPoint.1.IsolationEnable' })
+  })
+
+  // Data nyata ONT Optictimes RXP4-AC1200 (UAT 2026-10-21): Channel=0 (auto), tanpa SSIDAdvertisementEnabled, hide lewat
+  // X_CT-COM_SSIDHide (nilai langsung), isolasi standar IsolationEnable, MaxUserNum tanpa awalan vendor.
+  it('ONT dengan Channel=0 (auto) & X_CT-COM_SSIDHide: band dari Standard/ChannelsInUse, channel "N (auto)", hide langsung', () => {
+    const optic = (n: number, std: string, inUse: string, possible: string, hide: string) => [
+      p(`${W}.${n}.SSID`, n === 1 ? 'TC ARLOJI DEPOK' : 'TC ARLOJI DEPOK 5G'),
+      p(`${W}.${n}.Channel`, '0'),
+      p(`${W}.${n}.ChannelsInUse`, inUse),
+      p(`${W}.${n}.PossibleChannels`, possible),
+      p(`${W}.${n}.Standard`, std),
+      p(`${W}.${n}.X_CT-COM_RFBand`, n === 1 ? '0' : '1'), // numerik: arti beda per vendor → tidak dipakai
+      p(`${W}.${n}.X_CT-COM_SSIDHide`, hide),
+      p(`${W}.${n}.BeaconAdvertisementEnabled`, 'false'),
+      p(`${W}.${n}.IsolationEnable`, 'false'),
+      p(`${W}.${n}.MaxUserNum`, '32'),
+    ]
+    const rows = parseWifi([...optic(1, 'b,g,n', '11', '1-13', 'false'), ...optic(5, 'a,n,ac', '56', '149,153,157,161,165', 'true')]).rows
+    expect(rows[0]).toMatchObject({ band: '2,4 GHz', channel: '11 (auto)', hidden: false, hidePath: `${W}.1.X_CT-COM_SSIDHide`, hideInverted: false, isolation: false, isolationPath: `${W}.1.IsolationEnable`, maxClients: '32', maxClientsPath: `${W}.1.MaxUserNum` })
+    expect(rows[1]).toMatchObject({ band: '5 GHz', channel: '56 (auto)', hidden: true })
+  })
+
+  it('band: urutan petunjuk (OperatingFrequencyBand > RFBand teks GHz > channel > ChannelsInUse > PossibleChannels > Standard)', () => {
+    const band = (extra: [string, string][]) => parseWifi([p(`${W}.1.SSID`, 'A'), ...extra.map(([k, v]) => p(`${W}.1.${k}`, v))]).rows[0].band
+    expect(band([['OperatingFrequencyBand', '5GHz'], ['Channel', '6']])).toBe('5 GHz')
+    expect(band([['X_ZTE-COM_RFBand', '2.4GHz'], ['Channel', '0']])).toBe('2,4 GHz')
+    expect(band([['Channel', '36']])).toBe('5 GHz')
+    expect(band([['Channel', '0'], ['ChannelsInUse', '1,6,11']])).toBe('2,4 GHz')
+    expect(band([['Channel', '0'], ['PossibleChannels', '149,153']])).toBe('5 GHz')
+    expect(band([['Standard', 'a,n,ac']])).toBe('5 GHz')
+    expect(band([['Standard', 'b,g,n,ax']])).toBe('2,4 GHz') // ax di 2,4 GHz tidak dikira 5 GHz
+    expect(band([['X_CT-COM_RFBand', '1']])).toBeNull() // numerik tanpa petunjuk lain: tidak ditebak
   })
 
   it('tanpa parameter WLAN: kosong; path tulis default dibentuk dari instance saat SSID ada tanpa passphrase', () => {
