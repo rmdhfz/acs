@@ -7,13 +7,13 @@ export function formatRelativeTime(iso: string | null): string {
   const diffSec = Math.round(diffMs / 1000)
 
   if (diffSec < 5) return 'baru saja'
-  if (diffSec < 60) return `${diffSec}d lalu`
+  if (diffSec < 60) return `${diffSec} dtk lalu`
   const diffMin = Math.round(diffSec / 60)
-  if (diffMin < 60) return `${diffMin}mnt lalu`
+  if (diffMin < 60) return `${diffMin} mnt lalu`
   const diffHour = Math.round(diffMin / 60)
-  if (diffHour < 24) return `${diffHour}j lalu`
+  if (diffHour < 24) return `${diffHour} jam lalu`
   const diffDay = Math.round(diffHour / 24)
-  if (diffDay < 30) return `${diffDay}h lalu`
+  if (diffDay < 30) return `${diffDay} hari lalu`
 
   return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
 }
