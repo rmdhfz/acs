@@ -51,6 +51,18 @@ export function ConfigHistory({ deviceId }: { deviceId: number }) {
     })
   }
 
+  // Baris yang benar-benar berbeda (yang sama tidak ditampilkan). Dihitung dari sini agar dua snapshot identik
+  // menampilkan "Tidak ada perbedaan", bukan tabel kosong.
+  const changes = diff.filter((d) => d.status !== 'unchanged')
+  const hint =
+    snaps.length < 2
+      ? 'Baru ada 1 snapshot. Perbandingan butuh dua snapshot: ubah konfigurasi perangkat (mis. SSID), lalu klik Buat Snapshot lagi.'
+      : !leftSnap && !rightSnap
+        ? 'Pilih dua snapshot dari daftar di samping: satu sebagai Kiri (lama) dan satu sebagai Kanan (baru).'
+        : !leftSnap
+          ? 'Tinggal pilih snapshot Kiri (lama) dari daftar.'
+          : 'Tinggal pilih snapshot Kanan (baru) dari daftar.'
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -135,16 +147,23 @@ export function ConfigHistory({ deviceId }: { deviceId: number }) {
             <div className="flex-1 overflow-auto p-0 bg-slate-50 dark:bg-slate-950 font-mono text-sm">
               {!leftSnap || !rightSnap ? (
                 <div className="flex h-full items-center justify-center text-slate-500 p-8 dark:text-slate-400">
-                  Pilih dua snapshot dari daftar di samping untuk melihat perbedaan (diff).
+                  {hint}
                 </div>
-              ) : diff.length === 0 ? (
+              ) : changes.length === 0 ? (
                 <div className="flex h-full items-center justify-center text-slate-500 p-8 dark:text-slate-400">
-                  Tidak ada perbedaan konfigurasi.
+                  Tidak ada perbedaan konfigurasi ({diff.length} parameter sama).
                 </div>
               ) : (
                 <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                      <th className="py-2 px-4 font-medium">Parameter ({changes.length} berbeda)</th>
+                      <th className="py-2 px-4 font-medium">Kiri #{leftSnap.id}</th>
+                      <th className="py-2 px-4 font-medium">Kanan #{rightSnap.id}</th>
+                    </tr>
+                  </thead>
                   <tbody>
-                    {diff.filter(d => d.status !== 'unchanged').map((d, i) => (
+                    {changes.map((d, i) => (
                       <tr key={i} className="border-b border-slate-200 dark:border-slate-800">
                         <td className="py-2 px-4 max-w-[200px] truncate" title={d.key}>{d.key}</td>
                         {d.status === 'changed' && (
