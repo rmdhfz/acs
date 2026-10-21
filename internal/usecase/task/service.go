@@ -16,6 +16,7 @@ import (
 
 	"acs/internal/domain"
 	"acs/internal/usecase/auth"
+	"acs/pkg/cryptoutil"
 )
 
 type Service struct {
@@ -37,6 +38,15 @@ type Service struct {
 
 	// genericVendor — cache id vendor GENERIC (domain.VendorCodeGeneric); 0 = belum/tidak ada.
 	genericVendor atomic.Uint64
+
+	// enc — opsional (WithEncryptor): mengenkripsi nilai rahasia task SET_PARAMETER_VALUES di tasks.parameters (secretparams.go).
+	enc *cryptoutil.Encryptor
+}
+
+// WithEncryptor mengaktifkan enkripsi nilai rahasia (password WiFi/PPPoE/PSK) pada task SET_PARAMETER_VALUES yang baru dibuat.
+func (s *Service) WithEncryptor(enc *cryptoutil.Encryptor) *Service {
+	s.enc = enc
+	return s
 }
 
 func NewService(
@@ -244,6 +254,12 @@ func (s *Service) CreateTask(ctx context.Context, actor domain.Actor, in domain.
 	}
 	if taskType.Code == domain.TaskTypeSetParameterValues {
 		in.Parameters = s.withTypeHints(ctx, in.DeviceID, in.Parameters)
+		// Nilai rahasia dienkripsi SEBELUM disimpan; dibuka lagi tepat saat dikirim ke CPE (session.NextRequest).
+		sealed, serr := SealSecrets(s.enc, in.Parameters)
+		if serr != nil {
+			return nil, serr
+		}
+		in.Parameters = sealed
 	}
 
 	pendingStatus, err := s.refs.GetByCode(ctx, domain.RefTableTaskStatus, domain.TaskStatusPending)
@@ -618,6 +634,8 @@ func (s *Service) requireTaskTenantScope(ctx context.Context, actor domain.Actor
 // kredensialnya (temuan acs-security-reviewer, review fitur MinIO object
 // storage: presigned URL bocor ke role rendah lewat endpoint task generik).
 func redactSensitiveParams(params *domain.JSONRawMessage, actor domain.Actor) {
+	// Nilai yang sudah terenkripsi tak pernah dikembalikan lewat API — untuk SEMUA role, termasuk ADMIN.
+	maskSealed(params)
 	if actor.IsSuperadmin() || actor.HasRole(domain.RoleAdmin) {
 		return
 	}

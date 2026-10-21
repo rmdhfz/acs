@@ -214,7 +214,7 @@ func main() {
 		return release, ok
 	}
 
-	taskSvc := task.NewService(taskRepo, deviceRepo, deviceParamRepo, deviceModelRepo, paramMappingRepo, refRepo, activityLogRepo, tenantRepo, webhookSvc, wsHub)
+	taskSvc := task.NewService(taskRepo, deviceRepo, deviceParamRepo, deviceModelRepo, paramMappingRepo, refRepo, activityLogRepo, tenantRepo, webhookSvc, wsHub).WithEncryptor(enc)
 	// firmwareSvc dikonstruksi SEBELUM provisioningSvc -- provisioningSvc
 	// (ZTP aksi FirmwareFileID, migrations/0009) bergantung pada firmwareSvc
 	// lewat domain.FirmwareScheduler (interface sempit, menghindari import

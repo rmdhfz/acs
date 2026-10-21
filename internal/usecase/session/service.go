@@ -524,6 +524,15 @@ func (s *Service) NextRequest(ctx context.Context, token string) (*OutboundRPC, 
 	if err != nil {
 		return nil, true, err
 	}
+	// Nilai rahasia task (password WiFi/PPPoE, ...) tersimpan terenkripsi; dibuka tepat sebelum dikirim ke CPE.
+	params, oerr := task.OpenSecrets(s.enc, []byte(t.Parameters))
+	if oerr != nil {
+		s.log().Error("cwmp: nilai rahasia task tidak dapat dibuka, task digagalkan", "task_id", t.ID, "device_id", sess.DeviceID, "error", oerr)
+		if ferr := s.taskSvc.FailPermanently(ctx, t, "nilai rahasia task tidak dapat dibuka (kunci enkripsi berubah?)"); ferr != nil {
+			return nil, true, ferr
+		}
+		return s.NextRequest(ctx, token) // lanjut ke task berikutnya (task ini sudah FAILED)
+	}
 	if err := s.taskSvc.MarkSent(ctx, t.ID); err != nil {
 		return nil, true, err
 	}
@@ -534,7 +543,7 @@ func (s *Service) NextRequest(ctx context.Context, token string) (*OutboundRPC, 
 	if sess.CWMPNamespace != nil {
 		ns = *sess.CWMPNamespace
 	}
-	return &OutboundRPC{TaskID: t.ID, TaskUUID: t.TaskUUID, TaskType: typeRef.Code, Parameters: []byte(t.Parameters), Namespace: ns}, false, nil
+	return &OutboundRPC{TaskID: t.ID, TaskUUID: t.TaskUUID, TaskType: typeRef.Code, Parameters: params, Namespace: ns}, false, nil
 }
 
 // ---- Respons RPC dari CPE (TECH.md §3/§4) ----
@@ -731,10 +740,15 @@ func (s *Service) failDiagnostic(ctx context.Context, taskID uint64) {
 // recordAppliedValues menyimpan values task SET_PARAMETER_VALUES (yang sudah
 // di-ACK CPE) ke device_parameters. Best-effort: kegagalan hanya dilog.
 func (s *Service) recordAppliedValues(ctx context.Context, deviceID uint64, t *domain.Task) {
+	plain, oerr := task.OpenSecrets(s.enc, []byte(t.Parameters))
+	if oerr != nil {
+		s.log().Warn("cwmp: nilai rahasia task tidak dapat dibuka, tidak dicatat ke device_parameters", "device_id", deviceID, "task_id", t.ID, "error", oerr)
+		return
+	}
 	var p struct {
 		Values map[string]string `json:"values"`
 	}
-	if err := json.Unmarshal(t.Parameters, &p); err != nil || len(p.Values) == 0 {
+	if err := json.Unmarshal(plain, &p); err != nil || len(p.Values) == 0 {
 		return
 	}
 	params := make([]domain.DeviceParameter, 0, len(p.Values))
