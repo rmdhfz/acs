@@ -102,6 +102,9 @@ type Config struct {
 	// Hanya berlaku untuk vendor/model yang punya mapping optical.* di katalog.
 	OpticalPollMinutes int
 
+	// PPPoEPollMinutes — interval penyegaran username PPPoE per perangkat (menit); 0 = nonaktif. ACS_PPPOE_POLL_MINUTES.
+	PPPoEPollMinutes int
+
 	OIDCIssuer       string
 	OIDCClientID     string
 	OIDCClientSecret string
@@ -330,6 +333,10 @@ func Load() (*Config, error) {
 	cfg.OpticalPollMinutes, err = strconv.Atoi(getEnv("ACS_OPTICAL_POLL_MINUTES", "360"))
 	if err != nil || cfg.OpticalPollMinutes < 0 || (cfg.OpticalPollMinutes > 0 && cfg.OpticalPollMinutes < 15) {
 		return nil, fmt.Errorf("config: ACS_OPTICAL_POLL_MINUTES harus 0 (nonaktif) atau >= 15")
+	}
+	cfg.PPPoEPollMinutes, err = strconv.Atoi(getEnv("ACS_PPPOE_POLL_MINUTES", "1440"))
+	if err != nil || cfg.PPPoEPollMinutes < 0 || (cfg.PPPoEPollMinutes > 0 && cfg.PPPoEPollMinutes < 60) {
+		return nil, fmt.Errorf("config: ACS_PPPOE_POLL_MINUTES harus 0 (nonaktif) atau >= 60")
 	}
 	cfg.LogRetentionDays, err = strconv.Atoi(getEnv("ACS_LOG_RETENTION_DAYS", "90"))
 	if err != nil || cfg.LogRetentionDays < 0 || (cfg.LogRetentionDays > 0 && cfg.LogRetentionDays < 7) {

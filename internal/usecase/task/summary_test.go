@@ -106,3 +106,38 @@ func TestRefreshDeviceSummary_ValidasiDanSuperadmin(t *testing.T) {
 		t.Fatalf("superadmin lintas tenant: res=%+v err=%v", res, err)
 	}
 }
+
+func TestEnqueuePPPoEPoll_CabangPerDataModel(t *testing.T) {
+	t7 := uint64(7)
+	devs := map[uint64]*domain.Device{1: {ID: 1, TenantID: &t7}, 2: {ID: 2, TenantID: &t7}, 3: {ID: 3, TenantID: &t7}}
+	s, repo := newSummarySvc(devs, map[uint64]string{1: "InternetGatewayDevice.", 2: "Device."}, 0)
+
+	for id, want := range map[uint64]string{1: "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.", 2: "Device.PPP.Interface."} {
+		before := len(repo.created)
+		queued, err := s.EnqueuePPPoEPoll(context.Background(), id)
+		if err != nil || !queued {
+			t.Fatalf("device %d: queued=%v err=%v", id, queued, err)
+		}
+		if len(repo.created) != before+1 || !strings.Contains(string(repo.created[before].Parameters), want) {
+			t.Fatalf("device %d: cabang salah: %v", id, repo.created)
+		}
+	}
+
+	// data model belum diketahui: bukan error, tidak ada task
+	before := len(repo.created)
+	queued, err := s.EnqueuePPPoEPoll(context.Background(), 3)
+	if err != nil || queued || len(repo.created) != before {
+		t.Fatalf("data model belum diketahui harus (false, nil) tanpa task: queued=%v err=%v", queued, err)
+	}
+}
+
+func TestEnqueuePPPoEPoll_KuotaPenuhDikembalikanUntukDitunda(t *testing.T) {
+	t7 := uint64(7)
+	devs := map[uint64]*domain.Device{1: {ID: 1, TenantID: &t7}}
+	s, _ := newSummarySvc(devs, map[uint64]string{1: "InternetGatewayDevice."}, 5)
+	s.tenants = &fakeTenantRepo{tenant: &domain.Tenant{ID: t7, MaxPendingTasks: u32(1)}}
+	queued, err := s.EnqueuePPPoEPoll(context.Background(), 1)
+	if !errors.Is(err, domain.ErrQuotaExceeded) || queued {
+		t.Fatalf("kuota penuh harus ErrQuotaExceeded: queued=%v err=%v", queued, err)
+	}
+}

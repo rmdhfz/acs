@@ -831,6 +831,38 @@ type SummaryRefreshResult struct {
 	Skipped []SummarySkip `json:"skipped"`
 }
 
+// summaryBranch — cabang parameter koneksi WAN/PPP untuk data model device ini (TR-098 WANConnectionDevice atau TR-181
+// PPP.Interface), ditentukan dari parameter yang pernah dilaporkan device; "" = data model belum diketahui.
+func (s *Service) summaryBranch(ctx context.Context, deviceID uint64) string {
+	for _, c := range []struct{ prefix, names string }{
+		{"InternetGatewayDevice.", "InternetGatewayDevice.WANDevice.1.WANConnectionDevice."},
+		{"Device.", "Device.PPP.Interface."},
+	} {
+		if ok, err := s.deviceParams.HasPrefix(ctx, deviceID, c.prefix); err == nil && ok {
+			return c.names
+		}
+	}
+	return ""
+}
+
+// EnqueuePPPoEPoll mengantre pembacaan koneksi WAN/PPP (username PPPoE) untuk penyegaran berkala. false bila data model
+// device belum diketahui (belum ada parameter) — bukan error. Dibuat sebagai aktor sistem; kuota task tenant tetap berlaku
+// (ErrQuotaExceeded dikembalikan apa adanya agar pemanggil dapat menunda).
+func (s *Service) EnqueuePPPoEPoll(ctx context.Context, deviceID uint64) (bool, error) {
+	branch := s.summaryBranch(ctx, deviceID)
+	if branch == "" {
+		return false, nil
+	}
+	sys := domain.Actor{Roles: []string{domain.RoleSuperadmin}}
+	if _, err := s.CreateTask(ctx, sys, domain.CreateTaskInput{
+		DeviceID: deviceID, TaskType: domain.TaskTypeGetParameterValues, Priority: 8,
+		Parameters: map[string]interface{}{"names": []string{branch}},
+	}); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // RefreshDeviceSummary mengantre pembacaan data ringkasan daftar perangkat untuk banyak device sekaligus: koneksi WAN
 // (username PPPoE; cabang standar TR-098 WANConnectionDevice / TR-181 PPP.Interface sesuai data model yang dideteksi dari
 // parameter device) dan level optik bila vendor/model punya mapping optical.* (tanpa mapping dilewati, bukan error).
@@ -861,16 +893,7 @@ func (s *Service) RefreshDeviceSummary(ctx context.Context, actor domain.Actor, 
 			res.Skipped = append(res.Skipped, SummarySkip{id, "bukan milik tenant Anda"})
 			continue
 		}
-		var branch string
-		for _, c := range []struct{ prefix, names string }{
-			{"InternetGatewayDevice.", "InternetGatewayDevice.WANDevice.1.WANConnectionDevice."},
-			{"Device.", "Device.PPP.Interface."},
-		} {
-			if ok, herr := s.deviceParams.HasPrefix(ctx, id, c.prefix); herr == nil && ok {
-				branch = c.names
-				break
-			}
-		}
+		branch := s.summaryBranch(ctx, id)
 		if branch == "" {
 			res.Skipped = append(res.Skipped, SummarySkip{id, "data model belum diketahui (tunggu Inform pertama)"})
 			continue

@@ -220,6 +220,7 @@ Nilai parameter bernama sensitif (`password|passphrase|psk|secret|token|key`) di
 | `ACS_WEBHOOK_BLOCK_PRIVATE` | false | SaaS publik: tolak target webhook di RFC1918/ULA/CGNAT (validasi **dan** saat menyambung — menutup DNS rebinding) |
 | `ACS_HA` | false | mode multi-instance (§H) |
 | `ACS_OPTICAL_POLL_MINUTES` | 360 | interval polling redaman optik per perangkat (0 = mati, minimum 15) |
+| `ACS_PPPOE_POLL_MINUTES` | 1440 | interval penyegaran username PPPoE per perangkat (0 = mati, minimum 60) |
 | `ACS_LOG_RETENTION_DAYS` | 90 | pangkas tabel log lama (audit `activity_logs` tidak dipangkas); 0 = mati |
 | `ACS_OIDC_*` | kosong | SSO OIDC (issuer, client id/secret, redirect URL) — akun dipetakan lewat **email** |
 | `ACS_DB_MAX_OPEN_CONNS` / `_MAX_IDLE_CONNS` / `_CONN_MAX_LIFETIME_MINUTES` | 50 / 10 / 30 | ukuran connection pool MariaDB (`db.SetMaxOpenConns` dkk). Load test 2026-10-18 menemukan throughput CWMP plateau ~450–480 sesi/dtk dgn bawaan 50, terlepas dari concurrency, sebelum CPU acsd/MariaDB jenuh (LANJUTAN 14) — naikkan di produksi/HA bila profil beban nyata menunjukkan pola serupa; idle tidak boleh melebihi open |

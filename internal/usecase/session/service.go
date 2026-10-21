@@ -34,6 +34,10 @@ type Service struct {
 	// negatif (vendor/model tanpa mapping optical.*) agar tidak menambah query tiap Inform.
 	opticalPollEvery time.Duration
 	opticalSkip      sync.Map // "vendor:model" -> time.Time kedaluwarsa cache
+	// pppoePollEvery — interval penyegaran username PPPoE (0 = nonaktif); pppoeNext = device id -> waktu poll berikutnya
+	// (di memori: setelah restart tiap device disegarkan sekali pada Inform pertamanya, lalu berkala).
+	pppoePollEvery time.Duration
+	pppoeNext      sync.Map
 	// typeIDs: cache kode tipe XSD -> id ref_parameter_types (lihat paramTypeID).
 	typeIDs         sync.Map
 	sessions        domain.DeviceSessionRepository
@@ -356,6 +360,7 @@ func (s *Service) HandleInform(ctx context.Context, in InformInput) (*InformResu
 	s.maybePollOptical(ctx, dev)
 
 	_ = s.deviceSvc.MarkOnline(ctx, dev)
+	s.maybePollPPPoE(ctx, dev)
 
 	if s.publisher != nil && dev.TenantID != nil {
 		s.publisher.BroadcastToTenant(*dev.TenantID, "DEVICE_ONLINE", map[string]interface{}{
@@ -665,6 +670,37 @@ func (s *Service) WithOpticalPoll(every time.Duration) *Service {
 
 // maybePollOptical mengantre pembacaan optik (GetParameterValues terpetakan) bila sudah lewat
 // intervalnya. Hanya berjalan bila vendor/model punya mapping optical.*; hasil negatif
+// WithPPPoEPoll mengaktifkan penyegaran berkala username PPPoE (interval 0 = mati).
+func (s *Service) WithPPPoEPoll(every time.Duration) *Service {
+	s.pppoePollEvery = every
+	return s
+}
+
+// maybePollPPPoE mengantre pembacaan koneksi WAN/PPP bila sudah lewat intervalnya, supaya kolom PPPoE di daftar perangkat
+// tidak basi (pelanggan ganti paket/akun). Tidak mengantre bila masih ada task terbuka; data model yang belum diketahui
+// atau kuota penuh dicoba lagi 1 jam kemudian. Gagal tidak menggagalkan Inform.
+func (s *Service) maybePollPPPoE(ctx context.Context, dev *domain.Device) {
+	if s.pppoePollEvery <= 0 {
+		return
+	}
+	if v, ok := s.pppoeNext.Load(dev.ID); ok && time.Now().Before(v.(time.Time)) {
+		return
+	}
+	if pending, err := s.taskSvc.HasPendingForDevice(ctx, dev.ID); err != nil || pending {
+		return
+	}
+	queued, err := s.taskSvc.EnqueuePPPoEPoll(ctx, dev.ID)
+	switch {
+	case err != nil:
+		s.log().Debug("cwmp: penyegaran PPPoE ditunda", "device_id", dev.ID, "error", err)
+		s.pppoeNext.Store(dev.ID, time.Now().Add(time.Hour))
+	case !queued:
+		s.pppoeNext.Store(dev.ID, time.Now().Add(time.Hour))
+	default:
+		s.pppoeNext.Store(dev.ID, time.Now().Add(s.pppoePollEvery))
+	}
+}
+
 // di-cache 1 jam per vendor/model.
 func (s *Service) maybePollOptical(ctx context.Context, dev *domain.Device) {
 	if s.opticalPollEvery <= 0 || dev.VendorID == nil {

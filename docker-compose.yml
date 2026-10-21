@@ -153,6 +153,8 @@ services:
       ACS_BILLING_INVOICE_HOURS: ${ACS_BILLING_INVOICE_HOURS:-24}
       # Interval polling redaman optik (menit); 0 = nonaktif. Hanya untuk vendor/model bermapping optical.*.
       ACS_OPTICAL_POLL_MINUTES: ${ACS_OPTICAL_POLL_MINUTES:-360}
+      # Interval penyegaran username PPPoE (menit); 0 = nonaktif.
+      ACS_PPPOE_POLL_MINUTES: ${ACS_PPPOE_POLL_MINUTES:-1440}
       # Email (reset password & notifikasi keamanan). Kosongkan ACS_SMTP_HOST
       # untuk menonaktifkan. Kredensial HANYA dari .env (tidak di-commit).
       ACS_SMTP_HOST: ${ACS_SMTP_HOST:-}
