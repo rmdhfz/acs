@@ -520,7 +520,7 @@ export function DevicesPage() {
                       <td className="px-4 py-3.5">
                         <StatusBadge code={status?.code} label={status?.name ?? '-'} pulse={status?.code === 'ONLINE'} />
                       </td>
-                      <td className="max-w-[11rem] truncate px-4 py-3.5 text-slate-600 dark:text-slate-400" title={vendorName(d.vendor_id)}>{vendorName(d.vendor_id)}</td>
+                      <td className="max-w-[11rem] truncate px-4 py-3.5 text-slate-600 dark:text-slate-400" title={d.vendor_id ? vendorName(d.vendor_id) : `OUI ${d.oui ?? '-'} belum ada di katalog. Buka detail perangkat > Overview > Tetapkan vendor.`}>{vendorName(d.vendor_id)}</td>
                       <td className="max-w-[8rem] truncate px-4 py-3.5 text-slate-600 dark:text-slate-400" title={d.product_class ?? undefined}>{d.product_class ?? '-'}</td>
                       <td className="whitespace-nowrap px-4 py-3.5 font-mono text-xs text-slate-900 dark:text-slate-100">{d.serial_number}</td>
                       <td className="whitespace-nowrap px-4 py-3.5 font-mono text-xs text-slate-600 dark:text-slate-300">

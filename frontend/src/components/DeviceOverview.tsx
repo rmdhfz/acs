@@ -1,5 +1,6 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { AlertTriangle, CheckCircle2, ExternalLink, ListChecks, MapPin, NotebookText, Pencil, SlidersHorizontal, Wifi } from 'lucide-react'
+import { AssignVendorModal } from './AssignVendorModal'
 import { CopyButton } from './CopyButton'
 import { formatDateTime, formatRelativeTime } from '../lib/format'
 import type { Device } from '../lib/types'
@@ -66,6 +67,7 @@ export function DeviceOverview({
   onGoTo: (t: OverviewTarget) => void
 }) {
   const online = statusCode === 'ONLINE'
+  const [assigningVendor, setAssigningVendor] = useState(false)
   const hasCr = !!device.connection_request_url
   const hasLoc = device.latitude != null && device.longitude != null
   const mapsUrl = hasLoc ? `https://www.google.com/maps?q=${device.latitude},${device.longitude}` : null
@@ -130,7 +132,22 @@ export function DeviceOverview({
             <Row label="Serial number" copy={device.serial_number}>
               <Mono v={device.serial_number} />
             </Row>
-            <Row label="Vendor">{vendorName ?? <span className="text-amber-700 dark:text-amber-400">Belum diketahui (OUI belum di katalog)</span>}</Row>
+            <Row label="Vendor">
+              {vendorName ?? (
+                <span className="inline-flex flex-wrap items-center gap-2">
+                  <span className="text-amber-700 dark:text-amber-400">Belum diketahui (OUI belum di katalog)</span>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => setAssigningVendor(true)}
+                      className="rounded-full border border-amber-300 px-2.5 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-50 dark:border-amber-500/40 dark:text-amber-300 dark:hover:bg-amber-500/10"
+                    >
+                      Tetapkan vendor
+                    </button>
+                  )}
+                </span>
+              )}
+            </Row>
             <Row label="Model / Product class">{device.product_class ?? <span className="text-slate-400">-</span>}</Row>
             <Row label="OUI">
               <Mono v={device.oui} />
@@ -205,6 +222,7 @@ export function DeviceOverview({
           </div>
         </section>
       </div>
+      {assigningVendor && <AssignVendorModal device={device} onClose={() => setAssigningVendor(false)} />}
     </div>
   )
 }
