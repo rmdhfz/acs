@@ -4,7 +4,7 @@
 > "apa ada di mana" tanpa menjelajah ulang repo. Konteks bisnis: `docs/produk/PRD.md`; keputusan arsitektur: `docs/arsitektur/TECH.md`;
 > aturan kerja & konvensi: `CLAUDE.md`. Perbarui setelah menambah paket/endpoint/tabel/halaman (`--check` untuk memeriksa).
 
-Ringkasan: 172 operasi REST • 61 tabel • 34 migrasi (terakhir `0034_bugreport_expected_screenshot`) • 27 skenario e2e.
+Ringkasan: 174 operasi REST • 61 tabel • 35 migrasi (terakhir `0035_vendor_optictimes_zte_models`) • 28 skenario e2e.
 
 ## Alur & lapisan (Clean Architecture)
 `domain` (entitas + antarmuka) → `usecase/*` (aturan bisnis) → `repository/mysql` (query sqlx) / `delivery/{cwmp,http,ws,usp}` (adapter masuk).
@@ -23,7 +23,7 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | `cmd/seed-admin` | 1 | Command seed-admin membuat user superadmin pertama pada instalasi baru. |
 | `internal/config` | 1 | memuat konfigurasi aplikasi dari environment variable. |
 | `internal/delivery/cwmp` | 3 | delivery layer untuk endpoint CWMP — satu-satunya tempat yang mem-parsing/mem-build XML SOAP (pkg/cwmpxml) dan menerjemahkannya ke/dari tipe polos usecase/session. |
-| `internal/delivery/http` | 36 | delivery layer REST (Echo) untuk konsumsi internal/BSS (TECH.md §2). |
+| `internal/delivery/http` | 37 | delivery layer REST (Echo) untuk konsumsi internal/BSS (TECH.md §2). |
 | `internal/delivery/usp` | 1 | — |
 | `internal/delivery/ws` | 1 | — |
 | `internal/domain` | 24 | berisi entities dan interface kontrak (repository & usecase) sesuai Clean Architecture yang dipakai proyek ini — lihat TECH.md §2. |
@@ -148,12 +148,13 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | GET | `/data-transfers` | Riwayat impor/ekspor |
 | GET | `/data-transfers/{uuid}` | Detail satu proses impor/ekspor |
 
-**Devices** (25)
+**Devices** (26)
 
 | Method | Path | Ringkasan |
 |---|---|---|
 | GET | `/devices` | Daftar device (inventory CPE) |
 | POST | `/devices` | Pra-registrasi perangkat (sebelum CPE pertama kali Inform) |
+| POST | `/devices/refresh-summary` | Antre pembacaan ringkasan daftar (username PPPoE & level optik) untuk banyak device |
 | POST | `/devices/import` | Impor massal perangkat (pra-registrasi) dengan dry-run |
 | GET | `/devices/stats` | Agregat jumlah device per status dan per vendor |
 | DELETE | `/devices/{id}` | Hapus (soft-delete) device |
@@ -289,7 +290,7 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | POST | `/devices/{id}/tags` | Tempelkan tag ke device |
 | DELETE | `/devices/{id}/tags/{tagId}` | Lepas tag dari device |
 
-**Tasks** (5)
+**Tasks** (6)
 
 | Method | Path | Ringkasan |
 |---|---|---|
@@ -298,6 +299,7 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | GET | `/tasks/stats` | Agregat jumlah task per status |
 | GET | `/tasks/{id}` | Detail satu task |
 | POST | `/tasks/{id}/cancel` | Membatalkan task yang belum selesai |
+| POST | `/tasks/{id}/retry` | Coba ulang task yang gagal (task yang sama, bukan task baru) |
 
 **Tenants** (10)
 
@@ -456,11 +458,11 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | `/` | PublicHome |
 | `*` | NotFoundPage |
 
-**Komponen** (`frontend/src/components`, 35): AuthShell, BugReportModal, CatalogDataTools, ChangePasswordModal, CommandPalette, ConfigHistory, CopyButton, CreditFooter, DataTools, DeviceFormModal, EmptyState, ExportMenu, GoogleSignInButton, ImportWizard, Layout, MenuManagerModal, MfaCard, Modal, NavClock, NotificationAttributesModal, NotificationBell, Pager, Paginate, ParameterTree, PasswordStrengthBar, ProtectedRoute, QueryErrorBanner, QueryErrorToaster, RecordActions, RowMenu, SidebarNav, Spinner, StatCard, StatusBadge, UserDevicesModal
+**Komponen** (`frontend/src/components`, 40): AssignVendorModal, AuthShell, BugReportModal, CatalogDataTools, ChangePasswordModal, CommandPalette, ConfigHistory, CopyButton, CreditFooter, DataTools, DeviceFormModal, DeviceOverview, DeviceWifiTab, EmptyState, ExportMenu, GoogleSignInButton, ImportWizard, Layout, MenuManagerModal, MfaCard, Modal, NavClock, NotificationAttributesModal, NotificationBell, OpticalCell, Pager, Paginate, ParameterTree, PasswordStrengthBar, ProtectedRoute, QueryErrorBanner, QueryErrorToaster, RecordActions, RowMenu, SidebarNav, Spinner, StatCard, StatusBadge, TaskParts, UserDevicesModal
 
-**Lib/hooks** (`frontend/src/lib`, 29): api, auth, autolabel, clientAdapter, clipboard, confirm, csv, exporter, focusTrap, format, hooks, i18n.extra, i18n, importer, limits, menu, notifications, password, pool, queryErrors, screenshot, session, theme, toast, transferLog, types, usePaged, useStatusParam, ws
+**Lib/hooks** (`frontend/src/lib`, 32): api, auth, autolabel, clientAdapter, clipboard, confirm, csv, exporter, focusTrap, format, hooks, i18n.extra, i18n, importer, limits, menu, notifications, optical, password, pool, queryErrors, screenshot, session, taskSummary, theme, toast, transferLog, types, usePaged, useStatusParam, wifi, ws
 
-Berkas tes frontend: 20.
+Berkas tes frontend: 28.
 
 ## Skenario e2e (`cmd/e2e`)
 | Skenario | Fungsi |
@@ -492,9 +494,10 @@ Berkas tes frontend: 20.
 | S25-udp-cr-rpc-cpe | `scenarioCPEWake` |
 | S26-console-idor | `scenarioConsole` |
 | S27-ont-nyata-hg6145f | `scenarioRealOnt` |
+| S28-ringkasan-daftar-perangkat | `scenarioDeviceSummary` |
 
 ## Migrasi (`migrations/`)
-`0001_init_schema` · `0002_tenant_cwmp_inform_credentials` · `0003_tenant_branding` · `0004_vendor_baseline_catalog` · `0005_tenant_task_quota` · `0006_task_metrics_indexes` · `0007_firmware_storage_key` · `0008_user_login_lockout` · `0009_ztp_rule_matching_actions` · `0010_vpm_software_version_pattern` · `0011_firmware_rollout_batches` · `0012_device_session_cwmp_namespace` · `0013_webhook_subscriptions` · `0014_device_config_snapshots` · `0015_device_geolocation` · `0016_firmware_rollout_scheduling` · `0017_performance_indexes` · `0018_generic_files` · `0019_tags_and_presets` · `0020_user_devices_mapping` · `0021_preset_engine` · `0022_seed_vendor_ouis` · `0023_password_reset_tokens` · `0024_users_password_changed_at` · `0025_diagnostics_mappings` · `0026_mapping_value_scale_optical` · `0027_user_mfa_totp` · `0028_tenant_device_limit_and_signups` · `0029_generic_vendor_and_more_oui` · `0030_notifications` · `0031_user_oidc_subject` · `0032_billing` · `0033_menu_bugreport_transfers` · `0034_bugreport_expected_screenshot`
+`0001_init_schema` · `0002_tenant_cwmp_inform_credentials` · `0003_tenant_branding` · `0004_vendor_baseline_catalog` · `0005_tenant_task_quota` · `0006_task_metrics_indexes` · `0007_firmware_storage_key` · `0008_user_login_lockout` · `0009_ztp_rule_matching_actions` · `0010_vpm_software_version_pattern` · `0011_firmware_rollout_batches` · `0012_device_session_cwmp_namespace` · `0013_webhook_subscriptions` · `0014_device_config_snapshots` · `0015_device_geolocation` · `0016_firmware_rollout_scheduling` · `0017_performance_indexes` · `0018_generic_files` · `0019_tags_and_presets` · `0020_user_devices_mapping` · `0021_preset_engine` · `0022_seed_vendor_ouis` · `0023_password_reset_tokens` · `0024_users_password_changed_at` · `0025_diagnostics_mappings` · `0026_mapping_value_scale_optical` · `0027_user_mfa_totp` · `0028_tenant_device_limit_and_signups` · `0029_generic_vendor_and_more_oui` · `0030_notifications` · `0031_user_oidc_subject` · `0032_billing` · `0033_menu_bugreport_transfers` · `0034_bugreport_expected_screenshot` · `0035_vendor_optictimes_zte_models`
 
 ## Perintah penting
 - Go: `go vet ./...`, `go test ./...`; race + integrasi MariaDB via Docker `golang:1.26.9` (lihat `docs/pengujian/PENGUJIAN_E2E.md`).
