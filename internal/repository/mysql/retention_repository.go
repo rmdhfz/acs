@@ -34,6 +34,8 @@ func (r *retentionRepository) PruneLogs(ctx context.Context, cutoff time.Time) (
 		{"webhook_deliveries", `DELETE FROM webhook_deliveries WHERE status IN ('DELIVERED','FAILED') AND created_at < ? LIMIT ` + strconv.Itoa(retentionBatch)},
 		// notifications (migrations/0030): log notifikasi per penerima, audit minimal -- dihapus FISIK sesuai
 		// kebijakan retensi (pengecualian soft-delete yang diizinkan untuk tabel log).
+		// device_session_captures (migrations/0037): capture SOAP per perangkat, audit minimal -- dihapus FISIK (log volume tinggi).
+		{"device_session_captures", `DELETE FROM device_session_captures WHERE created_at < ? LIMIT ` + strconv.Itoa(retentionBatch)},
 		{"notifications", `DELETE FROM notifications WHERE created_at < ? LIMIT ` + strconv.Itoa(retentionBatch)},
 	}
 	out := make(map[string]int64, len(steps))

@@ -34,6 +34,7 @@ import (
 	"acs/internal/repository/redisrepo"
 	"acs/internal/usecase/auth"
 	"acs/internal/usecase/billing"
+	"acs/internal/usecase/capture"
 	"acs/internal/usecase/catalog"
 	"acs/internal/usecase/console"
 	"acs/internal/usecase/device"
@@ -224,6 +225,7 @@ func main() {
 	deviceSvc := device.NewService(deviceRepo, vendorOUIRepo, deviceModelRepo, refRepo, deviceParamRepo, deviceEventRepo, opticalMetricRepo, configSnapshotRepo, enc, activityLogRepo, taskSvc, fileRepo, objStorage, mysql.NewOpenTaskCanceller(db))
 	deviceSvc.WithCatalog(vendorRepo, tenantRepo).WithQuota(tenantQuotaRepo).WithCRTrustedCIDRs(cfg.CRTrustedCIDRs)
 	diagnosticsSvc := diagnostics.NewService(diagnosticRepo, deviceRepo, taskSvc, activityLogRepo)
+	captureSvc := capture.NewService(mysql.NewCaptureRepository(db), deviceSvc, deviceSessionRepo, activityLogRepo)
 	sessionSvc := session.NewService(deviceSessionRepo, deviceEventRepo, deviceParamRepo, deviceRepo, tenantRepo, refRepo, deviceSvc, taskSvc, provisioningSvc, firmwareSvc, diagnosticsSvc, enc, activityLogRepo, logger, webhookSvc, wsHub).WithOpticalPoll(time.Duration(cfg.OpticalPollMinutes) * time.Minute).WithPPPoEPoll(time.Duration(cfg.PPPoEPollMinutes) * time.Minute)
 	fileSvc := file.NewService(fileRepo, objStorage, activityLogRepo)
 	tagSvc := tag.NewService(tagRepo, activityLogRepo)
@@ -357,6 +359,7 @@ func main() {
 		Menu:          menuSvc,
 		Bugs:          bugSvc,
 		Transfers:     transferSvc,
+		Capture:       captureSvc,
 		WSHub:         wsHub,
 
 		WSAllowedOrigins: cfg.CORSAllowOrigins,
@@ -389,7 +392,7 @@ func main() {
 	// shared secret Inform CWMP sungguhan (bukan cuma anti CPE nakal/loop
 	// seperti sebelumnya), jadi juga jadi mitigasi brute-force kredensial.
 	cwmpEcho.Use(middleware.RateLimiter(limiterStore("cwmp", cfg.CWMPRatePerIP)))
-	deliverycwmp.NewHandler(sessionSvc, logger).WithStorage(objStorage).Register(cwmpEcho, "/cwmp")
+	deliverycwmp.NewHandler(sessionSvc, logger).WithStorage(objStorage).WithCapture(captureSvc).Register(cwmpEcho, "/cwmp")
 
 	// TR-369 / USP WebSocket Handler (MTP)
 	// Endpoint /usp masih kerangka & TANPA autentikasi di port publik CPE: default

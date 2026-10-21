@@ -38,9 +38,68 @@ type SessionService interface {
 
 type Handler struct {
 	sessions SessionService
+	capture  Capturer
 	log      *slog.Logger
 	// storage dipakai menerbitkan URL presigned Download SAAT RPC dikirim.
 	storage domain.ObjectStorage
+}
+
+// Capturer = capture sesi per perangkat (usecase/capture). Opsional: nil = tidak ada capture. Jalur cepat AnyActive
+// membuat biaya nol bagi kasus umum (tidak ada perangkat yang sedang di-capture).
+type Capturer interface {
+	AnyActive(ctx context.Context) bool
+	Active(ctx context.Context, deviceID uint64) bool
+	DeviceIDForToken(ctx context.Context, token string) (uint64, bool)
+	Record(ctx context.Context, deviceID uint64, token string, fromCPE bool, raw []byte, httpStatus int) error
+}
+
+// WithCapture memasang capture sesi. Pesan disamarkan (pkg/cwmpxml.Redact) di Capturer sebelum disimpan.
+func (h *Handler) WithCapture(c Capturer) *Handler {
+	h.capture = c
+	return h
+}
+
+// Kunci context untuk meneruskan hasil request ke langkah capture (tanpa mengubah tanda tangan fungsi lain).
+const (
+	ctxOutKey    = "cwmp.out"    // []byte: envelope yang dikirim ke CPE
+	ctxDeviceKey = "cwmp.device" // uint64: id perangkat dari HandleInform
+	ctxTokenKey  = "cwmp.token"  // string: token sesi (baru) dari HandleInform
+)
+
+// maybeCapture merekam pasangan request/response request ini bila perangkatnya sedang di-capture. Kegagalan hanya dicatat
+// (DEBUG) — tidak boleh mengganggu sesi CWMP.
+func (h *Handler) maybeCapture(c *echo.Context, reqBody []byte) {
+	if h.capture == nil {
+		return
+	}
+	ctx := c.Request().Context()
+	if !h.capture.AnyActive(ctx) {
+		return
+	}
+	token, _ := c.Get(ctxTokenKey).(string)
+	if token == "" {
+		token = readSessionToken(c)
+	}
+	deviceID, ok := c.Get(ctxDeviceKey).(uint64)
+	if !ok {
+		if deviceID, ok = h.capture.DeviceIDForToken(ctx, token); !ok {
+			return
+		}
+	}
+	if !h.capture.Active(ctx, deviceID) {
+		return
+	}
+	status := 0
+	if r, err := echo.UnwrapResponse(c.Response()); err == nil {
+		status = r.Status
+	}
+	out, _ := c.Get(ctxOutKey).([]byte)
+	if err := h.capture.Record(ctx, deviceID, token, true, reqBody, 0); err != nil {
+		h.log.Debug("cwmp: capture request gagal disimpan", "device_id", deviceID, "error", err)
+	}
+	if err := h.capture.Record(ctx, deviceID, token, false, out, status); err != nil {
+		h.log.Debug("cwmp: capture response gagal disimpan", "device_id", deviceID, "error", err)
+	}
 }
 
 // downloadURLTTL — masa berlaku URL presigned Download sejak RPC dikirim; CPE
@@ -98,7 +157,12 @@ func (h *Handler) handle(c *echo.Context) error {
 	if err != nil {
 		return c.NoContent(http.StatusBadRequest)
 	}
+	err = h.serve(c, body)
+	h.maybeCapture(c, body)
+	return err
+}
 
+func (h *Handler) serve(c *echo.Context, body []byte) error {
 	env, err := cwmpxml.Unmarshal(body)
 	if err != nil {
 		return c.NoContent(http.StatusBadRequest)
@@ -290,6 +354,8 @@ func (h *Handler) handleInform(c *echo.Context, token string, env *cwmpxml.Envel
 		return c.NoContent(http.StatusInternalServerError)
 	}
 	setSessionCookie(c, result.SessionToken)
+	c.Set(ctxDeviceKey, result.DeviceID)
+	c.Set(ctxTokenKey, result.SessionToken)
 
 	h.log.Info("cwmp: sesi dibuka/dilanjutkan dari Inform",
 		"device_id", result.DeviceID, "session_token", session.RedactToken(result.SessionToken))
@@ -448,6 +514,7 @@ func writeEnvelope(c *echo.Context, env *cwmpxml.Envelope) error {
 	if err != nil {
 		return err
 	}
+	c.Set(ctxOutKey, out)
 	return c.Blob(http.StatusOK, "text/xml; charset=utf-8", out)
 }
 

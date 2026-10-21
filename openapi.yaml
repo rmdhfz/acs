@@ -2048,6 +2048,230 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  /devices/{id}/capture:
+    get:
+      operationId: getDeviceCapture
+      tags: [Devices]
+      summary: Status capture sesi CWMP perangkat
+      description: "ADMIN/SUPERADMIN, dibatasi ke perangkat tenant sendiri. `active=false` bila belum pernah dinyalakan atau sudah kedaluwarsa."
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: Status capture.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CaptureStatus' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Bukan ADMIN/SUPERADMIN, atau perangkat milik tenant lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Perangkat tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    post:
+      operationId: enableDeviceCapture
+      tags: [Devices]
+      summary: Nyalakan capture sesi CWMP perangkat (maks 60 menit)
+      description: |
+        ADMIN/SUPERADMIN. Selama capture aktif, setiap pesan SOAP perangkat ini (CPE → ACS dan ACS → CPE) disimpan untuk
+        diagnosis kuirk firmware. **Nilai parameter rahasia (password, passphrase, PSK, dst.) disamarkan sebelum disimpan**;
+        header HTTP (Authorization, Cookie) tidak pernah disimpan. Capture berhenti sendiri saat kedaluwarsa; hanya 200 pesan
+        terbaru per perangkat yang disimpan dan pesan dibuang setelah 7 hari. Menyalakan ulang = memperpanjang. Tercatat di
+        audit trail (`CAPTURE_ENABLED`).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                minutes: { type: integer, minimum: 1, maximum: 60, description: "Lama capture (menit)." }
+              required: [minutes]
+      responses:
+        '200':
+          description: Capture aktif.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CaptureStatus' }
+        '400':
+          description: "`minutes` di luar 1-60 atau field asing."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Bukan ADMIN/SUPERADMIN, atau perangkat milik tenant lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Perangkat tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    delete:
+      operationId: disableDeviceCapture
+      tags: [Devices]
+      summary: Matikan capture sesi CWMP perangkat
+      description: "ADMIN/SUPERADMIN. Seketika; pesan yang sudah terekam tetap ada sampai dipangkas. Audit `CAPTURE_DISABLED`."
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '204':
+          description: Capture dimatikan.
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Bukan ADMIN/SUPERADMIN, atau perangkat milik tenant lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Perangkat tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /devices/{id}/captures:
+    get:
+      operationId: listDeviceCaptures
+      tags: [Devices]
+      summary: Daftar pesan hasil capture (ringan, tanpa isi), terbaru dulu
+      description: "ADMIN/SUPERADMIN, dibatasi ke perangkat tenant sendiri. Isi pesan lewat `GET /devices/{id}/captures/{uuid}`."
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: Daftar pesan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CaptureListResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Bukan ADMIN/SUPERADMIN, atau perangkat milik tenant lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Perangkat tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /devices/{id}/captures/export:
+    get:
+      operationId: exportDeviceCaptures
+      tags: [Devices]
+      summary: Ekspor semua pesan capture sebagai NDJSON (untuk fixture uji)
+      description: |
+        ADMIN/SUPERADMIN. Satu objek JSON per baris (`CaptureMessage` lengkap dengan `body`), urut waktu naik, maks 200 pesan.
+        Isi sudah disamarkan. Tercatat di audit trail (`CAPTURE_EXPORTED`).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: Berkas NDJSON.
+          content:
+            application/x-ndjson:
+              schema: { type: string }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Bukan ADMIN/SUPERADMIN, atau perangkat milik tenant lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Perangkat tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /devices/{id}/captures/{uuid}:
+    get:
+      operationId: getDeviceCaptureMessage
+      tags: [Devices]
+      summary: Isi satu pesan capture
+      description: "ADMIN/SUPERADMIN. `body` = XML SOAP dengan nilai rahasia disamarkan (`***REDACTED***`)."
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+        - name: uuid
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Pesan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CaptureMessage' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Bukan ADMIN/SUPERADMIN, atau perangkat milik tenant lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Perangkat / pesan tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   /devices/insights:
     get:
       operationId: deviceInsights
@@ -7886,6 +8110,31 @@ components:
             optical_at: { type: string, format: date-time, nullable: true, description: "Waktu metrik optik terakhir dicatat." }
             pppoe_username: { type: string, nullable: true, description: "Username PPPoE dari parameter standar yang sudah tersinkron; null bila belum terbaca." }
 
+    CaptureStatus:
+      type: object
+      properties:
+        active: { type: boolean }
+        until: { type: string, format: date-time, nullable: true, description: "Kedaluwarsa capture (null bila belum pernah dinyalakan)." }
+      required: [active, until]
+    CaptureMessage:
+      type: object
+      properties:
+        id: { type: string, format: uuid, description: "UUID pesan (identifier publik)." }
+        session_ref: { type: string, nullable: true, description: "8 hex pertama SHA-256 token sesi: mengelompokkan pesan satu sesi tanpa membuka token." }
+        from_cpe: { type: boolean, description: "true = CPE → ACS; false = ACS → CPE." }
+        rpc_name: { type: string, description: "Nama RPC/elemen SOAP, atau \"(kosong)\" untuk POST kosong/204." }
+        http_status: { type: integer, nullable: true, description: "Status HTTP balasan ACS (hanya pesan ACS → CPE)." }
+        body: { type: string, description: "XML SOAP tersamarkan; tidak ada pada daftar." }
+        body_bytes: { type: integer, description: "Ukuran asli sebelum dipotong." }
+        body_truncated: { type: boolean }
+        created_at: { type: string, format: date-time }
+      required: [id, from_cpe, rpc_name, body_bytes, body_truncated, created_at]
+    CaptureListResponse:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/CaptureMessage' } }
+        total: { type: integer }
+      required: [data, total]
     BucketCount:
       type: object
       properties:

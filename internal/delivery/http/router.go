@@ -13,6 +13,7 @@ import (
 	"acs/internal/domain"
 	"acs/internal/usecase/auth"
 	"acs/internal/usecase/billing"
+	"acs/internal/usecase/capture"
 	"acs/internal/usecase/catalog"
 	"acs/internal/usecase/console"
 	"acs/internal/usecase/device"
@@ -72,6 +73,8 @@ type Router struct {
 	Menu      *console.MenuService
 	Bugs      *console.BugService
 	Transfers *console.TransferService
+	// Capture sesi CWMP per perangkat (migrations/0037); nil = rute tidak dipasang.
+	Capture *capture.Service
 	WSHub     *ws.Hub
 	// WSAllowedOrigins = origin Console yang boleh membuka WebSocket (sama
 	// dengan ACS_CORS_ALLOW_ORIGINS).
@@ -235,6 +238,15 @@ func (r *Router) Register(e *echo.Echo) {
 	authed.GET("/devices", r.listDevices)
 	authed.GET("/devices/stats", r.deviceStats)
 	authed.GET("/devices/insights", r.deviceInsights)
+	if r.Capture != nil {
+		// Capture sesi CWMP: ADMIN/SUPERADMIN saja (pesan SOAP memuat data pelanggan); scope tenant ditegakkan di usecase.
+		authed.GET("/devices/:id/capture", r.getCapture, RequireRoles(admin...))
+		authed.POST("/devices/:id/capture", r.enableCapture, RequireRoles(admin...))
+		authed.DELETE("/devices/:id/capture", r.disableCapture, RequireRoles(admin...))
+		authed.GET("/devices/:id/captures", r.listCaptures, RequireRoles(admin...))
+		authed.GET("/devices/:id/captures/export", r.exportCaptures, RequireRoles(admin...))
+		authed.GET("/devices/:id/captures/:uuid", r.getCaptureMessage, RequireRoles(admin...))
+	}
 	authed.GET("/devices/:id", r.getDevice)
 	// Pra-registrasi perangkat (sebelum CPE pertama kali Inform) & impor massal.
 	authed.POST("/devices", r.createDevice, RequireRoles(admin...))

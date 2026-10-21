@@ -136,6 +136,7 @@ func main() {
 		{"S26-console-idor", scenarioConsole},
 		{"S27-ont-nyata-hg6145f", scenarioRealOnt},
 		{"S28-ringkasan-daftar-perangkat", scenarioDeviceSummary},
+		{"S29-capture-sesi", scenarioCapture},
 	}
 
 	var results []result
