@@ -28,6 +28,7 @@ import { EmptyState } from '../components/EmptyState'
 import { Modal } from '../components/Modal'
 import { DeviceFormModal } from '../components/DeviceFormModal'
 import { ExportMenu } from '../components/ExportMenu'
+import { OpticalCell } from '../components/OpticalCell'
 import { ImportWizard } from '../components/ImportWizard'
 import { deviceAdapter, deviceExportColumns, loadDeviceExportRows } from '../imports/devices'
 import { useQueryClient } from '@tanstack/react-query'
@@ -42,6 +43,7 @@ import {
   useCurrentTenant,
   useDeleteDevice,
   useDevices,
+  useRefreshDeviceSummary,
   useFirmwareList,
   usePendingTaskCount,
   useProvisioningProfiles,
@@ -72,6 +74,7 @@ export function DevicesPage() {
   const toast = useToast()
   const queryClient = useQueryClient()
   const deleteMut = useDeleteDevice()
+  const refreshSummary = useRefreshDeviceSummary()
   const [showCreate, setShowCreate] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [editDevice, setEditDevice] = useState<Device | null>(null)
@@ -121,6 +124,24 @@ export function DevicesPage() {
   const total = devicesResp?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const selectedDevices = devices.filter((d) => selected.has(d.id))
+
+  // Antre pembacaan PPPoE & redaman: untuk perangkat terpilih, atau seluruh halaman bila tak ada yang dipilih.
+  function handleRefreshSummary() {
+    const targets = (selectedDevices.length > 0 ? selectedDevices : devices).slice(0, 100)
+    if (targets.length === 0) return
+    refreshSummary.mutate(
+      targets.map((d) => d.id),
+      {
+        onSuccess: (r) => {
+          const why = r.skipped.length > 0 ? ` · ${r.skipped.length} dilewati (${[...new Set(r.skipped.map((x) => x.reason))].join('; ')})` : ''
+          toast.success(`${r.queued} perangkat diantre dibaca. Data muncul setelah perangkat Inform${why}.`, 'Berhasil')
+          // Hasil datang saat perangkat Inform; segarkan daftar beberapa kali tanpa menunggu polling 60 dtk.
+          for (const ms of [15_000, 45_000, 90_000]) setTimeout(() => void queryClient.invalidateQueries({ queryKey: ['devices'] }), ms)
+        },
+        onError: (e) => toast.error(e instanceof Error ? e.message : 'Gagal mengantre pembacaan data'),
+      },
+    )
+  }
 
   // Selection dibatasi ke halaman/filter yang sedang tampil supaya tidak ada
   // device "terpilih" secara tidak kasat mata dari filter/halaman sebelumnya.
@@ -203,6 +224,18 @@ export function DevicesPage() {
           <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Monitor status koneksi perangkat CPE secara real-time</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {canBulkAct && (
+            <button
+              type="button"
+              onClick={handleRefreshSummary}
+              disabled={refreshSummary.isPending || devices.length === 0}
+              title="Antre pembacaan username PPPoE & level optik. Untuk perangkat yang dipilih, atau seluruh halaman ini bila tak ada yang dipilih."
+              className="flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshSummary.isPending ? 'animate-spin' : ''}`} />
+              {selectedDevices.length > 0 ? `Segarkan data (${selectedDevices.length})` : 'Segarkan data'}
+            </button>
+          )}
           <ExportMenu
             filename="perangkat"
             columns={deviceExportColumns()}
@@ -270,13 +303,13 @@ export function DevicesPage() {
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
           <input maxLength={100}
             type="text"
-            placeholder="Cari serial number atau MAC address..."
+            placeholder="Cari serial, MAC, model, atau username PPPoE..."
             value={search}
             onChange={(e) => {
               setSearch(e.target.value)
               resetToFirstPage()
             }}
-            aria-label="Cari device berdasarkan serial number atau MAC address" className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 outline-none transition-colors focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+            aria-label="Cari device berdasarkan serial number, MAC address, model, atau username PPPoE" className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 outline-none transition-colors focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
           />
         </div>
         <select
@@ -454,9 +487,12 @@ export function DevicesPage() {
                   )}
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Vendor</th>
+                  <th className="px-4 py-3">Model</th>
                   <th className="px-4 py-3">Serial Number</th>
                   <th className="px-4 py-3">IP / MAC</th>
                   <th className="px-4 py-3">Firmware</th>
+                  <th className="px-4 py-3" title="Level terima optik (RX). Hijau normal, kuning waspada (< -25 dBm), merah kritis (< -27 atau > -8 dBm).">Redaman</th>
+                  <th className="px-4 py-3">Username PPPoE</th>
                   <th className="px-4 py-3">Terakhir Terhubung</th>
                   {canBulkAct && <th className="w-24 px-4 py-3 text-right">Aksi</th>}
                 </tr>
@@ -485,12 +521,19 @@ export function DevicesPage() {
                         <StatusBadge code={status?.code} label={status?.name ?? '-'} pulse={status?.code === 'ONLINE'} />
                       </td>
                       <td className="max-w-[11rem] truncate px-4 py-3.5 text-slate-600 dark:text-slate-400" title={vendorName(d.vendor_id)}>{vendorName(d.vendor_id)}</td>
+                      <td className="max-w-[8rem] truncate px-4 py-3.5 text-slate-600 dark:text-slate-400" title={d.product_class ?? undefined}>{d.product_class ?? '-'}</td>
                       <td className="whitespace-nowrap px-4 py-3.5 font-mono text-xs text-slate-900 dark:text-slate-100">{d.serial_number}</td>
                       <td className="whitespace-nowrap px-4 py-3.5 font-mono text-xs text-slate-600 dark:text-slate-300">
                         <div>{d.ip_address ?? '-'}</div>
                         {d.mac_address && <div className="text-slate-400 dark:text-slate-500">{d.mac_address}</div>}
                       </td>
                       <td className="max-w-[10rem] truncate px-4 py-3.5 text-slate-500 dark:text-slate-400" title={d.software_version ?? undefined}>{d.software_version ?? '-'}</td>
+                      <td className="px-4 py-3.5 text-sm">
+                        <OpticalCell rx={d.rx_power_dbm} tx={d.tx_power_dbm} at={d.optical_at} />
+                      </td>
+                      <td className="max-w-[14rem] truncate px-4 py-3.5 font-mono text-xs text-slate-600 dark:text-slate-300" title={d.pppoe_username ?? undefined}>
+                        {d.pppoe_username ?? <span className="text-slate-400 dark:text-slate-500">-</span>}
+                      </td>
                       <td className="whitespace-nowrap px-4 py-3.5 text-slate-500 dark:text-slate-400">{formatRelativeTime(d.last_inform_at)}</td>
                       {canBulkAct && (
                         <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>

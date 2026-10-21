@@ -111,6 +111,11 @@ export interface Device {
   latitude: number | null
   longitude: number | null
   notes: string | null
+  // Ringkasan baris daftar — hanya ada di GET /devices (bukan /devices/:id). null = belum pernah terbaca dari perangkat.
+  rx_power_dbm?: number | null
+  tx_power_dbm?: number | null
+  optical_at?: string | null
+  pppoe_username?: string | null
   created_at: string
   updated_at: string
 }

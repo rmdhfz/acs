@@ -96,6 +96,22 @@ export function useDevices(filters: DeviceFilters, enabled = true) {
   })
 }
 
+export interface RefreshSummaryResult {
+  queued: number
+  skipped: { device_id: number; reason: string }[]
+}
+
+// Antre pembacaan username PPPoE & level optik untuk banyak device (maks. 100) — hasil muncul di daftar setelah Inform.
+export function useRefreshDeviceSummary() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (deviceIds: number[]) => api.post<RefreshSummaryResult>('/devices/refresh-summary', { device_ids: deviceIds }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] })
+    },
+  })
+}
+
 export function useDevice(id: number) {
   return useQuery({
     queryKey: ['device', id],
@@ -279,6 +295,18 @@ export function useCancelTask() {
   })
 }
 
+// Coba ulang task yang gagal/dibatalkan/timeout (atau kirim sekarang yang menunggu retry) — task yang sama, bukan baru.
+export function useRetryTask() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api.post<Task>(`/tasks/${id}/retry`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] })
+      qc.invalidateQueries({ queryKey: ['device'] })
+    },
+  })
+}
+
 // ---- Catalog: Vendors, Device Models, Parameter Mappings ----
 
 export function useCreateVendor() {
@@ -295,18 +323,6 @@ export function useVendorOUIs(vendorId: number | undefined) {
     queryKey: ['vendor-ouis', vendorId],
     queryFn: () => api.get<VendorOUI[]>(`/vendors/${vendorId}/ouis`),
     enabled: vendorId !== undefined,
-// Coba ulang task yang gagal/dibatalkan/timeout (atau kirim sekarang yang menunggu retry) — task yang sama, bukan baru.
-export function useRetryTask() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (id: number) => api.post<Task>(`/tasks/${id}/retry`),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['tasks'] })
-      qc.invalidateQueries({ queryKey: ['device'] })
-    },
-  })
-}
-
   })
 }
 
