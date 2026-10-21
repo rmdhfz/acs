@@ -228,7 +228,67 @@ func scenarioFaultNoRetry(ctx context.Context, w *World) result {
 	if rep2.OK && rep2.CountRPC("SetParameterValues") > 0 {
 		return failr("task 9005 dikirim ulang di sesi berikutnya (harusnya permanen FAILED)")
 	}
-	return pass("fault 9005 -> task FAILED permanen (1 percobaan, retry_count=%d), tidak dikirim ulang", setTask.RetryCount)
+
+	// Coba lagi (POST /tasks/:id/retry): task yang SAMA dinyalakan ulang (PENDING, retry_count 0), tanpa task baru.
+	before := len(tasks)
+	if st, _ := w.pilot2Admin.status(http.MethodPost, fmt.Sprintf("/api/v1/tasks/%d/retry", setTask.ID), nil); st != http.StatusForbidden {
+		return failr("retry task tenant lain: HTTP %d, harusnya 403", st)
+	}
+	var re taskJSON
+	if err := w.pilotAdmin.do(http.MethodPost, fmt.Sprintf("/api/v1/tasks/%d/retry", setTask.ID), nil, &re); err != nil {
+		return failr("POST /tasks/%d/retry: %v", setTask.ID, err)
+	}
+	if re.ID != setTask.ID {
+		return failr("respons retry bukan task yang sama (id=%d, harusnya %d)", re.ID, setTask.ID)
+	}
+	if got := w.taskStatusCode(re.TaskStatusID); got != "PENDING" || re.RetryCount != 0 || re.ErrorMessage != nil {
+		return failr("setelah retry: status=%s retry_count=%d error=%v — harusnya PENDING, 0, kosong", got, re.RetryCount, re.ErrorMessage)
+	}
+	if st, _ := w.pilotAdmin.status(http.MethodPost, fmt.Sprintf("/api/v1/tasks/%d/retry", setTask.ID+987654), nil); st != http.StatusNotFound {
+		return failr("retry task tak ada: HTTP %d, harusnya 404", st)
+	}
+	rep3 := w.runCPE(ctx, dev, simcpe.SessionOpts{Events: []string{"2 PERIODIC"}, FaultParamSubstr: "X_E2E_BADPARAM"})
+	if !rep3.OK || rep3.CountRPC("SetParameterValues") == 0 {
+		return failr("task hasil retry tidak dikirim ulang ke CPE (rpc: %v)", rep3.RPCsReceived)
+	}
+	time.Sleep(500 * time.Millisecond)
+	tasks2, _ := w.super.listDeviceTasks(d.ID)
+	if len(tasks2) != before {
+		return failr("retry membuat task baru (jumlah task %d -> %d), harusnya memakai task yang sama", before, len(tasks2))
+	}
+	for _, t := range tasks2 {
+		if t.ID == setTask.ID && w.taskStatusCode(t.TaskStatusID) != "FAILED" {
+			return failr("setelah dikirim ulang & ditolak CPE lagi, status = %s, harusnya FAILED", w.taskStatusCode(t.TaskStatusID))
+		}
+	}
+	// Task yang sudah COMPLETED tidak boleh diulang: buat satu task baca nyata, selesaikan lewat sesi CPE, lalu coba ulang → 409.
+	if st, body := w.pilotAdmin.status(http.MethodPost, fmt.Sprintf("/api/v1/devices/%d/tasks/get-parameter-values", d.ID),
+		map[string]any{"names": []string{simcpe.Profiles[key].RootPrefix() + "DeviceInfo.SoftwareVersion"}}); st >= 400 {
+		return failr("POST get-parameter-values: HTTP %d %s", st, body)
+	}
+	if rep4 := w.runCPE(ctx, dev, simcpe.SessionOpts{Events: []string{"2 PERIODIC"}}); !rep4.OK {
+		return failr("sesi CWMP untuk task baca: %s", rep4.ErrMsg)
+	}
+	time.Sleep(500 * time.Millisecond)
+	tasks3, _ := w.super.listDeviceTasks(d.ID)
+	doneID := firstCompleted(tasks3, w)
+	if doneID == 0 {
+		return failr("tidak ada task COMPLETED setelah sesi baca")
+	}
+	if st, _ := w.pilotAdmin.status(http.MethodPost, fmt.Sprintf("/api/v1/tasks/%d/retry", doneID), nil); st != http.StatusConflict {
+		return failr("retry task COMPLETED: HTTP %d, harusnya 409", st)
+	}
+	return pass("fault 9005 -> FAILED permanen tanpa retry otomatis; lalu Coba lagi: task SAMA PENDING (retry_count 0), dikirim ulang, FAILED lagi, jumlah task tetap %d; tenant lain 403, tak ada 404, COMPLETED 409", before)
+}
+
+// firstCompleted: id task COMPLETED pertama pada daftar (0 bila tidak ada).
+func firstCompleted(tasks []taskJSON, w *World) uint64 {
+	for _, t := range tasks {
+		if w.taskStatusCode(t.TaskStatusID) == "COMPLETED" {
+			return t.ID
+		}
+	}
+	return 0
 }
 
 // S6 — isolasi tenant: admin tenant B tidak boleh melihat device tenant A.

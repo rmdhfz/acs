@@ -2512,6 +2512,59 @@ paths:
         '403':
           description: Role di bawah ADMIN, atau non-superadmin mencoba membuat profile untuk tenant lain/profile global.
           content:
+  /tasks/{id}/retry:
+    post:
+      operationId: retryTask
+      tags: [Tasks]
+      summary: Coba ulang task yang gagal (task yang sama, bukan task baru)
+      description: |
+        ADMIN/NOC/SUPERADMIN, tenant-scoped sama seperti `GET /tasks/:id`. Menyalakan ulang task yang sama: status kembali
+        `PENDING`, `retry_count` 0, error/response dikosongkan, dijadwalkan sekarang dan tidak kedaluwarsa; `parameters` tidak
+        berubah. Berlaku untuk status `FAILED`, `CANCELLED`, `TIMEOUT`, dan `PENDING` yang sedang menunggu jadwal retry (dikirim
+        pada Inform berikutnya tanpa menunggu backoff). Task `SENT` (sedang berjalan) dan `COMPLETED` ditolak dengan `409`.
+        NOC hanya boleh mengulang task baca (`GET_PARAMETER_VALUES/NAMES/ATTRIBUTES`) dan `REBOOT`; jenis lain butuh ADMIN
+        (`403`). Task yang kembali menjadi antrean baru ikut kuota task tenant (`429` bila penuh). Aksi dicatat sebagai
+        `RETRY_TASK` di audit trail.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/taskIdPath'
+      responses:
+        '200':
+          description: Task setelah dinyalakan ulang (`parameters` tetap diredaksi untuk NOC/VIEWER).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        '400':
+          description: "`id` tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role di bawah NOC, NOC mengulang jenis task selain baca/reboot, atau task milik device tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Task tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: Task sedang berjalan (`SENT`) atau sudah `COMPLETED`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Kuota task menunggu per tenant penuh.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 

@@ -115,6 +115,9 @@ type TaskRepository interface {
 	// scheduled_at di masa depan tidak diambil NextRequest sebelum waktunya.
 	Reschedule(ctx context.Context, id uint64, at time.Time) error
 	Cancel(ctx context.Context, id uint64, updatedBy *uint64) error
+	// Requeue menyalakan ulang task yang sama: status PENDING, retry_count 0, error/response/waktu kirim-selesai
+	// dikosongkan, dijadwalkan sekarang dan tidak kedaluwarsa. Parameter task tidak berubah.
+	Requeue(ctx context.Context, id uint64, updatedBy *uint64) error
 }
 
 // TaskEnqueuer dipakai usecase/provisioning untuk mengantre task

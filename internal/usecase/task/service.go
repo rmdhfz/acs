@@ -798,6 +798,63 @@ func (s *Service) Cancel(ctx context.Context, actor domain.Actor, id uint64) err
 	return nil
 }
 
+// nocMayRetry — jenis task yang boleh dicoba-ulang NOC: baca & reboot (sama dengan yang boleh dibuat NOC lewat
+// endpoint khususnya). Task yang menulis/menghapus konfigurasi butuh ADMIN.
+var nocMayRetry = map[string]bool{
+	domain.TaskTypeGetParameterValues:     true,
+	domain.TaskTypeGetParameterNames:      true,
+	domain.TaskTypeGetParameterAttributes: true,
+	domain.TaskTypeReboot:                 true,
+}
+
+// Retry menyalakan ulang task yang gagal/dibatalkan/timeout — atau yang sedang menunggu jadwal retry (dikirim pada
+// Inform berikutnya, tidak menunggu backoff) — TANPA membuat task baru: parameter persis sama, hitungan retry di-reset.
+// Task SENT/COMPLETED ditolak (409): yang pertama sedang berjalan, yang kedua sudah selesai.
+func (s *Service) Retry(ctx context.Context, actor domain.Actor, id uint64) (*domain.Task, error) {
+	t, err := s.tasks.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.requireTaskTenantScope(ctx, actor, t); err != nil {
+		return nil, err
+	}
+	st, err := s.refs.GetByID(ctx, domain.RefTableTaskStatus, t.TaskStatusID)
+	if err != nil {
+		return nil, err
+	}
+	needsQuota := false
+	switch st.Code {
+	case domain.TaskStatusFailed, domain.TaskStatusCancelled, domain.TaskStatusTimeout:
+		needsQuota = true // kembali menjadi antrean baru → ikut kuota task tenant
+	case domain.TaskStatusPending:
+	default:
+		return nil, fmt.Errorf("%w: task berstatus %s tidak dapat dicoba ulang", domain.ErrConflict, st.Code)
+	}
+	typ, err := s.refs.GetByID(ctx, domain.RefTableTaskTypes, t.TaskTypeID)
+	if err != nil {
+		return nil, err
+	}
+	if !actor.IsSuperadmin() && !actor.HasRole(domain.RoleAdmin) && !nocMayRetry[typ.Code] {
+		return nil, domain.ErrForbidden
+	}
+	if needsQuota {
+		dev, err := s.devices.GetByID(ctx, t.DeviceID)
+		if err != nil {
+			return nil, err
+		}
+		if err := s.enforceTenantTaskQuota(ctx, dev); err != nil {
+			return nil, err
+		}
+	}
+	if err := s.tasks.Requeue(ctx, id, actor.UserIDPtr()); err != nil {
+		return nil, err
+	}
+	_ = s.activity.Record(ctx, &domain.ActivityLog{
+		UserID: actor.UserIDPtr(), TenantID: actor.TenantID, Action: "RETRY_TASK", EntityType: "task", EntityID: &id,
+	})
+	return s.Get(ctx, actor, id)
+}
+
 // ---- Dipanggil dari usecase/session selama sesi CWMP berlangsung ----
 
 func (s *Service) NextForDevice(ctx context.Context, deviceID uint64) (*domain.Task, error) {

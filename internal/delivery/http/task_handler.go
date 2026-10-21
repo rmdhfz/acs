@@ -123,6 +123,20 @@ func (r *Router) getTask(c *echo.Context) error {
 	return c.JSON(http.StatusOK, t)
 }
 
+// retryTask — "coba lagi" untuk task gagal/dibatalkan/menunggu retry, memakai task yang sama (bukan task baru).
+func (r *Router) retryTask(c *echo.Context) error {
+	actor := ActorFrom(c)
+	id, err := parseUint64Param(c, "id")
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "id tidak valid")
+	}
+	t, err := r.Tasks.Retry(c.Request().Context(), actor, id)
+	if err != nil {
+		return handleErr(c, err)
+	}
+	return c.JSON(http.StatusOK, t)
+}
+
 func (r *Router) cancelTask(c *echo.Context) error {
 	actor := ActorFrom(c)
 	id, err := parseUint64Param(c, "id")

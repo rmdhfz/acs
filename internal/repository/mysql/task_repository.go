@@ -254,6 +254,16 @@ func (r *taskRepository) MarkCompleted(ctx context.Context, id uint64, response 
 	return translateErr(err)
 }
 
+func (r *taskRepository) Requeue(ctx context.Context, id uint64, updatedBy *uint64) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE tasks t JOIN ref_task_status s ON s.code = ?
+		 SET t.task_status_id = s.id, t.retry_count = 0, t.error_message = NULL, t.response = NULL,
+		     t.sent_at = NULL, t.completed_at = NULL, t.scheduled_at = NULL, t.expires_at = NULL, t.updated_by = ?
+		 WHERE t.id = ? AND t.is_deleted = 0`,
+		domain.TaskStatusPending, updatedBy, id)
+	return translateErr(err)
+}
+
 func (r *taskRepository) MarkFailed(ctx context.Context, id uint64, statusID uint64, errMsg string) error {
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE tasks SET task_status_id = ?, error_message = ? WHERE id = ?`, statusID, errMsg, id)

@@ -28,7 +28,7 @@ nyata dan tidak punya kuirk per-firmware. Gunanya:
 | S2 | Provisioning push | Buat provisioning profile → `apply-profile` → sesi berikutnya CPE menerima `SetParameterValues`, data model CPE berubah, task `COMPLETED`. Profil memuat parameter **sensitif** (`KeyPassphrase`): tersegel AES-GCM di DB, tetapi CPE menerima **plaintext** |
 | S3 | Reboot RPC | `POST /devices/:id/reboot` → CPE menerima `Reboot`, task `COMPLETED` |
 | S4 | GetParameterValues ad-hoc | NOC minta baca parameter → CPE menjawab → nilai tersimpan di `device_parameters` |
-| S5 | Fault 9005 tidak di-retry | CPE membalas `cwmp:Fault` 9005 (Invalid Parameter Name) → task `FAILED` permanen dalam 1 percobaan, TIDAK dikirim ulang di sesi berikutnya |
+| S5 | Fault 9005 tidak di-retry | CPE membalas `cwmp:Fault` 9005 (Invalid Parameter Name) → task `FAILED` permanen dalam 1 percobaan, TIDAK dikirim ulang di sesi berikutnya. Lalu `POST /tasks/:id/retry` (Coba lagi): task SAMA kembali `PENDING` (retry_count 0, tanpa task baru), dikirim ulang dan `FAILED` lagi; tenant lain 403, task tak ada 404, task `COMPLETED` 409 |
 | S6 | Isolasi tenant | Admin tenant B tidak melihat device tenant A (list kosong + `GET /devices/:id` → 403/404); admin tenant A tetap melihat device-nya |
 | S7 | Connection Request | ACS men-trigger CR ke `ConnectionRequestURL` (di-capture otomatis dari Inform) → CPE membuka sesi baru dengan event `6 CONNECTION REQUEST`. CPE simulasi **mewajibkan HTTP Digest**: ACS harus menjawab tantangan 401; password salah ditolak tanpa Inform |
 | S8 | Firmware canary rollout | Upload file → buat rollout batch wave 100% → CPE menerima `Download` + mengirim `TransferComplete` → batch `COMPLETED` tanpa kegagalan |

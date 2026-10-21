@@ -277,6 +277,7 @@ func (r *Router) Register(e *echo.Echo) {
 	authed.POST("/tasks", r.createTask, RequireRoles(adminOrNOC...))
 	authed.POST("/tasks/:id/cancel", r.cancelTask, RequireRoles(adminOrNOC...))
 
+	authed.POST("/tasks/:id/retry", r.retryTask, RequireRoles(adminOrNOC...))
 	authed.GET("/provisioning-profiles", r.listProfiles)
 	authed.GET("/provisioning-profiles/:id", r.getProfile)
 	authed.POST("/provisioning-profiles", r.createProfile, RequireRoles(admin...))

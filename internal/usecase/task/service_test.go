@@ -101,7 +101,8 @@ func (f *fakeTaskRepo) Reschedule(_ context.Context, _ uint64, at time.Time) err
 	f.rescheduled = append(f.rescheduled, at)
 	return nil
 }
-func (f *fakeTaskRepo) Cancel(context.Context, uint64, *uint64) error { return nil }
+func (f *fakeTaskRepo) Cancel(context.Context, uint64, *uint64) error  { return nil }
+func (f *fakeTaskRepo) Requeue(context.Context, uint64, *uint64) error { return nil }
 
 // fakeRefRepo memetakan kode status ke ID tetap, cukup untuk resolusi
 // domain.RefTableTaskStatus yang dipakai failOrRetry.
