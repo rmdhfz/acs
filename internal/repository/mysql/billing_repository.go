@@ -82,6 +82,31 @@ func (r *billingRepository) UpdatePlan(ctx context.Context, p *domain.BillingPla
 	return translateErr(err)
 }
 
+func (r *billingRepository) SoftDeletePlan(ctx context.Context, id, deletedBy uint64) error {
+	// Satu UPDATE bersyarat: paket yang masih dipakai tenant / punya invoice PENDING tidak boleh hilang (race-safe).
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE billing_plans p SET p.is_deleted = 1, p.deleted_at = NOW(), p.deleted_by = ?, p.updated_by = ?
+		 WHERE p.id = ? AND p.is_deleted = 0
+		   AND NOT EXISTS (SELECT 1 FROM tenants t WHERE t.billing_plan_id = p.id AND t.is_deleted = 0)
+		   AND NOT EXISTS (SELECT 1 FROM billing_invoices i JOIN ref_invoice_status s ON s.id = i.status_id
+		                    WHERE i.plan_id = p.id AND s.code = 'PENDING')`,
+		deletedBy, deletedBy, id)
+	if err != nil {
+		return translateErr(err)
+	}
+	if n, _ := res.RowsAffected(); n == 1 {
+		return nil
+	}
+	var exists bool
+	if err := r.db.GetContext(ctx, &exists, `SELECT EXISTS(SELECT 1 FROM billing_plans WHERE id = ? AND is_deleted = 0)`, id); err != nil {
+		return translateErr(err)
+	}
+	if !exists {
+		return domain.ErrNotFound
+	}
+	return domain.ErrConflict
+}
+
 // ---- invoice ----
 
 const invoiceSelect = `SELECT i.id, i.invoice_uuid, i.invoice_number, i.tenant_id, i.plan_id, p.plan_code, p.name AS plan_name,

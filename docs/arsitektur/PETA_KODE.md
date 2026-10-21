@@ -4,7 +4,7 @@
 > "apa ada di mana" tanpa menjelajah ulang repo. Konteks bisnis: `docs/produk/PRD.md`; keputusan arsitektur: `docs/arsitektur/TECH.md`;
 > aturan kerja & konvensi: `CLAUDE.md`. Perbarui setelah menambah paket/endpoint/tabel/halaman (`--check` untuk memeriksa).
 
-Ringkasan: 174 operasi REST • 61 tabel • 36 migrasi (terakhir `0036_notification_optical_alert`) • 28 skenario e2e.
+Ringkasan: 175 operasi REST • 61 tabel • 36 migrasi (terakhir `0036_notification_optical_alert`) • 28 skenario e2e.
 
 ## Alur & lapisan (Clean Architecture)
 `domain` (entitas + antarmuka) → `usecase/*` (aturan bisnis) → `repository/mysql` (query sqlx) / `delivery/{cwmp,http,ws,usp}` (adapter masuk).
@@ -97,13 +97,14 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | GET | `/auth/oidc/login` | Mulai alur login OIDC (redirect ke Identity Provider) |
 | GET | `/auth/oidc/callback` | Callback OIDC — tukar authorization code jadi sesi |
 
-**Billing** (8)
+**Billing** (9)
 
 | Method | Path | Ringkasan |
 |---|---|---|
 | GET | `/billing/plans` | Daftar paket langganan |
 | POST | `/billing/plans` | Buat paket langganan (SUPERADMIN) |
 | PATCH | `/billing/plans/{code}` | Ubah paket langganan (SUPERADMIN) |
+| DELETE | `/billing/plans/{code}` | Hapus paket langganan (SUPERADMIN) |
 | GET | `/billing/subscription` | Status langganan tenant |
 | POST | `/billing/checkout` | Buat invoice pembayaran (checkout) |
 | GET | `/billing/invoices` | Daftar invoice langganan |
@@ -462,7 +463,7 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 
 **Lib/hooks** (`frontend/src/lib`, 34): api, auth, autolabel, clientAdapter, clipboard, confirm, csv, exporter, focusTrap, format, hooks, i18n.extra, i18n, importer, limits, menu, notifications, optical, opticalDiscovery, password, pool, queryErrors, screenshot, session, taskSummary, theme, toast, transferLog, types, usePaged, useStatusParam, wake, wifi, ws
 
-Berkas tes frontend: 31.
+Berkas tes frontend: 32.
 
 ## Skenario e2e (`cmd/e2e`)
 | Skenario | Fungsi |

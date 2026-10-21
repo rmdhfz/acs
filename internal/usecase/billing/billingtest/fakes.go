@@ -201,6 +201,26 @@ func (r *Repo) UpdatePlan(_ context.Context, p *domain.BillingPlan, _ *uint64) e
 	return nil
 }
 
+func (r *Repo) SoftDeletePlan(_ context.Context, id uint64, _ uint64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.Plans[id]; !ok {
+		return domain.ErrNotFound
+	}
+	for _, t := range r.Tenants {
+		if t.BillingPlanID != nil && *t.BillingPlanID == id {
+			return domain.ErrConflict
+		}
+	}
+	for _, inv := range r.Invoices {
+		if inv.PlanID == id && inv.Status == domain.InvoicePending {
+			return domain.ErrConflict
+		}
+	}
+	delete(r.Plans, id)
+	return nil
+}
+
 func (r *Repo) CreateInvoice(_ context.Context, inv *domain.BillingInvoice) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

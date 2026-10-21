@@ -110,6 +110,9 @@ type BillingRepository interface {
 	CreatePlan(ctx context.Context, p *BillingPlan, createdBy *uint64) error
 	// UpdatePlan menimpa kolom yang dapat diubah (nama, deskripsi, batas, harga, periode, aktif, urutan); kode tetap.
 	UpdatePlan(ctx context.Context, p *BillingPlan, updatedBy *uint64) error
+	// SoftDeletePlan menghapus paket (is_deleted). ErrNotFound bila tak ada; ErrConflict bila masih dipakai tenant atau punya
+	// invoice PENDING (pengecekan & penghapusan atomik). Invoice lama tetap menyimpan paketnya sebagai riwayat.
+	SoftDeletePlan(ctx context.Context, id uint64, deletedBy uint64) error
 
 	// CreateInvoice menyisipkan invoice berstatus PENDING. Mengisi ID/CreatedAt. ErrConflict bila nomor/uuid ganda.
 	CreateInvoice(ctx context.Context, inv *BillingInvoice) error

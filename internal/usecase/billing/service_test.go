@@ -980,3 +980,37 @@ func TestNoSecretsInLogsOrErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestDeletePlan(t *testing.T) {
+	e := newEnv(t, true)
+	ctx := context.Background()
+	if _, err := e.svc.CreatePlan(ctx, e.super, CreatePlanInput{Code: "TEMP", Name: "Sementara", PriceIDR: 1000, PeriodDays: 30, IsActive: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.svc.DeletePlan(ctx, e.admin1, "TEMP"); !isErr(err, domain.ErrForbidden) {
+		t.Errorf("ADMIN tidak boleh menghapus paket: %v", err)
+	}
+	if err := e.svc.DeletePlan(ctx, e.super, "bad code!"); !isErr(err, domain.ErrInvalidInput) {
+		t.Errorf("kode jelek harus 400: %v", err)
+	}
+	if err := e.svc.DeletePlan(ctx, e.super, "TIDAKADA"); !isErr(err, domain.ErrNotFound) {
+		t.Errorf("paket tak ada harus 404: %v", err)
+	}
+	// Paket dengan invoice PENDING tidak boleh dihapus (409), tetapi paket yang tak dipakai boleh.
+	e.checkout(t, e.admin1, "STARTER")
+	if err := e.svc.DeletePlan(ctx, e.super, "starter"); !isErr(err, domain.ErrConflict) {
+		t.Errorf("paket dengan invoice PENDING harus 409: %v", err)
+	}
+	if err := e.svc.DeletePlan(ctx, e.super, "temp"); err != nil {
+		t.Fatalf("hapus paket tak terpakai: %v", err)
+	}
+	plans, _ := e.svc.ListPlans(ctx, e.super)
+	for _, p := range plans {
+		if p.Code == "TEMP" {
+			t.Error("paket terhapus masih muncul di daftar")
+		}
+	}
+	if err := e.svc.DeletePlan(ctx, e.super, "TEMP"); !isErr(err, domain.ErrNotFound) {
+		t.Errorf("hapus dua kali harus 404: %v", err)
+	}
+}

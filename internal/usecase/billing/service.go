@@ -365,6 +365,34 @@ func (s *Service) UpdatePlan(ctx context.Context, actor domain.Actor, code strin
 	return s.repo.GetPlanByID(ctx, p.ID)
 }
 
+// DeletePlan (SUPERADMIN) menghapus paket dari katalog. Ditolak (409) selama masih dipakai tenant atau punya invoice
+// PENDING — nonaktifkan saja (is_active=false) bila ingin menutup penjualan tanpa menghapus. Riwayat invoice utuh.
+func (s *Service) DeletePlan(ctx context.Context, actor domain.Actor, code string) error {
+	if !actor.IsSuperadmin() {
+		return domain.ErrForbidden
+	}
+	code, err := NormalizePlanCode(code)
+	if err != nil {
+		return err
+	}
+	p, err := s.repo.GetPlanByCode(ctx, code)
+	if err != nil {
+		return err
+	}
+	uid := actor.UserIDPtr()
+	if uid == nil {
+		return domain.ErrForbidden
+	}
+	if err := s.repo.SoftDeletePlan(ctx, p.ID, *uid); err != nil {
+		if errors.Is(err, domain.ErrConflict) {
+			return fmt.Errorf("%w: paket masih dipakai tenant atau punya invoice menunggu pembayaran; nonaktifkan saja", domain.ErrConflict)
+		}
+		return err
+	}
+	s.auditPlan(ctx, actor, "BILLING_PLAN_DELETED", p)
+	return nil
+}
+
 // ---- langganan ----
 
 // SubscriptionView = status langganan tenant.

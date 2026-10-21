@@ -66,6 +66,7 @@ func (r *Router) mountBillingRoutes(authed *echo.Group) {
 	authed.GET("/billing/plans", r.billingListPlans)
 	authed.POST("/billing/plans", r.billingCreatePlan, RequireRoles(superadminOnly...))
 	authed.PATCH("/billing/plans/:code", r.billingUpdatePlan, RequireRoles(superadminOnly...))
+	authed.DELETE("/billing/plans/:code", r.billingDeletePlan, RequireRoles(superadminOnly...))
 	authed.GET("/billing/subscription", r.billingSubscription)
 	authed.POST("/billing/checkout", r.billingCheckout, RequireRoles(admin...))
 	authed.GET("/billing/invoices", r.billingListInvoices, RequireRoles(admin...))
@@ -144,6 +145,21 @@ type updatePlanRequest struct {
 }
 
 // PATCH /billing/plans/:code (SUPERADMIN)
+// DELETE /billing/plans/:code (SUPERADMIN)
+func (r *Router) billingDeletePlan(c *echo.Context) error {
+	code := c.Param("code")
+	if err := checkMaxLen(lenRule{"code", code, maxBillingPlanCode}); err != nil {
+		return err
+	}
+	if err := rejectControl("code", code); err != nil {
+		return err
+	}
+	if err := r.Billing.DeletePlan(c.Request().Context(), ActorFrom(c), code); err != nil {
+		return handleErr(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
 func (r *Router) billingUpdatePlan(c *echo.Context) error {
 	code := c.Param("code")
 	if err := checkMaxLen(lenRule{"code", code, maxBillingPlanCode}); err != nil {

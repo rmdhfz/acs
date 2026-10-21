@@ -461,3 +461,51 @@ func TestBillingRepository_ParallelSingleWinner_Integration(t *testing.T) {
 		t.Fatalf("PENDING->EXPIRED paralel harus 1 pemenang: %d", wins)
 	}
 }
+
+// SoftDeletePlan: paket yang masih dipakai (invoice PENDING / tenant) ditolak 409, yang bebas terhapus, ID tak ada 404.
+func TestBillingRepository_SoftDeletePlan_Integration(t *testing.T) {
+	f := newBillingFixture(t)
+	ctx := context.Background()
+
+	// invoice PENDING pada paket fixture -> konflik
+	f.newInvoice(t, "del")
+	if err := f.repo.SoftDeletePlan(ctx, f.plan.ID, 1); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("paket dengan invoice PENDING harus ErrConflict: %v", err)
+	}
+
+	// tenant memakai paket -> konflik, walau invoice sudah tak pending
+	if _, err := f.db.Exec(`UPDATE billing_invoices SET status_id = (SELECT id FROM ref_invoice_status WHERE code = 'EXPIRED') WHERE tenant_id = ?`, f.tid); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.Exec(`UPDATE tenants SET billing_plan_id = ? WHERE id = ?`, f.plan.ID, f.tid); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.repo.SoftDeletePlan(ctx, f.plan.ID, 1); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("paket yang dipakai tenant harus ErrConflict: %v", err)
+	}
+	if _, err := f.db.Exec(`UPDATE tenants SET billing_plan_id = NULL WHERE id = ?`, f.tid); err != nil {
+		t.Fatal(err)
+	}
+
+	// bebas dipakai (invoice kedaluwarsa tetap jadi riwayat) -> terhapus, hilang dari daftar & GetPlanByCode
+	if err := f.repo.SoftDeletePlan(ctx, f.plan.ID, 1); err != nil {
+		t.Fatalf("hapus paket bebas: %v", err)
+	}
+	if _, err := f.repo.GetPlanByCode(ctx, f.plan.Code); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("paket terhapus harus ErrNotFound: %v", err)
+	}
+	plans, _ := f.repo.ListPlans(ctx, false)
+	for _, p := range plans {
+		if p.Code == f.plan.Code {
+			t.Fatal("paket terhapus masih di daftar")
+		}
+	}
+	if err := f.repo.SoftDeletePlan(ctx, f.plan.ID, 1); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("hapus ulang harus ErrNotFound: %v", err)
+	}
+	// riwayat invoice tetap terbaca dengan nama paketnya
+	invs, _, err := f.repo.ListInvoices(ctx, &f.tid, domain.Pagination{Page: 1, PageSize: 10})
+	if err != nil || len(invs) != 1 || invs[0].PlanName != "IT Plan" {
+		t.Fatalf("riwayat invoice harus utuh setelah paket dihapus: %+v err=%v", invs, err)
+	}
+}

@@ -6068,6 +6068,49 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
+    delete:
+      operationId: deleteBillingPlan
+      tags: [Billing]
+      summary: Hapus paket langganan (SUPERADMIN)
+      description: |
+        SUPERADMIN saja. Soft delete: paket hilang dari katalog, riwayat invoice tetap utuh. **Ditolak `409`** selama paket masih
+        dipakai tenant atau punya invoice menunggu pembayaran — nonaktifkan saja (`is_active=false`) bila hanya ingin menutup
+        penjualan. Kode paket yang sudah dihapus tidak dapat dipakai lagi. Tercatat di audit trail (`BILLING_PLAN_DELETED`).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: code
+          in: path
+          required: true
+          description: Kode paket (tidak peka huruf besar/kecil).
+          schema: { type: string, minLength: 2, maxLength: 64 }
+      responses:
+        '204':
+          description: Paket dihapus.
+        '400':
+          description: Kode paket tidak valid.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Bukan SUPERADMIN.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Paket tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: Paket masih dipakai tenant atau punya invoice menunggu pembayaran.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   /billing/subscription:
     get:

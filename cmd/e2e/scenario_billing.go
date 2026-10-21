@@ -276,5 +276,32 @@ func scenarioBilling(ctx context.Context, w *World) result {
 		return failr("SUPERADMIN harus melihat paket nonaktif %s", code)
 	}
 
-	return pass("billing mati: 3 paket contoh, subscription enabled=false, checkout/sync 409, webhook 404, RBAC (ENDUSER/NOC/ADMIN) benar, CRUD paket tervalidasi")
+	// Hapus paket uji: hanya SUPERADMIN, kode jelek 400, tak ada 404, lalu hilang dari daftar; hapus ulang 404.
+	// (Tanpa ini setiap run e2e meninggalkan satu paket "S23 uji" di katalog.)
+	del := "/api/v1/billing/plans/" + strings.ToLower(code)
+	if st, _ := w.pilotAdmin.status(http.MethodDelete, del, nil); st != 403 {
+		return failr("ADMIN menghapus paket harus 403, dapat %d", st)
+	}
+	if st, _ := w.super.status(http.MethodDelete, "/api/v1/billing/plans/kode jelek!", nil); st != 400 {
+		return failr("hapus paket kode jelek harus 400, dapat %d", st)
+	}
+	if st, _ := w.super.status(http.MethodDelete, "/api/v1/billing/plans/TIDAK_ADA_"+strings.ToUpper(run), nil); st != 404 {
+		return failr("hapus paket tak ada harus 404, dapat %d", st)
+	}
+	if err := w.super.do(http.MethodDelete, del, nil, nil); err != nil {
+		return failr("SUPERADMIN menghapus paket uji: %v", err)
+	}
+	if st, _ := w.super.status(http.MethodDelete, del, nil); st != 404 {
+		return failr("hapus paket dua kali harus 404, dapat %d", st)
+	}
+	if err := w.super.do(http.MethodGet, "/api/v1/billing/plans", nil, &all); err != nil {
+		return failr("GET billing/plans setelah hapus: %v", err)
+	}
+	for _, p := range all.Data {
+		if p.Code == code {
+			return failr("paket %s masih muncul setelah dihapus", code)
+		}
+	}
+
+	return pass("billing mati: 3 paket contoh, subscription enabled=false, checkout/sync 409, webhook 404, RBAC (ENDUSER/NOC/ADMIN) benar, CRUD paket tervalidasi, paket uji dihapus (hanya SUPERADMIN)")
 }
