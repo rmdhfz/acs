@@ -1822,6 +1822,8 @@ paths:
       tags: [Devices]
       summary: Daftar device (inventory CPE)
       description: |
+        Tiap baris membawa ringkasan untuk daftar: `rx_power_dbm`/`tx_power_dbm`/`optical_at` (metrik optik terakhir) dan
+        `pppoe_username`; `null` = belum pernah terbaca dari perangkat (bukan nol). Isi lewat `POST /devices/refresh-summary`.
         Semua role terautentikasi. Non-superadmin otomatis difilter ke
         tenant-nya sendiri — parameter `tenant_id` di query hanya efektif untuk
         superadmin.
@@ -1829,7 +1831,10 @@ paths:
       parameters:
         - name: search
           in: query
-          description: Mencocokkan ke `serial_number`/`mac_address`.
+          description: |
+            Mencocokkan ke `serial_number`, `mac_address`, `product_class`, dan — untuk kata kunci minimal 4 karakter —
+            username PPPoE (parameter standar TR-098 `WANPPPConnection.N.Username` / TR-181 `PPP.Interface.N.Username`
+            yang sudah tersinkron; lihat `POST /devices/refresh-summary`).
           schema: { type: string }
         - name: vendor_id
           in: query
@@ -1903,6 +1908,66 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '409':
           description: OUI+serial sudah terdaftar (atau tidak dapat didaftarkan).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /devices/refresh-summary:
+    post:
+      operationId: refreshDeviceSummary
+      tags: [Devices]
+      summary: Antre pembacaan ringkasan daftar (username PPPoE & level optik) untuk banyak device
+      description: |
+        ADMIN/NOC/SUPERADMIN. Untuk tiap device (maks. 100 id per permintaan; id ganda dihitung sekali) mengantre satu
+        `GET_PARAMETER_VALUES` atas cabang koneksi WAN standar — TR-098 `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.`
+        atau TR-181 `Device.PPP.Interface.` sesuai data model yang terdeteksi dari parameter device — dan, bila vendor/model punya
+        mapping `optical.*`, satu task polling optik. Device yang bukan milik tenant actor (non-superadmin), tidak ditemukan,
+        atau belum diketahui data model-nya dilewati dan dilaporkan di `skipped`. Kuota task menunggu per tenant tetap berlaku:
+        bila penuh, sisa device dilewati. Hasil muncul di `GET /devices` setelah perangkat Inform. Dicatat sebagai
+        `REFRESH_DEVICE_SUMMARY` di audit trail.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [device_ids]
+              properties:
+                device_ids:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items: { type: integer, format: int64 }
+      responses:
+        '202':
+          description: Task diantre.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  queued: { type: integer, description: "Jumlah device yang pembacaannya diantre." }
+                  skipped:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        device_id: { type: integer, format: int64 }
+                        reason: { type: string }
+                required: [queued, skipped]
+        '400':
+          description: "`device_ids` kosong atau lebih dari 100."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role di bawah NOC.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -2447,6 +2512,59 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  /tasks/{id}/retry:
+    post:
+      operationId: retryTask
+      tags: [Tasks]
+      summary: Coba ulang task yang gagal (task yang sama, bukan task baru)
+      description: |
+        ADMIN/NOC/SUPERADMIN, tenant-scoped sama seperti `GET /tasks/:id`. Menyalakan ulang task yang sama: status kembali
+        `PENDING`, `retry_count` 0, error/response dikosongkan, dijadwalkan sekarang dan tidak kedaluwarsa; `parameters` tidak
+        berubah. Berlaku untuk status `FAILED`, `CANCELLED`, `TIMEOUT`, dan `PENDING` yang sedang menunggu jadwal retry (dikirim
+        pada Inform berikutnya tanpa menunggu backoff). Task `SENT` (sedang berjalan) dan `COMPLETED` ditolak dengan `409`.
+        NOC hanya boleh mengulang task baca (`GET_PARAMETER_VALUES/NAMES/ATTRIBUTES`) dan `REBOOT`; jenis lain butuh ADMIN
+        (`403`). Task yang kembali menjadi antrean baru ikut kuota task tenant (`429` bila penuh). Aksi dicatat sebagai
+        `RETRY_TASK` di audit trail.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/taskIdPath'
+      responses:
+        '200':
+          description: Task setelah dinyalakan ulang (`parameters` tetap diredaksi untuk NOC/VIEWER).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        '400':
+          description: "`id` tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role di bawah NOC, NOC mengulang jenis task selain baca/reboot, atau task milik device tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Task tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: Task sedang berjalan (`SENT`) atau sudah `COMPLETED`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Kuota task menunggu per tenant penuh.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   # ============================== PROVISIONING ==============================
   /provisioning-profiles:
     get:
@@ -2512,59 +2630,6 @@ paths:
         '403':
           description: Role di bawah ADMIN, atau non-superadmin mencoba membuat profile untuk tenant lain/profile global.
           content:
-  /tasks/{id}/retry:
-    post:
-      operationId: retryTask
-      tags: [Tasks]
-      summary: Coba ulang task yang gagal (task yang sama, bukan task baru)
-      description: |
-        ADMIN/NOC/SUPERADMIN, tenant-scoped sama seperti `GET /tasks/:id`. Menyalakan ulang task yang sama: status kembali
-        `PENDING`, `retry_count` 0, error/response dikosongkan, dijadwalkan sekarang dan tidak kedaluwarsa; `parameters` tidak
-        berubah. Berlaku untuk status `FAILED`, `CANCELLED`, `TIMEOUT`, dan `PENDING` yang sedang menunggu jadwal retry (dikirim
-        pada Inform berikutnya tanpa menunggu backoff). Task `SENT` (sedang berjalan) dan `COMPLETED` ditolak dengan `409`.
-        NOC hanya boleh mengulang task baca (`GET_PARAMETER_VALUES/NAMES/ATTRIBUTES`) dan `REBOOT`; jenis lain butuh ADMIN
-        (`403`). Task yang kembali menjadi antrean baru ikut kuota task tenant (`429` bila penuh). Aksi dicatat sebagai
-        `RETRY_TASK` di audit trail.
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - $ref: '#/components/parameters/taskIdPath'
-      responses:
-        '200':
-          description: Task setelah dinyalakan ulang (`parameters` tetap diredaksi untuk NOC/VIEWER).
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Task' }
-        '400':
-          description: "`id` tidak valid."
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
-        '401':
-          description: Tidak terautentikasi.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
-        '403':
-          description: Role di bawah NOC, NOC mengulang jenis task selain baca/reboot, atau task milik device tenant lain.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
-        '404':
-          description: Task tidak ditemukan.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
-        '409':
-          description: Task sedang berjalan (`SENT`) atau sudah `COMPLETED`.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
-        '429':
-          description: Kuota task menunggu per tenant penuh.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
-
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
@@ -7721,9 +7786,20 @@ components:
         data:
           type: array
           nullable: true
-          items: { $ref: '#/components/schemas/Device' }
+          items: { $ref: '#/components/schemas/DeviceListItem' }
         total: { type: integer }
       required: [data, total]
+
+    DeviceListItem:
+      description: Device + ringkasan baris daftar perangkat.
+      allOf:
+        - $ref: '#/components/schemas/Device'
+        - type: object
+          properties:
+            rx_power_dbm: { type: number, format: double, nullable: true, description: "Level terima optik terakhir (dBm); null bila belum pernah terbaca." }
+            tx_power_dbm: { type: number, format: double, nullable: true, description: "Daya kirim optik terakhir (dBm)." }
+            optical_at: { type: string, format: date-time, nullable: true, description: "Waktu metrik optik terakhir dicatat." }
+            pppoe_username: { type: string, nullable: true, description: "Username PPPoE dari parameter standar yang sudah tersinkron; null bila belum terbaca." }
 
     DeviceStats:
       type: object

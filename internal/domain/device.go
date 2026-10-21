@@ -115,6 +115,9 @@ type DeviceParameterRepository interface {
 	UpsertNames(ctx context.Context, ps []DeviceParameter) error
 	ListByDevice(ctx context.Context, deviceID uint64, prefix string) ([]DeviceParameter, error)
 	Get(ctx context.Context, deviceID uint64, name string) (*DeviceParameter, error)
+	// PPPoEUsernames: username PPPoE (parameter standar TR-098 WANPPPConnection.N.Username / TR-181 PPP.Interface.N.Username,
+	// instance mana pun) untuk banyak device sekaligus; hanya yang terisi. Dipakai kolom daftar perangkat.
+	PPPoEUsernames(ctx context.Context, deviceIDs []uint64) (map[uint64]string, error)
 }
 
 // DeviceConfigSnapshot menyimpan status parameter full pada waktu tertentu
@@ -227,4 +230,16 @@ type DeviceOpticalMetricRepository interface {
 	Create(ctx context.Context, m *DeviceOpticalMetric) error
 	Latest(ctx context.Context, deviceID uint64) (*DeviceOpticalMetric, error)
 	ListByDevice(ctx context.Context, deviceID uint64, p Pagination) ([]DeviceOpticalMetric, int, error)
+	// LatestForDevices: metrik terbaru per device untuk banyak device sekaligus (tanpa N+1); device tanpa data tidak ada di map.
+	LatestForDevices(ctx context.Context, deviceIDs []uint64) (map[uint64]DeviceOpticalMetric, error)
+}
+
+// DeviceListItem = Device + ringkasan yang dibutuhkan baris daftar perangkat (redaman optik terakhir & username PPPoE).
+// Nilai kosong (null) berarti belum pernah terbaca dari perangkat — bukan nol.
+type DeviceListItem struct {
+	Device
+	RxPowerDBM    *float64   `json:"rx_power_dbm"`
+	TxPowerDBM    *float64   `json:"tx_power_dbm"`
+	OpticalAt     *time.Time `json:"optical_at"`
+	PPPoEUsername *string    `json:"pppoe_username"`
 }

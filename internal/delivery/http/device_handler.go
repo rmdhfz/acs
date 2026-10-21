@@ -21,11 +21,28 @@ func (r *Router) listDevices(c *echo.Context) error {
 		TenantID:       queryUint64(c, "tenant_id"),
 		TagID:          queryUint64(c, "tag_id"),
 	}
-	devices, total, err := r.Devices.List(c.Request().Context(), actor, f, paginationFromQuery(c))
+	devices, total, err := r.Devices.ListWithSummary(c.Request().Context(), actor, f, paginationFromQuery(c))
 	if err != nil {
 		return handleErr(c, err)
 	}
 	return c.JSON(http.StatusOK, listResponse{Data: devices, Total: total})
+}
+
+type refreshSummaryRequest struct {
+	DeviceIDs []uint64 `json:"device_ids"`
+}
+
+// refreshDeviceSummary — POST /devices/refresh-summary: antre pembacaan username PPPoE & level optik untuk banyak device.
+func (r *Router) refreshDeviceSummary(c *echo.Context) error {
+	var req refreshSummaryRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "payload tidak valid")
+	}
+	res, err := r.Tasks.RefreshDeviceSummary(c.Request().Context(), ActorFrom(c), req.DeviceIDs)
+	if err != nil {
+		return handleErr(c, err)
+	}
+	return c.JSON(http.StatusAccepted, res)
 }
 
 func (r *Router) deviceStats(c *echo.Context) error {

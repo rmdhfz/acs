@@ -131,9 +131,16 @@ func (r *deviceRepository) List(ctx context.Context, f domain.DeviceFilter, p do
 		args = append(args, *f.DeviceStatusID)
 	}
 	if f.Search != "" {
-		where = append(where, "(serial_number LIKE ? OR mac_address LIKE ?)")
 		like := "%" + likeEscape(f.Search) + "%"
-		args = append(args, like, like)
+		cond := "serial_number LIKE ? OR mac_address LIKE ? OR product_class LIKE ?"
+		args = append(args, like, like, like)
+		// Username PPPoE (parameter standar TR-098/TR-181) — hanya untuk kata kunci >= 4 karakter agar tidak memindai terlalu luas.
+		if len([]rune(f.Search)) >= 4 {
+			cond += " OR EXISTS (SELECT 1 FROM device_parameters p WHERE p.device_id = devices.id AND p.parameter_value LIKE ?" +
+				" AND (p.parameter_name LIKE 'InternetGatewayDevice.WANDevice.%.WANPPPConnection.%.Username' OR p.parameter_name LIKE 'Device.PPP.Interface.%.Username'))"
+			args = append(args, like)
+		}
+		where = append(where, "("+cond+")")
 	}
 	if f.TagID != nil {
 		// EXISTS lebih aman dari JOIN di sini: tidak menduplikasi baris device
@@ -358,6 +365,34 @@ func (r *deviceParameterRepository) HasPrefix(ctx context.Context, deviceID uint
 	return n > 0, translateErr(err)
 }
 
+func (r *deviceParameterRepository) PPPoEUsernames(ctx context.Context, deviceIDs []uint64) (map[uint64]string, error) {
+	out := map[uint64]string{}
+	if len(deviceIDs) == 0 {
+		return out, nil
+	}
+	q, args, err := sqlx.In(
+		`SELECT device_id, parameter_value FROM device_parameters
+		 WHERE device_id IN (?) AND parameter_value IS NOT NULL AND parameter_value <> ''
+		   AND (parameter_name LIKE 'InternetGatewayDevice.WANDevice.%.WANPPPConnection.%.Username' OR parameter_name LIKE 'Device.PPP.Interface.%.Username')
+		 ORDER BY device_id, parameter_name`, deviceIDs)
+	if err != nil {
+		return nil, translateErr(err)
+	}
+	var rows []struct {
+		DeviceID uint64 `db:"device_id"`
+		Value    string `db:"parameter_value"`
+	}
+	if err := r.db.SelectContext(ctx, &rows, r.db.Rebind(q), args...); err != nil {
+		return nil, translateErr(err)
+	}
+	for _, row := range rows {
+		if _, seen := out[row.DeviceID]; !seen {
+			out[row.DeviceID] = row.Value
+		}
+	}
+	return out, nil
+}
+
 func (r *deviceParameterRepository) ListByDevice(ctx context.Context, deviceID uint64, prefix string) ([]domain.DeviceParameter, error) {
 	var rows []domain.DeviceParameter
 	if prefix == "" {
@@ -569,6 +604,27 @@ func (r *deviceOpticalMetricRepository) Latest(ctx context.Context, deviceID uin
 		return nil, translateErr(err)
 	}
 	return &m, nil
+}
+
+func (r *deviceOpticalMetricRepository) LatestForDevices(ctx context.Context, deviceIDs []uint64) (map[uint64]domain.DeviceOpticalMetric, error) {
+	out := map[uint64]domain.DeviceOpticalMetric{}
+	if len(deviceIDs) == 0 {
+		return out, nil
+	}
+	q, args, err := sqlx.In(
+		`SELECT m.* FROM device_optical_metrics m
+		 JOIN (SELECT device_id, MAX(id) AS mid FROM device_optical_metrics WHERE device_id IN (?) GROUP BY device_id) x ON x.mid = m.id`, deviceIDs)
+	if err != nil {
+		return nil, translateErr(err)
+	}
+	var rows []domain.DeviceOpticalMetric
+	if err := r.db.SelectContext(ctx, &rows, r.db.Rebind(q), args...); err != nil {
+		return nil, translateErr(err)
+	}
+	for _, m := range rows {
+		out[m.DeviceID] = m
+	}
+	return out, nil
 }
 
 func (r *deviceOpticalMetricRepository) ListByDevice(ctx context.Context, deviceID uint64, p domain.Pagination) ([]domain.DeviceOpticalMetric, int, error) {

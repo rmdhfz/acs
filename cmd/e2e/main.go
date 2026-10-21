@@ -135,6 +135,7 @@ func main() {
 		{"S25-udp-cr-rpc-cpe", scenarioCPEWake},
 		{"S26-console-idor", scenarioConsole},
 		{"S27-ont-nyata-hg6145f", scenarioRealOnt},
+		{"S28-ringkasan-daftar-perangkat", scenarioDeviceSummary},
 	}
 
 	var results []result

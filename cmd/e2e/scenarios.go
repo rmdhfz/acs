@@ -735,3 +735,108 @@ func firstNonEmpty(a, b string) string {
 	}
 	return b
 }
+
+// S28 — ringkasan di daftar perangkat: POST /devices/refresh-summary mengantre pembacaan cabang PPP (path parsial),
+// CPE menjawab, lalu GET /devices membawa pppoe_username dan pencarian memakai username itu; scope tenant & validasi.
+func scenarioDeviceSummary(ctx context.Context, w *World) result {
+	key := "zte"
+	dev, serial := w.devices[key], w.serials[key]
+	if dev == nil {
+		return skipr("device %s dari S1 tidak ada", key)
+	}
+	d, err := w.super.findDeviceBySerial(serial)
+	if err != nil {
+		return failr("%v", err)
+	}
+
+	// Validasi: kosong dan > 100 id ditolak 400.
+	if st, _ := w.pilotAdmin.status(http.MethodPost, "/api/v1/devices/refresh-summary", map[string]any{"device_ids": []uint64{}}); st != http.StatusBadRequest {
+		return failr("device_ids kosong: HTTP %d, harusnya 400", st)
+	}
+	many := make([]uint64, 101)
+	for i := range many {
+		many[i] = uint64(i + 1)
+	}
+	if st, _ := w.pilotAdmin.status(http.MethodPost, "/api/v1/devices/refresh-summary", map[string]any{"device_ids": many}); st != http.StatusBadRequest {
+		return failr("101 id: HTTP %d, harusnya 400", st)
+	}
+
+	// Tenant lain: device ini dilewati (tidak diantre).
+	var other struct {
+		Queued  int `json:"queued"`
+		Skipped []struct {
+			DeviceID uint64 `json:"device_id"`
+			Reason   string `json:"reason"`
+		} `json:"skipped"`
+	}
+	if err := w.pilot2Admin.do(http.MethodPost, "/api/v1/devices/refresh-summary", map[string]any{"device_ids": []uint64{d.ID}}, &other); err != nil {
+		return failr("refresh-summary tenant lain: %v", err)
+	}
+	if other.Queued != 0 || len(other.Skipped) != 1 {
+		return failr("tenant lain: queued=%d skipped=%d, harusnya 0 dan 1", other.Queued, len(other.Skipped))
+	}
+
+	// Pemilik: 1 diantre + 1 id tak ada dilewati.
+	var mine struct {
+		Queued  int `json:"queued"`
+		Skipped []struct {
+			DeviceID uint64 `json:"device_id"`
+			Reason   string `json:"reason"`
+		} `json:"skipped"`
+	}
+	if err := w.pilotAdmin.do(http.MethodPost, "/api/v1/devices/refresh-summary", map[string]any{"device_ids": []uint64{d.ID, d.ID + 987654}}, &mine); err != nil {
+		return failr("refresh-summary: %v", err)
+	}
+	if mine.Queued != 1 || len(mine.Skipped) != 1 {
+		return failr("pemilik: queued=%d skipped=%d, harusnya 1 dan 1", mine.Queued, len(mine.Skipped))
+	}
+	rep := w.runCPE(ctx, dev, simcpe.SessionOpts{Events: []string{"2 PERIODIC"}})
+	if !rep.OK || rep.CountRPC("GetParameterValues") == 0 {
+		return failr("CPE tidak menerima GetParameterValues cabang PPP (rpc: %v, err: %s)", rep.RPCsReceived, rep.ErrMsg)
+	}
+	time.Sleep(500 * time.Millisecond)
+
+	type item struct {
+		ID            uint64   `json:"id"`
+		SerialNumber  string   `json:"serial_number"`
+		PPPoEUsername *string  `json:"pppoe_username"`
+		RxPowerDBM    *float64 `json:"rx_power_dbm"`
+	}
+	var env listEnvelope[item]
+	if err := w.pilotAdmin.do(http.MethodGet, "/api/v1/devices?search="+serial, nil, &env); err != nil {
+		return failr("GET /devices: %v", err)
+	}
+	var found *item
+	for i := range env.Data {
+		if env.Data[i].ID == d.ID {
+			found = &env.Data[i]
+		}
+	}
+	if found == nil || found.PPPoEUsername == nil || !strings.HasPrefix(*found.PPPoEUsername, "pppoe-") {
+		return failr("daftar perangkat belum membawa pppoe_username dari pembacaan cabang PPP: %+v", found)
+	}
+
+	// Pencarian lewat username PPPoE: pemilik menemukan, tenant lain tidak.
+	var byUser, byUserOther listEnvelope[item]
+	if err := w.pilotAdmin.do(http.MethodGet, "/api/v1/devices?search="+*found.PPPoEUsername, nil, &byUser); err != nil {
+		return failr("search username: %v", err)
+	}
+	if err := w.pilot2Admin.do(http.MethodGet, "/api/v1/devices?search="+*found.PPPoEUsername, nil, &byUserOther); err != nil {
+		return failr("search username tenant lain: %v", err)
+	}
+	hit := false
+	for _, x := range byUser.Data {
+		if x.ID == d.ID {
+			hit = true
+		}
+	}
+	if !hit {
+		return failr("pencarian '%s' tidak menemukan device", *found.PPPoEUsername)
+	}
+	for _, x := range byUserOther.Data {
+		if x.ID == d.ID {
+			return failr("pencarian lintas tenant bocor: tenant lain menemukan device ini")
+		}
+	}
+	return pass("refresh-summary: validasi 400 (kosong/>100), tenant lain dilewati, pemilik diantre; CPE menjawab cabang PPP → daftar membawa pppoe_username '%s'; cari lewat username menemukan (tenant lain tidak)", *found.PPPoEUsername)
+}

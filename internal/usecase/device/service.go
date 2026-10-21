@@ -233,6 +233,46 @@ func (s *Service) List(ctx context.Context, actor domain.Actor, f domain.DeviceF
 	return s.devices.List(ctx, f, p)
 }
 
+// ListWithSummary = List + ringkasan baris daftar (redaman optik terakhir & username PPPoE) lewat dua query batch untuk
+// halaman ini saja (tanpa N+1). Data ringkasan opsional: kegagalan membacanya tidak menggagalkan daftar.
+func (s *Service) ListWithSummary(ctx context.Context, actor domain.Actor, f domain.DeviceFilter, p domain.Pagination) ([]domain.DeviceListItem, int, error) {
+	devices, total, err := s.List(ctx, actor, f, p)
+	if err != nil {
+		return nil, 0, err
+	}
+	items := make([]domain.DeviceListItem, len(devices))
+	ids := make([]uint64, len(devices))
+	for i := range devices {
+		items[i] = domain.DeviceListItem{Device: devices[i]}
+		ids[i] = devices[i].ID
+	}
+	if len(ids) == 0 {
+		return items, total, nil
+	}
+	if s.opticalMetrics != nil {
+		if m, err := s.opticalMetrics.LatestForDevices(ctx, ids); err == nil {
+			for i := range items {
+				if v, ok := m[items[i].ID]; ok {
+					items[i].RxPowerDBM, items[i].TxPowerDBM = v.RxPowerDBM, v.TxPowerDBM
+					at := v.RecordedAt
+					items[i].OpticalAt = &at
+				}
+			}
+		}
+	}
+	if s.deviceParams != nil {
+		if m, err := s.deviceParams.PPPoEUsernames(ctx, ids); err == nil {
+			for i := range items {
+				if v, ok := m[items[i].ID]; ok {
+					u := v
+					items[i].PPPoEUsername = &u
+				}
+			}
+		}
+	}
+	return items, total, nil
+}
+
 // DeviceStats — agregat untuk dashboard analitik (ROADMAP.md Fase 1).
 type DeviceStats struct {
 	ByStatus []domain.DeviceStatusCount `json:"by_status"`

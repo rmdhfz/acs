@@ -798,6 +798,87 @@ func (s *Service) Cancel(ctx context.Context, actor domain.Actor, id uint64) err
 	return nil
 }
 
+// MaxSummaryRefreshDevices — batas device per permintaan RefreshDeviceSummary.
+const MaxSummaryRefreshDevices = 100
+
+// SummarySkip — device yang dilewati pada RefreshDeviceSummary beserta alasannya.
+type SummarySkip struct {
+	DeviceID uint64 `json:"device_id"`
+	Reason   string `json:"reason"`
+}
+
+// SummaryRefreshResult — hasil RefreshDeviceSummary: jumlah device yang diantre pembacaannya + yang dilewati.
+type SummaryRefreshResult struct {
+	Queued  int           `json:"queued"`
+	Skipped []SummarySkip `json:"skipped"`
+}
+
+// RefreshDeviceSummary mengantre pembacaan data ringkasan daftar perangkat untuk banyak device sekaligus: koneksi WAN
+// (username PPPoE; cabang standar TR-098 WANConnectionDevice / TR-181 PPP.Interface sesuai data model yang dideteksi dari
+// parameter device) dan level optik bila vendor/model punya mapping optical.* (tanpa mapping dilewati, bukan error).
+// Hanya device milik tenant actor (superadmin: semua); yang lain dilewati. Kuota task tenant tetap berlaku — bila penuh,
+// proses berhenti dan sisa device dilaporkan dilewati.
+func (s *Service) RefreshDeviceSummary(ctx context.Context, actor domain.Actor, deviceIDs []uint64) (*SummaryRefreshResult, error) {
+	if len(deviceIDs) == 0 || len(deviceIDs) > MaxSummaryRefreshDevices {
+		return nil, fmt.Errorf("%w: device_ids wajib 1-%d id", domain.ErrInvalidInput, MaxSummaryRefreshDevices)
+	}
+	res := &SummaryRefreshResult{Skipped: []SummarySkip{}}
+	seen := map[uint64]bool{}
+	stopped := false
+	for _, id := range deviceIDs {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		if stopped {
+			res.Skipped = append(res.Skipped, SummarySkip{id, "kuota task tenant penuh"})
+			continue
+		}
+		dev, err := s.devices.GetByID(ctx, id)
+		if err != nil {
+			res.Skipped = append(res.Skipped, SummarySkip{id, "device tidak ditemukan"})
+			continue
+		}
+		if !actor.IsSuperadmin() && (dev.TenantID == nil || actor.TenantID == nil || *dev.TenantID != *actor.TenantID) {
+			res.Skipped = append(res.Skipped, SummarySkip{id, "bukan milik tenant Anda"})
+			continue
+		}
+		var branch string
+		for _, c := range []struct{ prefix, names string }{
+			{"InternetGatewayDevice.", "InternetGatewayDevice.WANDevice.1.WANConnectionDevice."},
+			{"Device.", "Device.PPP.Interface."},
+		} {
+			if ok, herr := s.deviceParams.HasPrefix(ctx, id, c.prefix); herr == nil && ok {
+				branch = c.names
+				break
+			}
+		}
+		if branch == "" {
+			res.Skipped = append(res.Skipped, SummarySkip{id, "data model belum diketahui (tunggu Inform pertama)"})
+			continue
+		}
+		if _, err := s.CreateTask(ctx, actor, domain.CreateTaskInput{
+			DeviceID: id, TaskType: domain.TaskTypeGetParameterValues, Priority: 8,
+			Parameters: map[string]interface{}{"names": []string{branch}},
+		}); err != nil {
+			if errors.Is(err, domain.ErrQuotaExceeded) {
+				stopped = true
+				res.Skipped = append(res.Skipped, SummarySkip{id, "kuota task tenant penuh"})
+				continue
+			}
+			res.Skipped = append(res.Skipped, SummarySkip{id, err.Error()})
+			continue
+		}
+		_, _ = s.EnqueueOpticalPoll(ctx, id) // tanpa mapping optik: dilewati diam-diam
+		res.Queued++
+	}
+	_ = s.activity.Record(ctx, &domain.ActivityLog{
+		UserID: actor.UserIDPtr(), TenantID: actor.TenantID, Action: "REFRESH_DEVICE_SUMMARY", EntityType: "device",
+		Details: map[string]interface{}{"requested": len(deviceIDs), "queued": res.Queued},
+	})
+	return res, nil
+}
+
 // nocMayRetry — jenis task yang boleh dicoba-ulang NOC: baca & reboot (sama dengan yang boleh dibuat NOC lewat
 // endpoint khususnya). Task yang menulis/menghapus konfigurasi butuh ADMIN.
 var nocMayRetry = map[string]bool{
