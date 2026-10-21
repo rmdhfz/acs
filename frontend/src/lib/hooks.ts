@@ -1900,6 +1900,15 @@ export function useUpdateBillingPlan() {
   })
 }
 
+// Hapus paket (SUPERADMIN, soft delete). 409 bila masih dipakai tenant / punya invoice menunggu pembayaran.
+export function useDeleteBillingPlan() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (code: string) => api.del<void>(`/billing/plans/${encodeURIComponent(code)}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['billing', 'plans'] }),
+  })
+}
+
 // ---- Fitur Console: layout menu, laporan bug, riwayat impor/ekspor (migrations/0033) ----
 
 

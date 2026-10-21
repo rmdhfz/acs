@@ -15,6 +15,7 @@ import {
   useBillingPlans,
   useBillingSubscription,
   useCreateBillingPlan,
+  useDeleteBillingPlan,
   useSyncInvoice,
   useTenants,
   useUpdateBillingPlan,
@@ -82,6 +83,8 @@ export function BillingPage() {
   const checkout = useBillingCheckout()
   const sync = useSyncInvoice()
   const [planModal, setPlanModal] = useState<BillingPlan | 'new' | null>(null)
+  // Paket nonaktif (mis. yang sudah ditutup penjualannya) disembunyikan; SUPERADMIN dapat menampilkannya untuk dikelola.
+  const [showInactive, setShowInactive] = useState(false)
 
   const billingOn = sub.data?.enabled ?? false
   const pending = sub.data?.pending_invoice ?? null
@@ -130,7 +133,9 @@ export function BillingPage() {
   }
 
   const totalPages = Math.max(1, Math.ceil((invoices.data?.total ?? 0) / PAGE_SIZE))
-  const visiblePlans = useMemo(() => plans.data ?? [], [plans.data])
+  const allPlans = useMemo(() => plans.data ?? [], [plans.data])
+  const inactiveCount = allPlans.filter((p) => !p.is_active).length
+  const visiblePlans = useMemo(() => (showInactive ? allPlans : allPlans.filter((p) => p.is_active)), [allPlans, showInactive])
   const currentCode = sub.data?.plan?.code
 
   return (
@@ -152,7 +157,7 @@ export function BillingPage() {
                 setPage(1)
                 setParams(next, { replace: true })
               }}
-              className={`${inputCls} w-64`}
+              className={`${inputCls} w-full sm:w-64`}
             >
               <option value="">— Pilih tenant —</option>
               {(tenants.data?.data ?? []).map((t) => (
@@ -264,13 +269,21 @@ export function BillingPage() {
         <div className="flex items-center justify-between">
           <h2 id="plans-h" className="text-base font-semibold text-slate-900 dark:text-slate-100">Pilih paket</h2>
           {isSuper && (
-            <button
-              type="button"
-              onClick={() => setPlanModal('new')}
-              className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
-            >
-              <Plus className="h-4 w-4" /> Paket baru
-            </button>
+            <div className="flex flex-wrap items-center gap-3">
+              {inactiveCount > 0 && (
+                <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+                  <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
+                  Tampilkan nonaktif ({inactiveCount})
+                </label>
+              )}
+              <button
+                type="button"
+                onClick={() => setPlanModal('new')}
+                className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
+              >
+                <Plus className="h-4 w-4" /> Paket baru
+              </button>
+            </div>
           )}
         </div>
         {plans.isLoading ? (
@@ -282,6 +295,19 @@ export function BillingPage() {
             {visiblePlans.map((p) => {
               const isCurrent = p.code === currentCode && sub.data?.status === 'ACTIVE'
               const canBuy = canManage && billingOn && p.is_active && p.price_idr > 0 && (!isSuper || tenantId !== null)
+              // Alasan tombol beli nonaktif, ditampilkan terlihat (bukan hanya tooltip).
+              const buyBlocked =
+                !canManage || canBuy
+                  ? null
+                  : !p.is_active
+                    ? 'Paket nonaktif — tidak dapat dibeli.'
+                    : isSuper && tenantId === null
+                      ? 'Pilih tenant di atas dulu.'
+                      : !billingOn && sub.data
+                        ? 'Pembayaran online belum diaktifkan.'
+                        : p.price_idr === 0
+                          ? 'Paket gratis — tidak perlu dibeli.'
+                          : null
               return (
                 <div key={p.code} className={`${cardCls} flex flex-col ${isCurrent ? 'ring-2 ring-indigo-500' : ''}`}>
                   <div className="flex items-start justify-between gap-2">
@@ -297,7 +323,8 @@ export function BillingPage() {
                     {p.max_devices === null ? 'Perangkat tak terbatas' : `Hingga ${p.max_devices.toLocaleString('id-ID')} perangkat`}
                   </p>
                   {p.description && <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{p.description}</p>}
-                  <div className="mt-auto flex gap-2 pt-4">
+                  {buyBlocked && <p className="mt-auto pt-3 text-xs text-slate-500 dark:text-slate-400">{buyBlocked}</p>}
+                  <div className={`${buyBlocked ? '' : 'mt-auto '}flex gap-2 pt-2`}>
                     {canManage && (
                       <button
                         type="button"
@@ -405,6 +432,8 @@ function PlanModal({ plan, onClose }: { plan: BillingPlan | null; onClose: () =>
   const toast = useToast()
   const create = useCreateBillingPlan()
   const update = useUpdateBillingPlan()
+  const remove = useDeleteBillingPlan()
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const [code, setCode] = useState(plan?.code ?? '')
   const [name, setName] = useState(plan?.name ?? '')
   const [description, setDescription] = useState(plan?.description ?? '')
@@ -415,7 +444,7 @@ function PlanModal({ plan, onClose }: { plan: BillingPlan | null; onClose: () =>
   const [sortOrder, setSortOrder] = useState(String(plan?.sort_order ?? 0))
   const [active, setActive] = useState(plan?.is_active ?? true)
   const [error, setError] = useState<string | null>(null)
-  const pending = create.isPending || update.isPending
+  const pending = create.isPending || update.isPending || remove.isPending
 
   function submit(e: FormEvent) {
     e.preventDefault()
@@ -489,6 +518,44 @@ function PlanModal({ plan, onClose }: { plan: BillingPlan | null; onClose: () =>
           <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Paket aktif (dapat dibeli)
         </label>
         {error && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+        {plan && (
+          <div className="rounded-xl border border-red-200 bg-red-50/50 p-3 dark:border-red-500/30 dark:bg-red-500/5">
+            {!confirmDelete ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600 dark:text-slate-400">
+                <span>Tidak dipakai lagi? Hapus dari katalog (riwayat invoice tetap ada).</span>
+                <button type="button" disabled={pending} onClick={() => setConfirmDelete(true)} className="rounded-full border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-500/40 dark:text-red-300 dark:hover:bg-red-500/10">
+                  Hapus paket
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                <span className="font-medium text-red-800 dark:text-red-300">Hapus paket {plan.name} ({plan.code})? Tidak dapat dibatalkan.</span>
+                <span className="flex gap-2">
+                  <button type="button" disabled={pending} onClick={() => setConfirmDelete(false)} className="rounded-full border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-white dark:border-slate-700 dark:text-slate-300">Batal</button>
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={() =>
+                      remove.mutate(plan.code, {
+                        onSuccess: () => {
+                          toast.success('Paket dihapus.', 'Berhasil')
+                          onClose()
+                        },
+                        onError: (err) => {
+                          setConfirmDelete(false)
+                          setError(errMsg(err, 'Gagal menghapus paket'))
+                        },
+                      })
+                    }
+                    className="rounded-full bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {remove.isPending ? 'Menghapus…' : 'Ya, hapus'}
+                  </button>
+                </span>
+              </div>
+            )}
+          </div>
+        )}
         <div className="flex justify-end gap-2 pt-1">
           <button type="button" onClick={onClose} className="rounded-full border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">Batal</button>
           <button type="submit" disabled={pending} className="rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50">{pending ? 'Menyimpan…' : 'Simpan'}</button>

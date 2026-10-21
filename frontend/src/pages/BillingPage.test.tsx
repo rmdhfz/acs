@@ -47,7 +47,7 @@ describe('BillingPage', () => {
       if (url.includes('/billing/invoices')) return { json: { data: [], meta: { total: 0, page: 1, limit: 10 } } }
     })
     renderApp(<BillingPage />)
-    expect(await screen.findByText(/pembayaran online belum diaktifkan/i)).toBeTruthy()
+    expect((await screen.findAllByText(/pembayaran online belum diaktifkan/i)).length).toBeGreaterThan(1) // banner + alasan di tiap kartu paket
     const buy = await screen.findAllByRole('button', { name: /pilih paket/i })
     expect(buy.every((b) => (b as HTMLButtonElement).disabled)).toBe(true)
   })
@@ -123,5 +123,50 @@ describe('BillingPage', () => {
     await u.click(screen.getByRole('button', { name: /simpan/i }))
     expect((await screen.findByRole('alert')).textContent).toMatch(/kode paket/i)
     expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/billing/plans'))).toBe(false)
+  })
+})
+
+describe('BillingPage — katalog paket (SUPERADMIN)', () => {
+  const WITH_INACTIVE = [...PLANS, { code: 'OLD', name: 'Paket lama', description: '', max_devices: 5, price_idr: 5000, period_days: 30, is_active: false, sort_order: 9 }]
+
+  it('paket nonaktif disembunyikan dan dapat ditampilkan; alasan tombol beli terlihat', async () => {
+    login(['SUPERADMIN'])
+    mockFetch(({ url, method }) => {
+      if (url.includes('/tenants')) return { json: { data: [{ id: 7, code: 'NUSA', name: 'Nusa Net' }], total: 1 } }
+      if (url.includes('/billing/plans') && method === 'GET') return { json: { data: WITH_INACTIVE } }
+    })
+    renderApp(<BillingPage />)
+    const u = userEvent.setup()
+    await screen.findByText('Starter')
+    expect(screen.queryByText('Paket lama')).toBeNull()
+    expect(screen.getAllByText(/pilih tenant di atas dulu/i).length).toBe(2) // alasan, bukan sekadar tombol pudar
+    await u.click(screen.getByLabelText(/tampilkan nonaktif \(1\)/i))
+    expect(screen.getByText('Paket lama')).toBeTruthy()
+    expect(screen.getByText(/paket nonaktif — tidak dapat dibeli/i)).toBeTruthy()
+  })
+
+  it('hapus paket: konfirmasi dua langkah, lalu DELETE ke kode paket; 409 menampilkan pesan server', async () => {
+    login(['SUPERADMIN'])
+    let status = 409
+    const calls = mockFetch(({ url, method }) => {
+      if (url.includes('/tenants')) return { json: { data: [], total: 0 } }
+      if (url.includes('/billing/plans/PRO') && method === 'DELETE') {
+        return status === 409 ? { status: 409, json: { message: 'paket masih dipakai tenant' } } : { status: 204 }
+      }
+      if (url.includes('/billing/plans') && method === 'GET') return { json: { data: PLANS } }
+    })
+    renderApp(<BillingPage />)
+    const u = userEvent.setup()
+    await u.click(await screen.findByRole('button', { name: /ubah paket pro/i }))
+    await u.click(screen.getByRole('button', { name: /^hapus paket$/i }))
+    expect(calls.some((c) => c.method === 'DELETE')).toBe(false) // belum menghapus sebelum konfirmasi
+    await u.click(screen.getByRole('button', { name: /ya, hapus/i }))
+    expect((await screen.findByRole('alert')).textContent).toMatch(/masih dipakai tenant/i)
+
+    status = 204
+    await u.click(screen.getByRole('button', { name: /^hapus paket$/i }))
+    await u.click(screen.getByRole('button', { name: /ya, hapus/i }))
+    await waitFor(() => expect(calls.filter((c) => c.method === 'DELETE')).toHaveLength(2))
+    expect(calls.filter((c) => c.method === 'DELETE')[1].url).toMatch(/\/billing\/plans\/PRO$/)
   })
 })
