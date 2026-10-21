@@ -263,7 +263,13 @@ func (h *Handler) handleInform(c *echo.Context, token string, env *cwmpxml.Envel
 	})
 	if err != nil {
 		if errors.Is(err, domain.ErrUnauthorized) {
-			h.log.Warn("cwmp: Inform ditolak (unauthorized)", "oui", inf.DeviceId.OUI, "serial_number", inf.DeviceId.SerialNumber)
+			// CPE hampir selalu mencoba TANPA kredensial dulu, menunggu tantangan 401, lalu mengulang dengan Basic Auth.
+			// Percobaan pertama itu normal (DEBUG); hanya penolakan atas kredensial yang DIBERIKAN yang layak WARN.
+			if username == "" && password == "" {
+				h.log.Debug("cwmp: Inform tanpa kredensial, mengirim tantangan Basic", "oui", inf.DeviceId.OUI, "serial_number", inf.DeviceId.SerialNumber)
+			} else {
+				h.log.Warn("cwmp: Inform ditolak (kredensial salah)", "oui", inf.DeviceId.OUI, "serial_number", inf.DeviceId.SerialNumber, "remote_ip", c.RealIP())
+			}
 			c.Response().Header().Set("WWW-Authenticate", `Basic realm="ACS"`)
 			return c.NoContent(http.StatusUnauthorized)
 		}

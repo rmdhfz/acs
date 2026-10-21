@@ -1,6 +1,7 @@
 package cwmp
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -76,8 +77,12 @@ type mockCPE struct {
 }
 
 func newCPE(t *testing.T, svc SessionService, https bool) *mockCPE {
+	return newCPEWithLog(t, svc, https, slog.New(slog.NewTextHandler(io.Discard, nil)))
+}
+
+func newCPEWithLog(t *testing.T, svc SessionService, https bool, log *slog.Logger) *mockCPE {
 	e := echo.New()
-	NewHandler(svc, slog.New(slog.NewTextHandler(io.Discard, nil))).Register(e, "/cwmp")
+	NewHandler(svc, log).Register(e, "/cwmp")
 	return &mockCPE{t: t, e: e, https: https}
 }
 
@@ -259,6 +264,33 @@ func TestInform_TanpaBasicAuthDiteruskanKosong(t *testing.T) {
 	}
 	if cpe.cookie != nil {
 		t.Fatalf("Inform ditolak tidak boleh memasang cookie sesi: %+v", cpe.cookie)
+	}
+}
+
+// Percobaan pertama CPE tanpa kredensial = tantangan normal (tidak boleh WARN); kredensial yang DIBERIKAN lalu ditolak = WARN.
+func TestInform_LogUnauthorized_TantanganNormalBukanWarn(t *testing.T) {
+	var buf bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	cpe := newCPEWithLog(t, &fakeSessions{informErr: domain.ErrUnauthorized}, false, log)
+
+	if rec := cpe.post(informXML(cwmpxml.NSCWMP), "", ""); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("HTTP %d, ingin 401", rec.Code)
+	}
+	out := buf.String()
+	if strings.Contains(out, "level=WARN") || !strings.Contains(out, "level=DEBUG") || !strings.Contains(out, "tanpa kredensial") {
+		t.Fatalf("tantangan tanpa kredensial harus DEBUG, bukan WARN:\n%s", out)
+	}
+
+	buf.Reset()
+	if rec := cpe.post(informXML(cwmpxml.NSCWMP), "depok", "salah"); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("HTTP %d, ingin 401", rec.Code)
+	}
+	out = buf.String()
+	if !strings.Contains(out, "level=WARN") || !strings.Contains(out, "kredensial salah") {
+		t.Fatalf("kredensial yang diberikan lalu ditolak harus WARN:\n%s", out)
+	}
+	if strings.Contains(out, "depok") {
+		t.Fatalf("username tidak boleh masuk log:\n%s", out)
 	}
 }
 
