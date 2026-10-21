@@ -51,7 +51,7 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | `internal/usecase/session` | 1 | mengorkestrasi siklus hidup sesi CWMP (TECH.md §3) — Inform -> InformResponse, lalu pertukaran RPC/task selama sesi terbuka. |
 | `internal/usecase/signup` | 1 | — pendaftaran tenant mandiri (self-signup) dengan verifikasi email. |
 | `internal/usecase/tag` | 1 | — |
-| `internal/usecase/task` | 2 | mengorkestrasi antrean RPC CWMP (lihat TECH.md §4) — enqueue, dequeue per device (dipanggil dari usecase/session), retry dengan max_retries, dan resolusi logical key -> raw TR-069 path (TECH.md §5). |
+| `internal/usecase/task` | 3 | mengorkestrasi antrean RPC CWMP (lihat TECH.md §4) — enqueue, dequeue per device (dipanggil dari usecase/session), retry dengan max_retries, dan resolusi logical key -> raw TR-069 path (TECH.md §5). |
 | `internal/usecase/usp_session` | 1 | — |
 | `internal/usecase/webhook` | 1 | mengelola langganan webhook keluar (typed event) dan pengirimannya ke sistem pihak ketiga (BSS/OSS/NMS) — `/goal` directive #3, PRD.md §4.1. |
 | `internal/vendor_adapter` | 1 | menyediakan titik ekstensi untuk vendor dengan kuirk protokol CWMP nonstandar (urutan RPC aneh, encoding response nonstandar, dll). |

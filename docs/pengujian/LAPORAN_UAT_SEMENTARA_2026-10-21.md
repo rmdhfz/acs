@@ -16,7 +16,7 @@
 | Baca konfigurasi dari ONT (SSID, klien WiFi, PPPoE username) | ✅ |
 | Ubah konfigurasi di ONT (SSID & password) | ✅ — **setelah** perbaikan bug protokol (lihat T-07) |
 | Reboot dari ACS | ✅ (ZTE F660) |
-| Connection Request (ACS → ONT, "Percepat") | ❌ belum berfungsi pada setup lab ini (lihat T-06) |
+| Connection Request (ACS → ONT, "Percepat") | ⚠️ URL kini **tersimpan otomatis** (T-06 diperbaiki; terbukti di ZTE F609); uji kirim CR masih butuh kredensial CR ONT |
 | Redaman optik ZTE | ❌ kosong — path TR-098 ZTE belum dipetakan (T-10) |
 | Aktif/nonaktif SSID, Hide SSID, Max Clients | ⏳ fitur sudah ada & lulus tes otomatis; **belum dicoba di ONT fisik** |
 | Isolation SSID, Priority | ⏳ path tidak dilaporkan F660; belum bisa (T-11) |
@@ -89,7 +89,7 @@
 | INF-05 Data model | ✅ | TR-098 |
 | INF-06 Identitas terbaca | ✅ | serial, SW, HW; model kosong pada awal → kini terisi (migrasi 0035) |
 | INF-07 Event kode persis | ✅ | `0 BOOTSTRAP`, `1 BOOT`, `2 PERIODIC`, `4 VALUE CHANGE`, `M Reboot` |
-| INF-08 IP sumber & CR URL tersimpan | ❌ | IP sumber terbaca `172.21.0.1` (NAT Docker) → CR URL tidak tersimpan (T-06) |
+| INF-08 IP sumber & CR URL tersimpan | ⚠️ | IP sumber tetap terbaca `172.21.0.1` (NAT Docker), tetapi setelah `ACS_CR_TRUSTED_CIDRS=10.0.0.0/8` CR URL F609 **tersimpan otomatis** (`http://10.0.123.22:58000/…`); F660 & Optictimes menyusul pada Inform berikutnya (T-06) |
 | INF-09 Kredensial salah → 401 | ✅ | lewat simulator |
 | INF-10 Periodic Inform stabil | ⚠️ | F660 terlihat Inform tiap 5 menit; 3 siklus belum didokumentasikan sistematis |
 
@@ -130,7 +130,7 @@
 | ID | Hasil | Catatan |
 |---|---|---|
 | SEC-01 Isolasi tenant | ⚠️ | lulus di e2e (S6); belum diuji dengan akun tenant lain pada ONT |
-| SEC-02 Kredensial tak plaintext | ⚠️ | API & UI menutup password; **tetapi** `tasks.parameters` di DB menyimpan nilai password WiFi apa adanya (T-12). Log acsd belum diperiksa khusus |
+| SEC-02 Kredensial tak plaintext | ✅ | API & UI menutup password; nilai rahasia task baru **dienkripsi** di `tasks.parameters` (T-12 diperbaiki; task lama sebelum perubahan tetap plaintext). Log acsd belum diperiksa khusus |
 | SEC-03 REST tanpa token | ✅ | 401 (`/devices`, `/devices/refresh-summary`, `/tasks/:id/retry`) |
 | SEC-04 Rate limit | ✅ | tidak ada 429 untuk 3 ONT |
 | SEC-05 ENDUSER | ⏳ | lulus di e2e (S10) |
@@ -139,7 +139,7 @@
 
 | ID | Hasil | Catatan |
 |---|---|---|
-| OBS-01 Log acsd bersih | ⚠️ | ada ERROR fault 9002 (sudah dijelaskan) dan WARN `Inform ditolak (unauthorized)` pada setiap Inform ONT (T-13) |
+| OBS-01 Log acsd bersih | ⚠️ | ada ERROR fault 9002 (sudah dijelaskan); WARN "unauthorized" tiap Inform sudah dihilangkan (T-13) |
 | OBS-02 Dashboard akurat | ✅ | status online/offline sesuai |
 | OBS-03 Audit trail | ⏳ | |
 | OBS-04 Console tanpa error | ⏳ | |
@@ -166,17 +166,18 @@
 | T-03 | **Windows Firewall dimatikan total** untuk uji | laptop terbuka | ⚠️ **Nyalakan lagi** + rule `TCP 17547` (perintah ada di sesi) |
 | T-04 | IP laptop berubah antar-jaringan | ACS URL di ONT jadi salah | ⚠️ gunakan IP tetap/reservasi |
 | T-05 | ONT tak punya rute ke laptop | Inform tak masuk | ✅ static route di router |
-| T-06 | IP sumber terbaca `172.21.0.1` (NAT Docker) → CR URL tak tersimpan | "Percepat" nonaktif; CR tak jalan otomatis | ⏳ isi manual (CR-05) atau jalankan acsd native |
+| T-06 | IP sumber terbaca `172.21.0.1` (NAT Docker) → CR URL tak tersimpan | "Percepat" nonaktif; CR tak jalan otomatis | ✅ **diperbaiki**: opt-in `ACS_CR_TRUSTED_CIDRS` (default ketat; hanya literal IP di rentang tepercaya & lolos netguard). Terbukti di F609. Tinggal isi kredensial CR ONT di Device Detail untuk uji kirim CR |
 | T-07 | **SetParameterValues → Fault 9002** pada ZTE F660 | tidak bisa ubah apa pun | ✅ **diperbaiki**: atribut tipe XML `_XMLSchema-instance:type` → `xsi:type` literal (commit `fix(cwmp)`); lulus e2e & ONT nyata |
 | T-08 | ParameterKey 36 karakter (batas TR-069: 32) | potensi tolak di firmware ketat | ✅ diperbaiki (32 hex) |
 | T-09 | Optictimes tampil "Belum dikenal" (OUI `9028F6` tak ada di katalog) | vendor/model kosong | ✅ migrasi 0035 (vendor + OUI + model RXP4-AC1200/F609/F660) + fitur **Tetapkan vendor** di Console. **Catatan:** IEEE mendaftarkan 9028F6 atas *Wuhan Yangtze Optical Technology Co.,Ltd.*, bukan "Optictimes" — pemetaan berdasarkan ONT fisik; mohon konfirmasi |
 | T-10 | Path redaman optik ZTE TR-098 belum dipetakan | kolom/tab Redaman kosong | ⏳ butuh Refresh Children di `WANDevice.1` dari ONT, lalu mapping sebagai data |
 | T-11 | Isolation & Priority tidak dilaporkan F660 di cabang WLAN | tidak bisa diatur | ⏳ tombol "Cari pengaturan lanjutan" menelusuri cabang lain; path **tidak ditebak** |
-| T-12 | `tasks.parameters` menyimpan password WiFi plaintext (hanya diredaksi di API untuk non-ADMIN) | rahasia tersimpan di DB | ⏳ perlu keputusan: enkripsi/bersihkan nilai setelah task selesai |
-| T-13 | Log WARN `Inform ditolak (unauthorized)` tiap Inform (ONT mencoba tanpa kredensial dulu) | kebisingan log, menyamarkan penolakan sungguhan | ⏳ turunkan ke DEBUG untuk percobaan pertama tanpa kredensial |
+| T-12 | `tasks.parameters` menyimpan password WiFi plaintext (hanya diredaksi di API untuk non-ADMIN) | rahasia tersimpan di DB | ✅ **diperbaiki** untuk task baru: nilai sensitif dienkripsi (`enc:v1:`), dibuka saat dikirim; API tak pernah mengembalikannya (semua role). **Sisa:** task lama (mis. 887) masih plaintext — belum ada backfill |
+| T-13 | Log WARN `Inform ditolak (unauthorized)` tiap Inform (ONT mencoba tanpa kredensial dulu) | kebisingan log, menyamarkan penolakan sungguhan | ✅ **diperbaiki**: percobaan tanpa kredensial = DEBUG; kredensial salah tetap WARN |
 | T-14 | Ketiga ONT masih diarahkan ke ACS ini; ACS Telkom (`acs.telkom.net:9090`) tidak mengelolanya | layanan yang dikelola Telkom bisa terganggu | ❌ **kembalikan sebelum selesai** (RST-01); pastikan password ACS Telkom diketahui |
 | T-15 | Akun `e2e-super` memakai password uji yang tertulis di dokumen | risiko bila ACS diekspos | ⏳ ganti/nonaktifkan |
 | T-16 | Fault `9002` pada task Ping (`882`) terjadi sebelum perbaikan T-07 | belum tahu apakah Ping sekarang berhasil | ⏳ klik **Coba lagi** pada task itu |
+| T-17 | **Laptop masuk Modern Standby 12.22–13.00** (idle timeout) → ACS tak terjangkau, ketiga ONT tampak OFFLINE saat sesi lanjutan dimulai; setelah bangun, ONT baru Inform lagi menurut jeda retry-nya (F609 13.30; F660 & Optictimes belum) | uji tersendat; bukan bug ACS | ⚠️ matikan sleep selama UAT: `powercfg /change standby-timeout-ac 0` (dan `monitor-timeout`); reboot ONT untuk mempercepat Inform |
 
 ---
 
@@ -202,7 +203,7 @@
 6. **Redaman optik ZTE:** Refresh Children `InternetGatewayDevice.WANDevice.1` → catat path & nilai → mapping data (T-10). Cocokkan dengan GUI ONT.
 7. **Isolation/Priority:** tombol "Cari pengaturan lanjutan"; bila tak ada, telusuri akar `X_ZTE-COM_*` (T-11).
 8. **F609:** uji tulis SSID (belum ada).
-9. Putuskan T-12 (password plaintext di `tasks.parameters`) dan T-13 (WARN unauthorized).
+9. ~~Putuskan T-12/T-13~~ — sudah diperbaiki (lihat temuan). Tinggal verifikasi lapangan: CR URL F660/Optictimes tersimpan setelah Inform berikutnya.
 10. **Pemulihan:** kembalikan setelan TR-069 ketiga ONT ke Telkom (T-14), catat hasil, lalu susun laporan akhir (PDF).
 
 ---
