@@ -9,6 +9,7 @@ import { PageSpinner } from '../components/Spinner'
 import { ParameterTree } from '../components/ParameterTree'
 import { ConfigHistory } from '../components/ConfigHistory'
 import { DeviceWifiTab } from '../components/DeviceWifiTab'
+import { useWakeDevice } from '../lib/wake'
 import { DeviceOverview } from '../components/DeviceOverview'
 import { RetryTaskButton, TaskSummaryView } from '../components/TaskParts'
 import { Modal } from '../components/Modal'
@@ -34,7 +35,6 @@ import {
   useProvisioningProfiles,
   useRefs,
   useScheduleFirmwareUpgrade,
-  useTriggerConnectionRequest,
   useTriggerDiagnostic,
   useVendors,
   useRebootDevice,
@@ -89,11 +89,10 @@ export function DeviceDetailPage() {
   const { data: statusRefs } = useRefs('ref_device_status')
   const { data: vendorsResp } = useVendors()
   
-  const triggerConnReq = useTriggerConnectionRequest()
+  const wakeDevice = useWakeDevice(device, () => setShowEditDevice(true))
   const rebootMutation = useRebootDevice()
   const factoryResetMutation = useFactoryResetDevice()
   const deleteDeviceMutation = useDeleteDevice()
-  const [connReqError, setConnReqError] = useState<string | null>(null)
   const toast = useToast()
   const confirm = useConfirm()
 
@@ -121,16 +120,6 @@ export function DeviceDetailPage() {
 
   const status = findRefById(statusRefs, device.device_status_id)
   const vendor = vendorsResp?.data?.find((v) => v.id === device.vendor_id)
-
-  const handleConnReq = async () => {
-    setConnReqError(null)
-    try {
-      await triggerConnReq.mutateAsync(deviceId)
-      toast.success('Connection Request terkirim. Device akan Inform dalam beberapa detik.', 'Berhasil')
-    } catch (err) {
-      setConnReqError(err instanceof ApiError ? err.message : 'Gagal mengirim Connection Request')
-    }
-  }
 
   const handleReboot = async () => {
     if (await confirm({ title: 'Reboot device', message: 'Device akan restart dan koneksi terputus sekitar 1–2 menit.', confirmLabel: 'Reboot' })) {
@@ -192,12 +181,12 @@ export function DeviceDetailPage() {
         <div className="flex flex-wrap items-center justify-end gap-2">
           {hasRole('ADMIN', 'NOC') && (
             <button
-              onClick={handleConnReq}
-              disabled={triggerConnReq.isPending || !device.connection_request_url}
-              title={!device.connection_request_url ? 'Device tidak memiliki connection request URL' : ''}
+              onClick={() => void wakeDevice.wake()}
+              disabled={wakeDevice.pending || !wakeDevice.hasUrl}
+              title={wakeDevice.hint}
               className="flex items-center gap-1.5 whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 font-medium text-slate-700 dark:text-slate-300 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50 disabled:opacity-50"
             >
-              <Radio className="h-4 w-4" /> Connection Req
+              <Radio className="h-4 w-4" /> Refresh ONT
             </button>
           )}
           {hasRole('ADMIN') && (
@@ -236,7 +225,6 @@ export function DeviceDetailPage() {
           )}
         </div>
       </div>
-      {connReqError && <p className="mb-4 text-sm text-red-600">{connReqError}</p>}
 
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div>

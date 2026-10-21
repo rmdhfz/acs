@@ -1,8 +1,10 @@
-import { describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { DeviceOverview } from './DeviceOverview'
-import { I18nProvider } from '../lib/i18n'
+import { ConfirmProvider } from '../lib/confirm'
+import { setAuthToken } from '../lib/api'
+import { mockFetch, renderApp } from '../test/utils'
 import type { Device } from '../lib/types'
 
 const base = {
@@ -13,8 +15,8 @@ const base = {
 } as unknown as Device
 
 function ui(over: Partial<Device> = {}, props: Partial<Parameters<typeof DeviceOverview>[0]> = {}) {
-  return render(
-    <I18nProvider>
+  return renderApp(
+    <ConfirmProvider>
       <DeviceOverview
         device={{ ...base, ...over }}
         vendorName="ZTE Corporation"
@@ -25,9 +27,18 @@ function ui(over: Partial<Device> = {}, props: Partial<Parameters<typeof DeviceO
         onGoTo={() => {}}
         {...props}
       />
-    </I18nProvider>,
+    </ConfirmProvider>,
   )
 }
+
+beforeEach(() => {
+  setAuthToken('JWT')
+  localStorage.setItem('acs_user', JSON.stringify({ id: 1, uuid: 'u', username: 'adm', roles: ['ADMIN'], tenant_id: 7 }))
+})
+afterEach(() => {
+  setAuthToken(null)
+  localStorage.clear()
+})
 
 describe('DeviceOverview', () => {
   it('ringkasan: status, IP, firmware di atas; identitas & vendor di bawah', () => {
@@ -77,5 +88,50 @@ describe('DeviceOverview', () => {
     await u.click(screen.getByRole('button', { name: /parameter tr-069/i }))
     await u.click(screen.getByRole('button', { name: /riwayat task/i }))
     expect(onGoTo.mock.calls.map((c) => c[0])).toEqual(['wifi', 'parameters', 'tasks'])
+  })
+
+  describe('Refresh ONT (Connection Request, tanpa reboot)', () => {
+    const WITH_URL = { connection_request_url: 'http://10.0.123.11:58000', connection_request_credentials_set: true }
+
+    it('URL & kredensial siap: kirim POST /devices/:id/connection-request', async () => {
+      const calls = mockFetch(({ url, method }) => (url.endsWith('/devices/5/connection-request') && method === 'POST' ? { status: 202, json: { message: 'ok' } } : undefined))
+      ui(WITH_URL)
+      await userEvent.setup().click(screen.getByRole('button', { name: /refresh ont/i }))
+      await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/devices/5/connection-request'))).toBe(true))
+    })
+
+    it('tanpa URL: tombol nonaktif dengan petunjuk yang jelas', () => {
+      ui({ connection_request_url: null })
+      const btn = screen.getByRole('button', { name: /refresh ont/i }) as HTMLButtonElement
+      expect(btn.disabled).toBe(true)
+      expect(btn.title).toMatch(/belum diketahui/i)
+    })
+
+    it('kredensial belum diisi: banner + konfirmasi; "Isi kredensial" membuka Edit tanpa mengirim, "Kirim tetap" mengirim', async () => {
+      const onEdit = vi.fn()
+      const calls = mockFetch(({ url, method }) => (url.endsWith('/devices/5/connection-request') && method === 'POST' ? { status: 202, json: { message: 'ok' } } : undefined))
+      const { unmount } = ui({ connection_request_url: 'http://10.0.123.11:58000', connection_request_credentials_set: false }, { onEdit })
+      expect(screen.getByText(/kredensial connection request belum diisi/i, { selector: 'p' })).toBeTruthy()
+      const u = userEvent.setup()
+
+      await u.click(screen.getByRole('button', { name: /refresh ont/i }))
+      // Ada dua tombol "Isi kredensial": di banner dan di dialog konfirmasi (dirender belakangan) → pakai yang di dialog.
+      await waitFor(() => expect(screen.getAllByRole('button', { name: /isi kredensial/i }).length).toBe(2))
+      const fillBtns = screen.getAllByRole('button', { name: /isi kredensial/i })
+      await u.click(fillBtns[fillBtns.length - 1])
+      expect(onEdit).toHaveBeenCalled()
+      expect(calls.some((c) => c.method === 'POST')).toBe(false)
+      unmount()
+
+      ui({ connection_request_url: 'http://10.0.123.11:58000', connection_request_credentials_set: false })
+      await u.click(screen.getByRole('button', { name: /refresh ont/i }))
+      await u.click(await screen.findByRole('button', { name: /kirim tetap/i }))
+      await waitFor(() => expect(calls.some((c) => c.method === 'POST')).toBe(true))
+    })
+
+    it('VIEWER tidak melihat tombol Refresh ONT', () => {
+      ui(WITH_URL, { canEdit: false })
+      expect(screen.queryByRole('button', { name: /refresh ont/i })).toBeNull()
+    })
   })
 })

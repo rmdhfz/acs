@@ -101,6 +101,8 @@ export interface Device {
   hardware_version: string | null
   ip_address: string | null
   connection_request_url: string | null
+  // Turunan dari GET /devices/:id: username & password Connection Request sudah diisi (nilainya tak pernah diekspos).
+  connection_request_credentials_set?: boolean
   // connection_request_username sengaja TIDAK ada di sini -- backend
   // menyembunyikannya dari response (json:"-", domain/device.go) krn
   // dikelompokkan CLAUDE.md sbg kredensial yg tidak boleh diekspos plaintext,

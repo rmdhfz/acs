@@ -16,9 +16,9 @@ import {
   useRefreshParameterTree,
   useRefs,
   useSetParameterValues,
-  useTriggerConnectionRequest,
 } from '../lib/hooks'
 import { formatRelativeTime } from '../lib/format'
+import { useWakeDevice } from '../lib/wake'
 import { parseWifi, wifiReadNames, type WifiRow } from '../lib/wifi'
 import type { Device } from '../lib/types'
 
@@ -62,7 +62,7 @@ function Unreported({ children }: { children: string }) {
   return <p className="text-xs text-slate-400 dark:text-slate-500">{children}</p>
 }
 
-function EditWifiModal({ device, row, readNames, onClose }: { device: Device; row: WifiRow; readNames: string[]; onClose: () => void }) {
+function EditWifiModal({ device, row, readNames, onQueued, onClose }: { device: Device; row: WifiRow; readNames: string[]; onQueued: () => void; onClose: () => void }) {
   const toast = useToast()
   const confirm = useConfirm()
   const setVals = useSetParameterValues()
@@ -138,7 +138,8 @@ function EditWifiModal({ device, row, readNames, onClose }: { device: Device; ro
         onSuccess: () => {
           // Baca ulang cabang WLAN setelah menulis (task berurutan di sesi yang sama) agar tabel menampilkan hasil sebenarnya.
           verify.mutate({ deviceId: device.id, names: readNames })
-          toast.success('Perubahan WiFi diantre, lalu dibaca ulang untuk verifikasi. Diterapkan saat ONT Inform berikutnya (atau klik "Percepat").', 'Berhasil')
+          onQueued()
+          toast.success('Perubahan WiFi diantre, lalu dibaca ulang untuk verifikasi. Diterapkan saat ONT Inform berikutnya (atau klik "Refresh ONT").', 'Berhasil')
           onClose()
         },
         onError: (err) => setError(err instanceof ApiError ? err.message : 'Gagal mengantre perubahan WiFi'),
@@ -243,7 +244,7 @@ export function DeviceWifiTab({ device }: { device: Device }) {
   const getVals = useGetParameterValues()
   const setVals = useSetParameterValues()
   const discover = useRefreshParameterTree()
-  const connReq = useTriggerConnectionRequest()
+  const wakeDevice = useWakeDevice(device)
   const confirm = useConfirm()
 
   const [editing, setEditing] = useState<WifiRow | null>(null)
@@ -251,7 +252,6 @@ export function DeviceWifiTab({ device }: { device: Device }) {
   const [openClients, setOpenClients] = useState<Set<number>>(new Set())
 
   const { model, rows } = parseWifi(params)
-  const hasCr = !!device.connection_request_url
 
   const wifiTasks = (tasksResp?.data ?? [])
     .filter((t) => {
@@ -279,7 +279,10 @@ export function DeviceWifiTab({ device }: { device: Device }) {
     getVals.mutate(
       { deviceId, names: wifiReadNames(model) },
       {
-        onSuccess: () => toast.success('Permintaan baca semua SSID diantre. Hasil muncul setelah ONT Inform berikutnya.', 'Berhasil'),
+        onSuccess: () => {
+          wakeDevice.wakeQuiet()
+          toast.success('Permintaan baca semua SSID diantre. Hasil muncul setelah ONT Inform berikutnya (atau klik "Refresh ONT").', 'Berhasil')
+        },
         onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Gagal mengantre pembacaan WiFi'),
       },
     )
@@ -291,19 +294,13 @@ export function DeviceWifiTab({ device }: { device: Device }) {
     discover.mutate(
       { deviceId, path: model === 'TR181' ? 'Device.WiFi.' : 'InternetGatewayDevice.LANDevice.1.', depth: 3 },
       {
-        onSuccess: () => toast.success('Penelusuran cabang WiFi diantre. Hasil muncul bertahap setelah ONT Inform (bisa beberapa siklus).', 'Berhasil'),
+        onSuccess: () => {
+          wakeDevice.wakeQuiet()
+          toast.success('Penelusuran cabang WiFi diantre. Hasil muncul bertahap setelah ONT Inform (bisa beberapa siklus).', 'Berhasil')
+        },
         onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Gagal mengantre penelusuran'),
       },
     )
-  }
-
-  const onSpeedUp = async () => {
-    try {
-      await connReq.mutateAsync(deviceId)
-      toast.success('Connection Request terkirim. ONT akan Inform dalam beberapa detik.', 'Berhasil')
-    } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : 'Gagal mengirim Connection Request')
-    }
   }
 
   // Aktifkan/nonaktifkan satu SSID (parameter Enable). Tipe boolean dikirim otomatis dari tipe yang pernah dilaporkan ONT.
@@ -330,6 +327,7 @@ export function DeviceWifiTab({ device }: { device: Device }) {
       {
         onSuccess: () => {
           getVals.mutate({ deviceId, names: wifiReadNames(model) })
+          wakeDevice.wakeQuiet()
           toast.success(`${turnOn ? 'Aktivasi' : 'Penonaktifan'} WiFi #${r.index} diantre, lalu dibaca ulang untuk verifikasi.`, 'Berhasil')
         },
         onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Gagal mengantre perubahan status WiFi'),
@@ -383,12 +381,12 @@ export function DeviceWifiTab({ device }: { device: Device }) {
               <Search className="h-4 w-4" /> Cari pengaturan lanjutan
             </button>
             <button
-              onClick={onSpeedUp}
-              disabled={connReq.isPending || !hasCr}
-              title={hasCr ? 'Paksa ONT Inform sekarang agar task langsung dijalankan' : 'Connection Request URL belum terisi — task berjalan saat Inform berikutnya'}
+              onClick={() => void wakeDevice.wake()}
+              disabled={wakeDevice.pending || !wakeDevice.hasUrl}
+              title={wakeDevice.hint}
               className={secondaryBtnCls}
             >
-              <Radio className="h-4 w-4" /> Percepat
+              <Radio className="h-4 w-4" /> Refresh ONT
             </button>
           </div>
         </div>
@@ -551,7 +549,7 @@ export function DeviceWifiTab({ device }: { device: Device }) {
         )}
       </div>
 
-      {editing && <EditWifiModal device={device} row={editing} readNames={wifiReadNames(model)} onClose={() => setEditing(null)} />}
+      {editing && <EditWifiModal device={device} row={editing} readNames={wifiReadNames(model)} onQueued={wakeDevice.wakeQuiet} onClose={() => setEditing(null)} />}
     </div>
   )
 }

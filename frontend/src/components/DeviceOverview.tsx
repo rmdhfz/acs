@@ -1,8 +1,9 @@
 import { useState, type ReactNode } from 'react'
-import { AlertTriangle, CheckCircle2, ExternalLink, ListChecks, MapPin, NotebookText, Pencil, SlidersHorizontal, Wifi } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ExternalLink, ListChecks, MapPin, NotebookText, Pencil, Radio, SlidersHorizontal, Wifi } from 'lucide-react'
 import { AssignVendorModal } from './AssignVendorModal'
 import { CopyButton } from './CopyButton'
 import { formatDateTime, formatRelativeTime } from '../lib/format'
+import { useWakeDevice } from '../lib/wake'
 import type { Device } from '../lib/types'
 
 // Ringkasan perangkat: apa yang paling sering ditanyakan operator (statusnya? firmware? bisa di-Connection Request?
@@ -68,7 +69,9 @@ export function DeviceOverview({
 }) {
   const online = statusCode === 'ONLINE'
   const [assigningVendor, setAssigningVendor] = useState(false)
+  const wakeDevice = useWakeDevice(device, onEdit)
   const hasCr = !!device.connection_request_url
+  const credsMissing = hasCr && device.connection_request_credentials_set === false
   const hasLoc = device.latitude != null && device.longitude != null
   const mapsUrl = hasLoc ? `https://www.google.com/maps?q=${device.latitude},${device.longitude}` : null
   const editBtn = canEdit ? (
@@ -101,8 +104,8 @@ export function DeviceOverview({
           <div className="min-w-0 flex-1">
             <p className="font-medium">Connection Request belum tersedia</p>
             <p className="mt-0.5 text-xs">
-              Tanpa URL ini, ACS tidak bisa memanggil perangkat langsung: perubahan (mis. ubah WiFi) baru dijalankan saat Inform periodik berikutnya, dan tombol “Percepat” nonaktif.
-              Biasanya terjadi bila perangkat berada di belakang NAT atau ACS berjalan di Docker (IP sumber tidak sama dengan URL yang dilaporkan perangkat).
+              Tanpa URL ini, ACS tidak bisa membangunkan perangkat: perubahan (mis. ubah WiFi) baru dijalankan saat Inform periodik berikutnya, dan tombol “Refresh ONT” nonaktif.
+              ACS menyimpannya otomatis saat perangkat Inform berikutnya bila alamatnya berada di rentang tepercaya (ACS_CR_TRUSTED_CIDRS) atau sama dengan IP sumber; selain itu isi manual lewat Edit.
             </p>
           </div>
           {canEdit && (
@@ -113,7 +116,34 @@ export function DeviceOverview({
         </div>
       )}
 
+      {credsMissing && (
+        <div role="status" className="flex flex-wrap items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">Kredensial Connection Request belum diisi</p>
+            <p className="mt-0.5 text-xs">
+              ONT meminta autentikasi (Digest) untuk Connection Request dan akan menolak (401) tanpa username/password. Isi sama persis dengan halaman TR-069 di ONT.
+            </p>
+          </div>
+          {canEdit && (
+            <button onClick={onEdit} className="rounded-full border border-amber-300 bg-white px-3 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100 dark:border-amber-500/40 dark:bg-transparent dark:text-amber-200">
+              Isi kredensial
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-2">
+        {canEdit && (
+          <button
+            onClick={() => void wakeDevice.wake()}
+            disabled={wakeDevice.pending || !wakeDevice.hasUrl}
+            title={wakeDevice.hint}
+            className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            <Radio className="h-4 w-4" /> Refresh ONT
+          </button>
+        )}
         <button onClick={() => onGoTo('wifi')} className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800">
           <Wifi className="h-4 w-4" /> Lihat / ubah WiFi
         </button>

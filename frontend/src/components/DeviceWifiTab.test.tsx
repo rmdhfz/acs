@@ -94,6 +94,21 @@ describe('DeviceWifiTab', () => {
     await userEvent.setup().click(await screen.findByRole('button', { name: /baca semua ssid/i }))
     await waitFor(() => expect(calls.some((c) => c.url.endsWith('/tasks/get-parameter-values'))).toBe(true))
     expect(calls.find((c) => c.url.endsWith('/tasks/get-parameter-values'))?.body).toEqual({ names: [`${W}.`] })
+    // ONT dibangunkan otomatis (Connection Request) setelah task diantre, agar langsung dijalankan tanpa reboot/menunggu Inform
+    await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/devices/5/connection-request'))).toBe(true))
+  })
+
+  it('tombol Refresh ONT nonaktif tanpa URL Connection Request, dengan petunjuk', async () => {
+    login(['ADMIN'])
+    mockFetch(handler('x'))
+    renderApp(
+      <ConfirmProvider>
+        <DeviceWifiTab device={{ ...device, connection_request_url: null }} />
+      </ConfirmProvider>,
+    )
+    const btn = (await screen.findByRole('button', { name: /refresh ont/i })) as HTMLButtonElement
+    expect(btn.disabled).toBe(true)
+    expect(btn.title).toMatch(/belum diketahui/i)
   })
 
   it('nonaktifkan SSID aktif: konfirmasi lalu Set Enable=0 ke path SSID tsb + baca ulang; SSID nonaktif ditawari Aktifkan (Enable=1)', async () => {
