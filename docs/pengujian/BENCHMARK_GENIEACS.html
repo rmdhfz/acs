@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Laporan Benchmark ACS vs GenieACS — 22 Oktober 2026</title>
+<style>
+  @page { size: A4; margin: 16mm 14mm 16mm 14mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; font-size: 10.5pt; line-height: 1.45; color: #0f172a; margin: 0; }
+  h1 { font-size: 22pt; margin: 0 0 4px; letter-spacing: -0.3px; }
+  h2 { font-size: 14pt; margin: 22px 0 8px; padding-bottom: 4px; border-bottom: 2px solid #1e293b; break-after: avoid; }
+  h3 { font-size: 11.5pt; margin: 16px 0 6px; break-after: avoid; }
+  p { margin: 6px 0; }
+  code { font-family: Consolas, "Courier New", monospace; font-size: 9pt; background: #f1f5f9; padding: 0 3px; border-radius: 3px; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0 12px; font-size: 9.2pt; }
+  th, td { border: 1px solid #cbd5e1; padding: 4px 6px; vertical-align: top; text-align: left; }
+  th { background: #e2e8f0; font-weight: 600; }
+  tr { break-inside: avoid; }
+  td.n, th.n { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  td.c, th.c { text-align: center; }
+  .meta td:first-child { width: 26%; background: #f8fafc; font-weight: 600; }
+  .cover { border-left: 6px solid #4f46e5; padding: 4px 0 4px 14px; margin-bottom: 14px; }
+  .cover .sub { color: #475569; font-size: 11pt; }
+  .verdict { border: 2px solid #4f46e5; background: #eef2ff; border-radius: 8px; padding: 10px 14px; margin: 12px 0; break-inside: avoid; }
+  .verdict strong.t { display: block; font-size: 11.5pt; margin-bottom: 4px; }
+  .caveat { border: 2px solid #f59e0b; background: #fffbeb; border-radius: 8px; padding: 8px 14px; margin: 12px 0; break-inside: avoid; font-size: 9.6pt; }
+  .kpi { display: flex; gap: 8px; margin: 10px 0; }
+  .kpi div { flex: 1; border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 10px; text-align: center; break-inside: avoid; }
+  .kpi b { display: block; font-size: 19pt; line-height: 1.1; color: #4338ca; }
+  .kpi span { font-size: 8.5pt; color: #475569; }
+  .win { background: #ecfdf5; font-weight: 700; color: #047857; }
+  .lose { color: #b91c1c; }
+  .bar { display: inline-block; height: 8px; border-radius: 2px; vertical-align: middle; margin-right: 5px; }
+  .bar.o { background: #4f46e5; } .bar.g { background: #94a3b8; }
+  .chart td { border: none; padding: 2px 4px; font-size: 8.8pt; }
+  .chart td.l { width: 20%; color: #334155; }
+  ul, ol { margin: 6px 0 6px 20px; padding: 0; } li { margin: 2px 0; }
+  .note { font-size: 9pt; color: #475569; }
+  .pb { break-before: page; }
+  footer.end { margin-top: 20px; padding-top: 8px; border-top: 1px solid #cbd5e1; font-size: 8.5pt; color: #64748b; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <h1>Laporan Benchmark: ACS vs GenieACS</h1>
+  <div class="sub">Beban simulator CPE identik pada kedua sistem · Kamis, 22 Oktober 2026</div>
+</div>
+
+<table class="meta">
+  <tr><td>Sistem dibandingkan</td><td><b>ACS kita</b> (Go + MariaDB + Redis, cabang <code>dev</code>, termasuk optimasi hari ini) vs <b>GenieACS 1.2.16</b> (Node.js + MongoDB 6, konfigurasi bawaan)</td></tr>
+  <tr><td>Beban</td><td>1.500 perangkat simulasi (profil ZTE TR-098), 64 sesi paralel, 1 registrasi + 4 putaran Inform periodik + 500 tugas <code>GetParameterValues</code></td></tr>
+  <tr><td>Lingkungan</td><td>Satu laptop (8 CPU, 16 GB RAM, Docker 29.8.0 di Windows) yang menjalankan kedua ACS <i>dan</i> generator beban; kedua stack dibangun baru dengan database kosong, lalu diuji bergantian (ACS kita dulu, GenieACS kemudian)</td></tr>
+  <tr><td>Alat &amp; cara ulang</td><td><code>cmd/acsbench</code>, <code>scripts/bench.sh --devices 1500 --concurrency 64 --rounds 4 --tasks 500</code> (±10 menit); hasil mentah <code>bin/bench-*.json</code></td></tr>
+</table>
+
+<h2>1. Kesimpulan</h2>
+<div class="verdict">
+  <strong class="t">Pada beban simulator ini, ACS kita setara hingga lebih cepat dari GenieACS pada jalur Inform, dengan memori proses jauh lebih kecil.
+  Belum ada bukti keunggulan pada fase tugas, dan belum terbukti pada perangkat nyata.</strong>
+  Setelah pemanasan, ACS kita menangani 530–783 sesi/detik (GenieACS 437–504) dengan p95 116–244 ms (GenieACS 239–286 ms).
+  Proses ACS memakai ±25 MiB memori (GenieACS ±589 MiB). Pada fase tugas keduanya setara: GenieACS sedikit lebih tinggi throughput-nya,
+  ACS kita sedikit lebih baik di ekor latensi. Tidak ada galat pada kedua sistem.
+</div>
+
+<div class="kpi">
+  <div><b>783</b><span>sesi/dtk ACS kita, putaran 4<br>(GenieACS 449)</span></div>
+  <div><b>116 ms</b><span>p95 ACS kita, putaran 4<br>(GenieACS 280 ms)</span></div>
+  <div><b>25 MiB</b><span>memori proses ACS kita<br>(GenieACS 589 MiB)</span></div>
+  <div><b>0</b><span>galat dari 8.000 sesi<br>per sistem</span></div>
+</div>
+
+<div class="caveat">
+  <b>Batas klaim (baca dulu).</b> Beban berasal dari <b>simulator</b> CPE, bukan firmware nyata, dan semuanya berjalan di <b>satu laptop</b> yang
+  juga menjalankan generator beban; stack yang tidak sedang diuji tetap hidup (idle), sehingga hasil dipengaruhi kondisi mesin. Angka di bawah adalah
+  <b>satu kali run penuh</b>; pada pengukuran ulang di hari yang sama, fase tugas ACS kita bergeser antara 79 dan 143 sesi/detik, jadi selisih
+  kecil (≤±30%) tidak boleh dibaca sebagai pemenang. Konfigurasi bawaan dipakai di kedua sisi, dan <b>kompatibilitas ONT tidak dibuktikan oleh benchmark ini</b>.
+</div>
+
+<h2>2. Metode</h2>
+<ul>
+  <li><b>Beban identik.</b> Alat yang sama (<code>cmd/acsbench</code>) mengirim urutan pesan CWMP yang sama ke kedua sistem. Tiap pekerja memakai satu koneksi TCP persisten, dan satu sesi CWMP selalu berada di satu koneksi seperti CPE nyata.</li>
+  <li><b>Gaya pesan.</b> SOAP ditulis dengan awalan namespace (<code>&lt;soap-env:…&gt;</code>) seperti CPE nyata. Tanpa itu GenieACS menolak Inform ("Unrecognized CWMP version"); ACS kita menerima kedua gaya.</li>
+  <li><b>Fase.</b> (1) registrasi <code>0 BOOTSTRAP</code>; (2) empat putaran Inform periodik <code>2 PERIODIC</code>; (3) fase tugas: antre <code>GetParameterValues</code> lewat API, CPE menjawab dalam sesinya.</li>
+  <li><b>Latensi</b> = durasi satu sesi penuh (Inform → RPC → penutup) per perangkat. Persentil p50/p95/p99 dihitung dari seluruh sesi satu fase.</li>
+  <li><b>Parameter tugas</b> sengaja bukan yang ikut dilaporkan Inform: GenieACS menganggap nilai dari Inform masih segar dan melewati RPC, sedangkan ACS kita selalu bertanya ke CPE.</li>
+  <li><b>Sumber daya</b> disampel dari <code>docker stats</code> tiap 2 detik (hanya 5–6 sampel per run; 100% CPU = satu inti).</li>
+</ul>
+
+<h2>3. Hasil throughput dan latensi</h2>
+<p class="note">Sesi per detik: lebih tinggi lebih baik. Latensi: lebih rendah lebih baik. Sel hijau = lebih baik pada baris itu. 1.500 sesi per fase (500 pada fase tugas); 0 galat.</p>
+<table>
+  <tr><th rowspan="2">Fase</th><th colspan="4" class="c">ACS kita</th><th colspan="4" class="c">GenieACS 1.2.16</th></tr>
+  <tr><th class="n">sesi/dtk</th><th class="n">p50</th><th class="n">p95</th><th class="n">p99</th><th class="n">sesi/dtk</th><th class="n">p50</th><th class="n">p95</th><th class="n">p99</th></tr>
+  <tr><td>Registrasi</td><td class="n win">320</td><td class="n win">187 ms</td><td class="n win">278 ms</td><td class="n win">309 ms</td><td class="n">284</td><td class="n">191 ms</td><td class="n">469 ms</td><td class="n">628 ms</td></tr>
+  <tr><td>Periodik putaran 1</td><td class="n">376</td><td class="n">162 ms</td><td class="n win">231 ms</td><td class="n win">279 ms</td><td class="n win">395</td><td class="n win">144 ms</td><td class="n">286 ms</td><td class="n">399 ms</td></tr>
+  <tr><td>Periodik putaran 2</td><td class="n win">531</td><td class="n win">101 ms</td><td class="n win">244 ms</td><td class="n win">287 ms</td><td class="n">437</td><td class="n">127 ms</td><td class="n">286 ms</td><td class="n">371 ms</td></tr>
+  <tr><td>Periodik putaran 3</td><td class="n win">593</td><td class="n win">102 ms</td><td class="n win">157 ms</td><td class="n win">181 ms</td><td class="n">504</td><td class="n">111 ms</td><td class="n">239 ms</td><td class="n">329 ms</td></tr>
+  <tr><td>Periodik putaran 4</td><td class="n win">783</td><td class="n win">78 ms</td><td class="n win">116 ms</td><td class="n win">137 ms</td><td class="n">449</td><td class="n">124 ms</td><td class="n">280 ms</td><td class="n">361 ms</td></tr>
+  <tr><td>Tugas (antre API + sesi + RPC), 500</td><td class="n">143</td><td class="n lose">436 ms</td><td class="n win">570 ms</td><td class="n win">627 ms</td><td class="n win">167</td><td class="n win">356 ms</td><td class="n">612 ms</td><td class="n">690 ms</td></tr>
+</table>
+
+<h3>Throughput (sesi/detik)</h3>
+<table class="chart">
+  <tr><td class="l">Registrasi</td><td><span class="bar o" style="width:128px"></span>320 &nbsp;&nbsp; <span class="bar g" style="width:114px"></span>284</td></tr>
+  <tr><td class="l">Periodik 1</td><td><span class="bar o" style="width:150px"></span>376 &nbsp;&nbsp; <span class="bar g" style="width:158px"></span>395</td></tr>
+  <tr><td class="l">Periodik 2</td><td><span class="bar o" style="width:212px"></span>531 &nbsp;&nbsp; <span class="bar g" style="width:175px"></span>437</td></tr>
+  <tr><td class="l">Periodik 3</td><td><span class="bar o" style="width:237px"></span>593 &nbsp;&nbsp; <span class="bar g" style="width:202px"></span>504</td></tr>
+  <tr><td class="l">Periodik 4</td><td><span class="bar o" style="width:313px"></span>783 &nbsp;&nbsp; <span class="bar g" style="width:180px"></span>449</td></tr>
+  <tr><td class="l">Tugas</td><td><span class="bar o" style="width:57px"></span>143 &nbsp;&nbsp; <span class="bar g" style="width:67px"></span>167</td></tr>
+</table>
+<p class="note"><span class="bar o" style="width:14px"></span>ACS kita &nbsp; <span class="bar g" style="width:14px"></span>GenieACS 1.2.16</p>
+
+<h3>Cara membaca</h3>
+<ul>
+  <li><b>Registrasi dan putaran 1 (pemanasan)</b> setara; selisihnya masih dalam rentang kebisingan run.</li>
+  <li><b>Putaran 2–4 (kondisi tunak)</b>: ACS kita lebih tinggi 18–74% throughput-nya dan p95 lebih rendah 15–59%. Selisih ini searah pada ketiga putaran, tetapi GenieACS baru diukur <b>satu kali</b>; perbaikan jalur Inform di sisi kita sendiri terbukti konsisten pada run berulang (bagian 5).</li>
+  <li><b>Fase tugas</b>: GenieACS unggul di throughput dan p50; ACS kita unggul di p95/p99. Pada run lain hari ini fase tugas ACS kita lebih lambat dari angka ini, sehingga fase ini <b>belum bisa diklaim</b> menguntungkan sisi mana pun.</li>
+</ul>
+
+<h2>4. Sumber daya</h2>
+<table>
+  <tr><th>Komponen</th><th class="n">CPU rata-rata</th><th class="n">CPU puncak</th><th class="n">Memori maks</th></tr>
+  <tr><td><b>ACS kita</b> — proses <code>acsd</code></td><td class="n">159%</td><td class="n">188%</td><td class="n win">25 MiB</td></tr>
+  <tr><td>ACS kita — MariaDB</td><td class="n">259%</td><td class="n">457%</td><td class="n">165 MiB</td></tr>
+  <tr><td>ACS kita — Redis</td><td class="n">15%</td><td class="n">18%</td><td class="n">6 MiB</td></tr>
+  <tr><td><b>GenieACS</b> — <code>genieacs-cwmp</code></td><td class="n">334%</td><td class="n">480%</td><td class="n">589 MiB</td></tr>
+  <tr><td>GenieACS — MongoDB</td><td class="n">174%</td><td class="n">249%</td><td class="n">416 MiB</td></tr>
+  <tr><td>GenieACS — NBI</td><td class="n">9%</td><td class="n">54%</td><td class="n">190 MiB</td></tr>
+  <tr><td><b>Total</b> ACS kita / GenieACS</td><td class="n">≈433% / ≈517%</td><td class="n">—</td><td class="n win">≈196 MiB / ≈1.195 MiB</td></tr>
+</table>
+<ul>
+  <li>Proses ACS kita memakai <b>±24× lebih sedikit memori</b> dan ±2× lebih sedikit CPU daripada proses CWMP GenieACS untuk throughput yang sama atau lebih tinggi.</li>
+  <li><b>MariaDB adalah komponen terberat</b> di sisi kita (rata-rata ±2,6 inti) — lebih berat daripada MongoDB (±1,7 inti). Ini beban tulis per Inform (sesi, event, audit) dan masih menjadi kandidat optimasi berikutnya.</li>
+  <li>Sampel hanya 5–6 titik per run, jadi persentase CPU adalah perkiraan kasar.</li>
+</ul>
+
+<h2 class="pb">5. Optimasi yang dilakukan hari ini dan buktinya</h2>
+<p>Benchmark 21 Oktober menunjukkan ACS kita setara setelah pemanasan, tetapi lebih lambat saat registrasi dan fase tugas, dengan MariaDB berat.
+Penelusuran log query MariaDB menemukan tiap query dikirim sebagai tiga round trip (Prepare, Execute, Close) dan hot path Inform melakukan SELECT/UPDATE berulang.</p>
+<table>
+  <tr><th>Perubahan</th><th>Efek</th></tr>
+  <tr><td>Satu query = satu round trip (<code>interpolateParams</code> otomatis pada koneksi DB)</td><td>Hilang 2 round trip per query</td></tr>
+  <tr><td>Namespace CWMP ikut <code>INSERT</code> sesi baru</td><td>−1 UPDATE, −1 SELECT, −operasi Redis per sesi baru</td></tr>
+  <tr><td><code>UpsertBatch</code> satu chunk tanpa <code>BEGIN/COMMIT</code></td><td>−2 round trip dan −1 commit per Inform</td></tr>
+  <tr><td>Cache 5 detik untuk aturan ZTP dan preset enforce (dibuang langsung saat diubah di instance yang sama)</td><td>−2 SELECT per Inform</td></tr>
+  <tr><td>Event status task memakai task yang sudah dipegang</td><td>−3 SELECT per tugas</td></tr>
+</table>
+<p><b>Query per sesi</b> (MariaDB <code>Com_*</code>): SELECT 13,3 → 10,3 · UPDATE 3,5 → 2,5 · commit 1,5 → 0,2.</p>
+
+<h3>Pembandingan sebelum/sesudah pada kode kita sendiri (beban penuh, 2 run per sisi, urutan selang-seling)</h3>
+<table>
+  <tr><th>Fase</th><th>Sebelum (sesi/dtk · p95), run 1 / run 2</th><th>Sesudah (sesi/dtk · p95), run 1 / run 2</th></tr>
+  <tr><td>Registrasi</td><td class="n">144 · 704 ms / 160 · 750 ms</td><td class="n">224 · 442 ms / 329 · 274 ms</td></tr>
+  <tr><td>Periodik putaran 4</td><td class="n">310 · 342 ms / 403 · 247 ms</td><td class="n">636 · 144 ms / 701 · 124 ms</td></tr>
+  <tr><td>Tugas</td><td class="n">66 · 1.400 ms / 89 · 1.125 ms</td><td class="n">79 · 1.483 ms / 108 · 813 ms</td></tr>
+</table>
+<p>Jalur Inform ±1,7–2× lebih cepat dan p95 turun 2–3×; selisih antar-run jauh lebih kecil daripada selisih sebelum/sesudah. Fase tugas membaik tipis dan masih berisik.
+Verifikasi kode: <code>go vet</code> dan <code>go test ./...</code> hijau, suite e2e 30/30 lulus pada kode baru.</p>
+<p class="note">Kompromi: aturan ZTP/preset yang diubah lewat instance acsd lain baru terlihat setelah ≤5 detik. Lookup tenant per Inform sengaja tidak di-cache supaya penonaktifan tenant tetap langsung memutus akses.</p>
+
+<h2>6. Perbandingan fitur</h2>
+<p class="note">Kemampuan GenieACS diverifikasi pada instans 1.2.16 yang berjalan (NBI menjawab 200 pada <code>/devices</code>, <code>/tasks</code>, <code>/presets</code>, <code>/provisions</code>, <code>/virtual_parameters</code>, <code>/files</code>, <code>/faults</code>, <code>/objects</code>).</p>
+<table>
+  <tr><th>Kemampuan</th><th class="c">ACS kita</th><th class="c">GenieACS 1.2.16</th></tr>
+  <tr><td>Multi-tenant, RBAC bertingkat, MFA TOTP, SSO OIDC</td><td class="c">Ada</td><td class="c">Peran dasar, tanpa tenant</td></tr>
+  <tr><td>Audit trail, notifikasi in-app/email, webhook, billing SaaS</td><td class="c">Ada</td><td class="c">Tidak ada</td></tr>
+  <tr><td>Tab WiFi, dashboard optik/suhu/uptime, retry task, "Refresh ONT", capture sesi dengan penyamaran rahasia</td><td class="c">Ada</td><td class="c">UI generik</td></tr>
+  <tr><td>Portal pelanggan akhir (self-service)</td><td class="c">Ada</td><td class="c">Tidak ada</td></tr>
+  <tr><td>Katalog vendor/path sebagai data; enkripsi rahasia task</td><td class="c">Ada</td><td class="c">Lewat skrip/provision</td></tr>
+  <tr><td>Provision berskrip (JavaScript), <b>virtual parameter</b></td><td class="c lose">Tidak ada</td><td class="c">Ada</td></tr>
+  <tr><td>Query perangkat bebas + proyeksi + sort</td><td class="c lose">Filter tetap</td><td class="c">Ada</td></tr>
+  <tr><td>Resource <code>faults</code> tersendiri</td><td class="c lose">Tidak ada</td><td class="c">Ada</td></tr>
+  <tr><td>Kematangan lintas firmware dan skala produksi</td><td class="c lose">Baru 3 ONT fisik</td><td class="c">Bertahun-tahun</td></tr>
+</table>
+
+<h2>7. Yang tidak diukur</h2>
+<ul>
+  <li><b>Perangkat dan firmware nyata.</b> Uji ONT fisik 21 Oktober menemukan bug <code>xsi:type</code> yang tidak tertangkap simulator; benchmark ini tidak menggantikan uji lapangan.</li>
+  <li><b>Skala</b> ratusan ribu hingga jutaan perangkat, dan retensi data berhari-hari (pertumbuhan tabel, kinerja query lama).</li>
+  <li><b>Beban REST/UI bersamaan</b> dengan Inform, serta kegagalan jaringan dan restart komponen.</li>
+  <li><b>Pengaruh autentikasi.</b> ACS kita memverifikasi kredensial CWMP per tenant pada tiap Inform dan mencatat sesi, event, dan audit; GenieACS bawaan tanpa autentikasi CWMP. Sebagian selisih resource adalah harga fitur, bukan semata efisiensi.</li>
+  <li><b>GenieACS dengan tuning</b> (jumlah worker, indeks MongoDB, ekstensi) — yang diuji adalah konfigurasi bawaan.</li>
+</ul>
+
+<h2>8. Rekomendasi</h2>
+<ol>
+  <li><b>Jangan memakai benchmark ini sebagai klaim keandalan.</b> Klaim yang didukung: efisiensi memori dan throughput Inform setara-atau-lebih-baik pada beban simulator; fitur platform multi-tenant.</li>
+  <li><b>Profil fase tugas</b> (antre via API: cek kuota, <code>activity_logs</code>, <code>INSERT tasks</code>) sebelum mengklaim apa pun di fase itu.</li>
+  <li><b>Kurangi beban tulis MariaDB per Inform</b> (event dan audit) bila skala perangkat mendekati ratusan ribu.</li>
+  <li><b>Ulangi di mesin khusus</b> (server terpisah dari generator beban, beberapa run, median) bila angka akan dipakai di luar tim.</li>
+  <li><b>Tutup gap fitur</b> yang relevan bagi pelanggan: virtual parameter dan query perangkat bebas; provision berskrip perlu keputusan desain lebih dulu.</li>
+</ol>
+
+<footer class="end">
+  Sumber: <code>docs/pengujian/BENCHMARK_GENIEACS.md</code> (catatan teknis), <code>bin/bench-ours.json</code>, <code>bin/bench-genieacs.json</code>.
+  PDF dibuat dari <code>BENCHMARK_GENIEACS.html</code> dengan <code>node scripts/build-docs-pdf.mjs BENCHMARK</code>. Sunting HTML-nya, bukan PDF.
+</footer>
+
+</body>
+</html>

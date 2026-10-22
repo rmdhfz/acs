@@ -58,6 +58,41 @@ Dua stack terpisah dinaikkan sendiri (tidak menyentuh stack dev/UAT): ACS kita (
 - **Tidak diukur:** jutaan perangkat, retensi data berhari-hari, beban REST/UI bersamaan, kegagalan jaringan, dan perilaku firmware
   nyata (yang sudah menemukan bug `xsi:type` hari ini dan tidak tertangkap simulator).
 
+## Optimasi lanjutan — 22 Oktober 2026
+
+Titik lemah di atas (beban MariaDB, fase tugas) ditelusuri lewat `general_log` MariaDB dan selisih `Com_*` per sesi. Temuan: tiap query
+dikirim sebagai Prepare+Execute+Close (3 round trip), dan hot path Inform/tugas melakukan SELECT/UPDATE yang berulang. Perubahan:
+
+| Perubahan | Efek |
+|---|---|
+| `interpolateParams=true` otomatis pada koneksi DB (`repository/mysql/db.go`) | satu query = satu round trip |
+| Namespace CWMP ikut `INSERT device_sessions` (tanpa `UPDATE` + invalidasi cache Redis + `SELECT` ulang) | −1 UPDATE, −1 SELECT, −Redis ops per sesi baru |
+| `UpsertBatch` satu chunk tanpa `BEGIN/COMMIT` | −2 round trip, −1 commit per Inform |
+| Cache TTL 5 dtk aturan ZTP & preset enforce (`repository/hotcache`; mutasi di instance sama langsung membuang cache) | −2 SELECT per Inform |
+| `MarkSent`/`Complete` memakai task yang sudah dipegang; event status tak mengambil ulang task | −3 SELECT per tugas |
+
+Query per sesi (500 perangkat, 4 sesi/perangkat, MariaDB `Com_*`): SELECT 13,3→10,3 · UPDATE 3,5→2,5 · commit 1,5→0,2.
+
+**A/B beban penuh** (1.500 perangkat, concurrency 64, 4 putaran, 500 tugas; stack baru & DB kosong tiap run; urutan selang-seling; 0 galat
+di semua run). Setiap sel = dua run, sesi/dtk · p95:
+
+| Fase | Sebelum | Sesudah |
+|---|---|---|
+| Registrasi | 144 · 704 ms / 160 · 750 ms | 224 · 442 ms / 329 · 274 ms |
+| Periodik putaran 3 | 285 · 363 ms / 341 · 288 ms | 602 · 152 ms / 709 · 121 ms |
+| Periodik putaran 4 | 310 · 342 ms / 403 · 247 ms | 636 · 144 ms / 701 · 124 ms |
+| Tugas (500) | 66 · 1400 ms / 89 · 1125 ms | 79 · 1483 ms / 108 · 813 ms |
+| MariaDB CPU rata-rata | 265% / 294% | 246% / 249% |
+| Memori `acsd` maks | 140 MiB | 27–30 MiB |
+
+- **Jalur Inform ±1,7–2× lebih cepat** dan p95 turun 2–3×; selisih antar-run jauh lebih kecil daripada selisih sebelum/sesudah.
+- **Fase tugas hanya membaik tipis dan masih berisik** (p95 813–1483 ms): belum bisa diklaim. Sisa waktunya kemungkinan di jalur antre via API
+  (cek kuota, `activity_logs`, `INSERT tasks`) dan fsync MariaDB — belum diprofil. Pada hari yang sama GenieACS belum diukur ulang.
+- **Mesin hari ini lebih lambat dari 21 Okt** (baseline fase tugas 66–89 sesi/dtk vs 118 kemarin), jadi angka absolut kedua hari TIDAK
+  boleh dibandingkan; hanya pasangan sebelum/sesudah di hari yang sama yang valid. Tabel GenieACS di atas belum diperbarui.
+- Kompromi konsistensi: aturan ZTP/preset yang diubah lewat instance lain baru terlihat setelah ≤5 dtk (bukan konsistensi instan).
+- Verifikasi: `go vet`/`go test ./...` hijau, e2e 30/30 lulus pada kode baru.
+
 ## Perbandingan fitur (diverifikasi pada GenieACS 1.2.16 yang berjalan)
 
 NBI GenieACS menjawab 200 pada `/devices`, `/tasks`, `/presets`, `/provisions`, `/virtual_parameters`, `/files`, `/faults`, `/objects`;
