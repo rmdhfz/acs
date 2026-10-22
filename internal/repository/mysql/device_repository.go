@@ -318,6 +318,10 @@ func (r *deviceParameterRepository) UpsertBatch(ctx context.Context, ps []domain
 	if len(ps) == 0 {
 		return nil
 	}
+	// Satu chunk = satu statement, sudah atomik: lewati BEGIN/COMMIT (2 round trip + 1 commit/fsync tambahan per Inform).
+	if len(ps) <= deviceParameterUpsertChunk {
+		return translateErr(upsertDeviceParameterChunk(ctx, r.db, ps))
+	}
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return translateErr(err)
@@ -335,7 +339,7 @@ func (r *deviceParameterRepository) UpsertBatch(ctx context.Context, ps []domain
 	return tx.Commit()
 }
 
-func upsertDeviceParameterChunk(ctx context.Context, tx *sqlx.Tx, chunk []domain.DeviceParameter) error {
+func upsertDeviceParameterChunk(ctx context.Context, tx sqlx.ExecerContext, chunk []domain.DeviceParameter) error {
 	placeholders := make([]string, len(chunk))
 	args := make([]interface{}, 0, len(chunk)*5)
 	for i, p := range chunk {
@@ -501,8 +505,8 @@ func NewDeviceSessionRepository(db *sqlx.DB) domain.DeviceSessionRepository {
 }
 
 func (r *deviceSessionRepository) Create(ctx context.Context, s *domain.DeviceSession) error {
-	const q = `INSERT INTO device_sessions (device_id, session_token, cwmp_id, status, remote_ip, started_at)
-		VALUES (:device_id, :session_token, :cwmp_id, :status, :remote_ip, :started_at)`
+	const q = `INSERT INTO device_sessions (device_id, session_token, cwmp_id, status, remote_ip, started_at, cwmp_namespace)
+		VALUES (:device_id, :session_token, :cwmp_id, :status, :remote_ip, :started_at, :cwmp_namespace)`
 	res, err := r.db.NamedExecContext(ctx, q, s)
 	if err != nil {
 		return translateErr(err)

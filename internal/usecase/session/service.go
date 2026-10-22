@@ -235,14 +235,14 @@ func (s *Service) HandleInform(ctx context.Context, in InformInput) (*InformResu
 		return nil, fmt.Errorf("session: gagal upsert device dari Inform: %w", err)
 	}
 
-	sess, err := s.resolveSession(ctx, in.SessionToken, dev.ID, in.RemoteIP)
+	sess, err := s.resolveSession(ctx, in.SessionToken, dev.ID, in.RemoteIP, in.Namespace)
 	if err != nil {
 		return nil, err
 	}
-	// Simpan namespace CWMP sesi ini SEKALI (idempotent dipanggil ulang kalau
-	// Inform lanjutan di sesi yang sama, mis. sesudah value-change -- costnya
-	// murah, satu UPDATE) supaya NextRequest bisa memakainya utk RPC proaktif
-	// berikutnya (lihat migrations/0012).
+	// Simpan namespace CWMP sesi ini supaya NextRequest bisa memakainya utk RPC
+	// proaktif berikutnya (lihat migrations/0012). Sesi baru sudah membawa
+	// namespace-nya sejak INSERT (resolveSession); UPDATE (+ invalidasi cache
+	// Redis) hanya terjadi bila Inform lanjutan di sesi yang sama mengubahnya.
 	if in.Namespace != "" && (sess.CWMPNamespace == nil || *sess.CWMPNamespace != in.Namespace) {
 		if err := s.sessions.SetCWMPNamespace(ctx, sess.ID, in.Namespace); err != nil {
 			return nil, fmt.Errorf("session: gagal menyimpan namespace CWMP: %w", err)
@@ -460,7 +460,7 @@ func (s *Service) passwordMatches(enc []byte, provided string) bool {
 	return subtle.ConstantTimeCompare([]byte(decrypted), []byte(provided)) == 1
 }
 
-func (s *Service) resolveSession(ctx context.Context, token string, deviceID uint64, remoteIP string) (*domain.DeviceSession, error) {
+func (s *Service) resolveSession(ctx context.Context, token string, deviceID uint64, remoteIP, namespace string) (*domain.DeviceSession, error) {
 	if token != "" {
 		if existing, err := s.sessions.GetByToken(ctx, token); err == nil &&
 			existing.Status == domain.SessionStatusOpen && existing.DeviceID == deviceID {
@@ -473,6 +473,9 @@ func (s *Service) resolveSession(ctx context.Context, token string, deviceID uin
 		Status:       domain.SessionStatusOpen,
 		RemoteIP:     &remoteIP,
 		StartedAt:    time.Now(),
+	}
+	if namespace != "" {
+		sess.CWMPNamespace = &namespace
 	}
 	if err := s.sessions.Create(ctx, sess); err != nil {
 		return nil, err
@@ -540,7 +543,7 @@ func (s *Service) NextRequest(ctx context.Context, token string) (*OutboundRPC, 
 		}
 		return s.NextRequest(ctx, token) // lanjut ke task berikutnya (task ini sudah FAILED)
 	}
-	if err := s.taskSvc.MarkSent(ctx, t.ID); err != nil {
+	if err := s.taskSvc.MarkSent(ctx, t); err != nil {
 		return nil, true, err
 	}
 	s.log().Debug("cwmp: task ditandai SENT, siap dikirim ke CPE",
@@ -604,7 +607,7 @@ func (s *Service) HandleRPCResponse(ctx context.Context, resp RPCResponse) error
 		}
 		return err
 	}
-	if err := s.taskSvc.Complete(ctx, t.ID, domain.JSONRawMessage(resp.RawResponse)); err != nil {
+	if err := s.taskSvc.Complete(ctx, t, domain.JSONRawMessage(resp.RawResponse)); err != nil {
 		return err
 	}
 	s.log().Debug("cwmp: task COMPLETED dari respons RPC CPE", "device_id", sess.DeviceID, "task_id", t.ID)
@@ -919,7 +922,7 @@ func (s *Service) handleTransferComplete(ctx context.Context, deviceID uint64, t
 
 	if tc.Success {
 		payload, _ := json.Marshal(map[string]string{"start_time": tc.StartTime, "complete_time": tc.CompleteTime})
-		if err := s.taskSvc.Complete(ctx, t.ID, domain.JSONRawMessage(payload)); err != nil {
+		if err := s.taskSvc.Complete(ctx, t, domain.JSONRawMessage(payload)); err != nil {
 			return err
 		}
 	} else if err := s.taskSvc.Fail(ctx, t, tc.ErrorMessage); err != nil {

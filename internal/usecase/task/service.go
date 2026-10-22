@@ -995,21 +995,23 @@ func (s *Service) GetByUUID(ctx context.Context, uuid string) (*domain.Task, err
 	return s.tasks.GetByUUID(ctx, uuid)
 }
 
-func (s *Service) MarkSent(ctx context.Context, taskID uint64) error {
-	err := s.tasks.MarkSent(ctx, taskID, time.Now())
+// MarkSent/Complete menerima task yang sudah dipegang pemanggil (bukan id) supaya tidak mengambil ulang task & device
+// hanya untuk menyiarkan event status (hot path sesi CWMP).
+func (s *Service) MarkSent(ctx context.Context, t *domain.Task) error {
+	err := s.tasks.MarkSent(ctx, t.ID, time.Now())
 	if err == nil {
-		s.publishTaskStatusEvent(ctx, taskID, domain.TaskStatusSent)
+		s.publishTaskStatusEvent(ctx, t.ID, t.DeviceID, domain.TaskStatusSent)
 	}
 	return err
 }
 
-func (s *Service) Complete(ctx context.Context, taskID uint64, response domain.JSONRawMessage) error {
-	err := s.tasks.MarkCompleted(ctx, taskID, response, time.Now())
+func (s *Service) Complete(ctx context.Context, t *domain.Task, response domain.JSONRawMessage) error {
+	err := s.tasks.MarkCompleted(ctx, t.ID, response, time.Now())
 	if err == nil {
-		s.publishTaskStatusEvent(ctx, taskID, domain.TaskStatusCompleted)
+		s.publishTaskStatusEvent(ctx, t.ID, t.DeviceID, domain.TaskStatusCompleted)
 
-		// Hook Auto-Discovery
-		if t, err := s.tasks.GetByID(ctx, taskID); err == nil && t.TaskTypeCode == domain.TaskTypeGetParameterNames {
+		// Hook Auto-Discovery. Kode tipe dari katalog ref (cache di memori); t dari GetByUUID tak membawa TaskTypeCode.
+		if typeRef, rerr := s.refs.GetByID(ctx, domain.RefTableTaskTypes, t.TaskTypeID); rerr == nil && typeRef.Code == domain.TaskTypeGetParameterNames {
 			go s.handleAutoDiscoveryResponse(context.Background(), t, response)
 		}
 	}
@@ -1045,7 +1047,7 @@ func (s *Service) FailPermanently(ctx context.Context, t *domain.Task, errMsg st
 	}
 	err = s.tasks.MarkFailed(ctx, t.ID, status.ID, errMsg)
 	if err == nil {
-		s.publishTaskStatusEvent(ctx, t.ID, domain.TaskStatusFailed)
+		s.publishTaskStatusEvent(ctx, t.ID, t.DeviceID, domain.TaskStatusFailed)
 	}
 	return err
 }
@@ -1124,21 +1126,17 @@ func (s *Service) TimeoutStaleSent(ctx context.Context, threshold time.Duration)
 	return count, nil
 }
 
-func (s *Service) publishTaskStatusEvent(ctx context.Context, taskID uint64, status string) {
+func (s *Service) publishTaskStatusEvent(ctx context.Context, taskID, deviceID uint64, status string) {
 	if s.publisher == nil {
 		return
 	}
-	t, err := s.tasks.GetByID(ctx, taskID)
-	if err != nil {
-		return
-	}
-	dev, err := s.devices.GetByID(ctx, t.DeviceID)
+	dev, err := s.devices.GetByID(ctx, deviceID)
 	if err != nil || dev.TenantID == nil {
 		return
 	}
 	s.publisher.BroadcastToTenant(*dev.TenantID, "TASK_STATUS_CHANGED", map[string]interface{}{
-		"task_id":   t.ID,
-		"device_id": t.DeviceID,
+		"task_id":   taskID,
+		"device_id": deviceID,
 		"status":    status,
 	})
 }
@@ -1172,7 +1170,7 @@ func (s *Service) failOrRetry(ctx context.Context, t *domain.Task, finalStatusCo
 		}
 	}
 
-	s.publishTaskStatusEvent(ctx, t.ID, statusCode)
+	s.publishTaskStatusEvent(ctx, t.ID, t.DeviceID, statusCode)
 
 	if statusCode == domain.TaskStatusFailed {
 		s.notifyTaskFailed(ctx, t, errMsg)

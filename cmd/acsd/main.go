@@ -30,6 +30,7 @@ import (
 	"acs/internal/domain"
 	"acs/internal/metrics"
 	"acs/internal/payment/xendit"
+	"acs/internal/repository/hotcache"
 	"acs/internal/repository/mysql"
 	"acs/internal/repository/redisrepo"
 	"acs/internal/usecase/auth"
@@ -59,6 +60,10 @@ import (
 	"acs/pkg/objectstorage"
 	"acs/pkg/redisutil"
 )
+
+// informConfigCacheTTL — umur cache aturan ZTP & preset yang dibaca tiap Inform (internal/repository/hotcache).
+// Mutasi lewat instance ini langsung membuang cache; instance lain menyusul paling lama sebesar ini.
+const informConfigCacheTTL = 5 * time.Second
 
 func main() {
 	cfg, err := config.Load()
@@ -122,7 +127,7 @@ func main() {
 	taskRepo := mysql.NewTaskRepository(db)
 	profileRepo := mysql.NewProvisioningProfileRepository(db)
 	profileParamRepo := mysql.NewProvisioningProfileParameterRepository(db, enc)
-	ztRuleRepo := mysql.NewZeroTouchRuleRepository(db)
+	ztRuleRepo := hotcache.WrapZeroTouchRules(mysql.NewZeroTouchRuleRepository(db), informConfigCacheTTL)
 	firmwareFileRepo := mysql.NewFirmwareFileRepository(db)
 	firmwareJobRepo := mysql.NewFirmwareUpgradeJobRepository(db)
 	firmwareRolloutRepo := mysql.NewFirmwareRolloutBatchRepository(db)
@@ -131,7 +136,7 @@ func main() {
 	webhookDeliveryRepo := mysql.NewWebhookDeliveryRepository(db)
 	fileRepo := mysql.NewFileRepository(db)
 	tagRepo := mysql.NewTagRepository(db)
-	presetRepo := mysql.NewPresetRepository(db, enc)
+	presetRepo := hotcache.WrapPresets(mysql.NewPresetRepository(db, enc), informConfigCacheTTL)
 	presetAppRepo := mysql.NewPresetApplicationRepository(db)
 	userDeviceRepo := mysql.NewUserDeviceRepository(db)
 	usageRepo := mysql.NewUsageRepository(db)
