@@ -4,7 +4,7 @@
 > "apa ada di mana" tanpa menjelajah ulang repo. Konteks bisnis: `docs/produk/PRD.md`; keputusan arsitektur: `docs/arsitektur/TECH.md`;
 > aturan kerja & konvensi: `CLAUDE.md`. Perbarui setelah menambah paket/endpoint/tabel/halaman (`--check` untuk memeriksa).
 
-Ringkasan: 200 operasi REST • 68 tabel • 40 migrasi (terakhir `0040_automation_rules`) • 34 skenario e2e.
+Ringkasan: 200 operasi REST • 68 tabel • 41 migrasi (terakhir `0041_devices_serial_index`) • 34 skenario e2e.
 
 ## Alur & lapisan (Clean Architecture)
 `domain` (entitas + antarmuka) → `usecase/*` (aturan bisnis) → `repository/mysql` (query sqlx) / `delivery/{cwmp,http,ws,usp}` (adapter masuk).
@@ -561,7 +561,7 @@ Berkas tes frontend: 37.
 | S34-aturan-otomasi | `scenarioAutomation` |
 
 ## Migrasi (`migrations/`)
-`0001_init_schema` · `0002_tenant_cwmp_inform_credentials` · `0003_tenant_branding` · `0004_vendor_baseline_catalog` · `0005_tenant_task_quota` · `0006_task_metrics_indexes` · `0007_firmware_storage_key` · `0008_user_login_lockout` · `0009_ztp_rule_matching_actions` · `0010_vpm_software_version_pattern` · `0011_firmware_rollout_batches` · `0012_device_session_cwmp_namespace` · `0013_webhook_subscriptions` · `0014_device_config_snapshots` · `0015_device_geolocation` · `0016_firmware_rollout_scheduling` · `0017_performance_indexes` · `0018_generic_files` · `0019_tags_and_presets` · `0020_user_devices_mapping` · `0021_preset_engine` · `0022_seed_vendor_ouis` · `0023_password_reset_tokens` · `0024_users_password_changed_at` · `0025_diagnostics_mappings` · `0026_mapping_value_scale_optical` · `0027_user_mfa_totp` · `0028_tenant_device_limit_and_signups` · `0029_generic_vendor_and_more_oui` · `0030_notifications` · `0031_user_oidc_subject` · `0032_billing` · `0033_menu_bugreport_transfers` · `0034_bugreport_expected_screenshot` · `0035_vendor_optictimes_zte_models` · `0036_notification_optical_alert` · `0037_device_capture` · `0038_device_faults` · `0039_virtual_parameters` · `0040_automation_rules`
+`0001_init_schema` · `0002_tenant_cwmp_inform_credentials` · `0003_tenant_branding` · `0004_vendor_baseline_catalog` · `0005_tenant_task_quota` · `0006_task_metrics_indexes` · `0007_firmware_storage_key` · `0008_user_login_lockout` · `0009_ztp_rule_matching_actions` · `0010_vpm_software_version_pattern` · `0011_firmware_rollout_batches` · `0012_device_session_cwmp_namespace` · `0013_webhook_subscriptions` · `0014_device_config_snapshots` · `0015_device_geolocation` · `0016_firmware_rollout_scheduling` · `0017_performance_indexes` · `0018_generic_files` · `0019_tags_and_presets` · `0020_user_devices_mapping` · `0021_preset_engine` · `0022_seed_vendor_ouis` · `0023_password_reset_tokens` · `0024_users_password_changed_at` · `0025_diagnostics_mappings` · `0026_mapping_value_scale_optical` · `0027_user_mfa_totp` · `0028_tenant_device_limit_and_signups` · `0029_generic_vendor_and_more_oui` · `0030_notifications` · `0031_user_oidc_subject` · `0032_billing` · `0033_menu_bugreport_transfers` · `0034_bugreport_expected_screenshot` · `0035_vendor_optictimes_zte_models` · `0036_notification_optical_alert` · `0037_device_capture` · `0038_device_faults` · `0039_virtual_parameters` · `0040_automation_rules` · `0041_devices_serial_index`
 
 ## Perintah penting
 - Go: `go vet ./...`, `go test ./...`; race + integrasi MariaDB via Docker `golang:1.26.9` (lihat `docs/pengujian/PENGUJIAN_E2E.md`).

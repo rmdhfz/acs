@@ -15,6 +15,7 @@ func (r *Router) listDevices(c *echo.Context) error {
 	actor := ActorFrom(c)
 	f := domain.DeviceFilter{
 		Search:         c.QueryParam("search"),
+		SerialNumber:   c.QueryParam("serial_number"),
 		VendorID:       queryUint64(c, "vendor_id"),
 		DeviceModelID:  queryUint64(c, "device_model_id"),
 		DeviceStatusID: queryUint64(c, "device_status_id"),
@@ -25,6 +26,9 @@ func (r *Router) listDevices(c *echo.Context) error {
 	}
 	if f.OpticalLevel != "" && !domain.ValidOpticalLevel(f.OpticalLevel) {
 		return echo.NewHTTPError(http.StatusBadRequest, "optical_level harus ok, warn, bad, atau unknown")
+	}
+	if err := checkMaxLen(lenRule{"serial_number", f.SerialNumber, 128}); err != nil {
+		return err
 	}
 	fields, vparams, err := parseDeviceQuery(c, &f)
 	if err != nil {

@@ -559,6 +559,9 @@ type InformDeviceInfo struct {
 	// dilakukan authenticateInform — menghindari query devices duplikat pada
 	// setiap Inform (device_id ini adalah hot path, TECH.md §9).
 	ExistingDevice *domain.Device
+	// LookupDone = pemanggil SUDAH mencari (OUI, serial) dan tidak menemukannya (ExistingDevice nil berarti perangkat baru).
+	// Tanpa ini pendaftaran perangkat baru mengulang SELECT yang sama persis.
+	LookupDone bool
 }
 
 // FindOrCreateFromInform meng-upsert device berdasarkan OUI+SerialNumber
@@ -569,7 +572,7 @@ func (s *Service) FindOrCreateFromInform(ctx context.Context, info InformDeviceI
 	now := time.Now()
 
 	existing := info.ExistingDevice
-	if existing == nil {
+	if existing == nil && !info.LookupDone {
 		lookup, lookupErr := s.devices.GetByOUISerial(ctx, info.OUI, info.SerialNumber)
 		if lookupErr != nil && !errors.Is(lookupErr, domain.ErrNotFound) {
 			return nil, false, lookupErr

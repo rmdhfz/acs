@@ -1842,6 +1842,10 @@ paths:
             username PPPoE (parameter standar TR-098 `WANPPPConnection.N.Username` / TR-181 `PPP.Interface.N.Username`
             yang sudah tersinkron; lihat `POST /devices/refresh-summary`).
           schema: { type: string }
+        - name: serial_number
+          in: query
+          description: "Cocok PERSIS dengan serial perangkat (memakai indeks; murah pada armada besar). Untuk integrasi BSS/NOC yang mengenal serial tetapi bukan id internal. Beda dari `search` yang memindai substring."
+          schema: { type: string, maxLength: 128 }
         - name: vendor_id
           in: query
           schema: { type: integer, format: int64 }

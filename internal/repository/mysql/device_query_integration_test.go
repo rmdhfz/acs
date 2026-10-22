@@ -130,6 +130,22 @@ func TestDeviceRepository_FreeQuery_Integration(t *testing.T) {
 	// injeksi pada nilai/nama hanya menjadi data (nilai di-bind; nama tak valid ditolak parser, bukan repo)
 	same(list(domain.DeviceFilter{Params: []domain.ParamCond{cond(ssid, domain.ParamOpEq, "x' OR '1'='1")}}))
 
+	// serial_number: cocok PERSIS (bukan substring) dan memakai idx_devices_serial
+	exact, _, err := repo.List(ctx, domain.DeviceFilter{SerialNumber: prefix + "-b"}, domain.Pagination{Page: 1, PageSize: 5})
+	if err != nil || len(exact) != 1 || exact[0].ID != ids["b"] {
+		t.Fatalf("serial_number persis: %+v %v", exact, err)
+	}
+	if part, _, _ := repo.List(ctx, domain.DeviceFilter{SerialNumber: prefix}, domain.Pagination{Page: 1, PageSize: 5}); len(part) != 0 {
+		t.Fatalf("serial_number bukan substring, dapat %d baris", len(part))
+	}
+	plan := map[string]interface{}{}
+	if err := db.QueryRowx(`EXPLAIN SELECT id FROM devices WHERE serial_number = ? AND is_deleted = 0`, prefix+"-b").MapScan(plan); err != nil {
+		t.Fatalf("EXPLAIN: %v", err)
+	}
+	if key, _ := plan["key"].([]byte); string(key) != "idx_devices_serial" {
+		t.Fatalf("EXPLAIN harus memakai idx_devices_serial, dapat key=%q (plan=%v)", key, plan)
+	}
+
 	// filter waktu Inform
 	cut := now.Add(-90 * time.Minute)
 	same(list(domain.DeviceFilter{InformBefore: &cut}), "a", "d")

@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -49,6 +50,28 @@ func (r *deviceRepository) Create(ctx context.Context, d *domain.Device) error {
 	// Revive lintas tenant TIDAK terjadi; INSERT di bawah lalu kena duplicate key
 	// -> ErrConflict (Inform ditolak 409), dan baris tetap milik tenant asalnya
 	// sampai superadmin menanganinya secara sadar.
+	const q = `INSERT INTO devices
+		(device_uuid, tenant_id, vendor_id, device_model_id, device_status_id, provisioning_profile_id,
+		 oui, serial_number, product_class, mac_address, software_version, hardware_version, ip_address,
+		 connection_request_url, connection_request_username, connection_request_password_enc,
+		 inform_username, inform_password_enc, last_inform_at, last_boot_event_at, notes, latitude, longitude, created_at, updated_at, created_by)
+		VALUES
+		(:device_uuid, :tenant_id, :vendor_id, :device_model_id, :device_status_id, :provisioning_profile_id,
+		 :oui, :serial_number, :product_class, :mac_address, :software_version, :hardware_version, :ip_address,
+		 :connection_request_url, :connection_request_username, :connection_request_password_enc,
+		 :inform_username, :inform_password_enc, :last_inform_at, :last_boot_event_at, :notes, :latitude, :longitude, :created_at, :updated_at, :created_by)`
+	// INSERT lebih dulu: jalur umum (CPE benar-benar baru) tidak membayar UPDATE revive yang pasti tak cocok. Revive hanya dicoba
+	// bila INSERT kena duplicate key (baris soft-delete dengan oui+serial yang sama ATAU pendaftaran serentak).
+	res, err := r.db.NamedExecContext(ctx, q, d)
+	if err == nil {
+		id, _ := res.LastInsertId()
+		d.ID = uint64(id)
+		return nil
+	}
+	te := translateErr(err)
+	if !errors.Is(te, domain.ErrConflict) {
+		return te
+	}
 	rres, rerr := r.db.NamedExecContext(ctx, revive, d)
 	if rerr != nil {
 		return translateErr(rerr)
@@ -67,23 +90,7 @@ func (r *deviceRepository) Create(ctx context.Context, d *domain.Device) error {
 		return nil
 	}
 
-	const q = `INSERT INTO devices
-		(device_uuid, tenant_id, vendor_id, device_model_id, device_status_id, provisioning_profile_id,
-		 oui, serial_number, product_class, mac_address, software_version, hardware_version, ip_address,
-		 connection_request_url, connection_request_username, connection_request_password_enc,
-		 inform_username, inform_password_enc, last_inform_at, last_boot_event_at, notes, latitude, longitude, created_at, updated_at, created_by)
-		VALUES
-		(:device_uuid, :tenant_id, :vendor_id, :device_model_id, :device_status_id, :provisioning_profile_id,
-		 :oui, :serial_number, :product_class, :mac_address, :software_version, :hardware_version, :ip_address,
-		 :connection_request_url, :connection_request_username, :connection_request_password_enc,
-		 :inform_username, :inform_password_enc, :last_inform_at, :last_boot_event_at, :notes, :latitude, :longitude, :created_at, :updated_at, :created_by)`
-	res, err := r.db.NamedExecContext(ctx, q, d)
-	if err != nil {
-		return translateErr(err)
-	}
-	id, _ := res.LastInsertId()
-	d.ID = uint64(id)
-	return nil
+	return te // duplicate key bukan dari baris terhapus yang boleh dihidupkan (aktif/tenant lain) -> ErrConflict apa adanya
 }
 
 func (r *deviceRepository) GetByID(ctx context.Context, id uint64) (*domain.Device, error) {
@@ -130,6 +137,10 @@ func (r *deviceRepository) List(ctx context.Context, f domain.DeviceFilter, p do
 	if f.DeviceStatusID != nil {
 		where = append(where, "device_status_id = ?")
 		args = append(args, *f.DeviceStatusID)
+	}
+	if f.SerialNumber != "" {
+		where = append(where, "serial_number = ?")
+		args = append(args, f.SerialNumber)
 	}
 	if f.Search != "" {
 		like := "%" + likeEscape(f.Search) + "%"

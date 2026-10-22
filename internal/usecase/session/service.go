@@ -234,6 +234,7 @@ func (s *Service) HandleInform(ctx context.Context, in InformInput) (*InformResu
 		ConnectionRequestURL: in.ConnectionRequestURL,
 		TenantID:             auth.TenantID,
 		ExistingDevice:       auth.Device,
+		LookupDone:           true, // authenticateInform sudah mencari (OUI, serial); nil = perangkat baru
 	})
 	if err != nil {
 		return nil, fmt.Errorf("session: gagal upsert device dari Inform: %w", err)

@@ -30,15 +30,18 @@ func (r *tenantQuotaRepository) SetMaxDevices(ctx context.Context, id uint64, ma
 }
 
 func (r *tenantQuotaRepository) DeviceCapacity(ctx context.Context, tenantID uint64) (*uint32, int, error) {
-	var row struct {
-		Max *uint32 `db:"max_devices"`
-		Cur int     `db:"cur"`
-	}
-	err := r.db.GetContext(ctx, &row, `SELECT t.max_devices,
-		(SELECT COUNT(*) FROM devices d WHERE d.tenant_id = t.id AND d.is_deleted = 0) AS cur
-		FROM tenants t WHERE t.id = ? AND t.is_deleted = 0`, tenantID)
-	if err != nil {
+	var max *uint32
+	if err := r.db.GetContext(ctx, &max, `SELECT max_devices FROM tenants WHERE id = ? AND is_deleted = 0`, tenantID); err != nil {
 		return nil, 0, translateErr(err)
 	}
-	return row.Max, row.Cur, nil
+	// Tenant tanpa batas (NULL) tidak perlu hitungan: COUNT(*) per registrasi itu O(jumlah perangkat tenant), jadi onboarding
+	// massal menjadi O(n^2). Hitung hanya bila ada batas yang harus ditegakkan.
+	if max == nil {
+		return nil, 0, nil
+	}
+	var cur int
+	if err := r.db.GetContext(ctx, &cur, `SELECT COUNT(*) FROM devices WHERE tenant_id = ? AND is_deleted = 0`, tenantID); err != nil {
+		return nil, 0, translateErr(err)
+	}
+	return max, cur, nil
 }

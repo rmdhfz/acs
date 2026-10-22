@@ -31,18 +31,18 @@ type Device struct {
 	// tetap bocor ke SEMUA role termasuk VIEWER (temuan audit OpenAPI spec).
 	// Tidak dipakai di frontend manapun saat ini (dicek langsung, bukan
 	// asumsi), jadi menyembunyikannya tidak menghilangkan fungsi UI apa pun.
-	ConnectionRequestUsername    *string    `db:"connection_request_username" json:"-"`
-	ConnectionRequestPasswordEnc []byte     `db:"connection_request_password_enc" json:"-"`
+	ConnectionRequestUsername    *string `db:"connection_request_username" json:"-"`
+	ConnectionRequestPasswordEnc []byte  `db:"connection_request_password_enc" json:"-"`
 	// CRCredentialsSet — TURUNAN (bukan kolom; diisi Service.Get): username & password Connection Request sudah diisi.
 	// Hanya penanda untuk UI; kredensialnya sendiri tidak pernah diekspos.
-	CRCredentialsSet bool `db:"-" json:"connection_request_credentials_set"`
-	InformUsername               *string    `db:"inform_username" json:"inform_username"`
-	InformPasswordEnc            []byte     `db:"inform_password_enc" json:"-"`
-	LastInformAt                 *time.Time `db:"last_inform_at" json:"last_inform_at"`
-	LastBootEventAt              *time.Time `db:"last_boot_event_at" json:"last_boot_event_at"`
-	Latitude                     *float64   `db:"latitude" json:"latitude"`
-	Longitude                    *float64   `db:"longitude" json:"longitude"`
-	Notes                        *string    `db:"notes" json:"notes"`
+	CRCredentialsSet  bool       `db:"-" json:"connection_request_credentials_set"`
+	InformUsername    *string    `db:"inform_username" json:"inform_username"`
+	InformPasswordEnc []byte     `db:"inform_password_enc" json:"-"`
+	LastInformAt      *time.Time `db:"last_inform_at" json:"last_inform_at"`
+	LastBootEventAt   *time.Time `db:"last_boot_event_at" json:"last_boot_event_at"`
+	Latitude          *float64   `db:"latitude" json:"latitude"`
+	Longitude         *float64   `db:"longitude" json:"longitude"`
+	Notes             *string    `db:"notes" json:"notes"`
 	Audit
 }
 
@@ -51,8 +51,10 @@ type DeviceFilter struct {
 	VendorID       *uint64
 	DeviceModelID  *uint64
 	DeviceStatusID *uint64
-	Search         string  // cocok ke serial_number/mac_address
-	TagID          *uint64 // hanya device yang punya tag ini (device_tags, migrations/0019)
+	Search         string // cocok ke serial_number/mac_address
+	// SerialNumber: cocok PERSIS (indeks idx_devices_serial, migrations/0041) — pola integrasi BSS; beda dari Search yang memindai.
+	SerialNumber string
+	TagID        *uint64 // hanya device yang punya tag ini (device_tags, migrations/0019)
 	// OpticalLevel menyaring berdasarkan RX terakhir (kosong = semua): OpticalOK/Warn/Bad/Unknown.
 	OpticalLevel string
 	// NoVendor — hanya device yang vendornya belum terpetakan (vendor_id NULL, tampil "Belum dikenal").

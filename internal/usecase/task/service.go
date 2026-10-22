@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -35,6 +36,12 @@ type Service struct {
 	// selalu lewat notifyTaskFailed() yang nil-safe & tidak menggagalkan alur.
 	webhookEnq domain.WebhookEnqueuer
 	publisher  domain.EventPublisher
+
+	// quotaCache (tenant id -> *uint32) dan deviceTenant (device id -> tenant id): cache TTL pendek, lihat maxPendingTasks/tenantOfDevice.
+	quotaCache    sync.Map
+	quotaCacheN   atomic.Int64
+	deviceTenant  sync.Map
+	deviceTenantN atomic.Int64
 
 	// genericVendor — cache id vendor GENERIC (domain.VendorCodeGeneric); 0 = belum/tidak ada.
 	genericVendor atomic.Uint64
@@ -522,15 +529,77 @@ func extractParameterNames(params map[string]interface{}) ([]string, bool) {
 // cakupan, CLAUDE.md: sesi CWMP stateful butuh perubahan lebih invasif).
 // Device tanpa tenant (belum tercatat/superadmin-managed) atau tenant tanpa
 // kuota (max_pending_tasks NULL) tidak dibatasi sama sekali.
+// Cache kecil di proses untuk dua pembacaan yang terjadi pada SETIAP task dan hampir tidak pernah berubah. Keduanya hanya
+// menyangkut kuota lunak / siaran UI langsung — BUKAN keputusan akses — jadi keterlambatan TTL dapat diterima (bandingkan:
+// membaca status aktif tenant untuk autentikasi Inform sengaja TIDAK di-cache).
+const (
+	quotaCacheTTL    = 10 * time.Second
+	deviceTenantTTL  = 60 * time.Second
+	cacheSoftMaxSize = 20000 // batas kasar agar tidak tumbuh tanpa batas pada armada sangat besar
+)
+
+type ttlValue[T any] struct {
+	v   T
+	exp time.Time
+}
+
+func cacheGet[T any](m *sync.Map, key uint64) (T, bool) {
+	if raw, ok := m.Load(key); ok {
+		if e := raw.(ttlValue[T]); time.Now().Before(e.exp) {
+			return e.v, true
+		}
+		m.Delete(key)
+	}
+	var zero T
+	return zero, false
+}
+
+func cachePut[T any](m *sync.Map, n *atomic.Int64, key uint64, v T, ttl time.Duration) {
+	if n.Load() > cacheSoftMaxSize {
+		m.Range(func(k, _ any) bool { m.Delete(k); return true })
+		n.Store(0)
+	}
+	if _, loaded := m.Swap(key, ttlValue[T]{v: v, exp: time.Now().Add(ttl)}); !loaded {
+		n.Add(1)
+	}
+}
+
+// maxPendingTasks = tenants.max_pending_tasks (nil = tanpa batas) dengan cache TTL pendek.
+func (s *Service) maxPendingTasks(ctx context.Context, tenantID uint64) (*uint32, error) {
+	if v, ok := cacheGet[*uint32](&s.quotaCache, tenantID); ok {
+		return v, nil
+	}
+	tenant, err := s.tenants.GetByID(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	cachePut(&s.quotaCache, &s.quotaCacheN, tenantID, tenant.MaxPendingTasks, quotaCacheTTL)
+	return tenant.MaxPendingTasks, nil
+}
+
+// tenantOfDevice = tenant pemilik perangkat untuk menyiarkan event status task. Hanya hasil dengan tenant yang di-cache
+// (perangkat tanpa tenant dibaca ulang: tenant bisa terisi belakangan).
+func (s *Service) tenantOfDevice(ctx context.Context, deviceID uint64) *uint64 {
+	if v, ok := cacheGet[uint64](&s.deviceTenant, deviceID); ok {
+		return &v
+	}
+	dev, err := s.devices.GetByID(ctx, deviceID)
+	if err != nil || dev.TenantID == nil {
+		return nil
+	}
+	cachePut(&s.deviceTenant, &s.deviceTenantN, deviceID, *dev.TenantID, deviceTenantTTL)
+	return dev.TenantID
+}
+
 func (s *Service) enforceTenantTaskQuota(ctx context.Context, dev *domain.Device) error {
 	if dev.TenantID == nil || s.tenants == nil {
 		return nil
 	}
-	tenant, err := s.tenants.GetByID(ctx, *dev.TenantID)
+	maxPending, err := s.maxPendingTasks(ctx, *dev.TenantID)
 	if err != nil {
 		return err
 	}
-	if tenant.MaxPendingTasks == nil {
+	if maxPending == nil {
 		return nil
 	}
 	// CountPendingForTenant, BUKAN List(): query COUNT murni (satu query, tanpa
@@ -552,8 +621,8 @@ func (s *Service) enforceTenantTaskQuota(ctx context.Context, dev *domain.Device
 	if err != nil {
 		return err
 	}
-	if uint32(total) >= *tenant.MaxPendingTasks {
-		return fmt.Errorf("%w: tenant sudah punya %d task pending (batas %d)", domain.ErrQuotaExceeded, total, *tenant.MaxPendingTasks)
+	if uint32(total) >= *maxPending {
+		return fmt.Errorf("%w: tenant sudah punya %d task pending (batas %d)", domain.ErrQuotaExceeded, total, *maxPending)
 	}
 	return nil
 }
@@ -1130,11 +1199,11 @@ func (s *Service) publishTaskStatusEvent(ctx context.Context, taskID, deviceID u
 	if s.publisher == nil {
 		return
 	}
-	dev, err := s.devices.GetByID(ctx, deviceID)
-	if err != nil || dev.TenantID == nil {
+	tenantID := s.tenantOfDevice(ctx, deviceID)
+	if tenantID == nil {
 		return
 	}
-	s.publisher.BroadcastToTenant(*dev.TenantID, "TASK_STATUS_CHANGED", map[string]interface{}{
+	s.publisher.BroadcastToTenant(*tenantID, "TASK_STATUS_CHANGED", map[string]interface{}{
 		"task_id":   taskID,
 		"device_id": deviceID,
 		"status":    status,
