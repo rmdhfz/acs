@@ -62,6 +62,8 @@ type report struct {
 	Phases    []phaseResult `json:"phases"`
 	Resources []resource    `json:"resources"`
 	At        string        `json:"at"`
+	// ProvisionApplied = "diterapkan/total": berapa perangkat yang nilai provisioning-nya benar-benar terlihat di sisi CPE (hanya -provision).
+	ProvisionApplied string `json:"provision_applied,omitempty"`
 }
 
 // timed = laporan sesi simulator + durasi yang diukur sendiri (presisi sub-milidetik).
@@ -173,19 +175,114 @@ func (a *apiClient) do(method, path string, body any, out any) (int, error) {
 }
 
 // setupOurs: login SUPERADMIN, buat tenant benchmark dengan kredensial CWMP; mengembalikan kredensial Inform.
-func setupOurs(a *apiClient, user, pass string, run string) (cwmpUser, cwmpPass string, err error) {
+func setupOurs(a *apiClient, user, pass string, run string) (cwmpUser, cwmpPass string, tenantID uint64, err error) {
 	var lr struct {
 		AccessToken string `json:"access_token"`
 	}
 	if _, err = a.do(http.MethodPost, "/auth/login", map[string]any{"username": user, "password": pass}, &lr); err != nil || lr.AccessToken == "" {
-		return "", "", fmt.Errorf("login: %v", err)
+		return "", "", 0, fmt.Errorf("login: %v", err)
 	}
 	a.token = lr.AccessToken
 	cwmpUser, cwmpPass = "bench-"+run, "BenchPass-"+run+"-x"
+	var tr struct {
+		ID uint64 `json:"id"`
+	}
 	_, err = a.do(http.MethodPost, "/tenants", map[string]any{
 		"code": "bench-" + run, "name": "Bench " + run, "cwmp_inform_username": cwmpUser, "cwmp_inform_password": cwmpPass,
-	}, nil)
-	return cwmpUser, cwmpPass, err
+	}, &tr)
+	return cwmpUser, cwmpPass, tr.ID, err
+}
+
+// intervalParam = parameter yang dipaksa oleh pekerjaan provisioning benchmark (ikut dilaporkan pada Inform).
+func intervalParam(prof simcpe.Profile) string {
+	return prof.RootPrefix() + "ManagementServer.PeriodicInformInterval"
+}
+
+const provisionInterval = "600"
+
+// provisionOurs memasang pekerjaan setara di ACS kita: satu aturan otomasi yang memaksa interval Inform pada SETIAP Inform
+// (konvergen = diam setelah diterapkan) + n pengecoh yang kondisinya dievaluasi tiap Inform tetapi tidak pernah benar.
+func provisionOurs(a *apiClient, tenantID uint64, prof simcpe.Profile, decoys int) error {
+	root := prof.RootPrefix()
+	rules := []map[string]any{{
+		"tenant_id": tenantID, "name": "bench-enforce-interval", "trigger_event": "EVERY_INFORM", "condition": "",
+		"actions":          []map[string]any{{"type": "set_parameter", "name": intervalParam(prof), "value": "'" + provisionInterval + "'"}},
+		"cooldown_seconds": 300,
+	}}
+	for i := 0; i < decoys; i++ {
+		rules = append(rules, map[string]any{
+			"tenant_id": tenantID, "name": fmt.Sprintf("bench-decoy-%d", i), "trigger_event": "EVERY_INFORM",
+			"condition": fmt.Sprintf("{%sDeviceInfo.SoftwareVersion} == 'tidak-ada-%d' and {@oui} == 'x'", root, i),
+			"actions":   []map[string]any{{"type": "reboot"}}, "cooldown_seconds": 300,
+		})
+	}
+	for _, r := range rules {
+		if _, err := a.do(http.MethodPost, "/automation-rules", r, nil); err != nil {
+			return fmt.Errorf("aturan %v: %w", r["name"], err)
+		}
+	}
+	return nil
+}
+
+// putText mengirim badan teks mentah (skrip provision GenieACS).
+func (a *apiClient) putText(path, body string) error {
+	req, err := http.NewRequest(http.MethodPut, a.base+path, strings.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "text/plain")
+	resp, err := a.hc.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		raw, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("HTTP %d %s", resp.StatusCode, strings.TrimSpace(string(raw[:min(len(raw), 200)])))
+	}
+	return nil
+}
+
+// provisionGenie memasang pekerjaan setara di GenieACS 1.2 lewat NBI: provision (JavaScript) yang memaksa interval Inform di setiap
+// sesi + n preset pengecoh yang preconditionnya tak pernah cocok (dievaluasi tiap sesi).
+func provisionGenie(a *apiClient, prof simcpe.Profile, decoys int) error {
+	script := fmt.Sprintf("declare(%q, null, {value: %q});\n", intervalParam(prof), provisionInterval)
+	if err := a.putText("/provisions/bench-enforce", script); err != nil {
+		return fmt.Errorf("provision: %w", err)
+	}
+	if err := a.putText("/provisions/bench-noop", "// pengecoh: tak pernah dijalankan\n"); err != nil {
+		return fmt.Errorf("provision noop: %w", err)
+	}
+	put := func(name string, preset map[string]any) error {
+		b, _ := json.Marshal(preset)
+		req, err := http.NewRequest(http.MethodPut, a.base+"/presets/"+name, bytes.NewReader(b))
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := a.hc.Do(req)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode >= 400 {
+			raw, _ := io.ReadAll(resp.Body)
+			return fmt.Errorf("HTTP %d %s", resp.StatusCode, strings.TrimSpace(string(raw[:min(len(raw), 200)])))
+		}
+		return nil
+	}
+	if err := put("bench-enforce", map[string]any{"weight": 0, "precondition": "", "configurations": []map[string]any{{"type": "provision", "name": "bench-enforce"}}}); err != nil {
+		return fmt.Errorf("preset: %w", err)
+	}
+	for i := 0; i < decoys; i++ {
+		if err := put(fmt.Sprintf("bench-decoy-%d", i), map[string]any{
+			"weight": 0, "precondition": fmt.Sprintf("DeviceID.ProductClass = \"NEVER-%d\"", i),
+			"configurations": []map[string]any{{"type": "provision", "name": "bench-noop"}},
+		}); err != nil {
+			return fmt.Errorf("preset pengecoh: %w", err)
+		}
+	}
+	return nil
 }
 
 // enqueueGPV mengantre GetParameterValues untuk perangkat; mengembalikan error bila gagal.
@@ -201,7 +298,7 @@ func (a *apiClient) enqueueGPV(d *simcpe.Device, path string) error {
 				ID uint64 `json:"id"`
 			} `json:"data"`
 		}
-		if _, err := a.do(http.MethodGet, "/devices?search="+url.QueryEscape(d.SerialNumber)+"&page_size=5", nil, &list); err != nil {
+		if _, err := a.do(http.MethodGet, "/devices?serial_number="+url.QueryEscape(d.SerialNumber)+"&page_size=1", nil, &list); err != nil {
 			return err
 		}
 		if len(list.Data) == 0 {
@@ -322,6 +419,8 @@ func main() {
 		style      = flag.String("style", "prefixed", "gaya SOAP CPE: prefixed (seperti CPE nyata; wajib untuk GenieACS) | go (apa adanya dari simulator)")
 		label      = flag.String("label", "", "label hasil")
 		out        = flag.String("out", "", "tulis laporan JSON ke berkas ini")
+		provision  = flag.Bool("provision", false, "pasang pekerjaan provisioning setara di kedua sistem: paksa PeriodicInformInterval=600 di tiap Inform + pengecoh")
+		decoys     = flag.Int("decoys", 3, "jumlah aturan/preset pengecoh yang dievaluasi tiap Inform bila -provision")
 	)
 	flag.Parse()
 	if *cwmp == "" || *api == "" {
@@ -341,8 +440,20 @@ func main() {
 	cu, cp := *user, *pass
 	if *kind == "ours" {
 		var err error
-		if cu, cp, err = setupOurs(a, *superUser, *superPass, run); err != nil {
+		var tenantID uint64
+		if cu, cp, tenantID, err = setupOurs(a, *superUser, *superPass, run); err != nil {
 			fmt.Fprintln(os.Stderr, "setup ACS kita gagal:", err)
+			os.Exit(1)
+		}
+		if *provision {
+			if err := provisionOurs(a, tenantID, prof, *decoys); err != nil {
+				fmt.Fprintln(os.Stderr, "pasang aturan otomasi gagal:", err)
+				os.Exit(1)
+			}
+		}
+	} else if *provision {
+		if err := provisionGenie(a, prof, *decoys); err != nil {
+			fmt.Fprintln(os.Stderr, "pasang provision GenieACS gagal:", err)
 			os.Exit(1)
 		}
 	}
@@ -384,6 +495,16 @@ func main() {
 	// Fase 1: registrasi
 	outs, el := parallel(*devices, *conc, func(w, i int) outcome { return toOutcome(session(w, devs[i], "0 BOOTSTRAP", "1 BOOT")) })
 	rep.Phases = append(rep.Phases, summarize("registrasi (0 BOOTSTRAP)", outs, el))
+	if *provision {
+		// Bukti pekerjaan setara benar-benar terjadi: nilai di sisi CPE (bukan sekadar klaim sistem).
+		applied := 0
+		for _, d := range devs {
+			if v, _ := d.Param(intervalParam(prof)); v == provisionInterval {
+				applied++
+			}
+		}
+		rep.ProvisionApplied = fmt.Sprintf("%d/%d", applied, len(devs))
+	}
 
 	// Fase 2: Inform periodik
 	for r := 1; r <= *rounds; r++ {
@@ -418,6 +539,9 @@ func main() {
 	rep.Resources = smp.finish()
 
 	fmt.Printf("\n=== %s (%s) — %d perangkat, concurrency %d ===\n", *label, *kind, *devices, *conc)
+	if rep.ProvisionApplied != "" {
+		fmt.Printf("provisioning diterapkan di CPE: %s\n", rep.ProvisionApplied)
+	}
 	fmt.Printf("%-44s %6s %5s %8s %8s %8s %8s\n", "fase", "ok/n", "gagal", "sesi/dtk", "p50 ms", "p95 ms", "p99 ms")
 	for _, p := range rep.Phases {
 		fmt.Printf("%-44s %3d/%-3d %5d %8.1f %8.1f %8.1f %8.1f\n", p.Name, p.OK, p.Sessions, p.Failed, p.PerSec, p.P50ms, p.P95ms, p.P99ms)

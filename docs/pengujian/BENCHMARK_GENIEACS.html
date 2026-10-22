@@ -56,25 +56,24 @@
 
 <h2>1. Kesimpulan</h2>
 <div class="verdict">
-  <strong class="t">Pada beban simulator ini, ACS kita setara hingga lebih cepat dari GenieACS pada jalur Inform, dengan memori proses jauh lebih kecil.
-  Belum ada bukti keunggulan pada fase tugas, dan belum terbukti pada perangkat nyata.</strong>
-  Setelah pemanasan, ACS kita menangani 530–783 sesi/detik (GenieACS 437–504) dengan p95 116–244 ms (GenieACS 239–286 ms).
-  Proses ACS memakai ±25 MiB memori (GenieACS ±589 MiB). Pada fase tugas keduanya setara: GenieACS sedikit lebih tinggi throughput-nya,
-  ACS kita sedikit lebih baik di ekor latensi. Tidak ada galat pada kedua sistem.
+  <strong class="t">Dengan pekerjaan provisioning yang setara aktif di kedua sistem (diverifikasi di sisi CPE), ACS kita setara pada registrasi dan lebih cepat pada
+  kondisi tunak dan fase tugas, dengan memori proses jauh lebih kecil. Belum terbukti pada perangkat nyata.</strong>
+  Dua run penuh berturut-turut (1.500 perangkat, 64 paralel): kondisi tunak 524–716 sesi/dtk vs 345–480 (p95 123–171 ms vs 211–302 ms); fase tugas
+  262–322 sesi/dtk vs 159–181 (p95 246–325 ms vs 589–680 ms). Registrasi: throughput GenieACS sedikit lebih tinggi (216–236 vs 197–223 sesi/dtk),
+  p95 kita sedikit lebih baik — dianggap setara. Proses ACS memakai ±26–30 MiB (GenieACS ±597–632 MiB). Tidak ada galat pada kedua sistem.
 </div>
 
 <div class="kpi">
-  <div><b>783</b><span>sesi/dtk ACS kita, putaran 4<br>(GenieACS 449)</span></div>
-  <div><b>116 ms</b><span>p95 ACS kita, putaran 4<br>(GenieACS 280 ms)</span></div>
-  <div><b>25 MiB</b><span>memori proses ACS kita<br>(GenieACS 589 MiB)</span></div>
+  <div><b>322</b><span>sesi/dtk fase tugas (run 1)<br>(GenieACS 181)</span></div>
+  <div><b>246 ms</b><span>p95 fase tugas (run 1)<br>(GenieACS 589 ms)</span></div>
+  <div><b>26 MiB</b><span>memori proses ACS kita<br>(GenieACS 632 MiB)</span></div>
   <div><b>0</b><span>galat dari 8.000 sesi<br>per sistem</span></div>
 </div>
 
 <div class="caveat">
   <b>Batas klaim (baca dulu).</b> Beban berasal dari <b>simulator</b> CPE, bukan firmware nyata, dan semuanya berjalan di <b>satu laptop</b> yang
-  juga menjalankan generator beban; stack yang tidak sedang diuji tetap hidup (idle), sehingga hasil dipengaruhi kondisi mesin. Angka di bawah adalah
-  <b>satu kali run penuh</b>; pada pengukuran ulang di hari yang sama, fase tugas ACS kita bergeser antara 79 dan 143 sesi/detik, jadi selisih
-  kecil (≤±30%) tidak boleh dibaca sebagai pemenang. Konfigurasi bawaan dipakai di kedua sisi, dan <b>kompatibilitas ONT tidak dibuktikan oleh benchmark ini</b>.
+  juga menjalankan generator beban; stack yang tidak sedang diuji tetap hidup (idle), sehingga hasil dipengaruhi kondisi mesin. Hasil utama (bagian 3b) adalah <b>dua run penuh</b> dengan provisioning setara; tabel bagian 3 adalah <b>satu run tanpa provisioning</b>. Antar-run hari ini angka bergeser sampai ±30%, jadi selisih
+  kecil tidak boleh dibaca sebagai pemenang — yang dianggap berarti hanya selisih yang searah pada kedua run. Konfigurasi bawaan dipakai di kedua sisi, dan <b>kompatibilitas ONT tidak dibuktikan oleh benchmark ini</b>.
 </div>
 
 <h2>2. Metode</h2>
@@ -87,7 +86,7 @@
   <li><b>Sumber daya</b> disampel dari <code>docker stats</code> tiap 2 detik (hanya 5–6 sampel per run; 100% CPU = satu inti).</li>
 </ul>
 
-<h2>3. Hasil throughput dan latensi</h2>
+<h2>3. Hasil tanpa provisioning (satu run, sebelum optimasi lanjutan)</h2>
 <p class="note">Sesi per detik: lebih tinggi lebih baik. Latensi: lebih rendah lebih baik. Sel hijau = lebih baik pada baris itu. 1.500 sesi per fase (500 pada fase tugas); 0 galat.</p>
 <table>
   <tr><th rowspan="2">Fase</th><th colspan="4" class="c">ACS kita</th><th colspan="4" class="c">GenieACS 1.2.16</th></tr>
@@ -115,7 +114,30 @@
 <ul>
   <li><b>Registrasi dan putaran 1 (pemanasan)</b> setara; selisihnya masih dalam rentang kebisingan run.</li>
   <li><b>Putaran 2–4 (kondisi tunak)</b>: ACS kita lebih tinggi 18–74% throughput-nya dan p95 lebih rendah 15–59%. Selisih ini searah pada ketiga putaran, tetapi GenieACS baru diukur <b>satu kali</b>; perbaikan jalur Inform di sisi kita sendiri terbukti konsisten pada run berulang (bagian 5).</li>
-  <li><b>Fase tugas</b>: GenieACS unggul di throughput dan p50; ACS kita unggul di p95/p99. Pada run lain hari ini fase tugas ACS kita lebih lambat dari angka ini, sehingga fase ini <b>belum bisa diklaim</b> menguntungkan sisi mana pun.</li>
+  <li><b>Fase tugas (tanpa provisioning, run sebelum optimasi lanjutan)</b>: GenieACS unggul di throughput dan p50. Situasi ini berubah setelah optimasi lanjutan — lihat bagian 3b (hasil utama).</li>
+</ul>
+
+<h2>3b. Hasil utama: provisioning setara aktif di kedua sistem</h2>
+<p>Pekerjaan nyata yang sama diberikan ke kedua sistem: <b>paksa <code>PeriodicInformInterval=600</code> pada setiap Inform</b> + <b>tiga aturan/preset pengecoh</b> yang kondisinya dievaluasi tiap Inform
+tetapi tidak pernah cocok. ACS kita memakai <b>aturan otomasi</b> deklaratif; GenieACS memakai <b>provision JavaScript + preset</b>. Keberhasilan diverifikasi di sisi CPE simulator:
+<b>1.500/1.500</b> perangkat menerima nilai pada kedua sistem (di run awal GenieACS sempat 1.499/1.500). Dua run penuh berturut-turut pada stack baru; sel = sesi/dtk · p95 (run 1 / run 2).</p>
+<table>
+  <tr><th>Fase</th><th>ACS kita</th><th>GenieACS 1.2.16</th><th>Selisih</th></tr>
+  <tr><td>Registrasi</td><td class="n">223 · 406 ms / 197 · 409 ms</td><td class="n">236 · 428 ms / 216 · 470 ms</td><td>setara (GenieACS +6–10% throughput; p95 kita lebih baik)</td></tr>
+  <tr><td>Periodik putaran 2</td><td class="n win">680 · 140 ms / 669 · 143 ms</td><td class="n">424 · 237 ms / 345 · 302 ms</td><td>kita +58–94%</td></tr>
+  <tr><td>Periodik putaran 3</td><td class="n win">716 · 124 ms / 589 · 152 ms</td><td class="n">417 · 275 ms / 383 · 266 ms</td><td>kita +54–72%</td></tr>
+  <tr><td>Periodik putaran 4</td><td class="n win">664 · 159 ms / 524 · 171 ms</td><td class="n">480 · 211 ms / 404 · 249 ms</td><td>kita +30–38%</td></tr>
+  <tr><td>Tugas (500)</td><td class="n win">322 · 246 ms / 262 · 325 ms</td><td class="n">181 · 589 ms / 159 · 680 ms</td><td>kita +65–78% throughput; p95 lebih rendah ±50%</td></tr>
+</table>
+<ul>
+  <li><b>Sumber daya (rata-rata CPU, run 1 / run 2):</b> ACS kita total ±457% / ±362% (acsd 179/141, MariaDB 262/206, Redis 16/15); GenieACS total ±545% / ±613% (proses CWMP 395/432, MongoDB 137/166, NBI 13/15).
+  MariaDB tetap komponen terberat di sisi kita dibanding MongoDB.</li>
+  <li><b>Yang berubah sejak perbandingan setara pertama</b> (GenieACS saat itu masih unggul di tugas: 175 vs 141 sesi/dtk): (1) pencarian perangkat <i>persis</i> berdasarkan serial
+  kini memakai indeks (<code>GET /devices?serial_number=</code>, migrasi 0041) — sebelumnya integrator hanya punya <code>search</code> substring yang memindai seluruh tabel, kelemahan produk nyata;
+  (2) kuota perangkat tidak lagi menghitung <code>COUNT(*)</code> per registrasi untuk tenant tanpa batas (O(n) per registrasi = O(n²) pada onboarding massal);
+  (3) INSERT perangkat lebih dulu, revive hanya bila duplikat; (4) tidak ada pencarian ganda untuk perangkat baru; (5) cache TTL pendek untuk kuota task dan tenant pemilik perangkat.
+  <b>Jujur:</b> sebagian besar lonjakan fase tugas berasal dari (1) — klien benchmark ACS kita memang harus mencari id perangkat dari serial (GenieACS: id sudah mengandung serial), dan
+  pencarian itu kini murah; panggilan tambahan itu tetap termasuk dalam waktu yang diukur.</li>
 </ul>
 
 <h2>4. Sumber daya</h2>
@@ -187,7 +209,7 @@ Verifikasi kode: <code>go vet</code> dan <code>go test ./...</code> hijau, suite
 <h2>8. Rekomendasi</h2>
 <ol>
   <li><b>Jangan memakai benchmark ini sebagai klaim keandalan.</b> Klaim yang didukung: efisiensi memori dan throughput Inform setara-atau-lebih-baik pada beban simulator; fitur platform multi-tenant.</li>
-  <li><b>Profil fase tugas</b> (antre via API: cek kuota, <code>activity_logs</code>, <code>INSERT tasks</code>) sebelum mengklaim apa pun di fase itu.</li>
+  <li><b>Fase tugas sudah diprofil</b> dan dioptimasi (bagian 3b). Yang tersisa: registrasi massal (throughput masih setara, bukan unggul) dan tulis MariaDB per sesi.</li>
   <li><b>Kurangi beban tulis MariaDB per Inform</b> (event dan audit) bila skala perangkat mendekati ratusan ribu.</li>
   <li><b>Ulangi di mesin khusus</b> (server terpisah dari generator beban, beberapa run, median) bila angka akan dipakai di luar tim.</li>
   <li><b>Tutup gap fitur</b> yang relevan bagi pelanggan: JavaScript bebas sengaja tidak ada (risiko multi-tenant); bila kebutuhan nyata melampaui aturan otomasi deklaratif, langkah berikutnya JavaScript tersandbox — perlu keputusan dan uji keamanan tersendiri.</li>

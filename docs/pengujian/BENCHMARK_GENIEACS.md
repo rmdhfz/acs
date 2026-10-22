@@ -93,6 +93,25 @@ di semua run). Setiap sel = dua run, sesi/dtk · p95:
 - Kompromi konsistensi: aturan ZTP/preset yang diubah lewat instance lain baru terlihat setelah ≤5 dtk (bukan konsistensi instan).
 - Verifikasi: `go vet`/`go test ./...` hijau, e2e 30/30 lulus pada kode baru.
 
+## Hasil utama — provisioning setara aktif di kedua sistem (22 Okt 2026, dua run)
+
+`scripts/bench.sh --provision`: ACS kita diberi **aturan otomasi** (paksa `PeriodicInformInterval=600` tiap Inform + 3 pengecoh); GenieACS diberi **provision JavaScript + preset** setara
+(+ 3 preset pengecoh). Diverifikasi di sisi CPE: **1.500/1.500** menerima nilai di kedua sistem. Sel = sesi/dtk · p95 (run 1 / run 2). 0 galat.
+
+| Fase | ACS kita | GenieACS 1.2.16 |
+|---|---|---|
+| Registrasi | 223 · 406 ms / 197 · 409 ms | 236 · 428 ms / 216 · 470 ms |
+| Periodik putaran 2 | **680 · 140 ms / 669 · 143 ms** | 424 · 237 ms / 345 · 302 ms |
+| Periodik putaran 3 | **716 · 124 ms / 589 · 152 ms** | 417 · 275 ms / 383 · 266 ms |
+| Periodik putaran 4 | **664 · 159 ms / 524 · 171 ms** | 480 · 211 ms / 404 · 249 ms |
+| Tugas (500) | **322 · 246 ms / 262 · 325 ms** | 181 · 589 ms / 159 · 680 ms |
+
+- Registrasi **setara** (GenieACS +6–10% throughput, p95 kita lebih baik); sisanya kita lebih cepat. Memori proses: ACS kita ±26–30 MiB vs GenieACS ±597–632 MiB.
+- Perubahan sejak perbandingan setara pertama (GenieACS saat itu unggul di tugas, 175 vs 141): pencarian persis `GET /devices?serial_number=` memakai indeks (migrasi 0041),
+  kuota perangkat tanpa `COUNT(*)` untuk tenant tanpa batas, INSERT-dulu-baru-revive, tanpa pencarian ganda, cache TTL pendek kuota task/tenant perangkat.
+  **Jujur:** sebagian besar lonjakan fase tugas berasal dari pencarian serial yang dulu memindai tabel (kelemahan produk nyata bagi integrator BSS).
+- Batas klaim sama seperti di atas: simulator, satu laptop, konfigurasi bawaan, belum perangkat nyata.
+
 ## Perbandingan fitur (diverifikasi pada GenieACS 1.2.16 yang berjalan)
 
 NBI GenieACS menjawab 200 pada `/devices`, `/tasks`, `/presets`, `/provisions`, `/virtual_parameters`, `/files`, `/faults`, `/objects`;
