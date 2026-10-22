@@ -5,6 +5,7 @@ import { Line, LineChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 import { Activity, ArrowLeft, ArrowLeftRight, Cpu, Gauge, HardDrive, History, ListChecks, Radio, ScrollText, Sparkles, Wifi, SlidersHorizontal, RefreshCcw, AlertTriangle, FileUp, Pencil, Trash2 } from 'lucide-react'
 import { StatusBadge } from '../components/StatusBadge'
 import { EmptyState } from '../components/EmptyState'
+import { VirtualValuesCard } from '../components/VirtualValuesCard'
 import { PageSpinner } from '../components/Spinner'
 import { ParameterTree } from '../components/ParameterTree'
 import { ConfigHistory } from '../components/ConfigHistory'
@@ -293,7 +294,12 @@ export function DeviceDetailPage() {
           />
         )}
         {tab === 'wifi' && <DeviceWifiTab device={device} />}
-        {tab === 'parameters' && <ParametersTab deviceId={deviceId} />}
+        {tab === 'parameters' && (
+          <>
+            <VirtualValuesCard deviceId={deviceId} />
+            <ParametersTab deviceId={deviceId} />
+          </>
+        )}
         {tab === 'optical' && <OpticalMetricsTab device={device} />}
         {tab === 'events' && <EventsTab deviceId={deviceId} />}
         {tab === 'tasks' && <TasksTab deviceId={deviceId} />}

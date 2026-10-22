@@ -15,6 +15,7 @@ import (
 	"acs/internal/usecase/billing"
 	"acs/internal/usecase/capture"
 	"acs/internal/usecase/fault"
+	"acs/internal/usecase/vparam"
 	"acs/internal/usecase/catalog"
 	"acs/internal/usecase/console"
 	"acs/internal/usecase/device"
@@ -78,6 +79,8 @@ type Router struct {
 	Capture *capture.Service
 	// Resource faults (migrations/0038): cwmp:Fault aktif dari CPE; nil = rute tidak dipasang.
 	Faults *fault.Service
+	// Virtual parameter (migrations/0039): ekspresi turunan per tenant; nil = rute tidak dipasang.
+	VParams *vparam.Service
 	WSHub     *ws.Hub
 	// WSAllowedOrigins = origin Console yang boleh membuka WebSocket (sama
 	// dengan ACS_CORS_ALLOW_ORIGINS).
@@ -243,6 +246,18 @@ func (r *Router) Register(e *echo.Echo) {
 		authed.GET("/faults", r.listFaults)
 		authed.GET("/faults/:uuid", r.getFault)
 		authed.DELETE("/faults/:uuid", r.dismissFault, RequireRoles(adminOrNOC...))
+	}
+
+	if r.VParams != nil {
+		// Virtual parameter: baca untuk semua peran staf (scope tenant di usecase); definisi & uji ekspresi ADMIN. Rute statis /test
+		// didaftarkan sebelum /:uuid.
+		authed.GET("/virtual-parameters", r.listVirtualParameters)
+		authed.POST("/virtual-parameters/test", r.testVirtualParameter, RequireRoles(admin...))
+		authed.GET("/virtual-parameters/:uuid", r.getVirtualParameter)
+		authed.POST("/virtual-parameters", r.createVirtualParameter, RequireRoles(admin...))
+		authed.PATCH("/virtual-parameters/:uuid", r.updateVirtualParameter, RequireRoles(admin...))
+		authed.DELETE("/virtual-parameters/:uuid", r.deleteVirtualParameter, RequireRoles(admin...))
+		authed.GET("/devices/:id/virtual-parameters", r.deviceVirtualParameters)
 	}
 
 	authed.GET("/devices", r.listDevices)

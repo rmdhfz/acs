@@ -309,4 +309,6 @@ type DeviceListItem struct {
 	PPPoEUsername *string    `json:"pppoe_username"`
 	// Parameters: nilai parameter yang diminta lewat ?params= (tidak diminta = tidak ikut dikirim).
 	Parameters map[string]string `json:"parameters,omitempty"`
+	// Virtual: nilai virtual parameter yang diminta lewat ?vparams= (nama -> nilai; yang belum dapat dihitung tidak muncul).
+	Virtual map[string]string `json:"virtual,omitempty"`
 }

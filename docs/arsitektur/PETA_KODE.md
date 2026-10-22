@@ -4,7 +4,7 @@
 > "apa ada di mana" tanpa menjelajah ulang repo. Konteks bisnis: `docs/produk/PRD.md`; keputusan arsitektur: `docs/arsitektur/TECH.md`;
 > aturan kerja & konvensi: `CLAUDE.md`. Perbarui setelah menambah paket/endpoint/tabel/halaman (`--check` untuk memeriksa).
 
-Ringkasan: 185 operasi REST • 64 tabel • 38 migrasi (terakhir `0038_device_faults`) • 32 skenario e2e.
+Ringkasan: 192 operasi REST • 65 tabel • 39 migrasi (terakhir `0039_virtual_parameters`) • 33 skenario e2e.
 
 ## Alur & lapisan (Clean Architecture)
 `domain` (entitas + antarmuka) → `usecase/*` (aturan bisnis) → `repository/mysql` (query sqlx) / `delivery/{cwmp,http,ws,usp}` (adapter masuk).
@@ -17,21 +17,21 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | `cmd/acsbench` | 2 | Command acsbench membandingkan ACS kita dengan GenieACS memakai beban IDENTIK dari simulator CPE (internal/simcpe): fase registrasi (Inform 0 BOOTSTRAP), fase periodik (Inform 2 PERIODIC berulang), da |
 | `cmd/acsd` | 1 | Command acsd adalah entrypoint utama ACS: menjalankan endpoint CWMP (untuk CPE) dan REST API internal (untuk BSS/OSS/portal NOC) sebagai dua server terpisah dalam satu proses, sesuai TECH.md §2. |
 | `cmd/cpesim` | 1 | Command cpesim adalah CLI simulator CPE TR-069/CWMP multi-vendor (logika inti di internal/simcpe, dipakai bersama cmd/e2e). |
-| `cmd/e2e` | 24 | Command e2e menjalankan skenario end-to-end terhadap stack ACS yang benar- benar hidup (docker-compose): REST API + endpoint CWMP + MariaDB + MinIO. |
+| `cmd/e2e` | 25 | Command e2e menjalankan skenario end-to-end terhadap stack ACS yang benar- benar hidup (docker-compose): REST API + endpoint CWMP + MariaDB + MinIO. |
 | `cmd/loadtest` | 1 | Command loadtest mensimulasikan banyak sesi CWMP concurrent (Inform -> InformResponse -> POST kosong penutup) untuk mengukur p95 latency Inform, sesuai NFR di ROADMAP.md Fase 3 ("Load test: ribuan ses |
 | `cmd/migrate` | 1 | Command migrate menjalankan migrasi database terurut dari folder migrations/ menggunakan golang-migrate (TECH.md §1). |
 | `cmd/seal-secrets` | 1 | Command seal-secrets mengenkripsi (AES-GCM, kunci ACS_CREDENTIAL_ENC_KEY) nilai rahasia yang MASIH plaintext di provisioning_profile_parameters dan presets.configurations — langkah sekali jalan setela |
 | `cmd/seed-admin` | 1 | Command seed-admin membuat user superadmin pertama pada instalasi baru. |
 | `internal/config` | 1 | memuat konfigurasi aplikasi dari environment variable. |
 | `internal/delivery/cwmp` | 3 | delivery layer untuk endpoint CWMP — satu-satunya tempat yang mem-parsing/mem-build XML SOAP (pkg/cwmpxml) dan menerjemahkannya ke/dari tipe polos usecase/session. |
-| `internal/delivery/http` | 40 | delivery layer REST (Echo) untuk konsumsi internal/BSS (TECH.md §2). |
+| `internal/delivery/http` | 41 | delivery layer REST (Echo) untuk konsumsi internal/BSS (TECH.md §2). |
 | `internal/delivery/usp` | 1 | — |
 | `internal/delivery/ws` | 1 | — |
-| `internal/domain` | 28 | berisi entities dan interface kontrak (repository & usecase) sesuai Clean Architecture yang dipakai proyek ini — lihat TECH.md §2. |
+| `internal/domain` | 29 | berisi entities dan interface kontrak (repository & usecase) sesuai Clean Architecture yang dipakai proyek ini — lihat TECH.md §2. |
 | `internal/metrics` | 2 | berisi custom Prometheus Collector untuk endpoint GET /api/v1/metrics (ROADMAP.md Fase 2, TECH.md §10 Observability). |
 | `internal/payment/xendit` | 1 | klien HTTP kecil untuk Xendit Invoice API v2 (membuat dan membaca invoice). |
 | `internal/repository/hotcache` | 1 | membungkus repository yang dibaca pada SETIAP Inform CWMP (aturan ZTP, preset enforce) dengan cache TTL pendek di memori proses. |
-| `internal/repository/mysql` | 32 | berisi implementasi sqlx dari interface repository yang didefinisikan di internal/domain. |
+| `internal/repository/mysql` | 33 | berisi implementasi sqlx dari interface repository yang didefinisikan di internal/domain. |
 | `internal/repository/redisrepo` | 1 | — |
 | `internal/simcpe` | 7 | simulator CPE TR-069/CWMP multi-vendor yang dipakai bersama oleh cmd/cpesim (CLI manual) dan cmd/e2e (skenario otomatis). |
 | `internal/usecase/auth` | 4 | menangani login, penerbitan/verifikasi JWT & API token, dan helper RBAC (role + scope tenant) — lihat TECH.md §1/§8. |
@@ -57,6 +57,7 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | `internal/usecase/tag` | 1 | — |
 | `internal/usecase/task` | 3 | mengorkestrasi antrean RPC CWMP (lihat TECH.md §4) — enqueue, dequeue per device (dipanggil dari usecase/session), retry dengan max_retries, dan resolusi logical key -> raw TR-069 path (TECH.md §5). |
 | `internal/usecase/usp_session` | 1 | — |
+| `internal/usecase/vparam` | 1 | virtual parameter: nilai turunan yang dihitung dari parameter perangkat lewat ekspresi deklaratif (pkg/vexpr). |
 | `internal/usecase/webhook` | 1 | mengelola langganan webhook keluar (typed event) dan pengirimannya ke sistem pihak ketiga (BSS/OSS/NMS) — `/goal` directive #3, PRD.md §4.1. |
 | `internal/vendor_adapter` | 1 | menyediakan titik ekstensi untuk vendor dengan kuirk protokol CWMP nonstandar (urutan RPC aneh, encoding response nonstandar, dll). |
 | `pkg/cryptoutil` | 1 | menyediakan enkripsi kredensial (connection request, inform auth) sesuai kebijakan keamanan di TECH.md §8 — tidak pernah menyimpan kredensial CPE dalam bentuk plaintext di database. |
@@ -69,6 +70,7 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | `pkg/redisutil` | 2 | — |
 | `pkg/totp` | 1 | mengimplementasikan TOTP (RFC 6238, HMAC-SHA1, 30 detik, 6 digit) — kompatibel dengan Google Authenticator, Microsoft Authenticator, Authy, dsb. |
 | `pkg/usp` | 1 | — |
+| `pkg/vexpr` | 1 | bahasa ekspresi kecil untuk virtual parameter: nilai turunan yang dihitung dari parameter perangkat (mis. |
 
 ## Endpoint REST (dari `openapi.yaml`, dikelompokkan per tag)
 **Audit** (1)
@@ -353,6 +355,18 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | PATCH | `/users/{id}/password` | Admin mereset password user lain |
 | PATCH | `/users/{id}/roles` | Ganti seluruh role user (full replace) |
 
+**VirtualParameters** (7)
+
+| Method | Path | Ringkasan |
+|---|---|---|
+| GET | `/virtual-parameters` | Daftar definisi virtual parameter (tenant sendiri + global) |
+| POST | `/virtual-parameters` | Buat virtual parameter (nilai turunan dari parameter perangkat) |
+| POST | `/virtual-parameters/test` | Coba ekspresi pada satu perangkat tanpa menyimpan |
+| GET | `/virtual-parameters/{uuid}` | Detail definisi virtual parameter |
+| PATCH | `/virtual-parameters/{uuid}` | Ubah definisi (partial) |
+| DELETE | `/virtual-parameters/{uuid}` | Hapus definisi (soft delete) |
+| GET | `/devices/{id}/virtual-parameters` | Nilai semua virtual parameter aktif untuk satu perangkat |
+
 **Webhooks** (8)
 
 | Method | Path | Ringkasan |
@@ -443,6 +457,7 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | `device_capture_switches` | 6 | Saklar capture sesi CWMP per perangkat. Pengecualian audit 7-kolom (saklar sementara): lihat header migrations/0037 |
 | `device_session_captures` | 11 | Pesan SOAP hasil capture sesi CWMP (rahasia disamarkan). Pengecualian audit 7-kolom (log volume tinggi): lihat header migrations/0037 |
 | `device_faults` | 17 | cwmp:Fault aktif per (perangkat, kode, RPC); kejadian berulang menaikkan occurrence_count |
+| `virtual_parameters` | 16 | Definisi virtual parameter (ekspresi pkg/vexpr); nilai dihitung saat dibaca, tidak disimpan |
 
 ## Frontend
 **Rute Console** (`frontend/src/App.tsx`)
@@ -462,6 +477,7 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | `/devices/:id` | DeviceDetailPage |
 | `/tasks` | TasksPage |
 | `/faults` | FaultsPage |
+| `/virtual-parameters` | VirtualParametersPage |
 | `/provisioning` | ProvisioningPage |
 | `/firmware` | FirmwarePage |
 | `/files` | FilesPage |
@@ -482,11 +498,11 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | `/` | PublicHome |
 | `*` | NotFoundPage |
 
-**Komponen** (`frontend/src/components`, 43): AssignVendorModal, AuthShell, BugReportModal, CatalogDataTools, ChangePasswordModal, CommandPalette, ConfigHistory, CopyButton, CreditFooter, DataTools, DeviceFormModal, DeviceOverview, DeviceWifiTab, EmptyState, ExportMenu, FleetInsights, GoogleSignInButton, ImportWizard, Layout, MenuManagerModal, MfaCard, Modal, NavClock, NotificationAttributesModal, NotificationBell, OpticalCell, OpticalDiscovery, Pager, Paginate, ParameterTree, PasswordStrengthBar, ProtectedRoute, QueryErrorBanner, QueryErrorToaster, RecordActions, RowMenu, SessionCapture, SidebarNav, Spinner, StatCard, StatusBadge, TaskParts, UserDevicesModal
+**Komponen** (`frontend/src/components`, 44): AssignVendorModal, AuthShell, BugReportModal, CatalogDataTools, ChangePasswordModal, CommandPalette, ConfigHistory, CopyButton, CreditFooter, DataTools, DeviceFormModal, DeviceOverview, DeviceWifiTab, EmptyState, ExportMenu, FleetInsights, GoogleSignInButton, ImportWizard, Layout, MenuManagerModal, MfaCard, Modal, NavClock, NotificationAttributesModal, NotificationBell, OpticalCell, OpticalDiscovery, Pager, Paginate, ParameterTree, PasswordStrengthBar, ProtectedRoute, QueryErrorBanner, QueryErrorToaster, RecordActions, RowMenu, SessionCapture, SidebarNav, Spinner, StatCard, StatusBadge, TaskParts, UserDevicesModal, VirtualValuesCard
 
 **Lib/hooks** (`frontend/src/lib`, 34): api, auth, autolabel, clientAdapter, clipboard, confirm, csv, exporter, focusTrap, format, hooks, i18n.extra, i18n, importer, limits, menu, notifications, optical, opticalDiscovery, password, pool, queryErrors, screenshot, session, taskSummary, theme, toast, transferLog, types, usePaged, useStatusParam, wake, wifi, ws
 
-Berkas tes frontend: 35.
+Berkas tes frontend: 36.
 
 ## Skenario e2e (`cmd/e2e`)
 | Skenario | Fungsi |
@@ -523,9 +539,10 @@ Berkas tes frontend: 35.
 | S30-cakupan-tc-uat | `scenarioUATCoverage` |
 | S31-faults | `scenarioFaults` |
 | S32-query-perangkat | `scenarioDeviceQuery` |
+| S33-virtual-parameter | `scenarioVirtualParameter` |
 
 ## Migrasi (`migrations/`)
-`0001_init_schema` · `0002_tenant_cwmp_inform_credentials` · `0003_tenant_branding` · `0004_vendor_baseline_catalog` · `0005_tenant_task_quota` · `0006_task_metrics_indexes` · `0007_firmware_storage_key` · `0008_user_login_lockout` · `0009_ztp_rule_matching_actions` · `0010_vpm_software_version_pattern` · `0011_firmware_rollout_batches` · `0012_device_session_cwmp_namespace` · `0013_webhook_subscriptions` · `0014_device_config_snapshots` · `0015_device_geolocation` · `0016_firmware_rollout_scheduling` · `0017_performance_indexes` · `0018_generic_files` · `0019_tags_and_presets` · `0020_user_devices_mapping` · `0021_preset_engine` · `0022_seed_vendor_ouis` · `0023_password_reset_tokens` · `0024_users_password_changed_at` · `0025_diagnostics_mappings` · `0026_mapping_value_scale_optical` · `0027_user_mfa_totp` · `0028_tenant_device_limit_and_signups` · `0029_generic_vendor_and_more_oui` · `0030_notifications` · `0031_user_oidc_subject` · `0032_billing` · `0033_menu_bugreport_transfers` · `0034_bugreport_expected_screenshot` · `0035_vendor_optictimes_zte_models` · `0036_notification_optical_alert` · `0037_device_capture` · `0038_device_faults`
+`0001_init_schema` · `0002_tenant_cwmp_inform_credentials` · `0003_tenant_branding` · `0004_vendor_baseline_catalog` · `0005_tenant_task_quota` · `0006_task_metrics_indexes` · `0007_firmware_storage_key` · `0008_user_login_lockout` · `0009_ztp_rule_matching_actions` · `0010_vpm_software_version_pattern` · `0011_firmware_rollout_batches` · `0012_device_session_cwmp_namespace` · `0013_webhook_subscriptions` · `0014_device_config_snapshots` · `0015_device_geolocation` · `0016_firmware_rollout_scheduling` · `0017_performance_indexes` · `0018_generic_files` · `0019_tags_and_presets` · `0020_user_devices_mapping` · `0021_preset_engine` · `0022_seed_vendor_ouis` · `0023_password_reset_tokens` · `0024_users_password_changed_at` · `0025_diagnostics_mappings` · `0026_mapping_value_scale_optical` · `0027_user_mfa_totp` · `0028_tenant_device_limit_and_signups` · `0029_generic_vendor_and_more_oui` · `0030_notifications` · `0031_user_oidc_subject` · `0032_billing` · `0033_menu_bugreport_transfers` · `0034_bugreport_expected_screenshot` · `0035_vendor_optictimes_zte_models` · `0036_notification_optical_alert` · `0037_device_capture` · `0038_device_faults` · `0039_virtual_parameters`
 
 ## Perintah penting
 - Go: `go vet ./...`, `go test ./...`; race + integrasi MariaDB via Docker `golang:1.26.9` (lihat `docs/pengujian/PENGUJIAN_E2E.md`).

@@ -37,6 +37,7 @@ import (
 	"acs/internal/usecase/billing"
 	"acs/internal/usecase/capture"
 	"acs/internal/usecase/fault"
+	"acs/internal/usecase/vparam"
 	"acs/internal/usecase/catalog"
 	"acs/internal/usecase/console"
 	"acs/internal/usecase/device"
@@ -232,6 +233,7 @@ func main() {
 	deviceSvc.WithCatalog(vendorRepo, tenantRepo).WithQuota(tenantQuotaRepo).WithCRTrustedCIDRs(cfg.CRTrustedCIDRs)
 	diagnosticsSvc := diagnostics.NewService(diagnosticRepo, deviceRepo, taskSvc, activityLogRepo)
 	captureSvc := capture.NewService(mysql.NewCaptureRepository(db), deviceSvc, deviceSessionRepo, activityLogRepo)
+	vparamSvc := vparam.NewService(mysql.NewVirtualParameterRepository(db), deviceSvc, deviceParamRepo, activityLogRepo)
 	faultSvc := fault.NewService(mysql.NewFaultRepository(db), activityLogRepo)
 	sessionSvc := session.NewService(deviceSessionRepo, deviceEventRepo, deviceParamRepo, deviceRepo, tenantRepo, refRepo, deviceSvc, taskSvc, provisioningSvc, firmwareSvc, diagnosticsSvc, enc, activityLogRepo, logger, webhookSvc, wsHub).WithOpticalPoll(time.Duration(cfg.OpticalPollMinutes) * time.Minute).WithPPPoEPoll(time.Duration(cfg.PPPoEPollMinutes) * time.Minute).WithFaults(faultSvc)
 	fileSvc := file.NewService(fileRepo, objStorage, activityLogRepo)
@@ -368,6 +370,7 @@ func main() {
 		Transfers:     transferSvc,
 		Capture:       captureSvc,
 		Faults:        faultSvc,
+		VParams:       vparamSvc,
 		WSHub:         wsHub,
 
 		WSAllowedOrigins: cfg.CORSAllowOrigins,

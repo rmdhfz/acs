@@ -510,3 +510,33 @@ export interface DeviceFault {
   first_seen_at: string
   last_seen_at: string
 }
+
+// Virtual parameter: nilai turunan dari parameter perangkat lewat ekspresi deklaratif (GET /virtual-parameters).
+// `id` = UUID; tenant_id null = global (semua tenant).
+export interface VirtualParameter {
+  id: string
+  tenant_id: number | null
+  name: string
+  label: string
+  description: string | null
+  expression: string
+  unit: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+// Nilai satu virtual parameter pada satu perangkat; value null = belum dapat dihitung.
+export interface VirtualValue {
+  name: string
+  label: string
+  unit: string | null
+  value: string | null
+}
+
+export interface VirtualParameterTestResult {
+  ok: boolean
+  value: string | null
+  refs: { name: string; value: string | null }[]
+  error?: { pos: number; message: string }
+}

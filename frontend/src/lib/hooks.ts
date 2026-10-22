@@ -33,6 +33,9 @@ import type {
   Vendor,
   VendorOUI,
   VendorParameterMapping,
+  VirtualParameter,
+  VirtualParameterTestResult,
+  VirtualValue,
   ZeroTouchRule,
 } from './types'
 
@@ -2197,5 +2200,73 @@ export function useDismissFault() {
   return useMutation({
     mutationFn: (id: string) => api.del<void>(`/faults/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['faults'] }),
+  })
+}
+
+// ---- Virtual parameter: nilai turunan dari parameter perangkat ----
+
+export function useVirtualParameters(tenantId?: number) {
+  return useQuery({
+    queryKey: ['virtual-parameters', tenantId ?? 0],
+    queryFn: () => api.get<ListResponse<VirtualParameter>>(`/virtual-parameters${buildQuery({ tenant_id: tenantId, page_size: 100 })}`),
+  })
+}
+
+export interface VirtualParameterInput {
+  tenant_id?: number | null
+  name: string
+  label: string
+  description?: string | null
+  expression: string
+  unit?: string | null
+  is_active?: boolean
+}
+
+export function useCreateVirtualParameter() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: VirtualParameterInput) => api.post<VirtualParameter>('/virtual-parameters', input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['virtual-parameters'] })
+      qc.invalidateQueries({ queryKey: ['device-virtual'] })
+    },
+  })
+}
+
+export function useUpdateVirtualParameter() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: Partial<Omit<VirtualParameterInput, 'tenant_id'>> }) =>
+      api.patch<VirtualParameter>(`/virtual-parameters/${id}`, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['virtual-parameters'] })
+      qc.invalidateQueries({ queryKey: ['device-virtual'] })
+    },
+  })
+}
+
+export function useDeleteVirtualParameter() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.del<void>(`/virtual-parameters/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['virtual-parameters'] })
+      qc.invalidateQueries({ queryKey: ['device-virtual'] })
+    },
+  })
+}
+
+// Coba ekspresi pada satu perangkat tanpa menyimpan; kesalahan sintaks datang sebagai hasil (ok=false), bukan galat HTTP.
+export function useTestVirtualParameter() {
+  return useMutation({
+    mutationFn: (input: { expression: string; device_id: number }) => api.post<VirtualParameterTestResult>('/virtual-parameters/test', input),
+  })
+}
+
+export function useDeviceVirtualParameters(deviceId: number) {
+  return useQuery({
+    queryKey: ['device-virtual', deviceId],
+    queryFn: () => api.get<VirtualValue[] | null>(`/devices/${deviceId}/virtual-parameters`),
+    refetchInterval: LIVE_REFRESH_MS,
   })
 }

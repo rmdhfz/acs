@@ -22,7 +22,7 @@ import (
 
 // deviceFieldKeys = kunci JSON yang boleh diminta lewat fields= (diturunkan dari bentuk respons, bukan ditulis ulang).
 var deviceFieldKeys = func() map[string]bool {
-	zero := domain.DeviceListItem{Parameters: map[string]string{"x": "y"}}
+	zero := domain.DeviceListItem{Parameters: map[string]string{"x": "y"}, Virtual: map[string]string{"x": "y"}}
 	b, _ := json.Marshal(zero)
 	var m map[string]json.RawMessage
 	_ = json.Unmarshal(b, &m)
@@ -37,16 +37,16 @@ func badRequest(format string, a ...any) error {
 	return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf(format, a...))
 }
 
-// parseDeviceQuery mengisi bagian query bebas dari filter dan mengembalikan daftar fields= (kosong = semua kunci).
-func parseDeviceQuery(c *echo.Context, f *domain.DeviceFilter) ([]string, error) {
+// parseDeviceQuery mengisi bagian query bebas dari filter; mengembalikan daftar fields= dan vparams= (kosong = tidak diminta).
+func parseDeviceQuery(c *echo.Context, f *domain.DeviceFilter) (fields, vparams []string, err error) {
 	raws := c.QueryParams()["param"]
 	if len(raws) > domain.MaxParamConds {
-		return nil, badRequest("maksimal %d kondisi param per permintaan", domain.MaxParamConds)
+		return nil, nil, badRequest("maksimal %d kondisi param per permintaan", domain.MaxParamConds)
 	}
 	for _, raw := range raws {
-		cond, err := domain.ParseParamCond(raw)
-		if err != nil {
-			return nil, badRequest("%s", strings.TrimPrefix(err.Error(), domain.ErrInvalidInput.Error()+": "))
+		cond, perr := domain.ParseParamCond(raw)
+		if perr != nil {
+			return nil, nil, badRequest("%s", strings.TrimPrefix(perr.Error(), domain.ErrInvalidInput.Error()+": "))
 		}
 		f.Params = append(f.Params, cond)
 	}
@@ -54,38 +54,51 @@ func parseDeviceQuery(c *echo.Context, f *domain.DeviceFilter) ([]string, error)
 	if v := c.QueryParam("params"); v != "" {
 		names := splitList(v)
 		if len(names) > domain.MaxProjectParams {
-			return nil, badRequest("maksimal %d nama pada params", domain.MaxProjectParams)
+			return nil, nil, badRequest("maksimal %d nama pada params", domain.MaxProjectParams)
 		}
 		for _, n := range names {
 			if !domain.ValidParamName(n) {
-				return nil, badRequest("nama parameter tidak valid pada params: %q", n)
+				return nil, nil, badRequest("nama parameter tidak valid pada params: %q", n)
 			}
 		}
 		f.ProjectParams = names
 	}
 
-	var err error
-	if f.Sort, f.SortDesc, err = domain.ParseSort(c.QueryParam("sort")); err != nil {
-		return nil, badRequest("%s", strings.TrimPrefix(err.Error(), domain.ErrInvalidInput.Error()+": "))
-	}
-	if f.InformBefore, err = queryTime(c, "last_inform_before"); err != nil {
-		return nil, err
-	}
-	if f.InformAfter, err = queryTime(c, "last_inform_after"); err != nil {
-		return nil, err
+	if v := c.QueryParam("vparams"); v != "" {
+		vparams = splitList(v)
+		if len(vparams) > maxVParamProjection {
+			return nil, nil, badRequest("maksimal %d nama pada vparams", maxVParamProjection)
+		}
+		for _, n := range vparams {
+			if !domain.ValidVParamName(n) {
+				return nil, nil, badRequest("nama virtual parameter tidak valid pada vparams: %q", n)
+			}
+		}
 	}
 
-	var fields []string
+	if f.Sort, f.SortDesc, err = domain.ParseSort(c.QueryParam("sort")); err != nil {
+		return nil, nil, badRequest("%s", strings.TrimPrefix(err.Error(), domain.ErrInvalidInput.Error()+": "))
+	}
+	if f.InformBefore, err = queryTime(c, "last_inform_before"); err != nil {
+		return nil, nil, err
+	}
+	if f.InformAfter, err = queryTime(c, "last_inform_after"); err != nil {
+		return nil, nil, err
+	}
+
 	if v := c.QueryParam("fields"); v != "" {
 		fields = splitList(v)
 		for _, k := range fields {
 			if !deviceFieldKeys[k] {
-				return nil, badRequest("fields berisi kunci tidak dikenal: %q", k)
+				return nil, nil, badRequest("fields berisi kunci tidak dikenal: %q", k)
 			}
 		}
 	}
-	return fields, nil
+	return fields, vparams, nil
 }
+
+// maxVParamProjection membatasi jumlah virtual parameter per permintaan daftar (biaya evaluasi dikali ukuran halaman).
+const maxVParamProjection = 10
 
 func splitList(s string) []string {
 	var out []string

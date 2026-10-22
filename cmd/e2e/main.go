@@ -139,6 +139,7 @@ func main() {
 		{"S29-capture-sesi", scenarioCapture},
 		{"S31-faults", scenarioFaults},
 		{"S32-query-perangkat", scenarioDeviceQuery},
+		{"S33-virtual-parameter", scenarioVirtualParameter},
 	}
 
 	var results []result
