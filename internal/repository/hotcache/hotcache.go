@@ -146,3 +146,46 @@ func (r *presets) Delete(ctx context.Context, id uint64) error {
 	defer r.cache.clear()
 	return r.PresetRepository.Delete(ctx, id)
 }
+
+// ---- Aturan otomasi ----
+
+type automationRules struct {
+	domain.AutomationRuleRepository
+	cache *ttlMap[[]domain.AutomationRule]
+}
+
+// WrapAutomationRules men-cache ListActive (dibaca pada SETIAP Inform; tenant tanpa aturan = nol query DB). Kunci = tenant.
+// ttl <= 0 mengembalikan repo asli.
+func WrapAutomationRules(inner domain.AutomationRuleRepository, ttl time.Duration) domain.AutomationRuleRepository {
+	if ttl <= 0 {
+		return inner
+	}
+	return &automationRules{AutomationRuleRepository: inner, cache: newTTLMap[[]domain.AutomationRule](ttl)}
+}
+
+func (r *automationRules) ListActive(ctx context.Context, tenantID uint64) ([]domain.AutomationRule, error) {
+	if v, ok := r.cache.get(tenantID); ok {
+		return append([]domain.AutomationRule(nil), v...), nil
+	}
+	v, err := r.AutomationRuleRepository.ListActive(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	r.cache.put(tenantID, append([]domain.AutomationRule(nil), v...))
+	return v, nil
+}
+
+func (r *automationRules) Create(ctx context.Context, x *domain.AutomationRule, by *uint64) error {
+	defer r.cache.clear()
+	return r.AutomationRuleRepository.Create(ctx, x, by)
+}
+
+func (r *automationRules) Update(ctx context.Context, x *domain.AutomationRule, by *uint64) error {
+	defer r.cache.clear()
+	return r.AutomationRuleRepository.Update(ctx, x, by)
+}
+
+func (r *automationRules) SoftDelete(ctx context.Context, id, by uint64) error {
+	defer r.cache.clear()
+	return r.AutomationRuleRepository.SoftDelete(ctx, id, by)
+}

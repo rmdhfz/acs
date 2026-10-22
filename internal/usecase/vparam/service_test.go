@@ -381,3 +381,16 @@ func TestTest_HasilDanKesalahan(t *testing.T) {
 		t.Errorf("perangkat tak ada harus ErrNotFound: %v", err)
 	}
 }
+
+// Variabel konteks {@...} hanya disuplai aturan otomasi; di virtual parameter selalu null, jadi ditolak (bukan diam-diam kosong).
+func TestVirtualParameter_MenolakVariabelKonteks(t *testing.T) {
+	s, _, _ := newSvc()
+	ctx := context.Background()
+	if _, err := s.Create(ctx, adminA, Input{Name: "ctx", Label: "x", Expression: "{@serial_number}"}); !errors.Is(err, domain.ErrInvalidInput) {
+		t.Errorf("Create harus menolak {@...}: %v", err)
+	}
+	res, err := s.Test(ctx, adminA, "{@serial_number}", 1)
+	if err != nil || res.OK || res.Error == nil || !strings.Contains(res.Error.Message, "aturan otomasi") {
+		t.Errorf("Test harus menjelaskan: %+v %v", res, err)
+	}
+}

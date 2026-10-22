@@ -213,3 +213,31 @@ func TestHugeNumbersDoNotOverflow(t *testing.T) {
 		t.Errorf("substr dengan panjang raksasa = %q, want bcdef", got)
 	}
 }
+
+// Variabel konteks {@nama}: disuplai pemanggil lewat getter yang sama; bukan parameter TR-069.
+func TestContextRefs(t *testing.T) {
+	p := map[string]string{"@serial_number": "ZTEGABC123", "@events": "1 BOOT,2 PERIODIC", "Device.UpTime": "10"}
+	cases := []struct{ src, want string }{
+		{"{@serial_number}", "ZTEGABC123"},
+		{"startswith({@serial_number}, 'zte')", "1"},
+		{"contains({@events}, '1 BOOT') and {Device.UpTime} < 60", "1"},
+		{"{@tidak_ada} == 1", "0"},
+	}
+	for _, c := range cases {
+		if got := eval(t, c.src, p).String(); got != c.want {
+			t.Errorf("%s = %q, want %q", c.src, got, c.want)
+		}
+	}
+	e, err := Parse("{@serial_number} + {Device.UpTime}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !IsContextRef(e.Refs()[0]) || IsContextRef(e.Refs()[1]) {
+		t.Errorf("IsContextRef salah: %v", e.Refs())
+	}
+	for _, bad := range []string{"{@}", "{@1x}", "{@Besar}", "{@a-b}", "{@a.b}"} {
+		if _, err := Parse(bad); err == nil {
+			t.Errorf("%q harus ditolak", bad)
+		}
+	}
+}

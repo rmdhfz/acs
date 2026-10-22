@@ -540,3 +540,53 @@ export interface VirtualParameterTestResult {
   refs: { name: string; value: string | null }[]
   error?: { pos: number; message: string }
 }
+
+// Aturan otomasi kondisi-aksi (GET /automation-rules). `id` = UUID aturan.
+export type AutomationActionType = 'set_parameter' | 'reboot' | 'get_parameter_values' | 'add_tag' | 'webhook'
+export type AutomationTrigger = 'BOOTSTRAP_ONLY' | 'BOOTSTRAP_OR_BOOT' | 'EVERY_INFORM'
+
+export interface AutomationAction {
+  type: AutomationActionType
+  name?: string
+  value?: string
+  names?: string[]
+  tag_id?: number
+}
+
+export interface AutomationRule {
+  id: string
+  tenant_id: number
+  name: string
+  description: string | null
+  trigger_event: AutomationTrigger
+  condition: string
+  actions: AutomationAction[]
+  cooldown_seconds: number
+  max_consecutive_fires: number
+  priority: number
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface AutomationRun {
+  id: string
+  rule_id: string
+  rule_name: string
+  device_id: number
+  device_serial: string
+  fired: boolean
+  suspended: boolean
+  summary: string
+  error: string | null
+  created_at: string
+}
+
+export interface AutomationTestResult {
+  ok: boolean
+  matched: boolean
+  would_fire: boolean
+  refs: { name: string; value: string | null }[]
+  steps: { type: string; detail: string; path?: string; value?: string | null; current?: string | null; change: boolean; skip?: string }[]
+  error?: string
+}

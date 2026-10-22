@@ -32,6 +32,11 @@ import type {
   User,
   Vendor,
   VendorOUI,
+  AutomationRule,
+  AutomationRun,
+  AutomationTestResult,
+  AutomationAction,
+  AutomationTrigger,
   VendorParameterMapping,
   VirtualParameter,
   VirtualParameterTestResult,
@@ -2268,5 +2273,76 @@ export function useDeviceVirtualParameters(deviceId: number) {
     queryKey: ['device-virtual', deviceId],
     queryFn: () => api.get<VirtualValue[] | null>(`/devices/${deviceId}/virtual-parameters`),
     refetchInterval: LIVE_REFRESH_MS,
+  })
+}
+
+// ---- Aturan otomasi kondisi-aksi ----
+
+export function useAutomationRules() {
+  return useQuery({
+    queryKey: ['automation-rules'],
+    queryFn: () => api.get<ListResponse<AutomationRule>>(`/automation-rules${buildQuery({ page_size: 100 })}`),
+  })
+}
+
+export interface AutomationRuleInput {
+  name: string
+  description?: string | null
+  trigger_event: AutomationTrigger
+  condition: string
+  actions: AutomationAction[]
+  cooldown_seconds?: number
+  max_consecutive_fires?: number
+  priority?: number
+  is_active?: boolean
+}
+
+export function useCreateAutomationRule() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: AutomationRuleInput) => api.post<AutomationRule>('/automation-rules', input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['automation-rules'] }),
+  })
+}
+
+export function useUpdateAutomationRule() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: Partial<AutomationRuleInput> }) => api.patch<AutomationRule>(`/automation-rules/${id}`, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['automation-rules'] }),
+  })
+}
+
+export function useDeleteAutomationRule() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.del<void>(`/automation-rules/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['automation-rules'] }),
+  })
+}
+
+// Buka kembali aturan yang di-suspend (semua perangkat, atau satu bila deviceId diberikan).
+export function useResetAutomationRule() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, deviceId }: { id: string; deviceId?: number }) =>
+      api.post<{ reset: number }>(`/automation-rules/${id}/reset${buildQuery({ device_id: deviceId })}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['automation-runs'] }),
+  })
+}
+
+// Coba kondisi + rencana aksi pada satu perangkat tanpa mengeksekusi apa pun.
+export function useTestAutomationRule() {
+  return useMutation({
+    mutationFn: (input: { condition: string; actions: AutomationAction[]; device_id: number; events?: string[] }) =>
+      api.post<AutomationTestResult>('/automation-rules/test', input),
+  })
+}
+
+export function useAutomationRuns(ruleId: string | undefined) {
+  return useQuery({
+    queryKey: ['automation-runs', ruleId ?? ''],
+    queryFn: () => api.get<ListResponse<AutomationRun>>(`/automation-runs${buildQuery({ rule_uuid: ruleId, page_size: 50 })}`),
+    enabled: !!ruleId,
   })
 }

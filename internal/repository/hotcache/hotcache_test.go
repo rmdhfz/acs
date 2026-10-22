@@ -108,3 +108,37 @@ func TestPresets_CachesAndInvalidatesOnUpdate(t *testing.T) {
 		t.Fatalf("setelah Update harus query ulang, calls=%d", inner.calls)
 	}
 }
+
+type fakeAutomation struct {
+	domain.AutomationRuleRepository
+	calls int
+}
+
+func (f *fakeAutomation) ListActive(context.Context, uint64) ([]domain.AutomationRule, error) {
+	f.calls++
+	return []domain.AutomationRule{{Name: "r"}}, nil
+}
+func (f *fakeAutomation) Update(context.Context, *domain.AutomationRule, *uint64) error { return nil }
+
+func TestAutomationRules_CachesPerTenantAndInvalidates(t *testing.T) {
+	inner := &fakeAutomation{}
+	repo := WrapAutomationRules(inner, time.Minute)
+	ctx := context.Background()
+	_, _ = repo.ListActive(ctx, 7)
+	_, _ = repo.ListActive(ctx, 7)
+	if inner.calls != 1 {
+		t.Fatalf("calls=%d, harus 1 selama TTL", inner.calls)
+	}
+	_, _ = repo.ListActive(ctx, 8)
+	if inner.calls != 2 {
+		t.Fatalf("tenant lain harus query sendiri, calls=%d", inner.calls)
+	}
+	_ = repo.Update(ctx, &domain.AutomationRule{}, nil)
+	_, _ = repo.ListActive(ctx, 7)
+	if inner.calls != 3 {
+		t.Fatalf("setelah Update harus query ulang, calls=%d", inner.calls)
+	}
+	if WrapAutomationRules(inner, 0) != domain.AutomationRuleRepository(inner) {
+		t.Fatal("ttl 0 harus mengembalikan repo asli")
+	}
+}

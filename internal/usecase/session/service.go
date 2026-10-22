@@ -38,6 +38,8 @@ type Service struct {
 	notifier domain.Notifier
 	// faults — resource faults (opsional, WithFaults); diakses lewat guard nil.
 	faults FaultRecorder
+	// automation — aturan otomasi kondisi-aksi (opsional, WithAutomation); diakses lewat guard nil.
+	automation AutomationEvaluator
 	// pppoePollEvery — interval penyegaran username PPPoE (0 = nonaktif); pppoeNext = device id -> waktu poll berikutnya
 	// (di memori: setelah restart tiap device disegarkan sekali pada Inform pertamanya, lalu berkala).
 	pppoePollEvery time.Duration
@@ -349,6 +351,17 @@ func (s *Service) HandleInform(ctx context.Context, in InformInput) (*InformResu
 	// menggagalkan Inform (FR-15, pola sama ZTP).
 	if err := s.provisioningSvc.EvaluatePresets(ctx, systemActor, dev); err != nil {
 		s.log().Warn("cwmp: evaluasi preset gagal", "device_id", dev.ID, "error", err)
+	}
+
+	// Aturan otomasi kondisi-aksi (migrations/0040) — SETELAH ZTP & preset. Gagal TIDAK menggagalkan Inform (FR-15).
+	if s.automation != nil {
+		codes := make([]string, 0, len(in.Events))
+		for _, ev := range in.Events {
+			codes = append(codes, ev.EventCode)
+		}
+		if err := s.automation.Evaluate(ctx, dev, codes); err != nil {
+			s.log().Warn("cwmp: evaluasi aturan otomasi gagal", "device_id", dev.ID, "error", err)
+		}
 	}
 
 	// Dynamic Parameter Auto-Discovery (ROADMAP.md Fase 5)
@@ -693,6 +706,17 @@ func (s *Service) WithNotifier(n domain.Notifier) *Service {
 type FaultRecorder interface {
 	Record(ctx context.Context, deviceID uint64, taskID *uint64, rpcMethod, code, message string) error
 	Resolve(ctx context.Context, deviceID uint64, rpcMethod string) error
+}
+
+// AutomationEvaluator mengevaluasi aturan otomasi tenant pada tiap Inform (usecase/automation.Service; migrations/0040).
+type AutomationEvaluator interface {
+	Evaluate(ctx context.Context, dev *domain.Device, events []string) error
+}
+
+// WithAutomation memasang engine aturan otomasi; nil = tidak ada otomasi.
+func (s *Service) WithAutomation(a AutomationEvaluator) *Service {
+	s.automation = a
+	return s
 }
 
 // WithFaults memasang pencatatan resource faults; nil = fault hanya menggagalkan task & memicu webhook seperti sebelumnya.

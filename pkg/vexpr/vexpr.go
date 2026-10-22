@@ -93,6 +93,9 @@ func (v Value) asNum() (float64, bool) {
 	return 0, false
 }
 
+// Truthy: null, 0, "", "0", "false" = salah; selain itu benar (dipakai sebagai hasil kondisi).
+func (v Value) Truthy() bool { return v.truthy() }
+
 func (v Value) truthy() bool {
 	switch v.kind {
 	case 'n':
@@ -260,9 +263,25 @@ func lex(src string) ([]token, error) {
 	return toks, nil
 }
 
+// IsContextRef: rujukan berawalan '@' (mis. {@serial_number}) = variabel konteks yang disuplai pemanggil (atribut perangkat,
+// event sesi), BUKAN parameter TR-069. Pemanggil yang tidak menyuplainya (virtual parameter) memperlakukannya null.
+func IsContextRef(name string) bool { return strings.HasPrefix(name, "@") }
+
 func validRefName(s string) bool {
 	if s == "" || len(s) > 256 {
 		return false
+	}
+	if IsContextRef(s) { // @nama: huruf kecil, angka, underscore
+		s = s[1:]
+		if s == "" || s[0] >= '0' && s[0] <= '9' {
+			return false
+		}
+		for _, r := range s {
+			if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '_') {
+				return false
+			}
+		}
+		return true
 	}
 	for _, r := range s {
 		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '_' || r == '-') {

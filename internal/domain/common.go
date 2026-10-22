@@ -197,6 +197,8 @@ const (
 	WebhookEventDeviceFault          = "DEVICE_FAULT"
 	WebhookEventParameterValueChange = "PARAMETER_VALUE_CHANGE"
 	WebhookEventTaskFailed           = "TASK_FAILED"
+	// Aturan otomasi memicu aksi pada perangkat (aksi webhook; migrations/0040).
+	WebhookEventAutomationTriggered = "AUTOMATION_TRIGGERED"
 )
 
 // RefRepository adalah akses generik ke tabel ref_* — menghindari 9 repository

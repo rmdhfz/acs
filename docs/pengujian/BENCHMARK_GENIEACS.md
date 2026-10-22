@@ -105,7 +105,7 @@ query bebas dengan `projection`/`query` pada `/devices` bekerja; UI di port 3000
 | Tab WiFi, dashboard optik/suhu/uptime, retry task, "Refresh ONT", capture sesi + redaksi rahasia | ✅ | ❌ (UI generik) |
 | Katalog vendor/path sebagai data, enkripsi rahasia task | ✅ | ⚠️ lewat skrip/provision |
 | **Virtual parameter** (nilai turunan dari parameter perangkat) | ✅ (22 Okt 2026: ekspresi deklaratif `pkg/vexpr`, bukan skrip; per tenant + global; UI + `vparams=`) | ✅ |
-| Provision berskrip (JavaScript) | ❌ (sengaja: auditability; engine kondisi–aksi menunggu keputusan) | ✅ |
+| Provision berskrip (JavaScript) | ⚠️ (22 Okt 2026: **aturan otomasi kondisi–aksi** deklaratif, bukan skrip bebas — `pkg/vexpr`, aksi tertutup, cooldown/suspend/pagar task tertunda, dry-run, riwayat; lihat `docs/arsitektur/OTOMASI_DESIGN.md`) | ✅ (JavaScript) |
 | Query perangkat bebas + proyeksi + sort | ✅ (22 Okt 2026: `param=` eq/ne/like/prefix/gt/ge/lt/le/exists/missing, `params=`, `fields=`, `sort=`, `last_inform_before/after`; tertutup & ter-bind) | ✅ |
 | Resource `faults` tersendiri | ✅ (22 Okt 2026: `GET/DELETE /faults`, UI Fault) | ✅ |
 | Kematangan lintas firmware, skala produksi | ❌ baru 3 ONT fisik | ✅ bertahun-tahun |

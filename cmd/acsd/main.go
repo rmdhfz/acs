@@ -34,14 +34,14 @@ import (
 	"acs/internal/repository/mysql"
 	"acs/internal/repository/redisrepo"
 	"acs/internal/usecase/auth"
+	"acs/internal/usecase/automation"
 	"acs/internal/usecase/billing"
 	"acs/internal/usecase/capture"
-	"acs/internal/usecase/fault"
-	"acs/internal/usecase/vparam"
 	"acs/internal/usecase/catalog"
 	"acs/internal/usecase/console"
 	"acs/internal/usecase/device"
 	"acs/internal/usecase/diagnostics"
+	"acs/internal/usecase/fault"
 	"acs/internal/usecase/file"
 	"acs/internal/usecase/firmware"
 	"acs/internal/usecase/iam"
@@ -56,6 +56,7 @@ import (
 	"acs/internal/usecase/tag"
 	"acs/internal/usecase/task"
 	"acs/internal/usecase/usp_session"
+	"acs/internal/usecase/vparam"
 	"acs/internal/usecase/webhook"
 	"acs/pkg/cryptoutil"
 	"acs/pkg/mailer"
@@ -234,8 +235,10 @@ func main() {
 	diagnosticsSvc := diagnostics.NewService(diagnosticRepo, deviceRepo, taskSvc, activityLogRepo)
 	captureSvc := capture.NewService(mysql.NewCaptureRepository(db), deviceSvc, deviceSessionRepo, activityLogRepo)
 	vparamSvc := vparam.NewService(mysql.NewVirtualParameterRepository(db), deviceSvc, deviceParamRepo, activityLogRepo)
+	automationSvc := automation.NewService(hotcache.WrapAutomationRules(mysql.NewAutomationRuleRepository(db), informConfigCacheTTL),
+		mysql.NewAutomationStateRepository(db), mysql.NewAutomationRunRepository(db), deviceSvc, deviceParamRepo, taskSvc, tagRepo, webhookSvc, activityLogRepo)
 	faultSvc := fault.NewService(mysql.NewFaultRepository(db), activityLogRepo)
-	sessionSvc := session.NewService(deviceSessionRepo, deviceEventRepo, deviceParamRepo, deviceRepo, tenantRepo, refRepo, deviceSvc, taskSvc, provisioningSvc, firmwareSvc, diagnosticsSvc, enc, activityLogRepo, logger, webhookSvc, wsHub).WithOpticalPoll(time.Duration(cfg.OpticalPollMinutes) * time.Minute).WithPPPoEPoll(time.Duration(cfg.PPPoEPollMinutes) * time.Minute).WithFaults(faultSvc)
+	sessionSvc := session.NewService(deviceSessionRepo, deviceEventRepo, deviceParamRepo, deviceRepo, tenantRepo, refRepo, deviceSvc, taskSvc, provisioningSvc, firmwareSvc, diagnosticsSvc, enc, activityLogRepo, logger, webhookSvc, wsHub).WithOpticalPoll(time.Duration(cfg.OpticalPollMinutes) * time.Minute).WithPPPoEPoll(time.Duration(cfg.PPPoEPollMinutes) * time.Minute).WithFaults(faultSvc).WithAutomation(automationSvc)
 	fileSvc := file.NewService(fileRepo, objStorage, activityLogRepo)
 	tagSvc := tag.NewService(tagRepo, activityLogRepo)
 	presetSvc := preset.NewService(presetRepo, activityLogRepo)
@@ -371,6 +374,7 @@ func main() {
 		Capture:       captureSvc,
 		Faults:        faultSvc,
 		VParams:       vparamSvc,
+		Automation:    automationSvc,
 		WSHub:         wsHub,
 
 		WSAllowedOrigins: cfg.CORSAllowOrigins,

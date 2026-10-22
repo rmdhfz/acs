@@ -12,14 +12,14 @@ import (
 	"acs/internal/delivery/ws"
 	"acs/internal/domain"
 	"acs/internal/usecase/auth"
+	"acs/internal/usecase/automation"
 	"acs/internal/usecase/billing"
 	"acs/internal/usecase/capture"
-	"acs/internal/usecase/fault"
-	"acs/internal/usecase/vparam"
 	"acs/internal/usecase/catalog"
 	"acs/internal/usecase/console"
 	"acs/internal/usecase/device"
 	"acs/internal/usecase/diagnostics"
+	"acs/internal/usecase/fault"
 	"acs/internal/usecase/file"
 	"acs/internal/usecase/firmware"
 	"acs/internal/usecase/iam"
@@ -32,6 +32,7 @@ import (
 	"acs/internal/usecase/signup"
 	"acs/internal/usecase/tag"
 	"acs/internal/usecase/task"
+	"acs/internal/usecase/vparam"
 	"acs/internal/usecase/webhook"
 )
 
@@ -81,7 +82,9 @@ type Router struct {
 	Faults *fault.Service
 	// Virtual parameter (migrations/0039): ekspresi turunan per tenant; nil = rute tidak dipasang.
 	VParams *vparam.Service
-	WSHub     *ws.Hub
+	// Aturan otomasi kondisi-aksi (migrations/0040); nil = rute tidak dipasang.
+	Automation *automation.Service
+	WSHub      *ws.Hub
 	// WSAllowedOrigins = origin Console yang boleh membuka WebSocket (sama
 	// dengan ACS_CORS_ALLOW_ORIGINS).
 	WSAllowedOrigins []string
@@ -248,6 +251,17 @@ func (r *Router) Register(e *echo.Echo) {
 		authed.DELETE("/faults/:uuid", r.dismissFault, RequireRoles(adminOrNOC...))
 	}
 
+	if r.Automation != nil {
+		// Otomasi: baca (aturan & riwayat) ADMIN/NOC; mutasi, uji, dan reset ADMIN. Rute statis /test didaftarkan sebelum /:uuid.
+		authed.GET("/automation-rules", r.listAutomationRules, RequireRoles(adminOrNOC...))
+		authed.POST("/automation-rules/test", r.testAutomationRule, RequireRoles(admin...))
+		authed.GET("/automation-rules/:uuid", r.getAutomationRule, RequireRoles(adminOrNOC...))
+		authed.POST("/automation-rules", r.createAutomationRule, RequireRoles(admin...))
+		authed.PATCH("/automation-rules/:uuid", r.updateAutomationRule, RequireRoles(admin...))
+		authed.DELETE("/automation-rules/:uuid", r.deleteAutomationRule, RequireRoles(admin...))
+		authed.POST("/automation-rules/:uuid/reset", r.resetAutomationRule, RequireRoles(admin...))
+		authed.GET("/automation-runs", r.listAutomationRuns, RequireRoles(adminOrNOC...))
+	}
 	if r.VParams != nil {
 		// Virtual parameter: baca untuk semua peran staf (scope tenant di usecase); definisi & uji ekspresi ADMIN. Rute statis /test
 		// didaftarkan sebelum /:uuid.

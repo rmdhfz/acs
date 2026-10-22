@@ -140,6 +140,7 @@ func main() {
 		{"S31-faults", scenarioFaults},
 		{"S32-query-perangkat", scenarioDeviceQuery},
 		{"S33-virtual-parameter", scenarioVirtualParameter},
+		{"S34-aturan-otomasi", scenarioAutomation},
 	}
 
 	var results []result

@@ -179,6 +179,7 @@ const EXCEPTIONS = new Map([
 const REVIEWED_UNUSED = new Map([
   // Kosong: seluruh endpoint relevan kini dipakai UI (detail task/webhook/rollout/perangkat portal, unduh CSV, baca atribut).
   // Isi hanya dengan alasan nyata hasil tinjauan.
+  ['GET /automation-rules/:p', 'daftar /automation-rules sudah membawa seluruh definisi dan editor memuat dari baris daftar; detail untuk integrasi/BSS'],
   ['GET /virtual-parameters/:p', 'daftar /virtual-parameters sudah membawa seluruh definisi dan editor memuat dari baris daftar; detail untuk integrasi/BSS'],
   ['GET /faults/:p', 'daftar /faults sudah membawa semua field fault; halaman tidak punya tampilan detail yang butuh fetch terpisah (endpoint untuk integrasi/BSS)'],
 ])

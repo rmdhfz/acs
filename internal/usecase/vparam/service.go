@@ -69,6 +69,9 @@ func validateExpression(expr string) (*vexpr.Expr, error) {
 		return nil, fmt.Errorf("%w: ekspresi tidak valid — %s", domain.ErrInvalidInput, err.Error())
 	}
 	for _, ref := range e.Refs() {
+		if vexpr.IsContextRef(ref) {
+			return nil, fmt.Errorf("%w: variabel konteks %s hanya tersedia di aturan otomasi, bukan virtual parameter", domain.ErrInvalidInput, ref)
+		}
 		if domain.IsSensitiveParamName(ref) {
 			return nil, fmt.Errorf("%w: ekspresi tidak boleh merujuk parameter rahasia (%s)", domain.ErrInvalidInput, ref)
 		}
@@ -420,6 +423,9 @@ func (s *Service) Test(ctx context.Context, actor domain.Actor, expression strin
 		return &TestResult{Error: &TestError{Message: perr.Error()}}, nil
 	}
 	for _, r := range e.Refs() {
+		if vexpr.IsContextRef(r) {
+			return &TestResult{Error: &TestError{Message: "variabel konteks " + r + " hanya tersedia di aturan otomasi"}}, nil
+		}
 		if domain.IsSensitiveParamName(r) {
 			return &TestResult{Error: &TestError{Message: "ekspresi tidak boleh merujuk parameter rahasia (" + r + ")"}}, nil
 		}

@@ -114,6 +114,8 @@ tags:
     description: Inventory CPE (ONT/ONU/router) — status, parameter TR-069, event, metrik optik, aktivitas.
   - name: Tasks
     description: Antrean RPC CWMP (GetParameterValues, SetParameterValues, Reboot, Download, dst.).
+  - name: Automation
+    description: Aturan otomasi kondisi-aksi per tenant (ekspresi deklaratif pkg/vexpr, aksi tertutup, pagar anti-badai) — padanan provision berskrip GenieACS tanpa skrip.
   - name: VirtualParameters
     description: Nilai turunan (ekspresi deklaratif pkg/vexpr) yang dihitung dari parameter perangkat — padanan virtual parameter GenieACS tanpa skrip.
   - name: Faults
@@ -2629,6 +2631,318 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   # ============================== TASKS ==============================
+  /automation-rules:
+    get:
+      operationId: listAutomationRules
+      tags: [Automation]
+      summary: Daftar aturan otomasi kondisi-aksi
+      description: "ADMIN/NOC/SUPERADMIN. Non-SUPERADMIN hanya melihat aturan tenant sendiri (`tenant_id` pada query hanya efektif untuk SUPERADMIN)."
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/tenantIdQuery'
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: Daftar aturan (urut priority).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AutomationRuleListResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Peran tidak cukup, atau akun non-SUPERADMIN tanpa tenant.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+    post:
+      operationId: createAutomationRule
+      tags: [Automation]
+      summary: Buat aturan otomasi ("jika kondisi maka aksi")
+      description: |
+        ADMIN/SUPERADMIN. Jawaban atas provision berskrip GenieACS **tanpa skrip**: kondisi memakai ekspresi deklaratif (`pkg/vexpr`)
+        atas parameter perangkat, atribut perangkat, dan event sesi; aksi dari daftar tertutup. Dievaluasi pada setiap Inform sesuai
+        `trigger_event` (sama dengan ZTP: BOOTSTRAP_ONLY, BOOTSTRAP_OR_BOOT, EVERY_INFORM). Aturan selalu milik satu tenant
+        (SUPERADMIN wajib mengisi `tenant_id`; ADMIN selalu tenant sendiri).
+
+        **Variabel konteks** pada ekspresi: `{@serial_number}`, `{@oui}`, `{@product_class}`, `{@software_version}`,
+        `{@hardware_version}`, `{@ip_address}`, `{@events}` (kode event Inform dipisah koma). Parameter dirujuk `{Nama.Parameter}`.
+
+        **Aksi** (maks 10): `set_parameter` (`name` logical key/raw path + `value` EKSPRESI; teks literal ditulis `'dalam kutip'`),
+        `reboot`, `get_parameter_values` (`names`, maks 20), `add_tag` (`tag_id` milik tenant), `webhook` (event
+        `AUTOMATION_TRIGGERED`). `set_parameter` yang nilainya sudah sama dan `add_tag` yang sudah terpasang tidak memicu apa pun (konvergen).
+        Parameter **rahasia** (password/passphrase/PSK) ditolak sebagai rujukan maupun target — pakai provisioning profile.
+
+        **Pagar anti-badai**: cooldown per (aturan, perangkat) (`cooldown_seconds`, min 300); aturan di-**suspend** untuk perangkat
+        setelah `max_consecutive_fires` pemicuan berturut-turut tanpa kondisi pernah salah/konvergen (reset lewat
+        `POST /automation-rules/{uuid}/reset`); perangkat dengan task tertunda tidak dipicu. Maks 50 aturan per tenant.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AutomationRuleRequest' }
+      responses:
+        '201':
+          description: Dibuat.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AutomationRule' }
+        '400':
+          description: Isi tidak valid (sintaks ekspresi, variabel konteks, rujukan/target rahasia, aksi, tag, trigger, cooldown, batas).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Bukan ADMIN/SUPERADMIN, atau akun tanpa tenant.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: Nama aturan sudah dipakai di tenant ini.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /automation-rules/test:
+    post:
+      operationId: testAutomationRule
+      tags: [Automation]
+      summary: Coba kondisi + rencana aksi pada satu perangkat tanpa mengeksekusi apa pun
+      description: "ADMIN/SUPERADMIN. Menghitung apakah kondisi benar dan aksi apa yang AKAN dijalankan (nilai target, nilai saat ini, perlu diubah atau tidak) — tidak mengantre task, tidak menyimpan state/riwayat. Cooldown dan pagar perangkat tidak dihitung. Kesalahan definisi dikembalikan sebagai hasil (`ok: false` + `error`). `events` opsional mensimulasikan `{@events}`. Perangkat harus milik tenant pemanggil."
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AutomationTestRequest' }
+      responses:
+        '200':
+          description: Hasil uji.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AutomationTestResult' }
+        '400':
+          description: device_id kosong, panjang melebihi batas, atau events lebih dari 10.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Bukan ADMIN/SUPERADMIN, atau perangkat milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Perangkat tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /automation-rules/{uuid}:
+    get:
+      operationId: getAutomationRule
+      tags: [Automation]
+      summary: Detail aturan otomasi
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          schema: { type: string, maxLength: 36 }
+      responses:
+        '200':
+          description: Aturan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AutomationRule' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Peran tidak cukup atau aturan milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+    patch:
+      operationId: updateAutomationRule
+      tags: [Automation]
+      summary: Ubah aturan (partial)
+      description: "ADMIN/SUPERADMIN pada aturan tenant sendiri. Semua validasi POST berlaku ulang pada bagian yang diubah."
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          schema: { type: string, maxLength: 36 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AutomationRulePatch' }
+      responses:
+        '200':
+          description: Aturan setelah diubah.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AutomationRule' }
+        '400':
+          description: Isi tidak valid (lihat POST).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Bukan ADMIN/SUPERADMIN atau aturan milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: Nama sudah dipakai.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+    delete:
+      operationId: deleteAutomationRule
+      tags: [Automation]
+      summary: Hapus aturan (soft delete)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          schema: { type: string, maxLength: 36 }
+      responses:
+        '204':
+          description: Dihapus.
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Bukan ADMIN/SUPERADMIN atau aturan milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /automation-rules/{uuid}/reset:
+    post:
+      operationId: resetAutomationRule
+      tags: [Automation]
+      summary: Buka kembali aturan yang di-suspend
+      description: "ADMIN/SUPERADMIN. Tanpa `device_id` = semua perangkat; dengan `device_id` = satu perangkat (harus milik tenant pemanggil). Menolkan hitungan pemicuan berturut-turut. Dicatat di audit trail."
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          schema: { type: string, maxLength: 36 }
+        - name: device_id
+          in: query
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: Jumlah perangkat yang dibuka.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reset: { type: integer }
+                required: [reset]
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Bukan ADMIN/SUPERADMIN, aturan atau perangkat milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Aturan atau perangkat tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /automation-runs:
+    get:
+      operationId: listAutomationRuns
+      tags: [Automation]
+      summary: Riwayat pemicuan aturan otomasi (terbaru dulu)
+      description: "ADMIN/NOC/SUPERADMIN, dibatasi ke tenant sendiri. Memuat pemicuan yang berhasil mengantre aksi, yang gagal, dan yang membuat aturan di-suspend. Dipangkas setelah 30 hari. Ringkasan aksi tidak pernah memuat nilai rahasia."
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: rule_uuid
+          in: query
+          description: "Filter satu aturan (UUID)."
+          schema: { type: string, maxLength: 36 }
+        - name: device_id
+          in: query
+          schema: { type: integer, format: int64 }
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: Riwayat.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AutomationRunListResponse' }
+        '400':
+          description: rule_uuid kepanjangan atau device_id bukan angka.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Peran tidak cukup, atau akun non-SUPERADMIN tanpa tenant.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+
   /virtual-parameters:
     get:
       operationId: listVirtualParameters
@@ -8570,6 +8884,125 @@ components:
       type: object
       properties:
         data: { type: array, items: { $ref: '#/components/schemas/CaptureMessage' } }
+        total: { type: integer }
+      required: [data, total]
+    AutomationAction:
+      type: object
+      description: "Satu aksi aturan; field yang dipakai bergantung pada `type`."
+      additionalProperties: false
+      properties:
+        type: { type: string, enum: [set_parameter, reboot, get_parameter_values, add_tag, webhook] }
+        name: { type: string, description: "set_parameter: logical key atau raw path (bukan parameter rahasia)." }
+        value: { type: string, description: "set_parameter: EKSPRESI vexpr (teks literal ditulis 'dalam kutip'). Variabel konteks {@...} boleh dipakai." }
+        names: { type: array, maxItems: 20, items: { type: string }, description: "get_parameter_values: nama parameter." }
+        tag_id: { type: integer, format: int64, description: "add_tag: tag milik tenant aturan." }
+      required: [type]
+    AutomationRule:
+      type: object
+      description: "Aturan otomasi per tenant. Identifier publik adalah UUID."
+      properties:
+        id: { type: string, format: uuid }
+        tenant_id: { type: integer, format: int64 }
+        name: { type: string, maxLength: 128 }
+        description: { type: string, nullable: true, maxLength: 1024 }
+        trigger_event: { type: string, enum: [BOOTSTRAP_ONLY, BOOTSTRAP_OR_BOOT, EVERY_INFORM] }
+        condition: { type: string, maxLength: 1000, description: "Ekspresi vexpr; kosong = selalu benar." }
+        actions: { type: array, items: { $ref: '#/components/schemas/AutomationAction' } }
+        cooldown_seconds: { type: integer, minimum: 300 }
+        max_consecutive_fires: { type: integer, minimum: 1, maximum: 20 }
+        priority: { type: integer, description: "Angka lebih kecil dievaluasi lebih dulu." }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+      required: [id, tenant_id, name, trigger_event, condition, actions, cooldown_seconds, max_consecutive_fires, priority, is_active]
+    AutomationRuleRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        tenant_id: { type: integer, format: int64, description: "Wajib bagi SUPERADMIN; diabaikan untuk peran lain." }
+        name: { type: string, maxLength: 128 }
+        description: { type: string, nullable: true, maxLength: 1024 }
+        trigger_event: { type: string, enum: [BOOTSTRAP_ONLY, BOOTSTRAP_OR_BOOT, EVERY_INFORM] }
+        condition: { type: string, maxLength: 1000 }
+        actions: { type: array, minItems: 1, maxItems: 10, items: { $ref: '#/components/schemas/AutomationAction' } }
+        cooldown_seconds: { type: integer, minimum: 300, maximum: 2592000, description: "Bawaan 3600." }
+        max_consecutive_fires: { type: integer, minimum: 1, maximum: 20, description: "Bawaan 3." }
+        priority: { type: integer, description: "Bawaan 100." }
+        is_active: { type: boolean, default: true }
+      required: [name, trigger_event, actions]
+    AutomationRulePatch:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, maxLength: 128 }
+        description: { type: string, nullable: true, maxLength: 1024 }
+        trigger_event: { type: string, enum: [BOOTSTRAP_ONLY, BOOTSTRAP_OR_BOOT, EVERY_INFORM] }
+        condition: { type: string, maxLength: 1000 }
+        actions: { type: array, minItems: 1, maxItems: 10, items: { $ref: '#/components/schemas/AutomationAction' } }
+        cooldown_seconds: { type: integer, minimum: 300, maximum: 2592000 }
+        max_consecutive_fires: { type: integer, minimum: 1, maximum: 20 }
+        priority: { type: integer }
+        is_active: { type: boolean }
+    AutomationRuleListResponse:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/AutomationRule' } }
+        total: { type: integer }
+      required: [data, total]
+    AutomationTestRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        condition: { type: string, maxLength: 1000 }
+        actions: { type: array, items: { $ref: '#/components/schemas/AutomationAction' } }
+        events: { type: array, maxItems: 10, items: { type: string, maxLength: 32 }, description: "Opsional: mensimulasikan {@events} (mis. \"1 BOOT\")." }
+        device_id: { type: integer, format: int64 }
+      required: [device_id]
+    AutomationTestResult:
+      type: object
+      properties:
+        ok: { type: boolean, description: "false bila definisi tidak valid (lihat error)." }
+        matched: { type: boolean, description: "Kondisi benar pada keadaan perangkat saat ini." }
+        would_fire: { type: boolean, description: "Kondisi benar DAN ada aksi yang benar-benar akan dijalankan (belum menghitung cooldown/pagar perangkat)." }
+        refs:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              value: { type: string, nullable: true }
+        steps:
+          type: array
+          items:
+            type: object
+            properties:
+              type: { type: string }
+              detail: { type: string }
+              path: { type: string, description: "set_parameter: raw path hasil resolusi." }
+              value: { type: string, nullable: true, description: "set_parameter: nilai target hasil ekspresi." }
+              current: { type: string, nullable: true, description: "set_parameter: nilai perangkat saat ini." }
+              change: { type: boolean, description: "false = sudah sesuai / dilewati." }
+              skip: { type: string, description: "Alasan dilewati (nilai belum dapat dihitung, parameter tak ter-resolve)." }
+        error: { type: string }
+      required: [ok, matched, would_fire, refs, steps]
+    AutomationRun:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        rule_id: { type: string, format: uuid, description: "UUID aturan." }
+        rule_name: { type: string }
+        device_id: { type: integer, format: int64 }
+        device_serial: { type: string }
+        fired: { type: boolean, description: "true = aksi diantre; false = gagal atau di-suspend." }
+        suspended: { type: boolean, description: "true = pemicuan ini membuat aturan di-suspend untuk perangkat." }
+        summary: { type: string, description: "Ringkasan aksi; tidak pernah memuat nilai rahasia." }
+        error: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+      required: [id, rule_id, rule_name, device_id, device_serial, fired, suspended, summary, created_at]
+    AutomationRunListResponse:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/AutomationRun' } }
         total: { type: integer }
       required: [data, total]
     VirtualParameter:
