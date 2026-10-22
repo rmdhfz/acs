@@ -36,6 +36,8 @@ type Service struct {
 	opticalSkip      sync.Map // "vendor:model" -> time.Time kedaluwarsa cache
 	// notifier — notifikasi in-app OPTICAL_ALERT (opsional, WithNotifier); nil = hanya activity log & webhook.
 	notifier domain.Notifier
+	// faults — resource faults (opsional, WithFaults); diakses lewat guard nil.
+	faults FaultRecorder
 	// pppoePollEvery — interval penyegaran username PPPoE (0 = nonaktif); pppoeNext = device id -> waktu poll berikutnya
 	// (di memori: setelah restart tiap device disegarkan sekali pada Inform pertamanya, lalu berkala).
 	pppoePollEvery time.Duration
@@ -616,8 +618,16 @@ func (s *Service) HandleRPCResponse(ctx context.Context, resp RPCResponse) error
 	// device_parameters. Tanpa ini drift-check preset membandingkan dengan nilai
 	// LAMA (atau menganggap parameter "belum pernah terlihat") dan menegakkan
 	// ulang tiap cooldown sampai preset ditandai FAILED.
-	if typeRef, terr := s.refs.GetByID(ctx, domain.RefTableTaskTypes, t.TaskTypeID); terr == nil && typeRef.Code == domain.TaskTypeSetParameterValues {
-		s.recordAppliedValues(ctx, sess.DeviceID, t)
+	if typeRef, terr := s.refs.GetByID(ctx, domain.RefTableTaskTypes, t.TaskTypeID); terr == nil {
+		if typeRef.Code == domain.TaskTypeSetParameterValues {
+			s.recordAppliedValues(ctx, sess.DeviceID, t)
+		}
+		// RPC yang sama kini berhasil -> fault aktifnya untuk perangkat ini sudah tidak relevan.
+		if s.faults != nil {
+			if err := s.faults.Resolve(ctx, sess.DeviceID, typeRef.Code); err != nil {
+				s.log().Warn("cwmp: gagal menutup fault", "device_id", sess.DeviceID, "error", err)
+			}
+		}
 	}
 
 	if len(resp.ParameterValues) > 0 {
@@ -676,6 +686,18 @@ func (s *Service) WithOpticalPoll(every time.Duration) *Service {
 // WithNotifier memasang notifikasi persisten untuk redaman optik waspada/kritis.
 func (s *Service) WithNotifier(n domain.Notifier) *Service {
 	s.notifier = n
+	return s
+}
+
+// FaultRecorder mencatat/menutup cwmp:Fault aktif per perangkat (usecase/fault.Service; migrations/0038).
+type FaultRecorder interface {
+	Record(ctx context.Context, deviceID uint64, taskID *uint64, rpcMethod, code, message string) error
+	Resolve(ctx context.Context, deviceID uint64, rpcMethod string) error
+}
+
+// WithFaults memasang pencatatan resource faults; nil = fault hanya menggagalkan task & memicu webhook seperti sebelumnya.
+func (s *Service) WithFaults(f FaultRecorder) *Service {
+	s.faults = f
 	return s
 }
 
@@ -835,14 +857,35 @@ func (s *Service) sentTaskFor(ctx context.Context, deviceID uint64, cwmpID strin
 	return s.taskSvc.GetSentForDevice(ctx, deviceID)
 }
 
+// recordFault mencatat fault ke resource faults (best-effort: gagal tidak boleh mengubah penanganan task).
+func (s *Service) recordFault(ctx context.Context, deviceID uint64, t *domain.Task, f *FaultInfo) {
+	if s.faults == nil {
+		return
+	}
+	var taskID *uint64
+	rpc := ""
+	if t != nil {
+		taskID = &t.ID
+		if typeRef, err := s.refs.GetByID(ctx, domain.RefTableTaskTypes, t.TaskTypeID); err == nil {
+			rpc = typeRef.Code
+		}
+	}
+	if err := s.faults.Record(ctx, deviceID, taskID, rpc, f.Code, f.Message); err != nil {
+		s.log().Warn("cwmp: gagal mencatat fault", "device_id", deviceID, "error", err)
+	}
+}
+
 func (s *Service) handleFault(ctx context.Context, deviceID uint64, cwmpID string, f *FaultInfo) error {
 	t, err := s.sentTaskFor(ctx, deviceID, cwmpID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
+			// Fault tanpa task yang cocok tetap dicatat: operator perlu tahu CPE menolak sesuatu.
+			s.recordFault(ctx, deviceID, nil, f)
 			return nil
 		}
 		return err
 	}
+	s.recordFault(ctx, deviceID, t, f)
 	msg := f.Message
 	if f.Code != "" {
 		msg = fmt.Sprintf("[%s] %s", f.Code, f.Message)

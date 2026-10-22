@@ -114,6 +114,8 @@ tags:
     description: Inventory CPE (ONT/ONU/router) — status, parameter TR-069, event, metrik optik, aktivitas.
   - name: Tasks
     description: Antrean RPC CWMP (GetParameterValues, SetParameterValues, Reboot, Download, dst.).
+  - name: Faults
+    description: cwmp:Fault aktif dari CPE per perangkat/RPC — perangkat mana menolak apa dan kenapa.
   - name: Provisioning
     description: Provisioning profile dan Zero-Touch Provisioning (ZTP) — FR-13..FR-18.
   - name: ZeroTouch
@@ -2577,6 +2579,119 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   # ============================== TASKS ==============================
+  /faults:
+    get:
+      operationId: listFaults
+      tags: [Faults]
+      summary: Daftar fault CWMP aktif dari CPE (terbaru dulu)
+      description: "Satu baris = satu masalah aktif per (perangkat, kode fault, RPC); kejadian berulang menaikkan `occurrence_count`. Semua peran staf; non-SUPERADMIN otomatis dibatasi ke tenant sendiri (`tenant_id` pada query hanya efektif untuk SUPERADMIN). Fault tertutup otomatis saat RPC yang sama berhasil, atau manual lewat `DELETE /faults/{uuid}`."
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: device_id
+          in: query
+          schema: { type: integer, format: int64 }
+        - name: fault_code
+          in: query
+          description: "Kode fault CWMP apa adanya (mis. 9005). Maks 16 karakter."
+          schema: { type: string, maxLength: 16 }
+        - name: rpc_method
+          in: query
+          description: "Kode jenis task yang ditolak CPE (mis. SET_PARAMETER_VALUES). Maks 64 karakter."
+          schema: { type: string, maxLength: 64 }
+        - name: search
+          in: query
+          description: "Cocokkan serial perangkat atau teks fault. Maks 255 karakter."
+          schema: { type: string, maxLength: 255 }
+        - name: tenant_id
+          in: query
+          description: "Hanya efektif untuk SUPERADMIN."
+          schema: { type: integer, format: int64 }
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: Daftar fault aktif.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FaultListResponse' }
+        '400':
+          description: Parameter query tidak valid (mis. terlalu panjang).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Akun non-SUPERADMIN tanpa tenant.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /faults/{uuid}:
+    get:
+      operationId: getFault
+      tags: [Faults]
+      summary: Detail satu fault aktif
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          schema: { type: string, maxLength: 36 }
+      responses:
+        '200':
+          description: Fault.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Fault' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Fault milik perangkat tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Fault tidak ditemukan (atau sudah tertutup).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    delete:
+      operationId: dismissFault
+      tags: [Faults]
+      summary: Tutup fault (sudah ditangani / tidak relevan)
+      description: "ADMIN/NOC/SUPERADMIN. Soft delete + jejak audit `DISMISS_FAULT`. Fault yang sama muncul lagi sebagai baris baru bila CPE mengulangnya."
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          schema: { type: string, maxLength: 36 }
+      responses:
+        '204':
+          description: Fault ditutup.
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Bukan ADMIN/NOC/SUPERADMIN, atau fault milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Fault tidak ditemukan atau sudah tertutup.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   /tasks:
     get:
       operationId: listTasks
@@ -8133,6 +8248,28 @@ components:
       type: object
       properties:
         data: { type: array, items: { $ref: '#/components/schemas/CaptureMessage' } }
+        total: { type: integer }
+      required: [data, total]
+    Fault:
+      type: object
+      description: "cwmp:Fault aktif dari CPE (migrations/0038). Identifier publik adalah UUID."
+      properties:
+        id: { type: string, format: uuid }
+        device_id: { type: integer, format: int64 }
+        device_serial: { type: string }
+        tenant_id: { type: integer, format: int64, nullable: true }
+        task_id: { type: integer, format: int64, nullable: true, description: "Task yang memicu kejadian terakhir; null bila fault datang tanpa task yang cocok." }
+        rpc_method: { type: string, description: "Kode jenis task yang ditolak CPE; kosong bila tidak diketahui." }
+        fault_code: { type: string, description: "Kode fault CWMP apa adanya dari CPE (mis. 9005); 'unknown' bila CPE tidak mengirim kode." }
+        fault_string: { type: string }
+        occurrence_count: { type: integer }
+        first_seen_at: { type: string, format: date-time }
+        last_seen_at: { type: string, format: date-time }
+      required: [id, device_id, device_serial, rpc_method, fault_code, fault_string, occurrence_count, first_seen_at, last_seen_at]
+    FaultListResponse:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/Fault' } }
         total: { type: integer }
       required: [data, total]
     BucketCount:

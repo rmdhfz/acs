@@ -14,6 +14,7 @@ import (
 	"acs/internal/usecase/auth"
 	"acs/internal/usecase/billing"
 	"acs/internal/usecase/capture"
+	"acs/internal/usecase/fault"
 	"acs/internal/usecase/catalog"
 	"acs/internal/usecase/console"
 	"acs/internal/usecase/device"
@@ -75,6 +76,8 @@ type Router struct {
 	Transfers *console.TransferService
 	// Capture sesi CWMP per perangkat (migrations/0037); nil = rute tidak dipasang.
 	Capture *capture.Service
+	// Resource faults (migrations/0038): cwmp:Fault aktif dari CPE; nil = rute tidak dipasang.
+	Faults *fault.Service
 	WSHub     *ws.Hub
 	// WSAllowedOrigins = origin Console yang boleh membuka WebSocket (sama
 	// dengan ACS_CORS_ALLOW_ORIGINS).
@@ -234,6 +237,13 @@ func (r *Router) Register(e *echo.Echo) {
 	authed.DELETE("/users/:id/devices/:deviceId", r.unlinkUserDevice, RequireRoles(admin...))
 	authed.PATCH("/users/:id/roles", r.replaceUserRoles, RequireRoles(admin...), denyImpersonation)
 	authed.DELETE("/users/:id", r.deleteUser, RequireRoles(admin...), denyImpersonation)
+
+	if r.Faults != nil {
+		// Faults: baca untuk semua peran staf (scope tenant di usecase); menutup fault ADMIN/NOC.
+		authed.GET("/faults", r.listFaults)
+		authed.GET("/faults/:uuid", r.getFault)
+		authed.DELETE("/faults/:uuid", r.dismissFault, RequireRoles(adminOrNOC...))
+	}
 
 	authed.GET("/devices", r.listDevices)
 	authed.GET("/devices/stats", r.deviceStats)

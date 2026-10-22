@@ -179,6 +179,7 @@ const EXCEPTIONS = new Map([
 const REVIEWED_UNUSED = new Map([
   // Kosong: seluruh endpoint relevan kini dipakai UI (detail task/webhook/rollout/perangkat portal, unduh CSV, baca atribut).
   // Isi hanya dengan alasan nyata hasil tinjauan.
+  ['GET /faults/:p', 'daftar /faults sudah membawa semua field fault; halaman tidak punya tampilan detail yang butuh fetch terpisah (endpoint untuk integrasi/BSS)'],
 ])
 
 const excepted = unusedEndpoints.filter((r) => EXCEPTIONS.has(key(r)))

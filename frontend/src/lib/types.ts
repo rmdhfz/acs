@@ -495,3 +495,18 @@ export interface IssuedApiToken {
   id: number
   uuid: string
 }
+
+// cwmp:Fault aktif dari CPE (GET /faults). `id` = UUID; PK numerik tidak diekspos.
+export interface DeviceFault {
+  id: string
+  device_id: number
+  device_serial: string
+  tenant_id: number | null
+  task_id: number | null
+  rpc_method: string
+  fault_code: string
+  fault_string: string
+  occurrence_count: number
+  first_seen_at: string
+  last_seen_at: string
+}

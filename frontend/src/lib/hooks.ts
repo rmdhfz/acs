@@ -10,6 +10,7 @@ import type {
   Device,
   DeviceDiagnostic,
   DeviceEvent,
+  DeviceFault,
   DeviceModel,
   DeviceOpticalMetric,
   DeviceParameter,
@@ -2163,5 +2164,34 @@ export function useDataTransfer(id: string | undefined) {
     queryKey: ['data-transfers', 'detail', id],
     queryFn: () => api.get<DataTransfer>(`/data-transfers/${encodeURIComponent(id as string)}`),
     enabled: !!id,
+  })
+}
+
+// ---- Faults: cwmp:Fault aktif dari CPE ----
+
+export interface FaultFilters {
+  device_id?: number
+  fault_code?: string
+  rpc_method?: string
+  search?: string
+  page?: number
+  page_size?: number
+}
+
+export function useFaults(filters: FaultFilters) {
+  return useQuery({
+    queryKey: ['faults', filters],
+    queryFn: () => api.get<ListResponse<DeviceFault>>(`/faults${buildQuery(filters)}`),
+    refetchInterval: LIVE_REFRESH_MS,
+    placeholderData: (prev) => prev,
+  })
+}
+
+// Tutup fault (sudah ditangani / tidak relevan); muncul lagi bila CPE mengulang fault yang sama.
+export function useDismissFault() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.del<void>(`/faults/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['faults'] }),
   })
 }

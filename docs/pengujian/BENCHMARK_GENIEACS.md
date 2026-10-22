@@ -106,7 +106,7 @@ query bebas dengan `projection`/`query` pada `/devices` bekerja; UI di port 3000
 | Katalog vendor/path sebagai data, enkripsi rahasia task | ✅ | ⚠️ lewat skrip/provision |
 | Provision berskrip (JavaScript), **virtual parameter** | ❌ | ✅ |
 | Query perangkat bebas + proyeksi + sort | ⚠️ filter tetap | ✅ |
-| Resource `faults` tersendiri | ❌ | ✅ |
+| Resource `faults` tersendiri | ✅ (22 Okt 2026: `GET/DELETE /faults`, UI Fault) | ✅ |
 | Kematangan lintas firmware, skala produksi | ❌ baru 3 ONT fisik | ✅ bertahun-tahun |
 
 **Kesimpulan:** lebih lengkap sebagai produk operasional multi-tenant, setara pada throughput simulator, tetapi **belum lebih matang**

@@ -36,6 +36,7 @@ import (
 	"acs/internal/usecase/auth"
 	"acs/internal/usecase/billing"
 	"acs/internal/usecase/capture"
+	"acs/internal/usecase/fault"
 	"acs/internal/usecase/catalog"
 	"acs/internal/usecase/console"
 	"acs/internal/usecase/device"
@@ -231,7 +232,8 @@ func main() {
 	deviceSvc.WithCatalog(vendorRepo, tenantRepo).WithQuota(tenantQuotaRepo).WithCRTrustedCIDRs(cfg.CRTrustedCIDRs)
 	diagnosticsSvc := diagnostics.NewService(diagnosticRepo, deviceRepo, taskSvc, activityLogRepo)
 	captureSvc := capture.NewService(mysql.NewCaptureRepository(db), deviceSvc, deviceSessionRepo, activityLogRepo)
-	sessionSvc := session.NewService(deviceSessionRepo, deviceEventRepo, deviceParamRepo, deviceRepo, tenantRepo, refRepo, deviceSvc, taskSvc, provisioningSvc, firmwareSvc, diagnosticsSvc, enc, activityLogRepo, logger, webhookSvc, wsHub).WithOpticalPoll(time.Duration(cfg.OpticalPollMinutes) * time.Minute).WithPPPoEPoll(time.Duration(cfg.PPPoEPollMinutes) * time.Minute)
+	faultSvc := fault.NewService(mysql.NewFaultRepository(db), activityLogRepo)
+	sessionSvc := session.NewService(deviceSessionRepo, deviceEventRepo, deviceParamRepo, deviceRepo, tenantRepo, refRepo, deviceSvc, taskSvc, provisioningSvc, firmwareSvc, diagnosticsSvc, enc, activityLogRepo, logger, webhookSvc, wsHub).WithOpticalPoll(time.Duration(cfg.OpticalPollMinutes) * time.Minute).WithPPPoEPoll(time.Duration(cfg.PPPoEPollMinutes) * time.Minute).WithFaults(faultSvc)
 	fileSvc := file.NewService(fileRepo, objStorage, activityLogRepo)
 	tagSvc := tag.NewService(tagRepo, activityLogRepo)
 	presetSvc := preset.NewService(presetRepo, activityLogRepo)
@@ -365,6 +367,7 @@ func main() {
 		Bugs:          bugSvc,
 		Transfers:     transferSvc,
 		Capture:       captureSvc,
+		Faults:        faultSvc,
 		WSHub:         wsHub,
 
 		WSAllowedOrigins: cfg.CORSAllowOrigins,
