@@ -34,10 +34,18 @@ type lsParams struct {
 	domain.DeviceParameterRepository
 	m   map[uint64]string
 	err error
+	// proyeksi ?params=
+	vals     map[uint64]map[string]string
+	valNames []string
 }
 
 func (r *lsParams) PPPoEUsernames(context.Context, []uint64) (map[uint64]string, error) {
 	return r.m, r.err
+}
+
+func (r *lsParams) ValuesFor(_ context.Context, _ []uint64, names []string) (map[uint64]map[string]string, error) {
+	r.valNames = names
+	return r.vals, r.err
 }
 
 func f64(v float64) *float64 { return &v }
@@ -83,5 +91,69 @@ func TestListWithSummary_KegagalanRingkasanTidakMenggagalkanDaftar(t *testing.T)
 	items, _, err := s.ListWithSummary(context.Background(), actor, domain.DeviceFilter{}, domain.Pagination{})
 	if err != nil || len(items) != 1 || items[0].RxPowerDBM != nil || items[0].PPPoEUsername != nil {
 		t.Fatalf("daftar harus tetap tampil: items=%+v err=%v", items, err)
+	}
+}
+
+// Query bebas: parameter rahasia (password/PSK/...) tidak boleh dipakai sebagai filter atau diminta oleh peran tanpa hak melihat
+// rahasia — kalau tidak, filter eq/prefix menjadi oracle untuk menebak nilainya walau respons menyamarkan.
+func TestList_ParameterRahasiaDitolakUntukPeranTanpaHak(t *testing.T) {
+	tenant := uint64(7)
+	psk := "InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1.KeyPassphrase"
+	viewer := domain.Actor{UserID: 1, TenantID: &tenant, Roles: []string{domain.RoleViewer}}
+	admin := domain.Actor{UserID: 2, TenantID: &tenant, Roles: []string{domain.RoleAdmin}}
+
+	for name, f := range map[string]domain.DeviceFilter{
+		"filter":   {Params: []domain.ParamCond{{Name: psk, Op: domain.ParamOpPrefix, Value: "a"}}},
+		"proyeksi": {ProjectParams: []string{psk}},
+	} {
+		s := &Service{devices: &lsDevices{}}
+		if _, _, err := s.ListWithSummary(context.Background(), viewer, f, domain.Pagination{}); !errors.Is(err, domain.ErrInvalidInput) {
+			t.Errorf("%s oleh VIEWER harus ErrInvalidInput, got %v", name, err)
+		}
+		if _, _, err := s.ListWithSummary(context.Background(), admin, f, domain.Pagination{}); err != nil {
+			t.Errorf("%s oleh ADMIN (boleh melihat rahasia) harus lolos, got %v", name, err)
+		}
+	}
+}
+
+func TestList_BatasQueryBebas(t *testing.T) {
+	tenant := uint64(7)
+	actor := domain.Actor{UserID: 1, TenantID: &tenant, Roles: []string{domain.RoleAdmin}}
+	s := &Service{devices: &lsDevices{}}
+	many := make([]domain.ParamCond, domain.MaxParamConds+1)
+	for i := range many {
+		many[i] = domain.ParamCond{Name: "A.B", Op: domain.ParamOpExists}
+	}
+	if _, _, err := s.List(context.Background(), actor, domain.DeviceFilter{Params: many}, domain.Pagination{}); !errors.Is(err, domain.ErrInvalidInput) {
+		t.Errorf("terlalu banyak kondisi harus ditolak, got %v", err)
+	}
+	names := make([]string, domain.MaxProjectParams+1)
+	for i := range names {
+		names[i] = "A.B"
+	}
+	if _, _, err := s.List(context.Background(), actor, domain.DeviceFilter{ProjectParams: names}, domain.Pagination{}); !errors.Is(err, domain.ErrInvalidInput) {
+		t.Errorf("terlalu banyak proyeksi harus ditolak, got %v", err)
+	}
+}
+
+// Proyeksi params= memuat nilai per device (tanpa N+1: satu panggilan batch); device tanpa nilai = tanpa field parameters.
+func TestListWithSummary_ProyeksiParameter(t *testing.T) {
+	tenant := uint64(7)
+	ssid := "InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID"
+	params := &lsParams{vals: map[uint64]map[string]string{1: {ssid: "Rumah"}}}
+	s := &Service{
+		devices:      &lsDevices{rows: []domain.Device{{ID: 1, TenantID: &tenant}, {ID: 2, TenantID: &tenant}}},
+		deviceParams: params,
+	}
+	actor := domain.Actor{UserID: 1, TenantID: &tenant, Roles: []string{domain.RoleViewer}}
+	items, _, err := s.ListWithSummary(context.Background(), actor, domain.DeviceFilter{ProjectParams: []string{ssid}}, domain.Pagination{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if items[0].Parameters[ssid] != "Rumah" || items[1].Parameters != nil {
+		t.Fatalf("proyeksi salah: %+v / %+v", items[0].Parameters, items[1].Parameters)
+	}
+	if len(params.valNames) != 1 || params.valNames[0] != ssid {
+		t.Fatalf("nama yang diminta tidak diteruskan: %v", params.valNames)
 	}
 }

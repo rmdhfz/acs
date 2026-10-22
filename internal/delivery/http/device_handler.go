@@ -26,9 +26,20 @@ func (r *Router) listDevices(c *echo.Context) error {
 	if f.OpticalLevel != "" && !domain.ValidOpticalLevel(f.OpticalLevel) {
 		return echo.NewHTTPError(http.StatusBadRequest, "optical_level harus ok, warn, bad, atau unknown")
 	}
+	fields, err := parseDeviceQuery(c, &f)
+	if err != nil {
+		return err
+	}
 	devices, total, err := r.Devices.ListWithSummary(c.Request().Context(), actor, f, paginationFromQuery(c))
 	if err != nil {
 		return handleErr(c, err)
+	}
+	if len(fields) > 0 {
+		rows, perr := projectDeviceFields(devices, fields)
+		if perr != nil {
+			return handleErr(c, perr)
+		}
+		return c.JSON(http.StatusOK, listResponse{Data: rows, Total: total})
 	}
 	return c.JSON(http.StatusOK, listResponse{Data: devices, Total: total})
 }

@@ -39,7 +39,8 @@ import type {
 function buildQuery(params: object) {
   const usp = new URLSearchParams()
   for (const [key, value] of Object.entries(params as Record<string, unknown>)) {
-    if (value !== undefined && value !== '') usp.set(key, String(value))
+    if (Array.isArray(value)) for (const v of value) usp.append(key, String(v)) // parameter berulang
+    else if (value !== undefined && value !== '') usp.set(key, String(value))
   }
   const qs = usp.toString()
   return qs ? `?${qs}` : ''
@@ -84,6 +85,9 @@ export interface DeviceFilters {
   // Level RX terakhir (ambang -25/-27 dBm, lihat lib/optical.ts) dan "vendor belum dikenal".
   optical_level?: 'ok' | 'warn' | 'bad' | 'unknown'
   no_vendor?: boolean
+  // Query bebas (lihat GET /devices): kondisi nilai parameter `nama~op~nilai` (berulang, AND) dan urutan (`kolom` / `-kolom`).
+  param?: string[]
+  sort?: string
   page?: number
   page_size?: number
 }

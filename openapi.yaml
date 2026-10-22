@@ -1864,6 +1864,43 @@ paths:
           in: query
           description: "`true` = hanya device yang vendornya belum terpetakan (tampil \"Belum dikenal\")."
           schema: { type: boolean }
+        - name: param
+          in: query
+          description: |
+            Kondisi pada NILAI parameter yang dilaporkan CPE, bentuk `<nama>~<op>[~<nilai>]`; boleh diulang (maks 5, semuanya
+            harus terpenuhi / AND). Operator: `eq` (sama, tidak peka huruf besar/kecil), `ne` (parameter ada dan berbeda),
+            `like` (mengandung), `prefix` (berawalan), `gt`/`ge`/`lt`/`le` (numerik; nilai bukan angka tidak pernah cocok),
+            `exists` (terisi), `missing` (belum ada/kosong). Nilai boleh memuat `~`. Nama parameter: huruf, angka, `.`, `_`, `-`
+            (maks 256). Contoh: `param=InternetGatewayDevice.DeviceInfo.SoftwareVersion~prefix~V5&param=InternetGatewayDevice.X_ZTE.OpticalRx~lt~-25`.
+            Parameter rahasia (password/passphrase/PSK) hanya boleh dipakai ADMIN/SUPERADMIN; peran lain 400.
+          style: form
+          explode: true
+          schema: { type: array, maxItems: 5, items: { type: string } }
+        - name: params
+          in: query
+          description: |
+            Daftar nama parameter dipisah koma (maks 20) yang nilainya ikut dikirim pada tiap baris di field `parameters`
+            (peta nama → nilai; parameter yang belum terisi tidak muncul). Satu query batch untuk satu halaman, tanpa N+1.
+            Parameter rahasia hanya untuk ADMIN/SUPERADMIN.
+          schema: { type: string }
+        - name: fields
+          in: query
+          description: |
+            Proyeksi: daftar kunci JSON dipisah koma; hanya kunci ini (dan `id`) yang dikirim. Kunci tak dikenal = 400.
+            Mis. `fields=serial_number,software_version,parameters`.
+          schema: { type: string }
+        - name: sort
+          in: query
+          description: "Urutan hasil: nama kolom (naik) atau `-nama` (turun). Kolom: id, serial_number, last_inform_at, created_at, ip_address, software_version, product_class. Bawaan `id` menurun; `id` menjadi penentu urutan agar paginasi stabil."
+          schema: { type: string }
+        - name: last_inform_before
+          in: query
+          description: "Hanya device yang Inform terakhirnya SEBELUM waktu ini (RFC3339) — mis. yang sudah lama tidak terhubung."
+          schema: { type: string, format: date-time }
+        - name: last_inform_after
+          in: query
+          description: "Hanya device yang Inform terakhirnya pada/SETELAH waktu ini (RFC3339)."
+          schema: { type: string, format: date-time }
         - $ref: '#/components/parameters/tenantIdQuery'
         - $ref: '#/components/parameters/page'
         - $ref: '#/components/parameters/pageSize'
@@ -1873,6 +1910,11 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/DeviceListResponse' }
+        '400':
+          description: "Query bebas tidak valid: `param` (op/nama/jumlah), `params`, `fields` (kunci tak dikenal), `sort`, tanggal bukan RFC3339, atau parameter rahasia oleh peran tanpa hak."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
         '401':
           description: Tidak terautentikasi.
           content:
@@ -8224,6 +8266,7 @@ components:
             tx_power_dbm: { type: number, format: double, nullable: true, description: "Daya kirim optik terakhir (dBm)." }
             optical_at: { type: string, format: date-time, nullable: true, description: "Waktu metrik optik terakhir dicatat." }
             pppoe_username: { type: string, nullable: true, description: "Username PPPoE dari parameter standar yang sudah tersinkron; null bila belum terbaca." }
+            parameters: { type: object, additionalProperties: { type: string }, description: "Hanya bila diminta lewat `params=`: peta nama parameter → nilai (yang belum terisi tidak muncul)." }
 
     CaptureStatus:
       type: object

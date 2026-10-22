@@ -1,0 +1,137 @@
+package http
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strings"
+	"time"
+
+	"acs/internal/domain"
+
+	"github.com/labstack/echo/v5"
+)
+
+// Query perangkat bebas pada GET /devices (padanan query/projection/sort GenieACS, tetapi tertutup & ter-bind):
+//
+//	param=<nama>~<op>[~<nilai>]   berulang (maks 5, AND); op: eq ne like prefix gt ge lt le exists missing
+//	params=<nama,nama,...>        sertakan nilai parameter ini pada tiap baris (maks 20) -> field "parameters"
+//	fields=<kunci,kunci,...>      proyeksi: hanya kunci JSON ini yang dikirim (id selalu ikut)
+//	sort=<kolom> | -<kolom>       urutan (domain.DeviceSortFields); default id menurun
+//	last_inform_before|after=<RFC3339>
+
+// deviceFieldKeys = kunci JSON yang boleh diminta lewat fields= (diturunkan dari bentuk respons, bukan ditulis ulang).
+var deviceFieldKeys = func() map[string]bool {
+	zero := domain.DeviceListItem{Parameters: map[string]string{"x": "y"}}
+	b, _ := json.Marshal(zero)
+	var m map[string]json.RawMessage
+	_ = json.Unmarshal(b, &m)
+	keys := make(map[string]bool, len(m))
+	for k := range m {
+		keys[k] = true
+	}
+	return keys
+}()
+
+func badRequest(format string, a ...any) error {
+	return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf(format, a...))
+}
+
+// parseDeviceQuery mengisi bagian query bebas dari filter dan mengembalikan daftar fields= (kosong = semua kunci).
+func parseDeviceQuery(c *echo.Context, f *domain.DeviceFilter) ([]string, error) {
+	raws := c.QueryParams()["param"]
+	if len(raws) > domain.MaxParamConds {
+		return nil, badRequest("maksimal %d kondisi param per permintaan", domain.MaxParamConds)
+	}
+	for _, raw := range raws {
+		cond, err := domain.ParseParamCond(raw)
+		if err != nil {
+			return nil, badRequest("%s", strings.TrimPrefix(err.Error(), domain.ErrInvalidInput.Error()+": "))
+		}
+		f.Params = append(f.Params, cond)
+	}
+
+	if v := c.QueryParam("params"); v != "" {
+		names := splitList(v)
+		if len(names) > domain.MaxProjectParams {
+			return nil, badRequest("maksimal %d nama pada params", domain.MaxProjectParams)
+		}
+		for _, n := range names {
+			if !domain.ValidParamName(n) {
+				return nil, badRequest("nama parameter tidak valid pada params: %q", n)
+			}
+		}
+		f.ProjectParams = names
+	}
+
+	var err error
+	if f.Sort, f.SortDesc, err = domain.ParseSort(c.QueryParam("sort")); err != nil {
+		return nil, badRequest("%s", strings.TrimPrefix(err.Error(), domain.ErrInvalidInput.Error()+": "))
+	}
+	if f.InformBefore, err = queryTime(c, "last_inform_before"); err != nil {
+		return nil, err
+	}
+	if f.InformAfter, err = queryTime(c, "last_inform_after"); err != nil {
+		return nil, err
+	}
+
+	var fields []string
+	if v := c.QueryParam("fields"); v != "" {
+		fields = splitList(v)
+		for _, k := range fields {
+			if !deviceFieldKeys[k] {
+				return nil, badRequest("fields berisi kunci tidak dikenal: %q", k)
+			}
+		}
+	}
+	return fields, nil
+}
+
+func splitList(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func queryTime(c *echo.Context, name string) (*time.Time, error) {
+	v := c.QueryParam(name)
+	if v == "" {
+		return nil, nil
+	}
+	t, err := time.Parse(time.RFC3339, v)
+	if err != nil {
+		return nil, badRequest("%s harus berformat RFC3339 (mis. 2026-10-22T03:00:00Z)", name)
+	}
+	return &t, nil
+}
+
+// projectDeviceFields menyisakan hanya kunci yang diminta (+ id). Urutan kunci mengikuti encoding JSON Go (alfabetis).
+func projectDeviceFields(items []domain.DeviceListItem, fields []string) ([]map[string]json.RawMessage, error) {
+	keep := map[string]bool{"id": true}
+	for _, k := range fields {
+		keep[k] = true
+	}
+	out := make([]map[string]json.RawMessage, 0, len(items))
+	for i := range items {
+		b, err := json.Marshal(items[i])
+		if err != nil {
+			return nil, err
+		}
+		var full map[string]json.RawMessage
+		if err := json.Unmarshal(b, &full); err != nil {
+			return nil, err
+		}
+		row := make(map[string]json.RawMessage, len(keep))
+		for k := range keep {
+			if v, ok := full[k]; ok {
+				row[k] = v
+			}
+		}
+		out = append(out, row)
+	}
+	return out, nil
+}

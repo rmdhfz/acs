@@ -303,7 +303,7 @@ export function deviceExportColumns(): ExportColumn<DeviceExportRow>[] {
 }
 
 export async function loadDeviceExportRows(
-  filters: Record<string, string | number | undefined>,
+  filters: Record<string, string | number | string[] | undefined>,
   lookup: { vendors: Vendor[]; tenants: Tenant[]; tenantName?: string; statuses: { id: number; name: string }[] },
   ctx: { signal: AbortSignal; onProgress: (done: number, total: number) => void },
 ): Promise<DeviceExportRow[]> {

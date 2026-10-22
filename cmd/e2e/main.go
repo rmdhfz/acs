@@ -138,6 +138,7 @@ func main() {
 		{"S28-ringkasan-daftar-perangkat", scenarioDeviceSummary},
 		{"S29-capture-sesi", scenarioCapture},
 		{"S31-faults", scenarioFaults},
+		{"S32-query-perangkat", scenarioDeviceQuery},
 	}
 
 	var results []result

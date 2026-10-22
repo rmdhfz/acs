@@ -14,6 +14,7 @@ import {
   RefreshCw,
   Router,
   Search,
+  SlidersHorizontal,
   Sparkles,
   Trash2,
   Upload,
@@ -85,6 +86,10 @@ export function DevicesPage() {
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [vendorFilter, setVendorFilter] = useState<string>('')
   const [tagFilter, setTagFilter] = useState<string>('')
+  // Query bebas: urutan + kondisi nilai parameter (satu per baris: nama~op~nilai; lihat GET /devices).
+  const [sortKey, setSortKey] = useState('')
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [paramText, setParamText] = useState('')
   // Deep-link dari dashboard: /devices?optical_level=bad (nilai tak dikenal diabaikan).
   const [urlParams] = useSearchParams()
   const [opticalFilter, setOpticalFilter] = useState<string>(() => {
@@ -111,6 +116,12 @@ export function DevicesPage() {
   const { data: taskStatusRefs } = useRefs('ref_task_status')
   const pendingId = findRefIdByCode(taskStatusRefs, 'PENDING')
 
+  // Satu kondisi per baris; baris kosong diabaikan. Server membatasi 5 kondisi dan menolak yang tak sah (muncul sebagai galat).
+  const paramConds = useMemo(
+    () => paramText.split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 5),
+    [paramText],
+  )
+
   // Filter aktif (tanpa paginasi) — dipakai daftar & ekspor agar keduanya selalu sama.
   const activeFilters = useMemo(
     (): DeviceFilters => ({
@@ -121,8 +132,10 @@ export function DevicesPage() {
       no_vendor: vendorFilter === NO_VENDOR ? true : undefined,
       tag_id: tagFilter ? Number(tagFilter) : undefined,
       optical_level: (opticalFilter || undefined) as DeviceFilters['optical_level'],
+      sort: sortKey || undefined,
+      param: paramConds.length ? paramConds : undefined,
     }),
-    [search, statusFilter, vendorFilter, tagFilter, opticalFilter],
+    [search, statusFilter, vendorFilter, tagFilter, opticalFilter, sortKey, paramConds],
   )
   const filters = useMemo(() => ({ ...activeFilters, page, page_size: PAGE_SIZE }), [activeFilters, page])
 
@@ -159,7 +172,7 @@ export function DevicesPage() {
   // device "terpilih" secara tidak kasat mata dari filter/halaman sebelumnya.
   useEffect(() => {
     setSelected(new Set())
-  }, [search, statusFilter, vendorFilter, tagFilter, opticalFilter, page])
+  }, [search, statusFilter, vendorFilter, tagFilter, opticalFilter, sortKey, paramConds, page])
 
   async function handleDelete(d: Device) {
     const ok = await confirm({
@@ -385,7 +398,61 @@ export function DevicesPage() {
             ))}
           </select>
         )}
+        <select
+          value={sortKey}
+          aria-label="Urutan"
+          onChange={(e) => {
+            setSortKey(e.target.value)
+            resetToFirstPage()
+          }}
+          className="min-w-[140px] flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 sm:flex-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+        >
+          <option value="">Urutan: terbaru</option>
+          <option value="-last_inform_at">Inform terakhir (terbaru)</option>
+          <option value="last_inform_at">Inform terakhir (terlama)</option>
+          <option value="serial_number">Serial A–Z</option>
+          <option value="-serial_number">Serial Z–A</option>
+        </select>
+        <button
+          type="button"
+          onClick={() => setShowAdvanced((v) => !v)}
+          aria-expanded={showAdvanced}
+          className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition-colors ${
+            paramConds.length > 0
+              ? 'border-indigo-600 bg-indigo-50 text-indigo-700 dark:border-indigo-400 dark:bg-indigo-950/40 dark:text-indigo-300'
+              : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
+          }`}
+        >
+          <SlidersHorizontal className="h-4 w-4" />
+          Filter parameter{paramConds.length > 0 ? ` (${paramConds.length})` : ''}
+        </button>
       </div>
+
+      {showAdvanced && (
+        <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+          <label htmlFor="param-filter" className="text-sm font-medium text-slate-800 dark:text-slate-200">
+            Kondisi nilai parameter (satu per baris, semuanya harus terpenuhi)
+          </label>
+          <textarea
+            id="param-filter"
+            rows={3}
+            maxLength={1500}
+            value={paramText}
+            onChange={(e) => {
+              setParamText(e.target.value)
+              resetToFirstPage()
+            }}
+            placeholder={'InternetGatewayDevice.DeviceInfo.SoftwareVersion~prefix~V5\nInternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID~like~kantor'}
+            spellCheck={false}
+            className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-xs text-slate-900 outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+          />
+          <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+            Bentuk <code>nama~operator~nilai</code>. Operator: <code>eq</code> <code>ne</code> <code>like</code> <code>prefix</code> <code>gt</code>{' '}
+            <code>ge</code> <code>lt</code> <code>le</code> (angka) <code>exists</code> <code>missing</code> (tanpa nilai). Maksimal 5 kondisi; tidak
+            peka huruf besar/kecil. Parameter rahasia (password/PSK) hanya untuk admin.
+          </p>
+        </div>
+      )}
 
       {canBulkAct && selected.size > 0 && (
         <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-slate-300 bg-slate-900 px-4 py-2.5 text-white">

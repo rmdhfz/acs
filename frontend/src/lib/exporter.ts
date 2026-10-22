@@ -52,9 +52,12 @@ export function fileStamp(d = new Date()): string {
 
 export const EXPORT_MAX_ROWS = 50_000
 
-function query(params: Record<string, string | number | undefined>): string {
+function query(params: Record<string, string | number | string[] | undefined>): string {
   const usp = new URLSearchParams()
-  for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') usp.set(k, String(v))
+  for (const [k, v] of Object.entries(params)) {
+    if (Array.isArray(v)) for (const x of v) usp.append(k, x) // parameter berulang (mis. param= pada /devices)
+    else if (v !== undefined && v !== '') usp.set(k, String(v))
+  }
   return usp.toString()
 }
 
@@ -64,7 +67,7 @@ function query(params: Record<string, string | number | undefined>): string {
  */
 export async function fetchAllPages<T>(
   path: string,
-  params: Record<string, string | number | undefined> = {},
+  params: Record<string, string | number | string[] | undefined> = {},
   opts: { signal?: AbortSignal; onProgress?: (done: number, total: number) => void; maxRows?: number } = {},
 ): Promise<{ rows: T[]; total: number; truncated: boolean }> {
   const pageSize = 200

@@ -112,6 +112,27 @@ describe('DevicesPage — kolom ringkasan', () => {
     await waitFor(() => expect(calls[calls.length - 1].url).not.toMatch(/optical_level|no_vendor/))
   })
 
+  it('urutan dan filter parameter: sort dikirim, kondisi per baris menjadi param berulang (maks 5)', async () => {
+    login(['ADMIN'])
+    const calls = mockFetch(handler())
+    renderApp(ui)
+    const u = userEvent.setup()
+    await screen.findAllByText('ELWGC09C2814')
+
+    await u.selectOptions(screen.getByLabelText('Urutan'), '-last_inform_at')
+    await waitFor(() => expect(calls.some((c) => c.url.includes('/devices?') && c.url.includes('sort=-last_inform_at'))).toBe(true))
+
+    await u.click(screen.getByRole('button', { name: /Filter parameter/ }))
+    await u.type(screen.getByLabelText(/Kondisi nilai parameter/), 'A.B~prefix~V5{Enter}C.D~exists{Enter}{Enter}E.F~lt~-25')
+    await waitFor(() => {
+      const last = calls.filter((c) => c.url.includes('/devices?')).at(-1)!
+      const q = new URL(last.url, 'http://x').searchParams
+      expect(q.getAll('param')).toEqual(['A.B~prefix~V5', 'C.D~exists', 'E.F~lt~-25']) // baris kosong diabaikan
+      expect(q.get('sort')).toBe('-last_inform_at')
+    })
+    expect(screen.getByRole('button', { name: /Filter parameter \(3\)/ })).toBeTruthy()
+  })
+
   it('VIEWER tidak melihat tombol Segarkan data', async () => {
     login(['VIEWER'])
     mockFetch(handler())

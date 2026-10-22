@@ -57,6 +57,15 @@ type DeviceFilter struct {
 	OpticalLevel string
 	// NoVendor — hanya device yang vendornya belum terpetakan (vendor_id NULL, tampil "Belum dikenal").
 	NoVendor bool
+	// Params: kondisi pada nilai device_parameters (semua harus terpenuhi / AND). Lihat ParseParamCond.
+	Params []ParamCond
+	// InformBefore/InformAfter membatasi last_inform_at (mis. "tidak Inform sejak kemarin" = InformBefore).
+	InformBefore, InformAfter *time.Time
+	// Sort: salah satu DeviceSortFields (kosong = id); SortDesc membalik arah.
+	Sort     string
+	SortDesc bool
+	// ProjectParams: nama parameter yang nilainya ikut dikirim pada baris daftar (DeviceListItem.Parameters).
+	ProjectParams []string
 }
 
 // Level redaman optik (RX) — satu sumber ambang untuk filter daftar & peringatan; frontend mencerminkannya di lib/optical.ts.
@@ -168,6 +177,9 @@ type DeviceParameterRepository interface {
 	// PPPoEUsernames: username PPPoE (parameter standar TR-098 WANPPPConnection.N.Username / TR-181 PPP.Interface.N.Username,
 	// instance mana pun) untuk banyak device sekaligus; hanya yang terisi. Dipakai kolom daftar perangkat.
 	PPPoEUsernames(ctx context.Context, deviceIDs []uint64) (map[uint64]string, error)
+	// ValuesFor: nilai parameter bernama `names` (persis) untuk banyak device sekaligus; hanya yang terisi. Dipakai proyeksi
+	// ?params= pada daftar perangkat. Pemanggil bertanggung jawab menyaring nama rahasia.
+	ValuesFor(ctx context.Context, deviceIDs []uint64, names []string) (map[uint64]map[string]string, error)
 	// GetBySuffix: parameter terbaru milik device yang namanya berakhiran suffix (mis. ".ManagementServer.ConnectionRequestURL"
 	// — lintas TR-098/TR-181); ErrNotFound bila tak ada.
 	GetBySuffix(ctx context.Context, deviceID uint64, suffix string) (*DeviceParameter, error)
@@ -295,4 +307,6 @@ type DeviceListItem struct {
 	TxPowerDBM    *float64   `json:"tx_power_dbm"`
 	OpticalAt     *time.Time `json:"optical_at"`
 	PPPoEUsername *string    `json:"pppoe_username"`
+	// Parameters: nilai parameter yang diminta lewat ?params= (tidak diminta = tidak ikut dikirim).
+	Parameters map[string]string `json:"parameters,omitempty"`
 }

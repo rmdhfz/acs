@@ -171,6 +171,23 @@ func (r *deviceRepository) List(ctx context.Context, f domain.DeviceFilter, p do
 			return nil, 0, fmt.Errorf("%w: optical_level tidak dikenal", domain.ErrInvalidInput)
 		}
 	}
+	if f.InformBefore != nil {
+		where = append(where, "last_inform_at IS NOT NULL AND last_inform_at < ?")
+		args = append(args, *f.InformBefore)
+	}
+	if f.InformAfter != nil {
+		where = append(where, "last_inform_at >= ?")
+		args = append(args, *f.InformAfter)
+	}
+	for _, c := range f.Params {
+		cond, cargs := paramCondSQL(c)
+		where = append(where, cond)
+		args = append(args, cargs...)
+	}
+	orderBy, err := deviceOrderBy(f.Sort, f.SortDesc)
+	if err != nil {
+		return nil, 0, err
+	}
 	whereSQL := strings.Join(where, " AND ")
 
 	var total int
@@ -179,12 +196,63 @@ func (r *deviceRepository) List(ctx context.Context, f domain.DeviceFilter, p do
 	}
 	var rows []domain.Device
 	args = append(args, p.Limit(), p.Offset())
-	err := r.db.SelectContext(ctx, &rows,
-		"SELECT * FROM devices WHERE "+whereSQL+" ORDER BY id DESC LIMIT ? OFFSET ?", args...)
+	err = r.db.SelectContext(ctx, &rows,
+		"SELECT * FROM devices WHERE "+whereSQL+" ORDER BY "+orderBy+" LIMIT ? OFFSET ?", args...)
 	if err != nil {
 		return nil, 0, translateErr(err)
 	}
 	return rows, total, nil
+}
+
+// deviceOrderBy membangun ORDER BY dari whitelist domain.DeviceSortFields (nama kolom TIDAK pernah berasal dari klien
+// langsung). id DESC sebagai penentu urutan agar paginasi stabil.
+func deviceOrderBy(field string, desc bool) (string, error) {
+	if field == "" {
+		return "id DESC", nil
+	}
+	for _, f := range domain.DeviceSortFields {
+		if f == field {
+			dir := "ASC"
+			if desc {
+				dir = "DESC"
+			}
+			if field == "id" {
+				return "id " + dir, nil
+			}
+			return field + " " + dir + ", id DESC", nil
+		}
+	}
+	return "", fmt.Errorf("%w: sort tidak dikenal", domain.ErrInvalidInput)
+}
+
+// numericParamValue: hanya nilai berbentuk angka yang ikut perbandingan numerik (CAST nilai non-angka menjadi 0 dan akan
+// salah cocok pada "lt 5").
+const numericParamValue = "p.parameter_value REGEXP '^-?[0-9]+([.][0-9]+)?$'"
+
+// paramCondSQL menerjemahkan satu kondisi (sudah divalidasi domain.ParseParamCond) menjadi EXISTS terhadap device_parameters.
+// Nama dan nilai selalu di-bind. Pencarian memakai unique key (device_id, parameter_name).
+func paramCondSQL(c domain.ParamCond) (string, []interface{}) {
+	const base = "SELECT 1 FROM device_parameters p WHERE p.device_id = devices.id AND p.parameter_name = ?"
+	switch c.Op {
+	case domain.ParamOpMissing:
+		return "NOT EXISTS (" + base + " AND p.parameter_value IS NOT NULL AND p.parameter_value <> '')", []interface{}{c.Name}
+	case domain.ParamOpExists:
+		return "EXISTS (" + base + " AND p.parameter_value IS NOT NULL AND p.parameter_value <> '')", []interface{}{c.Name}
+	case domain.ParamOpEq:
+		return "EXISTS (" + base + " AND p.parameter_value = ?)", []interface{}{c.Name, c.Value}
+	case domain.ParamOpNe:
+		return "EXISTS (" + base + " AND p.parameter_value IS NOT NULL AND p.parameter_value <> ?)", []interface{}{c.Name, c.Value}
+	case domain.ParamOpLike:
+		return "EXISTS (" + base + " AND p.parameter_value LIKE ?)", []interface{}{c.Name, "%" + likeEscape(c.Value) + "%"}
+	case domain.ParamOpPrefix:
+		return "EXISTS (" + base + " AND p.parameter_value LIKE ?)", []interface{}{c.Name, likeEscape(c.Value) + "%"}
+	}
+	op := map[string]string{domain.ParamOpGt: ">", domain.ParamOpGe: ">=", domain.ParamOpLt: "<", domain.ParamOpLe: "<="}[c.Op]
+	if op == "" { // tak terjangkau (ParseParamCond menolak op lain); gagal tertutup, bukan melonggarkan filter
+		return "1 = 0", nil
+	}
+	return "EXISTS (" + base + " AND " + numericParamValue + " AND CAST(p.parameter_value AS DECIMAL(24,6)) " + op + " ?)",
+		[]interface{}{c.Name, c.Value}
 }
 
 func (r *deviceRepository) CountByStatus(ctx context.Context, tenantID *uint64) ([]domain.DeviceStatusCount, error) {
@@ -416,6 +484,36 @@ func (r *deviceParameterRepository) PPPoEUsernames(ctx context.Context, deviceID
 		if _, seen := out[row.DeviceID]; !seen {
 			out[row.DeviceID] = row.Value
 		}
+	}
+	return out, nil
+}
+
+func (r *deviceParameterRepository) ValuesFor(ctx context.Context, deviceIDs []uint64, names []string) (map[uint64]map[string]string, error) {
+	out := map[uint64]map[string]string{}
+	if len(deviceIDs) == 0 || len(names) == 0 {
+		return out, nil
+	}
+	q, args, err := sqlx.In(
+		`SELECT device_id, parameter_name, parameter_value FROM device_parameters
+		 WHERE device_id IN (?) AND parameter_name IN (?) AND parameter_value IS NOT NULL`, deviceIDs, names)
+	if err != nil {
+		return nil, translateErr(err)
+	}
+	var rows []struct {
+		DeviceID uint64 `db:"device_id"`
+		Name     string `db:"parameter_name"`
+		Value    string `db:"parameter_value"`
+	}
+	if err := r.db.SelectContext(ctx, &rows, r.db.Rebind(q), args...); err != nil {
+		return nil, translateErr(err)
+	}
+	for _, row := range rows {
+		m := out[row.DeviceID]
+		if m == nil {
+			m = map[string]string{}
+			out[row.DeviceID] = m
+		}
+		m[row.Name] = row.Value
 	}
 	return out, nil
 }

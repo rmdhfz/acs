@@ -278,6 +278,9 @@ func (s *Service) ListConfigSnapshots(ctx context.Context, actor domain.Actor, d
 }
 
 func (s *Service) List(ctx context.Context, actor domain.Actor, f domain.DeviceFilter, p domain.Pagination) ([]domain.Device, int, error) {
+	if err := checkQueryParams(actor, f); err != nil {
+		return nil, 0, err
+	}
 	if !actor.IsSuperadmin() {
 		tid, err := auth.ScopedTenantFilter(actor)
 		if err != nil {
@@ -286,6 +289,32 @@ func (s *Service) List(ctx context.Context, actor domain.Actor, f domain.DeviceF
 		f.TenantID = tid
 	}
 	return s.devices.List(ctx, f, p)
+}
+
+// checkQueryParams menegakkan batas query bebas dan melindungi nilai rahasia: kondisi/proyeksi atas parameter rahasia (password,
+// passphrase, PSK, ...) hanya untuk peran yang memang boleh melihat nilainya (Actor.CanSeeSecrets). Tanpa ini, filter "eq/prefix"
+// menjadi oracle untuk menebak rahasia perangkat huruf demi huruf walau nilainya disamarkan di respons.
+func checkQueryParams(actor domain.Actor, f domain.DeviceFilter) error {
+	if len(f.Params) > domain.MaxParamConds {
+		return fmt.Errorf("%w: maksimal %d kondisi param per permintaan", domain.ErrInvalidInput, domain.MaxParamConds)
+	}
+	if len(f.ProjectParams) > domain.MaxProjectParams {
+		return fmt.Errorf("%w: maksimal %d nama pada params", domain.ErrInvalidInput, domain.MaxProjectParams)
+	}
+	if actor.CanSeeSecrets() {
+		return nil
+	}
+	for _, c := range f.Params {
+		if domain.IsSensitiveParamName(c.Name) {
+			return fmt.Errorf("%w: parameter rahasia tidak dapat dipakai sebagai filter oleh peran ini", domain.ErrInvalidInput)
+		}
+	}
+	for _, n := range f.ProjectParams {
+		if domain.IsSensitiveParamName(n) {
+			return fmt.Errorf("%w: parameter rahasia tidak dapat diminta oleh peran ini", domain.ErrInvalidInput)
+		}
+	}
+	return nil
 }
 
 // ListWithSummary = List + ringkasan baris daftar (redaman optik terakhir & username PPPoE) lewat dua query batch untuk
@@ -322,6 +351,13 @@ func (s *Service) ListWithSummary(ctx context.Context, actor domain.Actor, f dom
 					u := v
 					items[i].PPPoEUsername = &u
 				}
+			}
+		}
+	}
+	if len(f.ProjectParams) > 0 && s.deviceParams != nil {
+		if m, err := s.deviceParams.ValuesFor(ctx, ids, f.ProjectParams); err == nil {
+			for i := range items {
+				items[i].Parameters = m[items[i].ID]
 			}
 		}
 	}

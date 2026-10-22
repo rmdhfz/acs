@@ -552,3 +552,7 @@ func atoiT(t *testing.T, s string) int {
 	}
 	return n
 }
+
+func (f *fakeDeviceParamRepoPV) ValuesFor(context.Context, []uint64, []string) (map[uint64]map[string]string, error) {
+	return nil, nil
+}
