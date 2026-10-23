@@ -34,7 +34,13 @@ func (r *Router) listDevices(c *echo.Context) error {
 	if err != nil {
 		return err
 	}
-	devices, total, err := r.Devices.ListWithSummary(c.Request().Context(), actor, f, paginationFromQuery(c))
+	pg := paginationFromQuery(c)
+	// Tiap virtual parameter dievaluasi per baris: batasi hasil kali agar satu permintaan (oleh peran apa pun, baca terbuka bagi semua staf) tidak
+	// memicu ribuan evaluasi ekspresi.
+	if n := len(vparams) * pg.Limit(); n > maxVParamEvaluations {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("vparams x page_size = %d melebihi %d evaluasi per permintaan; kurangi page_size atau jumlah vparams", n, maxVParamEvaluations))
+	}
+	devices, total, err := r.Devices.ListWithSummary(c.Request().Context(), actor, f, pg)
 	if err != nil {
 		return handleErr(c, err)
 	}

@@ -107,6 +107,14 @@ func (v Value) truthy() bool {
 	return false
 }
 
+// finite: hasil +Inf/-Inf/NaN (mis. 1e200*1e200) bukan angka yang bermakna; jadikan null supaya tidak ditulis ke CPE sebagai "+Inf".
+func finite(f float64) Value {
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return Null()
+	}
+	return Num(f)
+}
+
 func boolVal(b bool) Value {
 	if b {
 		return Num(1)
@@ -659,21 +667,21 @@ func (n *binary) eval(c *ctx) Value {
 	}
 	switch n.op {
 	case "+":
-		return Num(a + b)
+		return finite(a + b)
 	case "-":
-		return Num(a - b)
+		return finite(a - b)
 	case "*":
-		return Num(a * b)
+		return finite(a * b)
 	case "/":
 		if b == 0 {
 			return Null()
 		}
-		return Num(a / b)
+		return finite(a / b)
 	case "%":
 		if b == 0 {
 			return Null()
 		}
-		return Num(math.Mod(a, b))
+		return finite(math.Mod(a, b))
 	}
 	return Null()
 }
@@ -848,7 +856,7 @@ func callFn(fn string, vs []Value) Value {
 		if vs[0].IsNull() || vs[1].IsNull() || vs[1].String() == "" {
 			return vs[0]
 		}
-		return Str(truncate(strings.ReplaceAll(vs[0].String(), vs[1].String(), vs[2].String()), maxStrLen))
+		return Str(truncate(replaceBounded(vs[0].String(), vs[1].String(), vs[2].String(), maxStrLen*utf8.UTFMax), maxStrLen))
 	case "substr":
 		if vs[0].IsNull() {
 			return Null()
@@ -882,6 +890,29 @@ func callFn(fn string, vs []Value) Value {
 		return Str(formatDuration(int64(x)))
 	}
 	return Null()
+}
+
+// replaceBounded = strings.ReplaceAll yang berhenti menambah hasil begitu panjangnya mencapai limit byte. strings.ReplaceAll
+// mengalokasikan hasil PENUH dulu (len(s) + n*(len(new)-len(old))) baru dipotong pemanggil: dengan s dan new masing-masing ~4 KB
+// dan beberapa replace bersarang itu mencapai ribuan MB per Eval — celah DoS yang ditemukan audit keamanan independen.
+func replaceBounded(s, old, new string, limit int) string {
+	var sb strings.Builder
+	sb.Grow(min(len(s), limit))
+	for len(s) > 0 && sb.Len() < limit {
+		i := strings.Index(s, old)
+		if i < 0 {
+			sb.WriteString(s)
+			break
+		}
+		sb.WriteString(s[:i])
+		sb.WriteString(new)
+		s = s[i+len(old):]
+	}
+	out := sb.String()
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out
 }
 
 // formatDuration: detik → "1d 2h 3m 4s" (satuan nol dilewati; 0 → "0s").

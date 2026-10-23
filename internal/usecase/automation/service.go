@@ -139,6 +139,9 @@ func (s *Service) validateActions(ctx context.Context, tenantID uint64, actions 
 			if !domain.ValidParamName(a.Name) {
 				return fmt.Errorf("%w: %s: name tidak valid (logical key atau raw path; huruf, angka, '.', '_', '-')", domain.ErrInvalidInput, at)
 			}
+			if blockedTarget(a.Name) {
+				return fmt.Errorf("%w: %s: parameter ManagementServer.* (URL, kredensial, interval Inform, Connection Request) tidak boleh diatur aturan otomasi — aturan yang salah dapat memutus seluruh armada dari ACS", domain.ErrInvalidInput, at)
+			}
 			if domain.IsSensitiveParamName(a.Name) {
 				return fmt.Errorf("%w: %s: parameter rahasia tidak boleh diatur lewat aturan otomasi (nilainya akan tersimpan polos di definisi) — pakai provisioning profile", domain.ErrInvalidInput, at)
 			}
@@ -168,14 +171,16 @@ func (s *Service) validateActions(ctx context.Context, tenantID uint64, actions 
 				return fmt.Errorf("%w: %s: tag_id wajib", domain.ErrInvalidInput, at)
 			}
 			tag, err := s.tags.GetByID(ctx, *a.TagID)
+			// Pesan SERAGAM untuk "tidak ada" dan "milik tenant lain": ADMIN tidak boleh bisa menyisir id tag berurutan untuk mencari tag tenant lain.
+			errTag := fmt.Errorf("%w: %s: tag %d tidak ditemukan atau bukan milik tenant ini", domain.ErrInvalidInput, at, *a.TagID)
 			if err != nil {
 				if errors.Is(err, domain.ErrNotFound) {
-					return fmt.Errorf("%w: %s: tag %d tidak ditemukan", domain.ErrInvalidInput, at, *a.TagID)
+					return errTag
 				}
 				return err
 			}
 			if tag.TenantID != nil && *tag.TenantID != tenantID {
-				return fmt.Errorf("%w: %s: tag milik tenant lain", domain.ErrInvalidInput, at)
+				return errTag
 			}
 			if a.Name != "" || a.Value != "" || len(a.Names) > 0 {
 				return fmt.Errorf("%w: %s hanya memakai tag_id", domain.ErrInvalidInput, at)
@@ -183,6 +188,38 @@ func (s *Service) validateActions(ctx context.Context, tenantID uint64, actions 
 		default:
 			return fmt.Errorf("%w: %s: jenis aksi tidak dikenal (set_parameter, reboot, get_parameter_values, add_tag, webhook)", domain.ErrInvalidInput, at)
 		}
+	}
+	return nil
+}
+
+func countSetParams(actions []domain.AutomationAction) int {
+	n := 0
+	for _, a := range actions {
+		if a.Type == domain.AutomationActionSetParameter {
+			n++
+		}
+	}
+	return n
+}
+
+// checkSetParamBudget membatasi total aksi set_parameter pada aturan AKTIF satu tenant: tiap aksi dievaluasi (resolusi + pembacaan nilai) pada
+// setiap Inform perangkat tenant itu, jadi tanpa batas ADMIN dapat melipatgandakan beban DB jalur Inform. excludeID = aturan yang sedang diubah.
+func (s *Service) checkSetParamBudget(ctx context.Context, tenantID, excludeID uint64, actions []domain.AutomationAction, active bool) error {
+	n := countSetParams(actions)
+	if !active || n == 0 {
+		return nil
+	}
+	rules, _, err := s.rules.List(ctx, &tenantID, domain.Pagination{Page: 1, PageSize: 100})
+	if err != nil {
+		return err
+	}
+	for _, r := range rules {
+		if r.ID != excludeID && r.IsActive {
+			n += countSetParams(r.Actions)
+		}
+	}
+	if n > domain.AutomationMaxSetParamsPerTenant {
+		return fmt.Errorf("%w: total aksi set_parameter pada aturan aktif satu tenant dibatasi %d (dievaluasi pada setiap Inform)", domain.ErrInvalidInput, domain.AutomationMaxSetParamsPerTenant)
 	}
 	return nil
 }
@@ -308,6 +345,10 @@ func (s *Service) Create(ctx context.Context, actor domain.Actor, in Input) (*do
 	} else if n >= domain.AutomationMaxPerTenant {
 		return nil, fmt.Errorf("%w: batas %d aturan otomasi per tenant tercapai", domain.ErrInvalidInput, domain.AutomationMaxPerTenant)
 	}
+	activeNew := in.IsActive == nil || *in.IsActive
+	if err := s.checkSetParamBudget(ctx, tenantID, 0, in.Actions, activeNew); err != nil {
+		return nil, err
+	}
 	r := &domain.AutomationRule{
 		TenantID: tenantID, Name: name, Description: desc, TriggerEvent: in.TriggerEvent, Condition: cond,
 		Actions: in.Actions, CooldownSeconds: cooldown, MaxConsecutiveFires: maxFires, Priority: 100, IsActive: true,
@@ -408,6 +449,11 @@ func (s *Service) Update(ctx context.Context, actor domain.Actor, uuid string, i
 	}
 	if in.IsActive != nil {
 		r.IsActive = *in.IsActive
+	}
+	if in.Actions != nil || in.IsActive != nil {
+		if err := s.checkSetParamBudget(ctx, r.TenantID, r.ID, r.Actions, r.IsActive); err != nil {
+			return nil, err
+		}
 	}
 	if err := s.rules.Update(ctx, r, actor.UserIDPtr()); err != nil {
 		return nil, err
@@ -532,38 +578,130 @@ func (st step) describe() string {
 	return st.Action.Type
 }
 
+// blockedTarget: parameter yang TIDAK boleh diatur aturan otomasi karena bisa memutus perangkat dari ACS secara otomatis dan berskala armada
+// (ManagementServer.* — URL, kredensial, interval Inform, Connection Request). Berlaku untuk nama yang ditulis maupun path hasil resolusi logical key.
+func blockedTarget(name string) bool {
+	l := strings.ToLower(name)
+	return strings.Contains(l, "managementserver") || strings.Contains(l, "periodicinform") || strings.Contains(l, "periodic_inform") ||
+		strings.Contains(l, "connectionrequest") || strings.Contains(l, "connection_request")
+}
+
+// planCtx = memoisasi SATU evaluasi Inform: resolusi path (logical key -> raw; tiap resolusi bisa ~4 query) dan nilai perangkat saat ini
+// (satu ValuesFor untuk semua target, bukan satu query per aksi). Tanpa ini 50 aturan x 10 aksi = ribuan query per Inform (audit keamanan 22 Okt 2026).
+type planCtx struct {
+	resolved map[string]resolvedPath
+	cur      map[string]*string // path -> nilai saat ini; ada di map = sudah dimuat (nil = belum pernah dilaporkan)
+}
+
+type resolvedPath struct {
+	path string
+	err  error
+}
+
+func newPlanCtx() *planCtx {
+	return &planCtx{resolved: map[string]resolvedPath{}, cur: map[string]*string{}}
+}
+
+func (s *Service) resolve(ctx context.Context, dev *domain.Device, pc *planCtx, key string) (string, error) {
+	if r, ok := pc.resolved[key]; ok {
+		return r.path, r.err
+	}
+	path, err := s.tasks.ResolveParameterPath(ctx, dev.ID, key)
+	pc.resolved[key] = resolvedPath{path, err}
+	return path, err
+}
+
+// preload meresolusi semua target set_parameter dari aturan yang jatuh tempo lalu memuat nilai saat ini dalam satu query.
+func (s *Service) preload(ctx context.Context, dev *domain.Device, pc *planCtx, rules []*domain.AutomationRule) error {
+	var paths []string
+	for _, r := range rules {
+		for _, a := range r.Actions {
+			if a.Type != domain.AutomationActionSetParameter || blockedTarget(a.Name) {
+				continue
+			}
+			p, err := s.resolve(ctx, dev, pc, a.Name)
+			if err != nil || blockedTarget(p) {
+				continue
+			}
+			if _, loaded := pc.cur[p]; !loaded {
+				pc.cur[p] = nil
+				paths = append(paths, p)
+			}
+		}
+	}
+	if len(paths) == 0 {
+		return nil
+	}
+	m, err := s.params.ValuesFor(ctx, []uint64{dev.ID}, paths)
+	if err != nil {
+		return err
+	}
+	for p, v := range m[dev.ID] {
+		v := v
+		pc.cur[p] = &v
+	}
+	return nil
+}
+
 // plan menghitung langkah aksi terhadap keadaan perangkat saat ini TANPA mengeksekusi apa pun (dipakai evaluasi nyata dan uji).
-func (s *Service) plan(ctx context.Context, dev *domain.Device, actions []domain.AutomationAction, get func(string) (string, bool)) ([]step, error) {
+func (s *Service) plan(ctx context.Context, dev *domain.Device, actions []domain.AutomationAction, get func(string) (string, bool), pc *planCtx) ([]step, error) {
 	var deviceTags map[uint64]bool
 	steps := make([]step, 0, len(actions))
 	for _, a := range actions {
 		st := step{Action: a, Change: true}
 		switch a.Type {
 		case domain.AutomationActionSetParameter:
+			if blockedTarget(a.Name) {
+				st.Change, st.Skip = false, "parameter ManagementServer.* tidak boleh diatur aturan otomasi (dapat memutus perangkat dari ACS)"
+				break
+			}
 			e, err := s.parse(a.Value)
 			if err != nil {
 				st.Change, st.Skip = false, "ekspresi nilai tidak valid: "+err.Error()
 				break
 			}
-			v := e.Eval(get)
-			if v.IsNull() {
-				st.Change, st.Skip = false, "nilai belum dapat dihitung (parameter sumber belum dilaporkan)"
+			// Parameter sumber yang BELUM dilaporkan => lewati, jangan menulis nilai parsial: concat('ACS-', {X}) dengan {X} null menghasilkan
+			// "ACS-" (null dianggap kosong oleh concat) dan akan tertulis ke perangkat.
+			missing := ""
+			for _, ref := range e.Refs() {
+				if _, ok := get(ref); !ok {
+					missing = ref
+					break
+				}
+			}
+			if missing != "" {
+				st.Change, st.Skip = false, "parameter sumber belum dilaporkan: "+missing
 				break
 			}
-			path, err := s.tasks.ResolveParameterPath(ctx, dev.ID, a.Name)
+			v := e.Eval(get)
+			if v.IsNull() {
+				st.Change, st.Skip = false, "nilai belum dapat dihitung"
+				break
+			}
+			path, err := s.resolve(ctx, dev, pc, a.Name)
 			if err != nil {
 				st.Change, st.Skip = false, "parameter tidak dapat di-resolve untuk perangkat ini: "+err.Error()
 				break
 			}
+			if blockedTarget(path) {
+				st.Change, st.Skip = false, "parameter ManagementServer.* tidak boleh diatur aturan otomasi (dapat memutus perangkat dari ACS)"
+				break
+			}
 			st.Path, st.Value = path, v.String()
-			cur, err := s.params.Get(ctx, dev.ID, path)
-			switch {
-			case err == nil && cur.ParameterValue != nil:
-				c := *cur.ParameterValue
+			cur, loaded := pc.cur[path]
+			if !loaded { // jalur uji (dry-run): satu perangkat, muat sesuai kebutuhan
+				if dp, gerr := s.params.Get(ctx, dev.ID, path); gerr == nil && dp.ParameterValue != nil {
+					c := *dp.ParameterValue
+					cur = &c
+				} else if gerr != nil && !errors.Is(gerr, domain.ErrNotFound) {
+					return nil, gerr
+				}
+				pc.cur[path] = cur
+			}
+			if cur != nil {
+				c := *cur
 				st.Current = &c
 				st.Change = c != st.Value
-			case err != nil && !errors.Is(err, domain.ErrNotFound):
-				return nil, err
 			}
 		case domain.AutomationActionAddTag:
 			if deviceTags == nil {
@@ -704,7 +842,8 @@ func (s *Service) Evaluate(ctx context.Context, dev *domain.Device, events []str
 		return nil
 	}
 
-	// Satu query untuk semua parameter yang dirujuk kondisi aturan-aturan ini.
+	// Satu query untuk semua parameter yang dirujuk kondisi DAN nilai aksi set_parameter aturan-aturan ini. (Dulu hanya kondisi: ref {param}
+	// yang hanya ada di nilai aksi selalu null sehingga aksinya diam-diam tidak pernah jalan; dry-run menampilkannya benar.)
 	type compiledRule struct {
 		rule *domain.AutomationRule
 		cond *vexpr.Expr // nil = selalu benar
@@ -712,6 +851,14 @@ func (s *Service) Evaluate(ctx context.Context, dev *domain.Device, events []str
 	var cs []compiledRule
 	seen := map[string]bool{}
 	var refs []string
+	addRefs := func(e *vexpr.Expr) {
+		for _, ref := range e.Refs() {
+			if !vexpr.IsContextRef(ref) && !seen[ref] {
+				seen[ref] = true
+				refs = append(refs, ref)
+			}
+		}
+	}
 	for i := range rules {
 		cr := compiledRule{rule: &rules[i]}
 		if strings.TrimSpace(rules[i].Condition) != "" {
@@ -721,10 +868,12 @@ func (s *Service) Evaluate(ctx context.Context, dev *domain.Device, events []str
 				continue
 			}
 			cr.cond = e
-			for _, ref := range e.Refs() {
-				if !vexpr.IsContextRef(ref) && !seen[ref] {
-					seen[ref] = true
-					refs = append(refs, ref)
+			addRefs(e)
+		}
+		for _, a := range rules[i].Actions {
+			if a.Type == domain.AutomationActionSetParameter {
+				if e, err := s.parse(a.Value); err == nil {
+					addRefs(e)
 				}
 			}
 		}
@@ -752,7 +901,13 @@ func (s *Service) Evaluate(ctx context.Context, dev *domain.Device, events []str
 		return err
 	}
 
+	// Lintasan 1: tentukan aturan yang JATUH TEMPO (kondisi benar, tidak di-suspend, di luar cooldown) tanpa query tambahan.
 	now := s.now()
+	type dueRule struct {
+		rule *domain.AutomationRule
+		st   domain.AutomationState
+	}
+	var dues []dueRule
 	for _, cr := range cs {
 		rule := cr.rule
 		st := states[rule.ID]
@@ -769,7 +924,24 @@ func (s *Service) Evaluate(ctx context.Context, dev *domain.Device, events []str
 		if st.LastFiredAt != nil && now.Sub(*st.LastFiredAt) < time.Duration(rule.CooldownSeconds)*time.Second {
 			continue
 		}
-		steps, err := s.plan(ctx, dev, rule.Actions, get)
+		dues = append(dues, dueRule{rule, st})
+	}
+	if len(dues) == 0 {
+		return nil
+	}
+
+	// Lintasan 2: resolusi target + nilai saat ini untuk SEMUA aturan jatuh tempo dalam satu query, lalu rencanakan & eksekusi.
+	pc := newPlanCtx()
+	dueRules := make([]*domain.AutomationRule, len(dues))
+	for i, d := range dues {
+		dueRules[i] = d.rule
+	}
+	if err := s.preload(ctx, dev, pc, dueRules); err != nil {
+		return err
+	}
+	for _, d := range dues {
+		rule, st := d.rule, d.st
+		steps, err := s.plan(ctx, dev, rule.Actions, get, pc)
 		if err != nil {
 			return err
 		}
@@ -790,10 +962,32 @@ func (s *Service) Evaluate(ctx context.Context, dev *domain.Device, events []str
 				fmt.Errorf("di-suspend: %d pemicuan berturut-turut tanpa kondisi pernah salah/konvergen (reset lewat API/UI setelah diperiksa)", st.ConsecutiveFires))
 			continue
 		}
+		// Pagar 5 (batas keras, TIDAK bergantung kondisi): kondisi yang berosilasi akibat aksinya sendiri (mis. event 2 PERIODIC -> reboot ->
+		// 1 BOOT -> kondisi salah -> hitungan berturut direset) tidak boleh lolos dari Pagar 2 selamanya. Jendela bergulir 24 jam.
+		windowStart, windowFires := st.WindowStartedAt, st.WindowFires
+		if windowStart == nil || now.Sub(*windowStart) >= 24*time.Hour {
+			t := now
+			windowStart, windowFires = &t, 0
+		}
+		if windowFires >= domain.AutomationMaxFiresPerDay {
+			next.Suspended = true
+			next.WindowStartedAt, next.WindowFires = windowStart, windowFires
+			_ = s.states.Save(ctx, &next)
+			s.record(ctx, rule, dev, false, true, summarize(steps),
+				fmt.Errorf("di-suspend: melewati %d pemicuan dalam 24 jam walau kondisi berganti benar/salah (reset lewat API/UI setelah diperiksa)", domain.AutomationMaxFiresPerDay))
+			continue
+		}
 		execErr := s.execute(ctx, rule, dev, steps)
 		fired := now // pemicuan (berhasil atau gagal) memulai cooldown agar kegagalan tidak diulang tiap Inform
 		next.LastFiredAt = &fired
-		next.ConsecutiveFires = st.ConsecutiveFires + 1
+		if errors.Is(execErr, domain.ErrQuotaExceeded) {
+			// Antrean tenant penuh bukan kesalahan aturan: jangan dihitung sebagai pemicuan berturut-turut (kalau tidak, tiga kali kuota penuh
+			// menyuspend aturan yang benar sampai ADMIN mereset). Cooldown tetap berlaku.
+			next.WindowStartedAt, next.WindowFires = windowStart, windowFires
+		} else {
+			next.ConsecutiveFires = st.ConsecutiveFires + 1
+			next.WindowStartedAt, next.WindowFires = windowStart, windowFires+1
+		}
 		_ = s.states.Save(ctx, &next)
 		s.record(ctx, rule, dev, execErr == nil, false, summarize(steps), execErr)
 	}
@@ -902,7 +1096,7 @@ func (s *Service) Test(ctx context.Context, actor domain.Actor, in TestInput, de
 		res.Refs = append(res.Refs, r)
 	}
 	res.Matched = cond == nil || cond.Eval(get).Truthy()
-	steps, err := s.plan(ctx, dev, in.Actions, get)
+	steps, err := s.plan(ctx, dev, in.Actions, get, newPlanCtx())
 	if err != nil {
 		return nil, err
 	}

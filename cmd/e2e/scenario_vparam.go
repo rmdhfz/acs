@@ -108,6 +108,10 @@ func scenarioVirtualParameter(ctx context.Context, w *World) result {
 	if st, _ := w.pilotAdmin.status(http.MethodGet, "/api/v1/devices?vparams=Bukan Nama Valid", nil); st != http.StatusBadRequest {
 		return failr("VP-02: vparams tak valid HTTP %d, harusnya 400", st)
 	}
+	// 10 vparams x page_size 200 = 2000 evaluasi > batas 1000 per permintaan (audit keamanan 22 Okt 2026)
+	if st, _ := w.pilotAdmin.status(http.MethodGet, "/api/v1/devices?page_size=200&vparams=a,b,c,d,e,f,g,h,i,j", nil); st != http.StatusBadRequest {
+		return failr("VP-02: vparams x page_size berlebih HTTP %d, harusnya 400", st)
+	}
 
 	// VP-03
 	type testRes struct {

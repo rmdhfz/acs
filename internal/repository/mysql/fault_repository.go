@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -33,6 +34,14 @@ func (r *faultRepository) Upsert(ctx context.Context, f *domain.DeviceFault) err
 	}
 	if n, _ := res.RowsAffected(); n > 0 {
 		return nil
+	}
+	// Jalur INSERT (jarang): batasi baris aktif per perangkat. fault_code dari CPE tidak tepercaya; tanpa batas tabel bisa tumbuh tanpa henti.
+	var active int
+	if err := r.db.GetContext(ctx, &active, `SELECT COUNT(*) FROM device_faults WHERE device_id = ? AND is_deleted = 0`, f.DeviceID); err != nil {
+		return translateErr(err)
+	}
+	if active >= domain.FaultMaxActivePerDevice {
+		return fmt.Errorf("%w: perangkat sudah memiliki %d fault aktif (batas)", domain.ErrQuotaExceeded, active)
 	}
 	f.UUID = uuid.NewString()
 	_, err = r.db.ExecContext(ctx,

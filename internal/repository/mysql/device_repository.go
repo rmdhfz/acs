@@ -201,14 +201,20 @@ func (r *deviceRepository) List(ctx context.Context, f domain.DeviceFilter, p do
 	}
 	whereSQL := strings.Join(where, " AND ")
 
+	// Query bebas (param= / sort pada kolom tanpa indeks) bisa mahal pada armada besar: batasi waktu eksekusi di sisi server (MariaDB
+	// "SET STATEMENT ... FOR"), supaya satu permintaan tidak menahan DB. Terlewati -> galat 1969 -> 400 "persempit filter" (errors.go).
+	pre := ""
+	if len(f.Params) > 0 || f.Sort == "ip_address" || f.Sort == "software_version" || f.Sort == "product_class" || f.Sort == "created_at" {
+		pre = "SET STATEMENT max_statement_time=10 FOR "
+	}
 	var total int
-	if err := r.db.GetContext(ctx, &total, "SELECT COUNT(*) FROM devices WHERE "+whereSQL, args...); err != nil {
+	if err := r.db.GetContext(ctx, &total, pre+"SELECT COUNT(*) FROM devices WHERE "+whereSQL, args...); err != nil {
 		return nil, 0, translateErr(err)
 	}
 	var rows []domain.Device
 	args = append(args, p.Limit(), p.Offset())
 	err = r.db.SelectContext(ctx, &rows,
-		"SELECT * FROM devices WHERE "+whereSQL+" ORDER BY "+orderBy+" LIMIT ? OFFSET ?", args...)
+		pre+"SELECT * FROM devices WHERE "+whereSQL+" ORDER BY "+orderBy+" LIMIT ? OFFSET ?", args...)
 	if err != nil {
 		return nil, 0, translateErr(err)
 	}

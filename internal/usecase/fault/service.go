@@ -5,12 +5,15 @@ package fault
 
 import (
 	"context"
+	"regexp"
 	"strings"
 	"unicode/utf8"
 
 	"acs/internal/domain"
 	"acs/internal/usecase/auth"
 )
+
+var faultCodeRe = regexp.MustCompile(`^[0-9]{1,5}$`)
 
 type Service struct {
 	repo     domain.FaultRepository
@@ -25,7 +28,9 @@ func NewService(repo domain.FaultRepository, activity domain.ActivityLogReposito
 // batas kolom (per rune), dan fault tanpa kode diberi kode "unknown" supaya tetap terlihat.
 func (s *Service) Record(ctx context.Context, deviceID uint64, taskID *uint64, rpcMethod, code, message string) error {
 	code = strings.TrimSpace(code)
-	if code == "" {
+	// Kode CWMP standar & vendor berbentuk angka 4-5 digit (9000-9899). Selain itu (kosong, teks acak dari CPE yang rusak/jahat) dilebur ke "unknown"
+	// agar jumlah variasi kode per perangkat tidak tak terbatas.
+	if !faultCodeRe.MatchString(code) {
 		code = "unknown"
 	}
 	f := &domain.DeviceFault{

@@ -256,10 +256,10 @@ func (r *Router) Register(e *echo.Echo) {
 		authed.GET("/automation-rules", r.listAutomationRules, RequireRoles(adminOrNOC...))
 		authed.POST("/automation-rules/test", r.testAutomationRule, RequireRoles(admin...))
 		authed.GET("/automation-rules/:uuid", r.getAutomationRule, RequireRoles(adminOrNOC...))
-		authed.POST("/automation-rules", r.createAutomationRule, RequireRoles(admin...))
-		authed.PATCH("/automation-rules/:uuid", r.updateAutomationRule, RequireRoles(admin...))
-		authed.DELETE("/automation-rules/:uuid", r.deleteAutomationRule, RequireRoles(admin...))
-		authed.POST("/automation-rules/:uuid/reset", r.resetAutomationRule, RequireRoles(admin...))
+		authed.POST("/automation-rules", r.createAutomationRule, RequireRoles(admin...), denyImpersonation)
+		authed.PATCH("/automation-rules/:uuid", r.updateAutomationRule, RequireRoles(admin...), denyImpersonation)
+		authed.DELETE("/automation-rules/:uuid", r.deleteAutomationRule, RequireRoles(admin...), denyImpersonation)
+		authed.POST("/automation-rules/:uuid/reset", r.resetAutomationRule, RequireRoles(admin...), denyImpersonation)
 		authed.GET("/automation-runs", r.listAutomationRuns, RequireRoles(adminOrNOC...))
 	}
 	if r.VParams != nil {
@@ -268,9 +268,9 @@ func (r *Router) Register(e *echo.Echo) {
 		authed.GET("/virtual-parameters", r.listVirtualParameters)
 		authed.POST("/virtual-parameters/test", r.testVirtualParameter, RequireRoles(admin...))
 		authed.GET("/virtual-parameters/:uuid", r.getVirtualParameter)
-		authed.POST("/virtual-parameters", r.createVirtualParameter, RequireRoles(admin...))
-		authed.PATCH("/virtual-parameters/:uuid", r.updateVirtualParameter, RequireRoles(admin...))
-		authed.DELETE("/virtual-parameters/:uuid", r.deleteVirtualParameter, RequireRoles(admin...))
+		authed.POST("/virtual-parameters", r.createVirtualParameter, RequireRoles(admin...), denyImpersonation)
+		authed.PATCH("/virtual-parameters/:uuid", r.updateVirtualParameter, RequireRoles(admin...), denyImpersonation)
+		authed.DELETE("/virtual-parameters/:uuid", r.deleteVirtualParameter, RequireRoles(admin...), denyImpersonation)
 		authed.GET("/devices/:id/virtual-parameters", r.deviceVirtualParameters)
 	}
 

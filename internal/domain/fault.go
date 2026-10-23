@@ -11,6 +11,9 @@ import (
 const (
 	FaultStringMaxLen = 1024
 	FaultCodeMaxLen   = 16
+	// FaultMaxActivePerDevice membatasi baris fault aktif per perangkat: fault_code berasal dari CPE, jadi tanpa batas CPE yang mengirim kode acak
+	// dapat menumbuhkan tabel tanpa henti (audit keamanan 22 Okt 2026).
+	FaultMaxActivePerDevice = 50
 )
 
 // DeviceFault = satu masalah AKTIF: CPE menolak RPC tertentu dengan kode fault tertentu. Kejadian berulang menaikkan

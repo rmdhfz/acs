@@ -241,3 +241,59 @@ func TestContextRefs(t *testing.T) {
 		}
 	}
 }
+
+// Regresi audit keamanan: replace bersarang dengan string besar tidak boleh mengalokasikan hasil penuh (dulu ~3,3 GB per Eval).
+func TestReplaceTidakMengalokasiHasilPenuh(t *testing.T) {
+	big := strings.Repeat("a", 4096)
+	var expr strings.Builder
+	expr.WriteString("len(concat(")
+	for i := 0; i < 20; i++ {
+		if i > 0 {
+			expr.WriteString(",")
+		}
+		expr.WriteString("replace({P},'a',{P})")
+	}
+	expr.WriteString("))")
+	e, err := Parse(expr.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	get := func(string) (string, bool) { return big, true }
+	allocs := testing.AllocsPerRun(1, func() { _ = e.Eval(get) })
+	_ = allocs
+	var m1, m2 runtimeMemStats
+	m1.read()
+	start := time.Now()
+	v := e.Eval(get)
+	m2.read()
+	if d := time.Since(start); d > 500*time.Millisecond {
+		t.Errorf("Eval terlalu lama: %v", d)
+	}
+	if grew := m2.total - m1.total; grew > 64<<20 {
+		t.Errorf("Eval mengalokasikan %d MiB (batas 64)", grew>>20)
+	}
+	if n, ok := v.asNum(); !ok || n > float64(MaxResultLen*20) {
+		t.Errorf("hasil len tidak terbatas: %v", v.String())
+	}
+	// semantik tetap benar untuk kasus kecil
+	if got := eval(t, "replace('a-b-c','-','+')", nil).String(); got != "a+b+c" {
+		t.Errorf("replace biasa = %q", got)
+	}
+	if got := eval(t, "replace('aaa','a','')", nil).String(); got != "" {
+		t.Errorf("replace dengan pengganti kosong = %q", got)
+	}
+}
+
+// Hasil +Inf/NaN dari aritmetika menjadi null (dulu "+Inf" ikut ditulis ke CPE oleh set_parameter).
+func TestHasilTakHinggaMenjadiNull(t *testing.T) {
+	huge := strings.Repeat("9", 200)
+	for _, src := range []string{"{A} * {A}", "{A} + {A} * {A}", "{A} / 0.000000000000001 * {A}"} {
+		v := eval(t, src, map[string]string{"A": huge})
+		if !v.IsNull() {
+			t.Errorf("%s = %q, harus null", src, v.String())
+		}
+	}
+	if got := eval(t, "2 * 3", nil).String(); got != "6" {
+		t.Errorf("aritmetika normal rusak: %q", got)
+	}
+}

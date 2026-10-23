@@ -3,6 +3,7 @@ package automation
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -143,11 +144,21 @@ type fakeParams struct {
 	valsCall int
 }
 
-func (p *fakeParams) ValuesFor(_ context.Context, ids []uint64, _ []string) (map[uint64]map[string]string, error) {
+func (p *fakeParams) ValuesFor(_ context.Context, ids []uint64, names []string) (map[uint64]map[string]string, error) {
 	p.valsCall++
+	want := map[string]bool{}
+	for _, n := range names {
+		want[n] = true
+	}
 	out := map[uint64]map[string]string{}
 	for _, id := range ids {
-		out[id] = p.vals[id]
+		m := map[string]string{}
+		for k, v := range p.vals[id] {
+			if want[k] {
+				m[k] = v
+			}
+		}
+		out[id] = m
 	}
 	return out, nil
 }
@@ -159,6 +170,7 @@ func (p *fakeParams) Get(_ context.Context, id uint64, name string) (*domain.Dev
 }
 
 type fakeTasks struct {
+	resolves int
 	pending  bool
 	sets     []map[string]string
 	reboots  int
@@ -189,6 +201,7 @@ func (t *fakeTasks) HasPendingForDevice(context.Context, uint64) (bool, error) {
 	return t.pending, nil
 }
 func (t *fakeTasks) ResolveParameterPath(_ context.Context, _ uint64, key string) (string, error) {
+	t.resolves++
 	if key == "wifi.ssid" { // logical key -> raw path
 		return "InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID", nil
 	}
@@ -668,5 +681,224 @@ func TestTest_DryRunTanpaEfekSamping(t *testing.T) {
 	res, _ = g.svc.Test(ctx, adminA, TestInput{Condition: "contains({@events}, '1 BOOT')", Actions: []domain.AutomationAction{{Type: "reboot"}}, Events: []string{"1 BOOT"}}, 1)
 	if !res.Matched {
 		t.Errorf("events simulasi harus dipakai: %+v", res)
+	}
+}
+
+// ---- regresi audit keamanan independen (22 Okt 2026) ----
+
+// Ref {param} yang HANYA ada di nilai aksi harus ikut dimuat; dulu hanya ref kondisi yang dimuat sehingga aksinya diam-diam tidak pernah jalan.
+func TestEvaluate_RefHanyaDiNilaiAksiIkutDimuat(t *testing.T) {
+	g := newRig()
+	const src = "InternetGatewayDevice.X_Vendor.Label"
+	g.params.vals[1][src] = "Kantor-A"
+	g.mk(t, func(i *Input) {
+		i.Name = "dari-param"
+		i.Condition = "" // kondisi tanpa ref sama sekali
+		i.Actions = []domain.AutomationAction{{Type: "set_parameter", Name: "wifi.ssid", Value: "concat('ACS-', {" + src + "})"}}
+	})
+	_ = g.svc.Evaluate(context.Background(), dev1(), nil)
+	if len(g.tasks.sets) != 1 || g.tasks.sets[0][ssidPath] != "ACS-Kantor-A" {
+		t.Fatalf("nilai aksi harus memakai parameter perangkat: %+v (runs=%+v)", g.tasks.sets, g.runs.rows)
+	}
+}
+
+// Target ManagementServer.* ditolak saat simpan DAN saat rencana (logical key yang di-resolve ke path itu).
+func TestManagementServerTidakBolehDiaturOtomasi(t *testing.T) {
+	g := newRig()
+	for _, name := range []string{
+		"InternetGatewayDevice.ManagementServer.URL", "Device.ManagementServer.PeriodicInformInterval",
+		"InternetGatewayDevice.ManagementServer.ConnectionRequestUsername", "mgmt.periodic_inform_interval",
+	} {
+		_, err := g.svc.Create(context.Background(), adminA, Input{Name: "ms" + name[len(name)-5:], TriggerEvent: "EVERY_INFORM",
+			Actions: []domain.AutomationAction{{Type: "set_parameter", Name: name, Value: "'x'"}}})
+		if !errors.Is(err, domain.ErrInvalidInput) {
+			t.Errorf("%s harus ditolak: %v", name, err)
+		}
+	}
+	// logical key biasa yang di-resolve ke path ManagementServer: dilewati saat rencana
+	pc := newPlanCtx()
+	pc.resolved["alias.aman"] = resolvedPath{path: "InternetGatewayDevice.ManagementServer.URL"}
+	steps, err := g.svc.plan(context.Background(), dev1(), []domain.AutomationAction{{Type: "set_parameter", Name: "alias.aman", Value: "'http://x'"}},
+		func(string) (string, bool) { return "", false }, pc)
+	if err != nil || len(steps) != 1 || steps[0].Change || steps[0].Skip == "" {
+		t.Fatalf("path ManagementServer hasil resolusi harus dilewati: %+v %v", steps, err)
+	}
+}
+
+// Kondisi yang berosilasi akibat aksinya sendiri tidak boleh lolos dari pagar selamanya: batas keras 12 pemicuan per 24 jam.
+func TestEvaluate_BatasKerasPerHariWalauKondisiBerosilasi(t *testing.T) {
+	g := newRig()
+	ctx := context.Background()
+	rule := g.mk(t, func(i *Input) {
+		i.Condition = "contains({@events}, '2 PERIODIC')"
+		i.CooldownSeconds, i.MaxConsecutiveFires = 300, 20 // pagar "berturut-turut" sengaja longgar
+	})
+	fires := 0
+	for i := 0; i < 40; i++ {
+		before := g.tasks.reboots
+		_ = g.svc.Evaluate(ctx, dev1(), []string{"2 PERIODIC"})
+		fires += g.tasks.reboots - before
+		g.clock = g.clock.Add(6 * time.Minute)
+		_ = g.svc.Evaluate(ctx, dev1(), []string{"1 BOOT"}) // setelah reboot: kondisi salah -> hitungan berturut direset
+		g.clock = g.clock.Add(6 * time.Minute)
+	}
+	if fires != domain.AutomationMaxFiresPerDay {
+		t.Fatalf("harus berhenti tepat di %d pemicuan/24 jam, dapat %d", domain.AutomationMaxFiresPerDay, fires)
+	}
+	if !g.states.m[[2]uint64{rule.ID, 1}].Suspended {
+		t.Fatalf("aturan harus di-suspend: %+v", g.states.m)
+	}
+	var found bool
+	for _, r := range g.runs.rows {
+		if r.Suspended && r.Error != nil && strings.Contains(*r.Error, "24 jam") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("catatan suspend harus menyebut batas 24 jam: %+v", g.runs.rows)
+	}
+}
+
+// Jendela 24 jam bergulir: setelah lewat 24 jam hitungan mulai dari nol (aturan yang sehat tidak terkunci selamanya).
+func TestEvaluate_JendelaHarianBergulir(t *testing.T) {
+	g := newRig()
+	ctx := context.Background()
+	g.mk(t, func(i *Input) {
+		i.CooldownSeconds, i.MaxConsecutiveFires = 300, 20
+		i.Condition = "contains({@events}, '2 PERIODIC')"
+	})
+	for i := 0; i < 6; i++ {
+		_ = g.svc.Evaluate(ctx, dev1(), []string{"2 PERIODIC"})
+		g.clock = g.clock.Add(6 * time.Minute)
+		_ = g.svc.Evaluate(ctx, dev1(), []string{"1 BOOT"})
+		g.clock = g.clock.Add(6 * time.Minute)
+	}
+	g.clock = g.clock.Add(25 * time.Hour)
+	before := g.tasks.reboots
+	_ = g.svc.Evaluate(ctx, dev1(), []string{"2 PERIODIC"})
+	if g.tasks.reboots != before+1 {
+		t.Fatalf("setelah jendela 24 jam lewat harus bisa memicu lagi: %d -> %d", before, g.tasks.reboots)
+	}
+}
+
+// Antrean tenant penuh (ErrQuotaExceeded) bukan kesalahan aturan: tidak dihitung berturut-turut, tidak meng-suspend aturan yang benar.
+func TestEvaluate_KuotaPenuhTidakMenyuspend(t *testing.T) {
+	g := newRig() // max_consecutive_fires = 2
+	ctx := context.Background()
+	rule := g.mk(t, nil)
+	g.tasks.enqErr = domain.ErrQuotaExceeded
+	for i := 0; i < 6; i++ {
+		_ = g.svc.Evaluate(ctx, dev1(), nil)
+		g.clock = g.clock.Add(11 * time.Minute)
+	}
+	st := g.states.m[[2]uint64{rule.ID, 1}]
+	if st.Suspended || st.ConsecutiveFires != 0 {
+		t.Fatalf("kuota penuh tidak boleh dihitung/di-suspend: %+v", st)
+	}
+	g.tasks.enqErr = nil
+	_ = g.svc.Evaluate(ctx, dev1(), nil)
+	if g.tasks.reboots != 1 {
+		t.Fatalf("begitu antrean lega aturan harus memicu: %d", g.tasks.reboots)
+	}
+}
+
+// Satu pembacaan batch untuk semua target set_parameter, dan resolusi path di-memo: biaya per Inform tidak berlipat dengan jumlah aturan.
+func TestEvaluate_TargetDiBatchDanResolusiDiMemo(t *testing.T) {
+	g := newRig()
+	ctx := context.Background()
+	for i := 0; i < 5; i++ {
+		i := i
+		g.mk(t, func(in *Input) {
+			in.Name = fmt.Sprintf("tgt-%d", i)
+			in.Condition = ""
+			in.Actions = []domain.AutomationAction{
+				{Type: "set_parameter", Name: "wifi.ssid", Value: "'Sama'"}, // semua aturan menarget path yang sama
+				{Type: "set_parameter", Name: fmt.Sprintf("InternetGatewayDevice.X.P%d", i), Value: "'v'"},
+			}
+		})
+	}
+	g.params.valsCall, g.tasks.resolves = 0, 0
+	if err := g.svc.Evaluate(ctx, dev1(), nil); err != nil {
+		t.Fatal(err)
+	}
+	// 1x ValuesFor untuk ref kondisi/nilai (kosong -> dilewati) + 1x untuk seluruh target; bukan satu per aksi
+	if g.params.valsCall > 2 {
+		t.Errorf("ValuesFor dipanggil %d kali; harus <= 2 (batch)", g.params.valsCall)
+	}
+	// wifi.ssid dipakai 5 aturan -> di-resolve sekali; 5 path unik lain -> total 6 (bukan 10 per lintasan x 2 lintasan)
+	if g.tasks.resolves > 6 {
+		t.Errorf("resolusi path %d kali; harus <= 6 (memo)", g.tasks.resolves)
+	}
+}
+
+func TestSetParamBudgetPerTenant(t *testing.T) {
+	g := newRig()
+	ctx := context.Background()
+	mkRule := func(name string, n int, active bool) error {
+		var acts []domain.AutomationAction
+		for i := 0; i < n; i++ {
+			acts = append(acts, domain.AutomationAction{Type: "set_parameter", Name: fmt.Sprintf("InternetGatewayDevice.X.%s%d", name, i), Value: "'v'"})
+		}
+		_, err := g.svc.Create(ctx, adminA, Input{Name: name, TriggerEvent: "EVERY_INFORM", Actions: acts, IsActive: &active})
+		return err
+	}
+	for _, n := range []string{"a", "b", "c"} {
+		if err := mkRule(n, 10, true); err != nil {
+			t.Fatalf("%s: %v", n, err)
+		}
+	}
+	if err := mkRule("d", 1, true); !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("aksi ke-%d harus ditolak: %v", domain.AutomationMaxSetParamsPerTenant+1, err)
+	}
+	if err := mkRule("nonaktif", 5, false); err != nil {
+		t.Fatalf("aturan nonaktif tidak dihitung: %v", err)
+	}
+	// mengaktifkan aturan nonaktif tidak boleh melewati batas
+	rules, _, _ := g.svc.List(ctx, adminA, nil, domain.Pagination{Page: 1, PageSize: 50})
+	var off *domain.AutomationRule
+	for i := range rules {
+		if rules[i].Name == "nonaktif" {
+			off = &rules[i]
+		}
+	}
+	on := true
+	if _, err := g.svc.Update(ctx, adminA, off.UUID, UpdateInput{IsActive: &on}); !errors.Is(err, domain.ErrInvalidInput) {
+		t.Fatalf("mengaktifkan harus ditolak bila melewati batas: %v", err)
+	}
+}
+
+// Pesan seragam untuk tag yang tidak ada dan tag milik tenant lain (tidak ada oracle pencarian id).
+func TestTagOracleSeragam(t *testing.T) {
+	g := newRig()
+	mk := func(id uint64) error {
+		_, err := g.svc.Create(context.Background(), adminA, Input{Name: fmt.Sprintf("t%d", id), TriggerEvent: "EVERY_INFORM",
+			Actions: []domain.AutomationAction{{Type: "add_tag", TagID: &id}}})
+		return err
+	}
+	e1, e2 := mk(99), mk(6) // 99 tidak ada; 6 milik tenant 8
+	if e1 == nil || e2 == nil {
+		t.Fatalf("keduanya harus ditolak: %v / %v", e1, e2)
+	}
+	norm := func(e error) string { return strings.NewReplacer("99", "N", "6", "N").Replace(e.Error()) }
+	if norm(e1) != norm(e2) {
+		t.Errorf("pesan harus seragam: %v | %v", e1, e2)
+	}
+}
+
+// Parameter sumber yang belum dilaporkan: aksi dilewati, TIDAK menulis nilai parsial seperti "ACS-" ke perangkat.
+func TestEvaluate_SumberBelumDilaporkanTidakMenulisNilaiParsial(t *testing.T) {
+	g := newRig()
+	g.mk(t, func(i *Input) {
+		i.Name = "parsial"
+		i.Condition = ""
+		i.Actions = []domain.AutomationAction{{Type: "set_parameter", Name: "wifi.ssid", Value: "concat('ACS-', {InternetGatewayDevice.X_Vendor.TidakAda})"}}
+	})
+	_ = g.svc.Evaluate(context.Background(), dev1(), nil)
+	if len(g.tasks.sets) != 0 {
+		t.Fatalf("tidak boleh menulis nilai parsial: %+v", g.tasks.sets)
+	}
+	res, _ := g.svc.Test(context.Background(), adminA, TestInput{Actions: []domain.AutomationAction{{Type: "set_parameter", Name: "wifi.ssid", Value: "concat('ACS-', {X.TidakAda})"}}}, 1)
+	if len(res.Steps) != 1 || res.Steps[0].Change || !strings.Contains(res.Steps[0].Skip, "X.TidakAda") {
+		t.Fatalf("dry-run harus menjelaskan sumber yang hilang: %+v", res.Steps)
 	}
 }

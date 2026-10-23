@@ -147,7 +147,7 @@ func NewAutomationStateRepository(db *sqlx.DB) domain.AutomationStateRepository 
 func (r *automationStateRepository) ListByDevice(ctx context.Context, deviceID uint64) (map[uint64]domain.AutomationState, error) {
 	var rows []domain.AutomationState
 	if err := r.db.SelectContext(ctx, &rows,
-		`SELECT rule_id, device_id, last_fired_at, consecutive_fires, suspended FROM automation_states WHERE device_id = ?`, deviceID); err != nil {
+		`SELECT rule_id, device_id, last_fired_at, consecutive_fires, suspended, window_started_at, window_fires FROM automation_states WHERE device_id = ?`, deviceID); err != nil {
 		return nil, translateErr(err)
 	}
 	out := make(map[uint64]domain.AutomationState, len(rows))
@@ -159,9 +159,10 @@ func (r *automationStateRepository) ListByDevice(ctx context.Context, deviceID u
 
 func (r *automationStateRepository) Save(ctx context.Context, s *domain.AutomationState) error {
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO automation_states (rule_id, device_id, last_fired_at, consecutive_fires, suspended) VALUES (?, ?, ?, ?, ?)
-		 ON DUPLICATE KEY UPDATE last_fired_at = VALUES(last_fired_at), consecutive_fires = VALUES(consecutive_fires), suspended = VALUES(suspended)`,
-		s.RuleID, s.DeviceID, s.LastFiredAt, s.ConsecutiveFires, s.Suspended)
+		`INSERT INTO automation_states (rule_id, device_id, last_fired_at, consecutive_fires, suspended, window_started_at, window_fires) VALUES (?, ?, ?, ?, ?, ?, ?)
+		 ON DUPLICATE KEY UPDATE last_fired_at = VALUES(last_fired_at), consecutive_fires = VALUES(consecutive_fires), suspended = VALUES(suspended),
+			window_started_at = VALUES(window_started_at), window_fires = VALUES(window_fires)`,
+		s.RuleID, s.DeviceID, s.LastFiredAt, s.ConsecutiveFires, s.Suspended, s.WindowStartedAt, s.WindowFires)
 	return translateErr(err)
 }
 
@@ -172,7 +173,7 @@ func (r *automationStateRepository) ResetConsecutive(ctx context.Context, ruleID
 }
 
 func (r *automationStateRepository) ClearSuspension(ctx context.Context, ruleID uint64, deviceID *uint64) (int64, error) {
-	q := `UPDATE automation_states SET suspended = 0, consecutive_fires = 0 WHERE rule_id = ? AND suspended = 1`
+	q := `UPDATE automation_states SET suspended = 0, consecutive_fires = 0, window_started_at = NULL, window_fires = 0 WHERE rule_id = ? AND suspended = 1`
 	args := []interface{}{ruleID}
 	if deviceID != nil {
 		q += ` AND device_id = ?`

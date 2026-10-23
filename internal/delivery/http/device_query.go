@@ -100,6 +100,9 @@ func parseDeviceQuery(c *echo.Context, f *domain.DeviceFilter) (fields, vparams 
 // maxVParamProjection membatasi jumlah virtual parameter per permintaan daftar (biaya evaluasi dikali ukuran halaman).
 const maxVParamProjection = 10
 
+// maxVParamEvaluations = batas len(vparams) x page_size per permintaan GET /devices.
+const maxVParamEvaluations = 1000
+
 func splitList(s string) []string {
 	var out []string
 	for _, p := range strings.Split(s, ",") {

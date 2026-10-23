@@ -134,3 +134,24 @@ func TestGetAndDismiss_CrossTenantForbidden(t *testing.T) {
 		t.Errorf("uuid tak dikenal harus ErrNotFound, got %v", err)
 	}
 }
+
+// Kode fault non-numerik dari CPE (kosong, teks acak) dilebur ke "unknown": jumlah variasi kode per perangkat tidak boleh tak terbatas.
+func TestRecord_KodeTakNumerikMenjadiUnknown(t *testing.T) {
+	repo := &fakeRepo{}
+	s := NewService(repo, nil)
+	for _, in := range []string{"", "abc", "9005; DROP", "123456", "9 005", "\u0661\u0662\u0663"} {
+		if err := s.Record(context.Background(), 1, nil, "", in, "x"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i, f := range repo.upserted {
+		if f.FaultCode != "unknown" {
+			t.Errorf("kode #%d harus unknown, dapat %q", i, f.FaultCode)
+		}
+	}
+	_ = s.Record(context.Background(), 1, nil, "", "9005", "x")
+	_ = s.Record(context.Background(), 1, nil, "", "9899", "x")
+	if repo.upserted[len(repo.upserted)-2].FaultCode != "9005" || repo.upserted[len(repo.upserted)-1].FaultCode != "9899" {
+		t.Errorf("kode numerik standar & vendor harus apa adanya: %+v", repo.upserted)
+	}
+}

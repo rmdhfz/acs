@@ -358,7 +358,11 @@ func NormalizeXSDType(t string) string {
 // sensitiveParamRe — nama parameter/kunci yang nilainya dianggap rahasia
 // (passphrase WiFi, password PPPoE/ACS/CR, PSK, token...). Selaras dengan
 // isSensitiveName di frontend (imports/opsShared.ts).
-var sensitiveParamRe = regexp.MustCompile(`(?i)pass(word|phrase|wd)|psk|preshared|secret|wepkey|token|key$`)
+//
+// Diperluas setelah audit keamanan independen (22 Okt 2026): nama yang dulu lolos — Pwd, UserPass, AuthPasscode, WPSPin, ReadCommunity, Credential,
+// WPAKey.1.Value, Keys.1.KeyValue — dulu bisa dipakai sebagai filter param= (bisect PIN/rahasia) atau tersimpan polos di definisi aturan otomasi.
+// Pola sengaja berbasis akhir/segmen nama agar tidak menangkap kata biasa ("Passive", "Ping", "Spinning").
+var sensitiveParamRe = regexp.MustCompile(`(?i)pass(word|phrase|wd|code)|(^|[._])(user|admin|web|sip)?pass$|pwd|psk|preshared|secret|wepkey|wpakey|keyvalue|token|key$|credential|community|authcode|pin$`)
 
 // IsSensitiveParamName melaporkan apakah nilai parameter dengan nama ini rahasia.
 func IsSensitiveParamName(name string) bool { return sensitiveParamRe.MatchString(name) }

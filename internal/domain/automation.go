@@ -23,6 +23,10 @@ const (
 	AutomationDefaultMaxFires   = 3
 	AutomationMaxFiresCeiling   = 20
 	AutomationRunRetention      = 30 * 24 * time.Hour
+	// AutomationMaxFiresPerDay = batas keras pemicuan per (aturan, perangkat) per 24 jam, tak bergantung kondisi (migrations/0042).
+	AutomationMaxFiresPerDay = 12
+	// AutomationMaxSetParamsPerTenant = total aksi set_parameter pada aturan AKTIF satu tenant; membatasi biaya evaluasi per Inform.
+	AutomationMaxSetParamsPerTenant = 30
 )
 
 // Jenis aksi (daftar tertutup; menambah jenis = perubahan kode yang ditinjau, bukan data).
@@ -105,6 +109,9 @@ type AutomationState struct {
 	LastFiredAt      *time.Time `db:"last_fired_at"`
 	ConsecutiveFires uint32     `db:"consecutive_fires"`
 	Suspended        bool       `db:"suspended"`
+	// WindowStartedAt/WindowFires = jendela 24 jam penghitung pemicuan (batas keras AutomationMaxFiresPerDay).
+	WindowStartedAt *time.Time `db:"window_started_at"`
+	WindowFires     uint32     `db:"window_fires"`
 }
 
 // AutomationRun = satu catatan pemicuan (riwayat). RuleName/DeviceSerial dari join untuk tampilan.

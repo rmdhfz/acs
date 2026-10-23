@@ -37,6 +37,8 @@ func translateErr(err error) error {
 			return fmt.Errorf("%w: ada nilai yang melebihi panjang maksimum kolom", domain.ErrInvalidInput)
 		case 1264, 1265, 1366, 1292: // di luar rentang / format salah
 			return fmt.Errorf("%w: ada nilai di luar rentang atau berformat salah", domain.ErrInvalidInput)
+		case 1969: // max_statement_time terlampaui (query bebas /devices terlalu berat)
+			return fmt.Errorf("%w: kueri terlalu berat (melebihi 10 detik) — persempit filter", domain.ErrInvalidInput)
 		case 1048: // kolom wajib NULL
 			return fmt.Errorf("%w: ada field wajib yang kosong", domain.ErrInvalidInput)
 		}

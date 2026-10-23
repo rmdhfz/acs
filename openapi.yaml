@@ -1905,7 +1905,7 @@ paths:
           in: query
           description: |
             Nama virtual parameter dipisah koma (maks 10) yang nilainya ikut dikirim pada tiap baris di field `virtual`
-            (peta nama → nilai; yang belum dapat dihitung tidak muncul). Satu query batch untuk satu halaman. Lihat `/virtual-parameters`.
+            (peta nama → nilai; yang belum dapat dihitung tidak muncul). Satu query batch untuk satu halaman. Lihat `/virtual-parameters`. Jumlah `vparams` × `page_size` maksimal 1000 per permintaan (selebihnya 400).
           schema: { type: string }
         - name: last_inform_before
           in: query
@@ -2683,7 +2683,7 @@ paths:
 
         **Pagar anti-badai**: cooldown per (aturan, perangkat) (`cooldown_seconds`, min 300); aturan di-**suspend** untuk perangkat
         setelah `max_consecutive_fires` pemicuan berturut-turut tanpa kondisi pernah salah/konvergen (reset lewat
-        `POST /automation-rules/{uuid}/reset`); perangkat dengan task tertunda tidak dipicu. Maks 50 aturan per tenant.
+        `POST /automation-rules/{uuid}/reset`); perangkat dengan task tertunda tidak dipicu; **batas keras 12 pemicuan per aturan per perangkat per 24 jam** (aturan di-suspend bila terlampaui, walau kondisinya berganti benar/salah). Kegagalan karena kuota task tenant penuh tidak dihitung sebagai pemicuan. Maks 50 aturan per tenant dan maks **30 aksi `set_parameter`** pada seluruh aturan aktif satu tenant. `set_parameter` dilewati bila parameter sumber pada nilainya belum dilaporkan (tidak menulis nilai parsial). Parameter `ManagementServer.*` (URL, kredensial, interval Inform, Connection Request) **tidak boleh** diatur aturan otomasi. Mutasi tidak dapat dilakukan lewat sesi impersonasi.
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true

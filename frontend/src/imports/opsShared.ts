@@ -162,7 +162,8 @@ export function parseJSONCell(label: string, raw: string | undefined): unknown {
 }
 
 /** Nama parameter/kunci yang nilainya dianggap rahasia (tidak pernah diekspor). */
-const SENSITIVE_RE = /pass(word|phrase|wd)|psk|preshared|secret|wepkey|token|key$/i
+// Harus sama dengan sensitiveParamRe di internal/domain/common.go (diperluas setelah audit keamanan 22 Okt 2026).
+const SENSITIVE_RE = /pass(word|phrase|wd|code)|(^|[._])(user|admin|web|sip)?pass$|pwd|psk|preshared|secret|wepkey|wpakey|keyvalue|token|key$|credential|community|authcode|pin$/i
 export function isSensitiveName(name: string): boolean {
   return SENSITIVE_RE.test(name)
 }

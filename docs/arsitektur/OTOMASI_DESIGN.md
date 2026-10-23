@@ -26,7 +26,7 @@ mengubah perangkat).
 
 ## Pagar anti-badai
 
-Aturan yang buruk tidak boleh membanjiri perangkat. Empat pagar, semuanya diuji (`service_test.go`, e2e S34):
+Aturan yang buruk tidak boleh membanjiri perangkat. Lima pagar, semuanya diuji (`service_test.go`, e2e S34); pagar 5 dan beberapa batas lain ditambahkan setelah audit keamanan independen 22 Okt 2026:
 
 1. **Cooldown** per (aturan, perangkat), min 300 detik.
 2. **Suspend**: setelah `max_consecutive_fires` pemicuan berturut-turut tanpa kondisi pernah salah/konvergen di antaranya, aturan berhenti untuk
@@ -34,9 +34,24 @@ Aturan yang buruk tidak boleh membanjiri perangkat. Empat pagar, semuanya diuji 
    "jika versi ≠ X maka reboot" yang tak pernah konvergen.
 3. **Task tertunda**: perangkat yang masih punya task pending/queued tidak dipicu (pola yang sama dengan ZTP/preset).
 4. **Konvergen = diam**: `set_parameter` yang nilainya sudah sama dan `add_tag` yang sudah terpasang tidak memicu apa pun dan menolkan hitungan.
+5. **Batas keras per 24 jam** (`migrations/0042`): maksimal 12 pemicuan per (aturan, perangkat) per jendela bergulir 24 jam, **tidak bergantung pada kondisi**.
+   Pagar 2 bisa dilewati kondisi yang berosilasi akibat aksinya sendiri (mis. `contains({@events},'2 PERIODIC')` + reboot: Inform berikutnya adalah `1 BOOT`,
+   kondisi salah, hitungan berturut direset, lalu periodik menembak lagi — selamanya). Terlampaui = suspend.
+
+Catatan perilaku: kegagalan karena **kuota task tenant penuh** (`ErrQuotaExceeded`) memulai cooldown tetapi tidak dihitung sebagai pemicuan berturut-turut (agar aturan yang benar
+tidak ter-suspend hanya karena antrean penuh). Pagar adalah pengaman salah-konfigurasi, **bukan batas keamanan terhadap ADMIN**: menghapus lalu membuat ulang aturan
+memulai state bersih. Batas keamanan sesungguhnya adalah kuota task tenant dan batas jumlah aturan/aksi di bawah.
 
 ## Keamanan
 
+- **`ManagementServer.*` tidak boleh diatur** (URL, kredensial, interval Inform, Connection Request; ditolak saat simpan dan saat rencana, termasuk path hasil resolusi logical key):
+  aturan EVERY_INFORM tanpa kondisi dapat memutus seluruh armada tenant dari ACS secara otomatis dan persisten.
+- `set_parameter` **dilewati bila parameter sumber pada nilainya belum dilaporkan** — `concat('ACS-', {X})` dengan `{X}` null sebelumnya menulis `ACS-` ke perangkat.
+- Total aksi `set_parameter` pada aturan aktif satu tenant dibatasi 30; target di-resolusi dan nilai saat ini dibaca **sekali per Inform** (satu query batch), resolusi di-memo.
+- Mutasi aturan dan virtual parameter ditolak pada sesi **impersonasi** (`denyImpersonation`): aksinya otomatis dan persisten.
+- Pesan galat tag seragam untuk "tidak ada" dan "milik tenant lain" (tidak ada oracle penyisir id).
+- Daftar nama parameter rahasia (`domain.IsSensitiveParamName`) diperluas (Pwd, UserPass, AuthPasscode, WPSPin, Community, Credential, WPAKey, KeyValue); tetap berbasis **nama**,
+  jadi parameter rahasia dengan nama tak lazim yang lolos tetap mungkin — daftar ini perlu diperluas bila uji lapangan menemukan nama baru.
 - Parameter **rahasia** (`domain.IsSensitiveParamName`) ditolak sebagai rujukan ekspresi **dan** sebagai target `set_parameter`: ekspresi/riwayat
   terlihat oleh peran staf, dan nilai target tersimpan polos di definisi. Parameter rahasia tetap diatur lewat provisioning profile (nilai tersegel).
 - Scope tenant di semua jalur; `tag_id` harus milik tenant aturan; uji (dry-run) hanya pada perangkat tenant pemanggil.

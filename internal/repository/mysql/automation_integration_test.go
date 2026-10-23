@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -111,16 +112,20 @@ func TestAutomationRepositories_Integration(t *testing.T) {
 		t.Errorf("update: %+v", g)
 	}
 	// ---- state ----
-	if err := states.Save(ctx, &domain.AutomationState{RuleID: r1.ID, DeviceID: d1.ID, ConsecutiveFires: 2}); err != nil {
+	win := time.Now().Add(-time.Hour).Truncate(time.Millisecond)
+	if err := states.Save(ctx, &domain.AutomationState{RuleID: r1.ID, DeviceID: d1.ID, ConsecutiveFires: 2, WindowStartedAt: &win, WindowFires: 7}); err != nil {
 		t.Fatal(err)
 	}
-	if err := states.Save(ctx, &domain.AutomationState{RuleID: r1.ID, DeviceID: d1.ID, ConsecutiveFires: 3, Suspended: true}); err != nil { // upsert
+	if err := states.Save(ctx, &domain.AutomationState{RuleID: r1.ID, DeviceID: d1.ID, ConsecutiveFires: 3, Suspended: true, WindowStartedAt: &win, WindowFires: 7}); err != nil { // upsert (state penuh, seperti usecase)
 		t.Fatal(err)
 	}
 	_ = states.Save(ctx, &domain.AutomationState{RuleID: r1.ID, DeviceID: d2.ID, ConsecutiveFires: 1, Suspended: true})
 	m, err := states.ListByDevice(ctx, d1.ID)
 	if err != nil || len(m) != 1 || m[r1.ID].ConsecutiveFires != 3 || !m[r1.ID].Suspended {
 		t.Fatalf("ListByDevice: %+v %v", m, err)
+	}
+	if m[r1.ID].WindowStartedAt == nil || !m[r1.ID].WindowStartedAt.Equal(win) || m[r1.ID].WindowFires != 7 {
+		t.Fatalf("jendela harian harus tersimpan (migrations/0042): %+v", m[r1.ID])
 	}
 	if err := states.ResetConsecutive(ctx, r1.ID, d1.ID); err != nil {
 		t.Fatal(err)
@@ -137,6 +142,9 @@ func TestAutomationRepositories_Integration(t *testing.T) {
 	}
 	if n, _ := states.ClearSuspension(ctx, r1.ID, nil); n != 1 {
 		t.Errorf("ClearSuspension(semua): %d", n)
+	}
+	if m, _ = states.ListByDevice(ctx, d2.ID); m[r1.ID].WindowFires != 0 || m[r1.ID].WindowStartedAt != nil {
+		t.Errorf("reset operator harus menolkan jendela harian: %+v", m[r1.ID])
 	}
 
 	// ---- riwayat ----
