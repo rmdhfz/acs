@@ -16,7 +16,7 @@ Indeks seluruh dokumen. Path di sini dan di dokumen lain dihitung dari **root re
 | Tahu status kesiapan & skor | [`laporan/CHECKLIST_SAAS.md`](laporan/CHECKLIST_SAAS.md) |
 | Melihat riwayat pekerjaan | [`laporan/PROGRESS.md`](laporan/PROGRESS.md) |
 | Memahami kebutuhan produk | [`produk/PRD.md`](produk/PRD.md), [`produk/ROADMAP.md`](produk/ROADMAP.md) |
-| Memahami arsitektur & keputusan teknis | [`arsitektur/TECH.md`](arsitektur/TECH.md) (+ desain Preset, USP/TR-369, panduan arsitektur PDF) |
+| Memahami arsitektur & keputusan teknis | [`arsitektur/TECH.md`](arsitektur/TECH.md) (+ desain Preset, USP/TR-369, [OLT Controller](arsitektur/OLT_CONTROLLER_DESIGN.md), panduan arsitektur PDF) |
 | Membaca kontrak API | [`../openapi.yaml`](../openapi.yaml) · koleksi Postman [`../ACS-API.postman_collection.json`](../ACS-API.postman_collection.json) |
 
 ## Struktur
@@ -24,7 +24,7 @@ Indeks seluruh dokumen. Path di sini dan di dokumen lain dihitung dari **root re
 ```
 docs/
   produk/        PRD, ROADMAP                     — apa & mengapa (keputusan produk)
-  arsitektur/    TECH, desain Preset, USP/TR-369  — bagaimana (keputusan teknis)
+  arsitektur/    TECH, desain Preset, USP/TR-369, OLT Controller  — bagaimana (keputusan teknis)
   operasional/   RUNBOOK, LOGIN, VENDOR_ONBOARDING — menjalankan & merawat
   panduan/       Buku Panduan pengguna (HTML + PDF)
   pengujian/     UAT, uji lapangan, e2e

@@ -120,6 +120,8 @@ tags:
     description: Nilai turunan (ekspresi deklaratif pkg/vexpr) yang dihitung dari parameter perangkat — padanan virtual parameter GenieACS tanpa skrip.
   - name: Faults
     description: cwmp:Fault aktif dari CPE per perangkat/RPC — perangkat mana menolak apa dan kenapa.
+  - name: OLT
+    description: OLT Controller irisan 1 (read-only terhadap OLT) — inventaris OLT per tenant, uji koneksi, dan antrean ONU yang dilaporkan OLT sebagai belum terdaftar. Driver vendor nyata belum ada; lihat docs/arsitektur/OLT_CONTROLLER_DESIGN.md.
   - name: Provisioning
     description: Provisioning profile dan Zero-Touch Provisioning (ZTP) — FR-13..FR-18.
   - name: ZeroTouch
@@ -3259,6 +3261,373 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '404':
           description: Perangkat tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+
+  # ============================== OLT CONTROLLER (irisan 1, read-only terhadap OLT) ==============================
+  /olt-drivers:
+    get:
+      operationId: listOLTDrivers
+      tags: [OLT]
+      summary: Daftar driver OLT yang terdaftar di server
+      description: "Kode driver untuk field `driver_code` saat membuat OLT. Driver `sim` (simulator, ONU palsu, tanpa koneksi jaringan) hanya muncul bila operator mengaktifkan `ACS_OLT_SIM_ENABLED`. Driver vendor nyata belum ada di irisan 1 (lihat docs/arsitektur/OLT_CONTROLLER_DESIGN.md). Semua peran staf."
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Kode driver terurut.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OLTDriverListResponse' }
+        '401':
+          description: "Tidak terautentikasi."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /olts:
+    get:
+      operationId: listOLTs
+      tags: [OLT]
+      summary: Daftar OLT
+      description: "Semua peran staf; non-SUPERADMIN otomatis dibatasi ke tenant sendiri (`tenant_id` pada query hanya efektif untuk SUPERADMIN). Kredensial tidak pernah dikembalikan; hanya penanda `has_snmp_community` / `has_ssh_password`."
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: search, in: query, description: Cocokkan nama atau host. Maks 255 karakter., schema: { type: string, maxLength: 255 } }
+        - { name: tenant_id, in: query, description: Hanya efektif untuk SUPERADMIN., schema: { type: integer, format: int64 } }
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: Daftar OLT.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OLTListResponse' }
+        '400':
+          description: "Masukan tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: "Tidak terautentikasi."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Peran tidak cukup, atau OLT/ONU milik tenant lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+    post:
+      operationId: createOLT
+      tags: [OLT]
+      summary: Tambah OLT
+      description: |
+        ADMIN/SUPERADMIN. ADMIN selalu menulis ke tenant sendiri (menyebut tenant lain = `403`); SUPERADMIN wajib mengisi `tenant_id`.
+        `host` harus alamat IP atau nama host (tanpa skema/port/jalur) dan lolos pemeriksaan SSRF (loopback, link-local/metadata cloud,
+        multicast ditolak; RFC1918 diizinkan kecuali `ACS_WEBHOOK_BLOCK_PRIVATE=true`). `snmp_port` bawaan 161, `ssh_port` bawaan 22.
+        Kredensial disimpan terenkripsi (AES-GCM) dan tidak pernah dikembalikan. Field asing pada body ditolak `400`.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateOLTRequest' }
+      responses:
+        '201':
+          description: OLT dibuat (status poll `UNKNOWN`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OLT' }
+        '400':
+          description: "Masukan tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: "Tidak terautentikasi."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Peran tidak cukup, atau OLT/ONU milik tenant lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /olts/{uuid}:
+    get:
+      operationId: getOLT
+      tags: [OLT]
+      summary: Detail satu OLT
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: uuid, in: path, required: true, description: Identifier publik (UUID)., schema: { type: string, maxLength: 36 } }
+      responses:
+        '200':
+          description: OLT.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OLT' }
+        '401':
+          description: "Tidak terautentikasi."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Peran tidak cukup, atau OLT/ONU milik tenant lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: "Tidak ditemukan."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+    patch:
+      operationId: updateOLT
+      tags: [OLT]
+      summary: Ubah OLT (parsial)
+      description: "ADMIN/SUPERADMIN. Field yang tidak dikirim tidak berubah. `snmp_community`, `ssh_password`, `ssh_username`, dan `notes` berupa string kosong MENGOSONGKAN nilainya. `host` dan `driver_code` divalidasi seperti saat membuat."
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: uuid, in: path, required: true, description: Identifier publik (UUID)., schema: { type: string, maxLength: 36 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateOLTRequest' }
+      responses:
+        '200':
+          description: OLT setelah diubah.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OLT' }
+        '400':
+          description: "Masukan tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: "Tidak terautentikasi."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Peran tidak cukup, atau OLT/ONU milik tenant lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: "Tidak ditemukan."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+    delete:
+      operationId: deleteOLT
+      tags: [OLT]
+      summary: Hapus OLT (soft delete) beserta antrean ONU-nya
+      description: ADMIN/SUPERADMIN.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: uuid, in: path, required: true, description: Identifier publik (UUID)., schema: { type: string, maxLength: 36 } }
+      responses:
+        '204':
+          description: Terhapus.
+        '401':
+          description: "Tidak terautentikasi."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Peran tidak cukup, atau OLT/ONU milik tenant lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: "Tidak ditemukan."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /olts/{uuid}/test:
+    post:
+      operationId: testOLT
+      tags: [OLT]
+      summary: Uji koneksi ke OLT (Probe)
+      description: "ADMIN/SUPERADMIN. Hasil dicatat pada OLT: `poll_status`, `last_poll_at`, `last_poll_error`, dan identitas yang dilaporkan OLT (`reported_name`/`reported_version`, dibersihkan dan dipangkas). Galat koneksi dijawab `502` tetapi statusnya tetap tercatat."
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: uuid, in: path, required: true, description: Identifier publik (UUID)., schema: { type: string, maxLength: 36 } }
+      responses:
+        '200':
+          description: OLT dengan status terbaru (`OK`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OLT' }
+        '401':
+          description: "Tidak terautentikasi."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Peran tidak cukup, atau OLT/ONU milik tenant lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: "Tidak ditemukan."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: "Konflik status."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '502':
+          description: "OLT tidak dapat dijangkau, menolak autentikasi, atau galat dari driver (teks dari perangkat tidak pernah diteruskan)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /olts/{uuid}/poll:
+    post:
+      operationId: pollOLT
+      tags: [OLT]
+      summary: Baca ONU belum terdaftar dari OLT dan rekonsiliasi antrean
+      description: |
+        ADMIN/NOC/SUPERADMIN. Hanya satu polling per OLT dalam satu waktu (`409` bila sedang berjalan); OLT nonaktif `409`.
+        Rekonsiliasi: SN baru → `PENDING`; SN yang sudah ada → `last_seen_at` diperbarui (`IGNORED` tetap `IGNORED`); SN
+        `RESOLVED` yang muncul lagi → `PENDING`; SN `PENDING`/`IGNORED` yang tidak lagi dilaporkan → `RESOLVED`. Entri tak valid dari
+        perangkat dilewati (dihitung di `skipped`). Bila OLT melaporkan lebih dari 5000 ONU, hasil tidak diterapkan (`502`).
+        Galat koneksi tidak mengubah antrean. TIDAK menulis apa pun ke OLT.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: uuid, in: path, required: true, description: Identifier publik (UUID)., schema: { type: string, maxLength: 36 } }
+      responses:
+        '200':
+          description: Ringkasan rekonsiliasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OLTPollSummary' }
+        '401':
+          description: "Tidak terautentikasi."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Peran tidak cukup, atau OLT/ONU milik tenant lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: "Tidak ditemukan."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: "Konflik status."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '502':
+          description: "OLT tidak dapat dijangkau, menolak autentikasi, atau galat dari driver (teks dari perangkat tidak pernah diteruskan)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /olt-onus:
+    get:
+      operationId: listOLTONUs
+      tags: [OLT]
+      summary: Antrean ONU yang dilaporkan OLT sebagai belum terdaftar
+      description: "Semua peran staf; non-SUPERADMIN otomatis dibatasi ke tenant sendiri. `olt` berisi UUID OLT (OLT tenant lain = `403`, OLT tidak ada = `404`)."
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: olt, in: query, description: "UUID OLT (bukan olt_id: parameter berakhiran _id wajib bilangan bulat di QueryGuard).", schema: { type: string, maxLength: 36 } }
+        - { name: status, in: query, description: Kode status., schema: { type: string, enum: [PENDING, IGNORED, RESOLVED] } }
+        - { name: search, in: query, description: Cocokkan serial atau port PON. Maks 255 karakter., schema: { type: string, maxLength: 255 } }
+        - { name: tenant_id, in: query, description: Hanya efektif untuk SUPERADMIN., schema: { type: integer, format: int64 } }
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: Daftar entri antrean (terbaru dilihat dulu).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OLTONUListResponse' }
+        '400':
+          description: "Masukan tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: "Tidak terautentikasi."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Peran tidak cukup, atau OLT/ONU milik tenant lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: "Tidak ditemukan."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /olt-onus/{uuid}:
+    patch:
+      operationId: updateOLTONU
+      tags: [OLT]
+      summary: Abaikan atau pulihkan entri antrean
+      description: "ADMIN/NOC/SUPERADMIN. `{\"ignored\": true}` mengubah `PENDING` → `IGNORED`; `{\"ignored\": false}` mengubah `IGNORED` → `PENDING`. Mengulang aksi yang sudah berlaku tidak error. Entri `RESOLVED` tidak dapat diubah (`409`). Tidak menulis apa pun ke OLT."
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: uuid, in: path, required: true, description: Identifier publik (UUID)., schema: { type: string, maxLength: 36 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ignored: { type: boolean }
+              required: [ignored]
+      responses:
+        '200':
+          description: Entri setelah diubah.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OLTONU' }
+        '400':
+          description: "Masukan tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: "Tidak terautentikasi."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Peran tidak cukup, atau OLT/ONU milik tenant lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: "Tidak ditemukan."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: "Konflik status."
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -8779,6 +9148,121 @@ components:
           description: "Status per dependensi (`database`, `redis`, ...): `ok` atau `down`."
           additionalProperties: { type: string, enum: [ok, down] }
       required: [status, checks]
+
+    OLT:
+      type: object
+      description: "Satu OLT milik satu tenant. Kredensial (SNMP community, password SSH) tidak pernah dikembalikan; hanya penandanya."
+      properties:
+        id: { type: string, format: uuid }
+        tenant_id: { type: integer, format: int64 }
+        name: { type: string, maxLength: 128 }
+        driver_code: { type: string, maxLength: 32, example: sim }
+        host: { type: string, maxLength: 255 }
+        snmp_port: { type: integer, minimum: 1, maximum: 65535 }
+        ssh_port: { type: integer, minimum: 1, maximum: 65535 }
+        ssh_username: { type: string, nullable: true }
+        notes: { type: string, nullable: true, maxLength: 255 }
+        is_active: { type: boolean }
+        poll_status: { type: string, enum: [UNKNOWN, OK, UNREACHABLE, AUTH_FAILED, ERROR] }
+        last_poll_at: { type: string, format: date-time, nullable: true }
+        last_poll_error: { type: string, nullable: true, description: "Pesan bersih, bukan teks mentah dari perangkat." }
+        reported_name: { type: string, nullable: true, description: "Identitas yang dilaporkan OLT saat Probe (tak tepercaya, dibersihkan dan dipangkas)." }
+        reported_version: { type: string, nullable: true }
+        has_snmp_community: { type: boolean }
+        has_ssh_password: { type: boolean }
+      allOf:
+        - $ref: '#/components/schemas/Audit'
+      required: [id, tenant_id, name, driver_code, host, snmp_port, ssh_port, is_active, poll_status, has_snmp_community, has_ssh_password]
+
+    OLTListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          nullable: true
+          items: { $ref: '#/components/schemas/OLT' }
+        total: { type: integer }
+      required: [data, total]
+
+    OLTDriverListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { type: string }
+        total: { type: integer }
+      required: [data, total]
+
+    CreateOLTRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        tenant_id: { type: integer, format: int64, description: "Wajib bagi SUPERADMIN; diabaikan/ditolak bila berbeda dari tenant ADMIN." }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        driver_code: { type: string, maxLength: 32, description: "Salah satu dari GET /olt-drivers." }
+        host: { type: string, minLength: 1, maxLength: 255, description: "IP atau nama host, tanpa skema/port/jalur." }
+        snmp_port: { type: integer, minimum: 1, maximum: 65535, default: 161 }
+        ssh_port: { type: integer, minimum: 1, maximum: 65535, default: 22 }
+        snmp_community: { type: string, maxLength: 128, writeOnly: true }
+        ssh_username: { type: string, maxLength: 128 }
+        ssh_password: { type: string, maxLength: 128, writeOnly: true }
+        notes: { type: string, maxLength: 255 }
+        is_active: { type: boolean, default: true }
+      required: [name, driver_code, host]
+
+    UpdateOLTRequest:
+      type: object
+      additionalProperties: false
+      description: "Semua field opsional; yang tidak dikirim tidak berubah. String kosong pada kredensial/catatan mengosongkan nilainya."
+      properties:
+        name: { type: string, minLength: 1, maxLength: 128 }
+        driver_code: { type: string, maxLength: 32 }
+        host: { type: string, minLength: 1, maxLength: 255 }
+        snmp_port: { type: integer, minimum: 1, maximum: 65535 }
+        ssh_port: { type: integer, minimum: 1, maximum: 65535 }
+        snmp_community: { type: string, maxLength: 128, writeOnly: true }
+        ssh_username: { type: string, maxLength: 128 }
+        ssh_password: { type: string, maxLength: 128, writeOnly: true }
+        notes: { type: string, maxLength: 255 }
+        is_active: { type: boolean }
+
+    OLTPollSummary:
+      type: object
+      properties:
+        seen: { type: integer, description: "ONU yang dilaporkan OLT (setelah dibersihkan)." }
+        new: { type: integer, description: "Belum pernah ada di antrean." }
+        reappeared: { type: integer, description: "Sebelumnya RESOLVED, muncul lagi menjadi PENDING." }
+        resolved: { type: integer, description: "Sebelumnya PENDING/IGNORED, kini tidak dilaporkan lagi menjadi RESOLVED." }
+        skipped: { type: integer, description: "Entri tak valid/duplikat dari perangkat yang dilewati." }
+        queue_length: { type: integer, description: "Jumlah PENDING sesudah rekonsiliasi." }
+      required: [seen, new, reappeared, resolved, skipped, queue_length]
+
+    OLTONU:
+      type: object
+      description: "Satu ONU yang dilaporkan OLT sebagai belum terdaftar. `id` = UUID entri; `olt_id` = UUID OLT."
+      properties:
+        id: { type: string, format: uuid }
+        olt_id: { type: string, format: uuid }
+        olt_name: { type: string }
+        tenant_id: { type: integer, format: int64 }
+        pon_port: { type: string, maxLength: 32, description: "Penunjuk port PON apa adanya dari OLT (format spesifik vendor)." }
+        serial_number: { type: string, maxLength: 32 }
+        onu_type: { type: string, nullable: true, maxLength: 64 }
+        status: { type: string, enum: [PENDING, IGNORED, RESOLVED] }
+        first_seen_at: { type: string, format: date-time }
+        last_seen_at: { type: string, format: date-time }
+        resolved_at: { type: string, format: date-time, nullable: true }
+      required: [id, olt_id, olt_name, tenant_id, pon_port, serial_number, status, first_seen_at, last_seen_at]
+
+    OLTONUListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          nullable: true
+          items: { $ref: '#/components/schemas/OLTONU' }
+        total: { type: integer }
+      required: [data, total]
 
     TenantListResponse:
       type: object

@@ -182,6 +182,7 @@ const REVIEWED_UNUSED = new Map([
   ['GET /automation-rules/:p', 'daftar /automation-rules sudah membawa seluruh definisi dan editor memuat dari baris daftar; detail untuk integrasi/BSS'],
   ['GET /virtual-parameters/:p', 'daftar /virtual-parameters sudah membawa seluruh definisi dan editor memuat dari baris daftar; detail untuk integrasi/BSS'],
   ['GET /faults/:p', 'daftar /faults sudah membawa semua field fault; halaman tidak punya tampilan detail yang butuh fetch terpisah (endpoint untuk integrasi/BSS)'],
+  ['GET /olts/:p', 'daftar /olts sudah membawa seluruh field OLT dan modal ubah dimuat dari baris daftar; detail untuk integrasi/BSS'],
 ])
 
 const excepted = unusedEndpoints.filter((r) => EXCEPTIONS.has(key(r)))

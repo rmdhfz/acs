@@ -208,6 +208,13 @@ Nilai parameter bernama sensitif (`password|passphrase|psk|secret|token|key`) di
 `POST /files` (ADMIN tenant) kini dibatasi total ukuran berkas aktif per tenant: `tenants.max_storage_bytes` (NULL = tak dibatasi, bawaan semua tenant lama). SUPERADMIN mengaturnya lewat `PATCH /tenants/{id}/storage-quota` atau modal **Kuota & Paket** di Administrasi (input dalam MB). Unggahan yang akan melampaui batas dijawab **429**; berkas yang sudah ada tidak dihapus bila batas diturunkan. Katalog firmware global (`firmware_files`) tidak dihitung. Cek-lalu-tulis tanpa kunci: unggahan serentak dapat melampaui batas sebesar beberapa berkas. `DELETE /files/{id}` kini juga menghapus objeknya dari MinIO (sebelumnya objek yatim tertinggal, sehingga siklus unggah-hapus bisa menghabiskan bucket tanpa tersentuh kuota).
 **Urutan deploy migrasi 0043:** kolom baru di `tenants` mematahkan `acsd` lama (struct tanpa kolom itu gagal membaca `SELECT *`). Bangun ulang `acsd` lalu migrasi, atau lakukan serentak.
 
+### I3. OLT Controller (irisan 1, read-only terhadap OLT)
+Halaman **OLT** di Console dan endpoint `/olts`, `/olt-onus`, `/olt-drivers` (rancangan: [`../arsitektur/OLT_CONTROLLER_DESIGN.md`](../arsitektur/OLT_CONTROLLER_DESIGN.md)). ADMIN menambah OLT (driver, host, kredensial SNMP/SSH yang disimpan terenkripsi AES-GCM dan tidak pernah ditampilkan kembali), menguji koneksi, dan NOC/ADMIN mem-poll **ONU yang dilaporkan OLT sebagai belum terdaftar** ke antrean (PENDING / IGNORED / RESOLVED). ACS hanya **membaca**: belum ada pengesahan ONU atau penulisan konfigurasi ke OLT.
+- **Driver vendor nyata belum ada** di irisan ini; menunggu keluaran OLT lab (daftar kebutuhan: desain §8). Sampai itu, satu-satunya driver adalah simulator `sim` yang **nonaktif bawaan**: setel `ACS_OLT_SIM_ENABLED=true` hanya untuk pengembangan/e2e/demo (ONU palsu, tanpa koneksi jaringan; jangan di produksi). Perilaku simulator dipilih lewat host: `10.255.0.2` tak terjangkau, `10.255.0.3` autentikasi ditolak, `10.255.0.4` antrean berputar, `10.255.0.5` kosong, lainnya A,B,C.
+- **Host OLT** divalidasi saat disimpan (loopback, link-local/metadata cloud, dan multicast ditolak; RFC1918 diizinkan). `ACS_WEBHOOK_BLOCK_PRIVATE=true` juga menolak jaringan privat untuk host OLT (SaaS publik).
+- **Polling manual**: tidak ada polling periodik di irisan ini. Satu polling per OLT dalam satu waktu (409 bila sedang berjalan); galat koneksi dijawab 502 tanpa teks dari perangkat dan tidak mengubah antrean. Riwayat RESOLVED dipangkas ke 200 entri terbaru per OLT.
+- **Migrasi `0044`** menambah `ref_olt_poll_status`, `ref_onu_discovery_status`, `olts`, `olt_unregistered_onus` (tabel baru, tidak mengubah tabel lama; urutan deploy bebas).
+
 ### J. Variabel lingkungan operasional (ringkas)
 | Variabel | Bawaan | Fungsi |
 |---|---|---|
@@ -222,6 +229,7 @@ Nilai parameter bernama sensitif (`password|passphrase|psk|secret|token|key`) di
 | `ACS_TRUSTED_PROXIES` | kosong | CIDR proxy yang boleh menentukan IP klien lewat `X-Forwarded-For` (wajib di belakang proxy) |
 | `ACS_CR_TRUSTED_CIDRS` | kosong | CIDR yang boleh menjadi host `ConnectionRequestURL` walau bukan IP sumber Inform (ACS di balik NAT/Docker Desktop, mis. `10.0.0.0/8`). Tetap hanya literal IP & lolos netguard; kosong = ketat |
 | `ACS_WEBHOOK_BLOCK_PRIVATE` | false | SaaS publik: tolak target webhook di RFC1918/ULA/CGNAT (validasi **dan** saat menyambung — menutup DNS rebinding) |
+| `ACS_OLT_SIM_ENABLED` | false | Daftarkan driver OLT simulator `sim` (ONU palsu, tanpa koneksi jaringan) untuk pengembangan/e2e/demo. Jangan true di produksi (lihat §I3) |
 | `ACS_TRANSFER_ALLOWED_HOSTS` | kosong | Host yang boleh menjadi `url` task Download/Upload buatan API (nama host, `*.subdomain` — tidak mencakup apex —, IP, atau CIDR; pisahkan koma; port diabaikan). Kosong = tak dibatasi. Unduhan dari katalog firmware/berkas ACS (presigned) tidak terkena. Entri tidak valid = `acsd` gagal start |
 | `ACS_HA` | false | mode multi-instance (§H) |
 | `ACS_OPTICAL_POLL_MINUTES` | 360 | interval polling redaman optik per perangkat (0 = mati, minimum 15) |

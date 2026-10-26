@@ -2,6 +2,39 @@
 
 ---
 
+## SESI 2026-10-26 (2) (OLT Controller irisan 1: kerangka, simulator, UI)
+
+Pertanyaan pembuka: "apakah kita bisa kerjakan Lapisan 1 agar benar-benar ACS?" — jawabannya: sistem sudah ACS (TR-069 = lapisan 2); lapisan 1 (auto-provisioning ONU di OLT) adalah fase baru. Keputusan pengguna: OLT lab ZTE tersedia, cakupan langkah pertama = rancangan + kerangka + simulator (tanpa tulis ke OLT, tanpa data vendor nyata). Rancangan: [`../arsitektur/OLT_CONTROLLER_DESIGN.md`](../arsitektur/OLT_CONTROLLER_DESIGN.md).
+
+### DIKERJAKAN
+1. **Migrasi `0044`**: `ref_olt_poll_status`, `ref_onu_discovery_status`, `olts` (kredensial SNMP/SSH terenkripsi AES-GCM), `olt_unregistered_onus` (unik per olt+serial).
+2. **Backend**: `domain/olt.go` (entitas, antarmuka driver, repository), `internal/oltdriver` (registry + simulator `sim`, nonaktif bawaan `ACS_OLT_SIM_ENABLED`), `usecase/olt` (CRUD, tes koneksi, polling + rekonsiliasi antrean, abaikan/pulihkan), 10 endpoint (`/olts`, `/olts/{uuid}/test|poll`, `/olt-onus`, `/olt-drivers`) di balik auth + RBAC + scope tenant.
+3. **UI**: halaman `/olts` (tabel OLT dengan aksi poll/uji/ubah/hapus per peran, antrean ONU berfilter, modal tambah/ubah dengan kredensial tertutup), menu, i18n, `limits.ts`.
+4. **Kontrak**: OpenAPI 213 operation (ditambah 10), Postman 203 → 213 request, parity 202/202.
+
+### DIVERIFIKASI
+| Gerbang | Hasil |
+|---|---|
+| `gofmt`, `go vet`, `go build`, `go test -race ./...` (+ integrasi MariaDB) | ✅ |
+| Migrasi 0044 di MariaDB 10.11 nyata: up dari nol → down penuh → up; hasil dibandingkan dengan `schema.sql` (4 tabel, seed identik) | ✅ |
+| Tes integrasi repository (join, kredensial biner, upsert/revive, batch 450 baris, prune, cascade soft delete) | ✅ |
+| Uji mutasi usecase (IGNORED tidak dipertahankan, penjaga satu-polling, scope tenant List, validasi SSRF host) | ✅ keempatnya tertangkap tes |
+| e2e **S35** di stack `acs-e2e` terpisah (acsd sungguhan + driver sim) | ✅ |
+| vitest `OltsPage` 12 tes | ✅ |
+
+### TEMUAN
+- **`QueryGuard` menolak parameter `*_id` non-numerik**: `GET /olt-onus?olt_id=<uuid>` selalu 400. Hanya e2e yang menangkapnya (tes unit memakai fake). Filter diganti `olt`; aturan global sengaja tidak dilonggarkan.
+- **Alertmanager tidak pernah mengirim alert**: `deploy/alertmanager/config.yml` mengarah ke `http://acsd:8080/api/v1/alertmanager-webhook`, tetapi endpoint itu **tidak ada di kode** (alert dijawab 404). Alertmanager dan Grafana sendiri sudah ada di compose; klaim lama "belum ada" keliru. **Belum diperbaiki.**
+- **Kontras warna** di `/tasks` (`text-slate-400` tanpa varian gelap) ditemukan audit UI dan diperbaiki; kontras versi OLT di mode gelap diperbaiki.
+- Kesalahan prosedur dicatat di memori: backtick di `node -e` merusak teks yang disisipkan ke `types.ts`/`hooks.ts` (ditemukan dan diperbaiki sebelum commit); `migrate down` tanpa argumen turun penuh (hanya di DB sekali-pakai).
+
+### BELUM / KETERBATASAN JUJUR
+- **Tidak ada driver vendor nyata**: simulator tidak membuktikan kompatibilitas ZTE. Irisan 2 menunggu keluaran OLT lab (desain §8).
+- Tidak ada polling periodik; tidak ada penulisan ke OLT; belum menghubungkan SN ONU ↔ serial CPE.
+- `GET /olts/{uuid}` tidak dipakai UI (ditinjau; untuk integrasi/BSS).
+
+---
+
 ## SESI 2026-10-26 (tindak lanjut temuan audit: backfill rahasia task, kuota storage, allowlist transfer)
 
 Temuan "belum ditutup" dari LANJUTAN 13 diverifikasi ulang ke kode (catatan lama usang): **strict-decode JSON (R9)** sudah tertutup (`StrictJSONSerializer` global di `restEcho`), **sinkron `limits.ts`** untuk device/firmware sudah cocok dengan kolom, `ACS_WEBHOOK_BLOCK_PRIVATE` sudah ada (hanya keputusan deploy; kini tercantum di `.env.example`). Yang benar-benar terbuka dan kini ditutup:
