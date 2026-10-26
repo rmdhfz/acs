@@ -1,11 +1,25 @@
+# Alertmanager untuk ACS. Satu penerima: webhook ke acsd, yang mengubah alert menjadi notifikasi PLATFORM_ALERT untuk SUPERADMIN
+# (in-app + push WebSocket + email bila SMTP dikonfigurasi). Lihat internal/usecase/alerts dan docs/operasional/RUNBOOK.md §I4.
+#
+# Autentikasi: token Bearer yang sama dengan ACS_ALERTMANAGER_WEBHOOK_TOKEN di acsd. Token TIDAK ditulis di berkas ini (ikut repo):
+# service `alertmanager` di docker-compose.yml menuliskannya dari .env ke /tmp/acs-webhook-token saat start. Tanpa token, acsd tidak
+# memasang endpoint (404) dan Alertmanager gagal mengirim (401/404 di lognya) — alert tetap terlihat di UI Alertmanager/Prometheus.
 route:
-  group_by: ['alertname']
+  receiver: acsd
+  group_by: ['alertname', 'vendor']
   group_wait: 30s
   group_interval: 5m
-  repeat_interval: 1h
-  receiver: 'web.hook'
+  # Pengulangan alert yang masih firing. acsd menahan notifikasi duplikat dalam jendela 6 jam, jadi ini tidak membanjiri kotak masuk.
+  repeat_interval: 4h
 
 receivers:
-  - name: 'web.hook'
+  - name: acsd
     webhook_configs:
       - url: 'http://acsd:8080/api/v1/alertmanager-webhook'
+        # Kabar "pulih" juga dikirim (notifikasi [PULIH] dengan keparahan INFO).
+        send_resolved: true
+        max_alerts: 50
+        http_config:
+          authorization:
+            type: Bearer
+            credentials_file: /tmp/acs-webhook-token

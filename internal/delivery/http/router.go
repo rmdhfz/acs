@@ -11,6 +11,7 @@ import (
 
 	"acs/internal/delivery/ws"
 	"acs/internal/domain"
+	"acs/internal/usecase/alerts"
 	"acs/internal/usecase/auth"
 	"acs/internal/usecase/automation"
 	"acs/internal/usecase/billing"
@@ -83,6 +84,9 @@ type Router struct {
 	Faults *fault.Service
 	// OLT Controller irisan 1 (migrations/0044): inventaris OLT + antrean ONU belum terdaftar; nil = rute tidak dipasang.
 	OLTs *olt.Service
+	// Alert Alertmanager -> notifikasi PLATFORM_ALERT untuk SUPERADMIN; rute dipasang hanya bila Alerts dan AlertmanagerToken terisi.
+	Alerts            *alerts.Service
+	AlertmanagerToken string
 	// Virtual parameter (migrations/0039): ekspresi turunan per tenant; nil = rute tidak dipasang.
 	VParams *vparam.Service
 	// Aturan otomasi kondisi-aksi (migrations/0040); nil = rute tidak dipasang.
@@ -140,6 +144,11 @@ func (r *Router) Register(e *echo.Echo) {
 	// longgar (20/dtk per IP agar callback sah tidak terblokir). Billing mati -> 404. Lihat billing_handler.go.
 	if r.Billing != nil {
 		api.POST("/billing/xendit/webhook", r.xenditWebhook, r.limiter("billing-webhook", 20))
+	}
+	// Penerima webhook Alertmanager (publik di balik token Bearer waktu-konstan, body maks 512 KiB, pembatas laju sendiri). Token kosong
+	// -> rute tidak dipasang (404): tidak ada endpoint mutasi tanpa autentikasi. Lihat alertmanager_handler.go.
+	if r.Alerts != nil && r.AlertmanagerToken != "" {
+		api.POST("/alertmanager-webhook", r.alertmanagerWebhook, r.limiter("alertmanager-webhook", 5))
 	}
 	api.GET("/auth/config", r.authConfig)
 	api.GET("/auth/oidc/login", r.oidcLogin)

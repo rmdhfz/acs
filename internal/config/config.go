@@ -78,6 +78,10 @@ type Config struct {
 	// SaaS publik di mana admin tenant tidak tepercaya; matikan bila receiver webhook ada di LAN yang sama.
 	WebhookBlockPrivate bool
 
+	// AlertmanagerWebhookToken — token Bearer penerima webhook Alertmanager (POST /api/v1/alertmanager-webhook). Kosong (bawaan) =
+	// endpoint tidak dipasang (404). Diisi, token wajib kuat; Alertmanager dikonfigurasi memakai token yang sama (docker-compose.yml).
+	AlertmanagerWebhookToken string
+
 	// OLTSimEnabled — mendaftarkan driver OLT simulator (oltdriver/sim): ONU palsu, tanpa koneksi jaringan, untuk pengembangan/e2e/demo.
 	// Bawaan MATI; jangan diaktifkan di produksi.
 	OLTSimEnabled bool
@@ -410,12 +414,34 @@ func Load() (*Config, error) {
 	if err := loadBilling(cfg); err != nil {
 		return nil, err
 	}
+	if err := loadAlertmanager(cfg); err != nil {
+		return nil, err
+	}
 
 	return cfg, nil
 }
 
 // minXenditTokenLen — panjang minimum token callback (cegah token tebakan).
 const minXenditTokenLen = 24
+
+// loadAlertmanager memuat token penerima webhook Alertmanager. Opsional; bila diisi harus kuat. Pesan galat TIDAK PERNAH memuat token.
+func loadAlertmanager(cfg *Config) error {
+	v := os.Getenv("ACS_ALERTMANAGER_WEBHOOK_TOKEN")
+	if v == "" {
+		return nil
+	}
+	if strings.TrimSpace(v) != v || strings.ContainsAny(v, " \t\r\n") {
+		return fmt.Errorf("config: ACS_ALERTMANAGER_WEBHOOK_TOKEN tidak boleh memuat spasi")
+	}
+	if weakSecret([]byte(v)) {
+		return fmt.Errorf("config: ACS_ALERTMANAGER_WEBHOOK_TOKEN lemah/placeholder (mis. salinan contoh konfigurasi)")
+	}
+	if len(v) < minXenditTokenLen {
+		return fmt.Errorf("config: ACS_ALERTMANAGER_WEBHOOK_TOKEN minimal %d karakter", minXenditTokenLen)
+	}
+	cfg.AlertmanagerWebhookToken = v
+	return nil
+}
 
 // loadBilling memuat konfigurasi pembayaran. Pesan galat TIDAK PERNAH memuat nilai kunci/token.
 func loadBilling(cfg *Config) error {

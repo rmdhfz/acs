@@ -46,3 +46,5 @@ services:
     environment:
       # Driver OLT simulator (ONU palsu, tanpa koneksi jaringan) untuk skenario S35; hanya di stack e2e.
       ACS_OLT_SIM_ENABLED: "true"
+      # Token penerima webhook Alertmanager untuk skenario S36 (nilai uji; stack e2e terpisah dan hanya di 127.0.0.1).
+      ACS_ALERTMANAGER_WEBHOOK_TOKEN: "e2e-alertmanager-token-0123456789abcdef"

@@ -26,6 +26,8 @@ const (
 	NotifAnnouncement       = "ANNOUNCEMENT"
 	// Redaman optik perangkat melewati ambang waspada/kritis (migrations/0036).
 	NotifOpticalAlert = "OPTICAL_ALERT"
+	// Alert infrastruktur dari Prometheus/Alertmanager (migrations/0045); audiens bawaan SUPERADMIN.
+	NotifPlatformAlert = "PLATFORM_ALERT"
 	// Langganan SaaS (migrations/0032).
 	NotifBillingPaid     = "BILLING_PAID"
 	NotifBillingExpiring = "BILLING_EXPIRING"

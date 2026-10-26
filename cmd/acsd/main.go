@@ -35,6 +35,7 @@ import (
 	"acs/internal/repository/hotcache"
 	"acs/internal/repository/mysql"
 	"acs/internal/repository/redisrepo"
+	"acs/internal/usecase/alerts"
 	"acs/internal/usecase/auth"
 	"acs/internal/usecase/automation"
 	"acs/internal/usecase/billing"
@@ -272,6 +273,8 @@ func main() {
 	deviceSvc.WithFleetInsights(mysql.NewFleetInsightsRepository(db))
 	sessionSvc.WithNotifier(notifSvc)
 	firmwareSvc.WithNotifier(notifSvc)
+	// Alert Alertmanager -> notifikasi PLATFORM_ALERT (SUPERADMIN); rute hanya dipasang bila ACS_ALERTMANAGER_WEBHOOK_TOKEN diisi.
+	alertsSvc := alerts.NewService(notifSvc, logger)
 
 	// ---- Langganan SaaS lewat Xendit (migrations/0032). Bawaan MATI (ACS_BILLING_ENABLED=false): klien gateway tidak
 	// dibuat, endpoint mutasi menjawab 409 dan webhook 404. Kunci rahasia/token hanya dipegang klien & usecase —
@@ -378,18 +381,20 @@ func main() {
 		MetricsHandler: metricsHandler,
 		Files:          fileSvc,
 		Tags:           tagSvc, Presets: presetSvc,
-		SelfService:   selfServiceSvc,
-		Notifications: notifSvc,
-		Billing:       billingSvc,
-		Menu:          menuSvc,
-		Bugs:          bugSvc,
-		Transfers:     transferSvc,
-		Capture:       captureSvc,
-		Faults:        faultSvc,
-		OLTs:          oltSvc,
-		VParams:       vparamSvc,
-		Automation:    automationSvc,
-		WSHub:         wsHub,
+		SelfService:       selfServiceSvc,
+		Notifications:     notifSvc,
+		Billing:           billingSvc,
+		Menu:              menuSvc,
+		Bugs:              bugSvc,
+		Transfers:         transferSvc,
+		Capture:           captureSvc,
+		Faults:            faultSvc,
+		OLTs:              oltSvc,
+		Alerts:            alertsSvc,
+		AlertmanagerToken: cfg.AlertmanagerWebhookToken,
+		VParams:           vparamSvc,
+		Automation:        automationSvc,
+		WSHub:             wsHub,
 
 		WSAllowedOrigins: cfg.CORSAllowOrigins,
 		PublicURL:        cfg.PublicURL,

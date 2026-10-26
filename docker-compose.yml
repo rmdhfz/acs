@@ -121,6 +121,9 @@ services:
       # Host yang boleh menjadi URL task Download/Upload buatan API (nama host, *.subdomain, IP, CIDR; pisahkan koma).
       # Kosong = tidak dibatasi. Unduhan dari katalog firmware/berkas ACS (presigned) tidak terkena.
       ACS_TRANSFER_ALLOWED_HOSTS: ${ACS_TRANSFER_ALLOWED_HOSTS:-}
+      # Token Bearer penerima webhook Alertmanager (POST /api/v1/alertmanager-webhook), minimal 24 karakter acak. Kosong = endpoint tidak
+      # dipasang (404). Service alertmanager memakai token yang sama dari .env.
+      ACS_ALERTMANAGER_WEBHOOK_TOKEN: ${ACS_ALERTMANAGER_WEBHOOK_TOKEN:-}
       # OLT Controller: driver simulator (ONU palsu, tanpa koneksi jaringan) untuk pengembangan/e2e/demo. Bawaan MATI; jangan di produksi.
       ACS_OLT_SIM_ENABLED: ${ACS_OLT_SIM_ENABLED:-false}
       # Batas request/detik PER IP di REST API (Console/BSS). Login/MFA/reset/signup punya batas sendiri yang lebih ketat.
@@ -208,6 +211,14 @@ services:
   alertmanager:
     image: prom/alertmanager:latest
     restart: unless-stopped
+    # Token Bearer webhook ke acsd diambil dari .env (ACS_ALERTMANAGER_WEBHOOK_TOKEN) dan ditulis ke berkas sementara di dalam container
+    # sebelum Alertmanager start, supaya tidak ada rahasia di deploy/alertmanager/config.yml yang ikut repo. Image berbasis busybox (ada
+    # /bin/sh); entrypoint bawaan /bin/alertmanager dipanggil lewat exec dengan argumen bawaan image.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - 'printf "%s" "$$ACS_ALERTMANAGER_WEBHOOK_TOKEN" > /tmp/acs-webhook-token && exec /bin/alertmanager --config.file=/etc/alertmanager/alertmanager.yml --storage.path=/alertmanager'
+    environment:
+      ACS_ALERTMANAGER_WEBHOOK_TOKEN: ${ACS_ALERTMANAGER_WEBHOOK_TOKEN:-}
     volumes:
       - ./deploy/alertmanager/config.yml:/etc/alertmanager/alertmanager.yml:ro
     ports:

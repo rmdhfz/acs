@@ -134,7 +134,8 @@ func defaultAudiences(code string) []domain.NotificationAudience {
 			{Kind: domain.AudienceTenantRoles, Roles: []string{domain.RoleAdmin}},
 			{Kind: domain.AudienceSuperadmins},
 		}
-	case domain.NotifNewTenantSignup:
+	case domain.NotifNewTenantSignup, domain.NotifPlatformAlert:
+		// PLATFORM_ALERT: metrik agregat lintas tenant, hanya operator platform.
 		return []domain.NotificationAudience{{Kind: domain.AudienceSuperadmins}}
 	case domain.NotifAnnouncement:
 		return []domain.NotificationAudience{{Kind: domain.AudienceTenantAllStaff}}

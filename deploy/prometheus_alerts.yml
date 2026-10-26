@@ -2,10 +2,12 @@
 #   "Alert saat backlog PENDING menumpuk melewati threshold, atau error rate
 #    per vendor naik tiba-tiba (indikasi firmware baru yang berubah perilaku)."
 #
-# BATASAN (dicatat eksplisit, bukan disembunyikan): TIDAK ADA Alertmanager di
-# stack ini (ROADMAP.md Fase 2 — di luar scope sesi ini). Alert di bawah HANYA
-# muncul di tab "Alerts" pada Prometheus UI (http://localhost:19090/alerts),
-# TIDAK ada notifikasi keluar (Slack/email/dst) saat firing.
+# Alur: Prometheus mengevaluasi aturan ini -> Alertmanager (blok `alerting` di prometheus.yml) -> webhook ke acsd -> notifikasi
+# PLATFORM_ALERT untuk SUPERADMIN (in-app, push, dan email bila SMTP diatur). Alert juga tetap terlihat di tab "Alerts" Prometheus UI
+# (http://localhost:19090/alerts) dan UI Alertmanager (http://localhost:19093). Penerima di acsd butuh ACS_ALERTMANAGER_WEBHOOK_TOKEN
+# (lihat docker-compose.yml dan docs/operasional/RUNBOOK.md §I4); tanpa token, notifikasi tidak terbentuk.
+#
+# Label `severity` (warning/critical/info) menentukan keparahan notifikasi: critical -> CRITICAL, selain itu WARNING; info -> INFO.
 #
 # Threshold (50 task PENDING, 10 task FAILED per vendor) adalah nilai awal
 # yang masuk akal untuk mendeteksi anomali di lingkungan dev/kecil — perlu
