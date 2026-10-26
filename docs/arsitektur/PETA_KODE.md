@@ -20,7 +20,7 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | `cmd/e2e` | 26 | Command e2e menjalankan skenario end-to-end terhadap stack ACS yang benar- benar hidup (docker-compose): REST API + endpoint CWMP + MariaDB + MinIO. |
 | `cmd/loadtest` | 1 | Command loadtest mensimulasikan banyak sesi CWMP concurrent (Inform -> InformResponse -> POST kosong penutup) untuk mengukur p95 latency Inform, sesuai NFR di ROADMAP.md Fase 3 ("Load test: ribuan ses |
 | `cmd/migrate` | 1 | Command migrate menjalankan migrasi database terurut dari folder migrations/ menggunakan golang-migrate (TECH.md §1). |
-| `cmd/seal-secrets` | 1 | Command seal-secrets mengenkripsi (AES-GCM, kunci ACS_CREDENTIAL_ENC_KEY) nilai rahasia yang MASIH plaintext di provisioning_profile_parameters dan presets.configurations — langkah sekali jalan setela |
+| `cmd/seal-secrets` | 1 | Command seal-secrets mengenkripsi (AES-GCM, kunci ACS_CREDENTIAL_ENC_KEY) nilai rahasia yang MASIH plaintext di provisioning_profile_parameters, presets.configurations, dan tasks.parameters — langkah  |
 | `cmd/seed-admin` | 1 | Command seed-admin membuat user superadmin pertama pada instalasi baru. |
 | `internal/config` | 1 | memuat konfigurasi aplikasi dari environment variable. |
 | `internal/delivery/cwmp` | 3 | delivery layer untuk endpoint CWMP — satu-satunya tempat yang mem-parsing/mem-build XML SOAP (pkg/cwmpxml) dan menerjemahkannya ke/dari tipe polos usecase/session. |

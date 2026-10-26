@@ -113,6 +113,83 @@ func openPresetConfigs(s ValueSealer, configs string) (string, error) {
 	return transformPresetConfigs(configs, func(_, v string) (string, error) { return openValue(s, v) })
 }
 
+// sealTaskValues menyegel nilai bernama sensitif pada JSON tasks.parameters berbentuk {"values": {nama: nilai}}
+// (SET_PARAMETER_VALUES). Format penanda sama dengan task.SealSecrets, jadi task.OpenSecrets membukanya. changed
+// false bila tidak ada yang perlu disegel (JSON bukan bentuk itu, tanpa nilai sensitif, atau sudah tersegel).
+func sealTaskValues(s ValueSealer, raw string) (out string, changed bool, err error) {
+	var top map[string]json.RawMessage
+	if json.Unmarshal([]byte(raw), &top) != nil {
+		return raw, false, nil
+	}
+	var vals map[string]string
+	if json.Unmarshal(top["values"], &vals) != nil || len(vals) == 0 {
+		return raw, false, nil
+	}
+	for k, v := range vals {
+		if v == "" || strings.HasPrefix(v, sealedPrefix) || !domain.IsSensitiveParamName(k) {
+			continue
+		}
+		sealed, err := sealValue(s, k, v)
+		if err != nil {
+			return "", false, err
+		}
+		vals[k] = sealed
+		changed = true
+	}
+	if !changed {
+		return raw, false, nil
+	}
+	nv, err := json.Marshal(vals)
+	if err != nil {
+		return "", false, err
+	}
+	top["values"] = nv
+	b, err := json.Marshal(top)
+	if err != nil {
+		return "", false, err
+	}
+	return string(b), true, nil
+}
+
+// SealExistingTaskSecrets mengenkripsi nilai rahasia plaintext pada tasks.parameters milik task SET_PARAMETER_VALUES
+// yang dibuat SEBELUM penyegelan task ada (mis. password WiFi dari uji lapangan). Idempoten; dibaca per halaman id agar
+// memori tetap terbatas. updated_at sengaja dipertahankan: ini perbaikan penyimpanan, bukan perubahan task. Mengembalikan
+// jumlah task yang diubah.
+func SealExistingTaskSecrets(ctx context.Context, db *sqlx.DB, s ValueSealer) (int, error) {
+	const page = 500
+	changedRows := 0
+	var lastID uint64
+	for {
+		var rows []struct {
+			ID     uint64 `db:"id"`
+			Params string `db:"parameters"`
+		}
+		if err := db.SelectContext(ctx, &rows, `SELECT t.id, t.parameters FROM tasks t
+			JOIN ref_task_types rt ON rt.id = t.task_type_id
+			WHERE rt.code = 'SET_PARAMETER_VALUES' AND t.parameters IS NOT NULL AND t.id > ?
+			ORDER BY t.id LIMIT ?`, lastID, page); err != nil {
+			return changedRows, err
+		}
+		if len(rows) == 0 {
+			return changedRows, nil
+		}
+		for _, r := range rows {
+			lastID = r.ID
+			out, changed, err := sealTaskValues(s, r.Params)
+			if err != nil {
+				return changedRows, err
+			}
+			if !changed {
+				continue
+			}
+			if _, err := db.ExecContext(ctx, `UPDATE tasks SET parameters = ?, updated_at = updated_at WHERE id = ?`, out, r.ID); err != nil {
+				return changedRows, err
+			}
+			changedRows++
+		}
+	}
+}
+
 // SealExistingSecrets mengenkripsi nilai rahasia plaintext yang sudah ada (backfill sekali jalan,
 // idempoten: nilai berawalan enc:v1: dilewati). Mengembalikan jumlah baris profil & preset yang diubah.
 func SealExistingSecrets(ctx context.Context, db *sqlx.DB, s ValueSealer) (profileRows, presetRows int, err error) {

@@ -1,5 +1,5 @@
 // Command seal-secrets mengenkripsi (AES-GCM, kunci ACS_CREDENTIAL_ENC_KEY) nilai rahasia yang
-// MASIH plaintext di provisioning_profile_parameters dan presets.configurations — langkah sekali
+// MASIH plaintext di provisioning_profile_parameters, presets.configurations, dan tasks.parameters — langkah sekali
 // jalan setelah meng-upgrade ke versi yang mengenkripsi nilai rahasia at-rest. Idempoten: nilai yang
 // sudah tersegel dilewati; aman dijalankan ulang.
 //
@@ -40,5 +40,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("seal-secrets: %v (sebagian baris mungkin sudah terenkripsi; aman dijalankan ulang)", err)
 	}
-	log.Printf("seal-secrets: selesai — %d parameter profil & %d preset dienkripsi", profiles, presets)
+	tasks, err := mysql.SealExistingTaskSecrets(context.Background(), db, enc)
+	if err != nil {
+		log.Fatalf("seal-secrets (tasks): %v (aman dijalankan ulang)", err)
+	}
+	log.Printf("seal-secrets: selesai — %d parameter profil, %d preset & %d task dienkripsi", profiles, presets, tasks)
 }
