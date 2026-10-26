@@ -35,7 +35,8 @@ type Service struct {
 	activity domain.ActivityLogRepository
 	enc      *cryptoutil.Encryptor
 	usage    domain.UsageRepository
-	quota    domain.TenantQuotaRepository // opsional (WithQuota)
+	quota    domain.TenantQuotaRepository        // opsional (WithQuota)
+	storage  domain.TenantStorageQuotaRepository // opsional (WithStorageQuota)
 
 	// Email notifikasi (opsional, lihat WithEmail) — nil = tidak ada email.
 	notifier mailer.Notifier
@@ -306,6 +307,34 @@ func (s *Service) UpdateBranding(ctx context.Context, actor domain.Actor, tenant
 func (s *Service) WithQuota(q domain.TenantQuotaRepository) *Service {
 	s.quota = q
 	return s
+}
+
+// WithStorageQuota — penyimpanan batas total ukuran berkas per tenant (opsional).
+func (s *Service) WithStorageQuota(q domain.TenantStorageQuotaRepository) *Service {
+	s.storage = q
+	return s
+}
+
+// MaxStorageQuotaBytes — batas atas nilai kuota penyimpanan yang diterima (100 TiB), menolak angka ngawur.
+const MaxStorageQuotaBytes uint64 = 100 << 40
+
+// SetStorageQuota mengubah batas total ukuran berkas sebuah tenant dalam byte (nil = tak dibatasi). Kebijakan platform
+// (resource bersama), bukan self-service tenant — superadmin only, seperti SetDeviceLimit/SetTaskQuota.
+func (s *Service) SetStorageQuota(ctx context.Context, actor domain.Actor, tenantID uint64, max *uint64) error {
+	if err := auth.RequireRole(actor, domain.RoleSuperadmin); err != nil {
+		return err
+	}
+	if s.storage == nil {
+		return fmt.Errorf("%w: kuota penyimpanan tidak dikonfigurasi", domain.ErrInvalidInput)
+	}
+	if max != nil && *max > MaxStorageQuotaBytes {
+		return fmt.Errorf("%w: max_storage_bytes terlalu besar", domain.ErrInvalidInput)
+	}
+	if err := s.storage.SetMaxStorageBytes(ctx, tenantID, max, actor.UserIDPtr()); err != nil {
+		return err
+	}
+	_ = s.activity.Record(ctx, &domain.ActivityLog{UserID: actor.UserIDPtr(), Action: "SET_TENANT_STORAGE_QUOTA", EntityType: "tenant", EntityID: &tenantID})
+	return nil
 }
 
 // SetDeviceLimit mengubah batas perangkat aktif sebuah tenant (nil = tak dibatasi) — dasar paket SaaS. Superadmin only.

@@ -213,6 +213,7 @@ CREATE TABLE tenants (
     -- koneksi/sesi CWMP itu sendiri (itu di luar cakupan perubahan ini).
     max_pending_tasks         INT UNSIGNED    NULL,
     max_devices               INT UNSIGNED    NULL COMMENT 'Batas perangkat aktif tenant (NULL = tak dibatasi; migrations/0028)',
+    max_storage_bytes         BIGINT UNSIGNED NULL COMMENT 'Batas total ukuran berkas tenant dalam byte (NULL = tak dibatasi; migrations/0043)',
     billing_plan_id           BIGINT UNSIGNED NULL COMMENT 'Paket langganan aktif terakhir (migrations/0032; FK ditambahkan di bagian 14)',
     plan_expires_at           DATETIME        NULL COMMENT 'Masa berlaku langganan habis pada; NULL = belum pernah berlangganan (migrations/0032)',
     created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,

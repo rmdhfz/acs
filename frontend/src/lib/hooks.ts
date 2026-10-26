@@ -935,6 +935,18 @@ export function useSetTenantDeviceLimit() {
   })
 }
 
+// Kuota penyimpanan berkas per tenant (byte; null = tak dibatasi), SUPERADMIN.
+export function useSetTenantStorageQuota() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ tenantId, maxStorageBytes }: { tenantId: number; maxStorageBytes: number | null }) =>
+      api.patch<void>(`/tenants/${tenantId}/storage-quota`, { max_storage_bytes: maxStorageBytes }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['tenants'] })
+    },
+  })
+}
+
 // ---- Laporan SaaS (SUPERADMIN) ----
 export function useSaaSReport() {
   return useQuery({

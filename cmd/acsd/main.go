@@ -175,7 +175,8 @@ func main() {
 	authSvc.WithMFA(mysql.NewMFARepository(db), enc, "ACS")
 	tenantQuotaRepo := mysql.NewTenantQuotaRepository(db)
 	signupRepo := mysql.NewSignupRepository(db)
-	iamSvc := iam.NewService(tenantRepo, userRepo, refRepo, activityLogRepo, enc, usageRepo).WithQuota(tenantQuotaRepo)
+	tenantStorageQuotaRepo := mysql.NewTenantStorageQuotaRepository(db)
+	iamSvc := iam.NewService(tenantRepo, userRepo, refRepo, activityLogRepo, enc, usageRepo).WithQuota(tenantQuotaRepo).WithStorageQuota(tenantStorageQuotaRepo)
 	if cfg.SMTPHost != "" {
 		iamSvc.WithEmail(mailNotifier, mailBuilder, passwordResetRepo)
 	}
@@ -239,7 +240,7 @@ func main() {
 		mysql.NewAutomationStateRepository(db), mysql.NewAutomationRunRepository(db), deviceSvc, deviceParamRepo, taskSvc, tagRepo, webhookSvc, activityLogRepo)
 	faultSvc := fault.NewService(mysql.NewFaultRepository(db), activityLogRepo)
 	sessionSvc := session.NewService(deviceSessionRepo, deviceEventRepo, deviceParamRepo, deviceRepo, tenantRepo, refRepo, deviceSvc, taskSvc, provisioningSvc, firmwareSvc, diagnosticsSvc, enc, activityLogRepo, logger, webhookSvc, wsHub).WithOpticalPoll(time.Duration(cfg.OpticalPollMinutes) * time.Minute).WithPPPoEPoll(time.Duration(cfg.PPPoEPollMinutes) * time.Minute).WithFaults(faultSvc).WithAutomation(automationSvc)
-	fileSvc := file.NewService(fileRepo, objStorage, activityLogRepo)
+	fileSvc := file.NewService(fileRepo, objStorage, activityLogRepo).WithStorageQuota(tenantStorageQuotaRepo)
 	tagSvc := tag.NewService(tagRepo, activityLogRepo)
 	presetSvc := preset.NewService(presetRepo, activityLogRepo)
 	selfServiceSvc := selfservice.NewService(userDeviceRepo, deviceRepo, refRepo, taskSvc, activityLogRepo).WithUsers(userRepo)

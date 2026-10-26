@@ -40,7 +40,7 @@ func TestDelete_Scope(t *testing.T) {
 		1: {ID: 1, TenantID: nil},    // global
 		2: {ID: 2, TenantID: tid(7)}, // tenant 7
 	}}
-	svc := NewService(repo, nil, fakeAct{})
+	svc := NewService(repo, &fakeStorage{}, fakeAct{})
 	ctx := context.Background()
 	adminA := domain.Actor{UserID: 2, TenantID: tid(7), Roles: []string{domain.RoleAdmin}}
 	adminB := domain.Actor{UserID: 3, TenantID: tid(8), Roles: []string{domain.RoleAdmin}}

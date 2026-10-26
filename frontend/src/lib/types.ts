@@ -251,6 +251,8 @@ export interface Tenant {
   max_pending_tasks: number | null
   // max_devices — batas perangkat aktif (paket SaaS, migrations/0028). null = tidak dibatasi.
   max_devices: number | null
+  // max_storage_bytes — batas total ukuran berkas aktif tenant dalam byte (migrations/0043). null = tidak dibatasi.
+  max_storage_bytes: number | null
   created_at: string
 }
 

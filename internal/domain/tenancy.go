@@ -27,6 +27,8 @@ type Tenant struct {
 	MaxPendingTasks *uint32 `db:"max_pending_tasks" json:"max_pending_tasks"`
 	// MaxDevices — batas perangkat aktif tenant (dasar paket SaaS, migrations/0028); nil = tak dibatasi.
 	MaxDevices *uint32 `db:"max_devices" json:"max_devices"`
+	// MaxStorageBytes — batas total ukuran berkas generik (tabel files) tenant, dalam byte (migrations/0043); nil = tak dibatasi.
+	MaxStorageBytes *uint64 `db:"max_storage_bytes" json:"max_storage_bytes"`
 	// BillingPlanID/PlanExpiresAt -- paket langganan aktif terakhir dan masa berlakunya (migrations/0032). ID paket tidak
 	// diekspos (kode paket ada di GET /billing/subscription); nil = belum pernah berlangganan.
 	BillingPlanID *uint64    `db:"billing_plan_id" json:"-"`
@@ -57,6 +59,14 @@ type TenantQuotaRepository interface {
 	SetMaxDevices(ctx context.Context, id uint64, max *uint32, updatedBy *uint64) error
 	// DeviceCapacity mengembalikan batas (nil = tak dibatasi) dan jumlah perangkat aktif tenant saat ini.
 	DeviceCapacity(ctx context.Context, tenantID uint64) (max *uint32, current int, err error)
+}
+
+// TenantStorageQuotaRepository — batas total ukuran berkas per tenant. Terpisah dari TenantQuotaRepository agar
+// antarmuka yang sudah ada (dan fake-nya di tes) tidak berubah.
+type TenantStorageQuotaRepository interface {
+	SetMaxStorageBytes(ctx context.Context, id uint64, max *uint64, updatedBy *uint64) error
+	// StorageUsage mengembalikan batas (nil = tak dibatasi) dan total ukuran berkas aktif tenant saat ini.
+	StorageUsage(ctx context.Context, tenantID uint64) (max *uint64, usedBytes uint64, err error)
 }
 
 type User struct {

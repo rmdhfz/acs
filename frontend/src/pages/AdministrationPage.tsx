@@ -31,6 +31,7 @@ import {
   useSetTenantCWMPCredentials,
   useSetTenantTaskQuota,
   useSetTenantDeviceLimit,
+  useSetTenantStorageQuota,
   useTenants,
   useApiTokens,
   useIssueApiToken,
@@ -897,6 +898,9 @@ function TenantsTab() {
                     <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">
                       {t.max_devices == null ? 'perangkat tak dibatasi' : `maks. ${t.max_devices} perangkat`}
                     </span>
+                    <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">
+                      {t.max_storage_bytes == null ? 'penyimpanan tak dibatasi' : `maks. ${formatQuotaBytes(t.max_storage_bytes)} berkas`}
+                    </span>
                   </td>
                   <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{formatDateTime(t.created_at)}</td>
                   <td className="px-5 py-3.5 text-right">
@@ -965,6 +969,7 @@ function TenantDetailModal({ id, onClose }: { id: number; onClose: () => void })
               ['UUID', mono(data.tenant_uuid)],
               ['Username CWMP', data.cwmp_inform_username ? mono(data.cwmp_inform_username) : 'Belum diset'],
               ['Kuota task', data.max_pending_tasks == null ? 'Tidak dibatasi' : `${data.max_pending_tasks} pending`],
+              ['Kuota penyimpanan', data.max_storage_bytes == null ? 'Tidak dibatasi' : formatQuotaBytes(data.max_storage_bytes)],
               ['Nama brand', data.brand_name],
               ['Warna aksen', data.primary_color],
               ['Dibuat', formatDateTime(data.created_at)],
@@ -1152,12 +1157,24 @@ function RotateCWMPCredentialsModal({ tenant, onClose }: { tenant: Tenant; onClo
 // backend juga menolak ADMIN non-superadmin, lihat usecase/iam.SetTaskQuota).
 // Kosongkan field = tidak dibatasi (null), beda dari branding di atas yang
 // self-service tenant.
+const BYTES_PER_MB = 1024 * 1024
+// Batas atas kuota penyimpanan di backend (iam.MaxStorageQuotaBytes = 100 TiB), dalam MB.
+const MAX_STORAGE_QUOTA_MB = (100 * 1024 ** 4) / BYTES_PER_MB
+
+function formatQuotaBytes(bytes: number): string {
+  if (bytes >= 1024 ** 3) return `${Number((bytes / 1024 ** 3).toFixed(2)).toLocaleString('id-ID')} GB`
+  return `${Number((bytes / BYTES_PER_MB).toFixed(2)).toLocaleString('id-ID')} MB`
+}
+
 function EditTaskQuotaModal({ tenant, onClose }: { tenant: Tenant; onClose: () => void }) {
   const [value, setValue] = useState(tenant.max_pending_tasks != null ? String(tenant.max_pending_tasks) : '')
   const [devValue, setDevValue] = useState(tenant.max_devices != null ? String(tenant.max_devices) : '')
+  const initialStorageMB = tenant.max_storage_bytes != null ? String(Number((tenant.max_storage_bytes / BYTES_PER_MB).toFixed(2))) : ''
+  const [storValue, setStorValue] = useState(initialStorageMB)
   const [error, setError] = useState<string | null>(null)
   const setQuotaMutation = useSetTenantTaskQuota()
   const setDeviceLimitMutation = useSetTenantDeviceLimit()
+  const setStorageQuotaMutation = useSetTenantStorageQuota()
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -1174,9 +1191,24 @@ function EditTaskQuotaModal({ tenant, onClose }: { tenant: Tenant; onClose: () =
       setError('Batas perangkat harus bilangan bulat 0–10.000.000, atau kosongkan untuk tidak dibatasi')
       return
     }
+    // Kuota penyimpanan hanya dikirim bila field diubah: nilai awal ditampilkan dalam MB (dibulatkan), jadi mengirim ulang
+    // tanpa perubahan akan menggeser nilai byte aslinya.
+    const storTrimmed = storValue.trim()
+    const storDirty = storTrimmed !== initialStorageMB
+    const storageMB = storTrimmed === '' ? null : Number(storTrimmed)
+    if (storDirty && storageMB !== null && (!Number.isFinite(storageMB) || storageMB < 0 || storageMB > MAX_STORAGE_QUOTA_MB)) {
+      setError('Kuota penyimpanan harus angka 0–104.857.600 MB, atau kosongkan untuk tidak dibatasi')
+      return
+    }
     try {
       await setQuotaMutation.mutateAsync({ tenantId: tenant.id, maxPendingTasks })
       await setDeviceLimitMutation.mutateAsync({ tenantId: tenant.id, maxDevices })
+      if (storDirty) {
+        await setStorageQuotaMutation.mutateAsync({
+          tenantId: tenant.id,
+          maxStorageBytes: storageMB === null ? null : Math.round(storageMB * BYTES_PER_MB),
+        })
+      }
       onClose()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Gagal menyimpan kuota')
@@ -1217,8 +1249,29 @@ function EditTaskQuotaModal({ tenant, onClose }: { tenant: Tenant; onClose: () =
             Perangkat baru ditolak (Inform dijawab 503, pra-registrasi/impor gagal) setelah batas tercapai; yang sudah ada tidak terganggu.
           </p>
         </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Maks. Penyimpanan Berkas (MB)</label>
+          <input
+            type="number"
+            min={0}
+            max={MAX_STORAGE_QUOTA_MB}
+            step="any"
+            value={storValue}
+            onChange={(e) => setStorValue(e.target.value)}
+            placeholder="Tidak dibatasi"
+            className={inputCls}
+          />
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Total ukuran berkas (menu Berkas) milik tenant ini. Unggahan yang akan melampaui batas ditolak; berkas yang sudah ada
+            tidak dihapus bila batas diturunkan. Katalog firmware global tidak dihitung.
+          </p>
+        </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
-        <button type="submit" disabled={setQuotaMutation.isPending || setDeviceLimitMutation.isPending} className={`${primaryBtnCls} w-full`}>
+        <button
+          type="submit"
+          disabled={setQuotaMutation.isPending || setDeviceLimitMutation.isPending || setStorageQuotaMutation.isPending}
+          className={`${primaryBtnCls} w-full`}
+        >
           Simpan Kuota
         </button>
       </form>

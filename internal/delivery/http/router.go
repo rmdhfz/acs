@@ -223,6 +223,7 @@ func (r *Router) Register(e *echo.Echo) {
 	authed.PATCH("/tenants/:id/task-quota", r.setTenantTaskQuota, RequireRoles(superadminOnly...))
 	// Batas perangkat per tenant (paket SaaS): superadmin only.
 	authed.PATCH("/tenants/:id/device-limit", r.setTenantDeviceLimit, RequireRoles(superadminOnly...))
+	authed.PATCH("/tenants/:id/storage-quota", r.setTenantStorageQuota, RequireRoles(superadminOnly...))
 	authed.POST("/users", r.createUser, RequireRoles(admin...), denyImpersonation)
 	authed.GET("/users", r.listUsers, RequireRoles(admin...))
 	// Self-service tenant admin (ROADMAP.md Fase 2): superadmin bisa ke user

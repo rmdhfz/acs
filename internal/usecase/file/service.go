@@ -17,6 +17,34 @@ type Service struct {
 	files    domain.FileRepository
 	storage  domain.ObjectStorage
 	activity domain.ActivityLogRepository
+	// quota — opsional (WithStorageQuota): batas total ukuran berkas per tenant. nil = tak dibatasi.
+	quota domain.TenantStorageQuotaRepository
+}
+
+// WithStorageQuota mengaktifkan batas total ukuran berkas per tenant pada UploadFile.
+func (s *Service) WithStorageQuota(q domain.TenantStorageQuotaRepository) *Service {
+	s.quota = q
+	return s
+}
+
+// requireStorageCapacity menolak unggahan sebesar size byte bila total berkas aktif tenant akan melampaui batasnya.
+// Cek-lalu-tulis (tanpa kunci): unggahan serentak dapat melampaui batas sebesar beberapa berkas — kuota lunak, bukan
+// batas keamanan keras. Gagal-tertutup bila batas tidak dapat dibaca.
+func (s *Service) requireStorageCapacity(ctx context.Context, tenantID *uint64, size uint64) error {
+	if s.quota == nil || tenantID == nil {
+		return nil
+	}
+	max, used, err := s.quota.StorageUsage(ctx, *tenantID)
+	if err != nil {
+		return err
+	}
+	if max == nil {
+		return nil
+	}
+	if used >= *max || size > *max-used {
+		return fmt.Errorf("%w: kuota penyimpanan tenant tercapai (terpakai %d dari %d byte)", domain.ErrQuotaExceeded, used, *max)
+	}
+	return nil
 }
 
 func NewService(
@@ -58,6 +86,10 @@ func (s *Service) UploadFile(ctx context.Context, actor domain.Actor, in UploadF
 
 	if in.TenantID != nil && !actor.IsSuperadmin() && (actor.TenantID == nil || *actor.TenantID != *in.TenantID) {
 		return nil, domain.ErrForbidden
+	}
+
+	if err := s.requireStorageCapacity(ctx, in.TenantID, uint64(in.FileSize)); err != nil {
+		return nil, err
 	}
 
 	objectKey := buildObjectKey(in.FileType, in.FileName)
@@ -171,6 +203,9 @@ func (s *Service) Delete(ctx context.Context, actor domain.Actor, id uint64) err
 	if err := s.files.Delete(ctx, id); err != nil {
 		return err
 	}
+	// Hapus juga objeknya: tanpa ini siklus unggah-hapus menumpuk objek yatim di bucket bersama sementara kuota (yang hanya
+	// menghitung baris aktif) tetap kosong. Best-effort setelah soft delete — kegagalan hanya meninggalkan objek yatim.
+	_ = s.storage.Delete(ctx, f.StorageKey)
 
 	_ = s.activity.Record(ctx, &domain.ActivityLog{
 		UserID: actor.UserIDPtr(), TenantID: actor.TenantID, Action: "DELETE_FILE", EntityType: "file", EntityID: &id,
