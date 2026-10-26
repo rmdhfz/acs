@@ -137,6 +137,7 @@ func main() {
 		{"S27-ont-nyata-hg6145f", scenarioRealOnt},
 		{"S28-ringkasan-daftar-perangkat", scenarioDeviceSummary},
 		{"S29-capture-sesi", scenarioCapture},
+		{"S30-cakupan-tc-uat", scenarioUATCoverage},
 		{"S31-faults", scenarioFaults},
 		{"S32-query-perangkat", scenarioDeviceQuery},
 		{"S33-virtual-parameter", scenarioVirtualParameter},
