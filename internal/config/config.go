@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"acs/pkg/netguard"
 )
 
 type Config struct {
@@ -75,6 +77,11 @@ type Config struct {
 	// WebhookBlockPrivate — tolak target webhook di jaringan privat (RFC1918/ULA/CGNAT). Aktifkan pada
 	// SaaS publik di mana admin tenant tidak tepercaya; matikan bila receiver webhook ada di LAN yang sama.
 	WebhookBlockPrivate bool
+
+	// TransferAllowedHosts — host yang boleh menjadi URL task Download/Upload TR-069 yang dibuat lewat API (nama host,
+	// *.subdomain, IP, atau CIDR). nil (default) = tidak dibatasi. Mendorong firmware/konfigurasi dari host sembarang
+	// adalah risiko bila token ADMIN tenant bocor; unduhan dari katalog firmware/berkas ACS (URL presigned) tidak terkena.
+	TransferAllowedHosts *netguard.HostAllowlist
 
 	// HA — mode multi-instance (beberapa acsd di balik load balancer, berbagi MariaDB + Redis): rate limit
 	// terdistribusi, fan-out WebSocket antar-instance, dan kunci leader untuk sweeper. Butuh Redis.
@@ -313,6 +320,9 @@ func Load() (*Config, error) {
 	cfg.WebhookBlockPrivate, err = strconv.ParseBool(getEnv("ACS_WEBHOOK_BLOCK_PRIVATE", "false"))
 	if err != nil {
 		return nil, fmt.Errorf("config: ACS_WEBHOOK_BLOCK_PRIVATE tidak valid: %w", err)
+	}
+	if cfg.TransferAllowedHosts, err = netguard.ParseHostAllowlist(os.Getenv("ACS_TRANSFER_ALLOWED_HOSTS")); err != nil {
+		return nil, fmt.Errorf("config: ACS_TRANSFER_ALLOWED_HOSTS tidak valid: %w", err)
 	}
 	cfg.CWMPRatePerIP, err = strconv.ParseFloat(getEnv("ACS_CWMP_RATE_LIMIT", "5"), 64)
 	if err != nil || cfg.CWMPRatePerIP < 1 || cfg.CWMPRatePerIP > 1_000_000 {

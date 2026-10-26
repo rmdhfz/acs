@@ -18,6 +18,7 @@ import (
 	"acs/internal/domain"
 	"acs/internal/usecase/auth"
 	"acs/pkg/cryptoutil"
+	"acs/pkg/netguard"
 )
 
 type Service struct {
@@ -48,6 +49,28 @@ type Service struct {
 
 	// enc — opsional (WithEncryptor): mengenkripsi nilai rahasia task SET_PARAMETER_VALUES di tasks.parameters (secretparams.go).
 	enc *cryptoutil.Encryptor
+
+	// transferHosts — opsional (WithTransferHostAllowlist): host yang boleh pada URL task Download/Upload. nil = tak dibatasi.
+	transferHosts *netguard.HostAllowlist
+}
+
+// WithTransferHostAllowlist membatasi host URL pada task Download/Upload yang dibuat lewat CreateTask (nil = tak dibatasi).
+// Task bersumber katalog (storage_key → URL presigned dibuat saat kirim) tidak membawa URL dan tidak terkena.
+func (s *Service) WithTransferHostAllowlist(a *netguard.HostAllowlist) *Service {
+	s.transferHosts = a
+	return s
+}
+
+// requireAllowedTransferHost menolak task Download/Upload ber-URL yang hostnya di luar daftar yang diizinkan.
+func (s *Service) requireAllowedTransferHost(taskType string, params map[string]interface{}) error {
+	if s.transferHosts == nil || (taskType != domain.TaskTypeDownload && taskType != domain.TaskTypeUpload) {
+		return nil
+	}
+	u, _ := params["url"].(string)
+	if u == "" || s.transferHosts.Allows(u) {
+		return nil
+	}
+	return fmt.Errorf("%w: host pada parameters.url tidak diizinkan oleh kebijakan transfer berkas (ACS_TRANSFER_ALLOWED_HOSTS)", domain.ErrInvalidInput)
 }
 
 // WithEncryptor mengaktifkan enkripsi nilai rahasia (password WiFi/PPPoE/PSK) pada task SET_PARAMETER_VALUES yang baru dibuat.
@@ -235,6 +258,9 @@ func (s *Service) CreateTask(ctx context.Context, actor domain.Actor, in domain.
 	}
 
 	if err := ValidateTaskInput(taskType.Code, in.Parameters); err != nil {
+		return nil, err
+	}
+	if err := s.requireAllowedTransferHost(taskType.Code, in.Parameters); err != nil {
 		return nil, err
 	}
 

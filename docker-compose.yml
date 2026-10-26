@@ -118,6 +118,9 @@ services:
       ACS_HA: ${ACS_HA:-false}
       # SaaS publik: tolak target webhook di jaringan privat (RFC1918/ULA/CGNAT). Bawaan false (LAN diizinkan).
       ACS_WEBHOOK_BLOCK_PRIVATE: ${ACS_WEBHOOK_BLOCK_PRIVATE:-false}
+      # Host yang boleh menjadi URL task Download/Upload buatan API (nama host, *.subdomain, IP, CIDR; pisahkan koma).
+      # Kosong = tidak dibatasi. Unduhan dari katalog firmware/berkas ACS (presigned) tidak terkena.
+      ACS_TRANSFER_ALLOWED_HOSTS: ${ACS_TRANSFER_ALLOWED_HOSTS:-}
       # Batas request/detik PER IP di REST API (Console/BSS). Login/MFA/reset/signup punya batas sendiri yang lebih ketat.
       ACS_REST_RATE_LIMIT: ${ACS_REST_RATE_LIMIT:-100}
       # Batas request/detik PER IP di endpoint CWMP (naikkan bila banyak CPE berbagi satu IP/CGNAT).
