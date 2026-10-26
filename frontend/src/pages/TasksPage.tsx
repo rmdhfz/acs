@@ -231,7 +231,7 @@ export function TasksPage() {
                         </td>
                         <td className="px-5 py-3.5 text-slate-700 dark:text-slate-300">
                           <TaskSummaryView task={t} />
-                          <p className="mt-0.5 text-xs text-slate-400">{type?.name ?? type?.code ?? '-'}</p>
+                          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{type?.name ?? type?.code ?? '-'}</p>
                         </td>
                         <td className="px-5 py-3.5 font-mono text-xs text-slate-500 dark:text-slate-400">#{t.device_id}</td>
                         <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{t.priority}</td>

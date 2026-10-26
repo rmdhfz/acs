@@ -513,6 +513,71 @@ export interface DeviceFault {
   last_seen_at: string
 }
 
+// ---- OLT Controller irisan 1 (read-only terhadap OLT; docs/arsitektur/OLT_CONTROLLER_DESIGN.md) ----
+
+export type OLTPollStatus = 'UNKNOWN' | 'OK' | 'UNREACHABLE' | 'AUTH_FAILED' | 'ERROR'
+export type OLTONUStatus = 'PENDING' | 'IGNORED' | 'RESOLVED'
+
+// GET /olts. `id` = UUID; kredensial tidak pernah dikembalikan, hanya penandanya.
+export interface OLT {
+  id: string
+  tenant_id: number
+  name: string
+  driver_code: string
+  host: string
+  snmp_port: number
+  ssh_port: number
+  ssh_username: string | null
+  notes: string | null
+  is_active: boolean
+  poll_status: OLTPollStatus
+  last_poll_at: string | null
+  last_poll_error: string | null
+  reported_name: string | null
+  reported_version: string | null
+  has_snmp_community: boolean
+  has_ssh_password: boolean
+}
+
+// POST /olts dan PATCH /olts/:id. Pada PATCH field yang tidak dikirim tidak berubah; string kosong mengosongkan kredensial/catatan.
+export interface OLTInput {
+  tenant_id?: number
+  name?: string
+  driver_code?: string
+  host?: string
+  snmp_port?: number
+  ssh_port?: number
+  snmp_community?: string
+  ssh_username?: string
+  ssh_password?: string
+  notes?: string
+  is_active?: boolean
+}
+
+// GET /olt-onus: ONU yang dilaporkan OLT sebagai belum terdaftar. `id` = UUID entri, `olt_id` = UUID OLT.
+export interface OLTONU {
+  id: string
+  olt_id: string
+  olt_name: string
+  tenant_id: number
+  pon_port: string
+  serial_number: string
+  onu_type: string | null
+  status: OLTONUStatus
+  first_seen_at: string
+  last_seen_at: string
+  resolved_at: string | null
+}
+
+export interface OLTPollSummary {
+  seen: number
+  new: number
+  reappeared: number
+  resolved: number
+  skipped: number
+  queue_length: number
+}
+
 // Virtual parameter: nilai turunan dari parameter perangkat lewat ekspresi deklaratif (GET /virtual-parameters).
 // `id` = UUID; tenant_id null = global (semua tenant).
 export interface VirtualParameter {

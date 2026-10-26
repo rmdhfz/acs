@@ -73,6 +73,12 @@ export const LIMITS = {
     connectionRequestUsername: 128, // maxCRUserLen (kolom VARCHAR(128))
     connectionRequestPassword: 128, // maxCRPassLen — batas input plaintext; disimpan terenkripsi (VARBINARY)
   },
+  olt: {
+    name: 128, // olts.name VARCHAR(128)
+    host: 255, // olts.host VARCHAR(255)
+    notes: 255, // olts.notes VARCHAR(255)
+    credential: 128, // snmp_community / ssh_username / ssh_password (batas input; disimpan terenkripsi atau VARCHAR(128))
+  },
   firmware: {
     version: 64, // firmware_files.version VARCHAR(64)
     // release_notes TEXT (tanpa batas kolom praktis) tapi dibatasi di aplikasi

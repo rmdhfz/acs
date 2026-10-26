@@ -63,7 +63,7 @@ const auth = { Authorization: `Bearer ${login.access_token}` }
 const dev = (await (await fetch(`${API}/devices?page_size=1`, { headers: auth })).json()).data?.[0]
 
 const ROUTES = [
-  '/dashboard', '/devices', dev ? `/devices/${dev.id}` : null, '/tasks', '/provisioning', '/firmware',
+  '/dashboard', '/devices', dev ? `/devices/${dev.id}` : null, '/tasks', '/olts', '/provisioning', '/firmware',
   '/presets', '/audit', '/profile', '/webhooks', '/catalog', '/administration', '/reports',
   '/billing', '/bug-reports', '/data-transfers', '/notifications', '/notifications?tab=preferences', '/notifications?tab=announce', '/halaman-tidak-ada',
   // halaman publik (tanpa login); /signup diaudit dalam keadaan AKTIF (config dipaksa lewat intersepsi di bawah)
@@ -74,7 +74,7 @@ const VIEWPORTS = [
   { name: 'mobile', width: 390, height: 844, mobile: true },
 ]
 const THEMES = ['light', 'dark']
-const MODAL_PAGES = ['/devices', '/provisioning', '/firmware', '/files', '/tags', '/presets', '/webhooks', '/catalog', '/administration', '/profile']
+const MODAL_PAGES = ['/devices', '/olts', '/provisioning', '/firmware', '/files', '/tags', '/presets', '/webhooks', '/catalog', '/administration', '/profile']
 const OPENERS = /^\s*(\+\s*)?(tambah|buat|upload|unggah|terbitkan|baru|aktifkan|ganti|import|impor)/i
 const keep = (...tags) => !ONLY || tags.includes(ONLY)
 

@@ -13,6 +13,7 @@ import { DevicesPage } from './pages/DevicesPage'
 import { DeviceDetailPage } from './pages/DeviceDetailPage'
 import { TasksPage } from './pages/TasksPage'
 import { FaultsPage } from './pages/FaultsPage'
+import { OltsPage } from './pages/OltsPage'
 import VirtualParametersPage from './pages/VirtualParametersPage'
 import AutomationPage from './pages/AutomationPage'
 import { ProvisioningPage } from './pages/ProvisioningPage'
@@ -65,6 +66,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/devices': 'Perangkat — ACS Console',
   '/tasks': 'Task — ACS Console',
   '/faults': 'Fault — ACS Console',
+  '/olts': 'OLT — ACS Console',
   '/virtual-parameters': 'Virtual Parameter — ACS Console',
   '/automation': 'Otomasi — ACS Console',
   '/provisioning': 'Provisioning — ACS Console',
@@ -125,6 +127,7 @@ function App() {
         <Route path="/devices/:id" element={<DeviceDetailPage />} />
         <Route path="/tasks" element={<TasksPage />} />
         <Route path="/faults" element={<FaultsPage />} />
+        <Route path="/olts" element={<OltsPage />} />
         <Route path="/virtual-parameters" element={<VirtualParametersPage />} />
         <Route path="/automation" element={<AutomationPage />} />
         <Route path="/provisioning" element={<ProvisioningPage />} />

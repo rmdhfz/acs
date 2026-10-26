@@ -11,6 +11,10 @@ import type {
   DeviceDiagnostic,
   DeviceEvent,
   DeviceFault,
+  OLT,
+  OLTInput,
+  OLTONU,
+  OLTPollSummary,
   DeviceModel,
   DeviceOpticalMetric,
   DeviceParameter,
@@ -2217,6 +2221,89 @@ export function useDismissFault() {
   return useMutation({
     mutationFn: (id: string) => api.del<void>(`/faults/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['faults'] }),
+  })
+}
+
+// ---- OLT Controller irisan 1 (read-only terhadap OLT) ----
+
+export interface OLTFilters {
+  search?: string
+  tenant_id?: number
+  page?: number
+  page_size?: number
+}
+
+export function useOLTDrivers() {
+  return useQuery({ queryKey: ['olt-drivers'], queryFn: () => api.get<ListResponse<string>>('/olt-drivers') })
+}
+
+export function useOLTs(filters: OLTFilters) {
+  return useQuery({
+    queryKey: ['olts', filters],
+    queryFn: () => api.get<ListResponse<OLT>>(`/olts${buildQuery(filters)}`),
+    refetchInterval: LIVE_REFRESH_MS,
+    placeholderData: (prev) => prev,
+  })
+}
+
+// Parameter filter OLT bernama `olt` (UUID), bukan `olt_id`: QueryGuard mewajibkan akhiran _id berupa bilangan bulat.
+export interface OLTONUFilters {
+  olt?: string
+  status?: string
+  search?: string
+  page?: number
+  page_size?: number
+}
+
+export function useOLTONUs(filters: OLTONUFilters) {
+  return useQuery({
+    queryKey: ['olt-onus', filters],
+    queryFn: () => api.get<ListResponse<OLTONU>>(`/olt-onus${buildQuery(filters)}`),
+    refetchInterval: LIVE_REFRESH_MS,
+    placeholderData: (prev) => prev,
+  })
+}
+
+function invalidateOLT(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: ['olts'] })
+  void qc.invalidateQueries({ queryKey: ['olt-onus'] })
+}
+
+export function useCreateOLT() {
+  const qc = useQueryClient()
+  return useMutation({ mutationFn: (input: OLTInput) => api.post<OLT>('/olts', input), onSuccess: () => invalidateOLT(qc) })
+}
+
+export function useUpdateOLT() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: OLTInput }) => api.patch<OLT>(`/olts/${id}`, input),
+    onSuccess: () => invalidateOLT(qc),
+  })
+}
+
+export function useDeleteOLT() {
+  const qc = useQueryClient()
+  return useMutation({ mutationFn: (id: string) => api.del<void>(`/olts/${id}`), onSuccess: () => invalidateOLT(qc) })
+}
+
+// Uji koneksi (Probe): hasilnya tercatat pada OLT (status, identitas yang dilaporkan).
+export function useTestOLT() {
+  const qc = useQueryClient()
+  return useMutation({ mutationFn: (id: string) => api.post<OLT>(`/olts/${id}/test`), onSettled: () => invalidateOLT(qc) })
+}
+
+// Polling ONU belum terdaftar + rekonsiliasi antrean. Galat koneksi (502) tetap mencatat status OLT, jadi daftar ikut disegarkan.
+export function usePollOLT() {
+  const qc = useQueryClient()
+  return useMutation({ mutationFn: (id: string) => api.post<OLTPollSummary>(`/olts/${id}/poll`), onSettled: () => invalidateOLT(qc) })
+}
+
+export function useSetOLTONUIgnored() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ignored }: { id: string; ignored: boolean }) => api.patch<OLTONU>(`/olt-onus/${id}`, { ignored }),
+    onSuccess: () => invalidateOLT(qc),
   })
 }
 
