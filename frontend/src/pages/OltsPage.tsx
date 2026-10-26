@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { cloneElement, isValidElement, useId, useMemo, useState, type FormEvent, type ReactElement, type ReactNode } from 'react'
 import { ChevronLeft, ChevronRight, Eye, EyeOff, Pencil, PlugZap, Plus, RefreshCw, Router as RouterIcon, Trash2 } from 'lucide-react'
 import { useI18n } from '../lib/i18n'
 import { useAuth } from '../lib/auth'
@@ -17,6 +17,7 @@ import {
   useOLTs,
   usePollOLT,
   useSetOLTONUIgnored,
+  useTenants,
   useTestOLT,
   useUpdateOLT,
   type OLTONUFilters,
@@ -82,7 +83,7 @@ export function OltsPage() {
   const handleTest = (o: OLT) => {
     setBusyId(o.id)
     testOLT.mutate(o.id, {
-      onSuccess: (r) => toast.success(`Koneksi ke ${o.name} berhasil${r.reported_name ? ` (${r.reported_name})` : ''}.`),
+      onSuccess: (r) => toast.success(`Koneksi ke ${o.name} berhasil${r?.reported_name ? ` (${r.reported_name})` : ''}.`),
       onError: (e) => toast.error(errMsg(e, 'Uji koneksi gagal')),
       onSettled: () => setBusyId(null),
     })
@@ -178,10 +179,13 @@ export function OltsPage() {
                     <td className="px-5 py-3.5 font-mono text-xs text-slate-700 dark:text-slate-300">
                       {o.host}
                       <p className="text-slate-500 dark:text-slate-400">
-                        SNMP {o.snmp_port}
-                        {o.has_snmp_community ? ' · community tersimpan' : ''} · SSH {o.ssh_port}
-                        {o.has_ssh_password ? ' · password tersimpan' : ''}
+                        SNMP {o.snmp_port} · SSH {o.ssh_port}
                       </p>
+                      {(o.has_snmp_community || o.has_ssh_password) && (
+                        <p className="text-slate-500 dark:text-slate-400">
+                          kredensial tersimpan: {[o.has_snmp_community && 'community', o.has_ssh_password && 'password SSH'].filter(Boolean).join(', ')}
+                        </p>
+                      )}
                     </td>
                     <td className="px-5 py-3.5">
                       <StatusBadge code={POLL_BADGE[o.poll_status]} label={POLL_LABEL[o.poll_status]} />
@@ -383,6 +387,53 @@ export function OltsPage() {
   )
 }
 
+// Label dan petunjuk per driver. Driver yang belum punya entri tampil dengan kodenya apa adanya.
+const DRIVER_INFO: Record<string, { label: string; hint: string }> = {
+  sim: {
+    label: 'Simulator (uji coba)',
+    hint: 'ONU palsu tanpa koneksi jaringan. Host khusus: 10.255.0.4 antrean berputar tiap polling, 10.255.0.2 tak terjangkau, 10.255.0.3 autentikasi ditolak, 10.255.0.5 selalu kosong; host lain menampilkan 3 ONU tetap.',
+  },
+}
+const driverLabel = (code: string) => DRIVER_INFO[code]?.label ?? code
+
+function Section({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
+  return (
+    <section className="space-y-3 border-t border-slate-200 pt-4 first:border-t-0 first:pt-0 dark:border-slate-800">
+      <div>
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{title}</h3>
+        {hint && <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{hint}</p>}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function Field({ label, required, hint, className = '', children }: { label: string; required?: boolean; hint?: ReactNode; className?: string; children: ReactElement }) {
+  const hintId = useId()
+  // Petunjuk berada di luar <label> (nama kolom tetap ringkas) dan dihubungkan ke kontrol lewat aria-describedby.
+  const control = hint && isValidElement(children) ? cloneElement(children as ReactElement<{ 'aria-describedby'?: string }>, { 'aria-describedby': hintId }) : children
+  return (
+    <div className={className}>
+      <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">
+        <span>
+          {label}
+          {required && (
+            <span aria-hidden="true" className="ml-0.5 text-red-600 dark:text-red-400">
+              *
+            </span>
+          )}
+        </span>
+        <span className="mt-1 block">{control}</span>
+      </label>
+      {hint && (
+        <p id={hintId} className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          {hint}
+        </p>
+      )}
+    </div>
+  )
+}
+
 function OltFormModal({ olt, drivers, onClose }: { olt?: OLT; drivers: string[]; onClose: () => void }) {
   const { hasRole } = useAuth()
   const toast = useToast()
@@ -390,10 +441,15 @@ function OltFormModal({ olt, drivers, onClose }: { olt?: OLT; drivers: string[];
   const needTenant = !isEdit && hasRole('SUPERADMIN')
   const create = useCreateOLT()
   const update = useUpdateOLT()
+  const testOLT = useTestOLT()
+  const { data: tenantData } = useTenants(needTenant)
+  const tenants = tenantData?.data ?? []
 
   const [tenantId, setTenantId] = useState('')
   const [name, setName] = useState(olt?.name ?? '')
-  const [driver, setDriver] = useState(olt?.driver_code ?? drivers[0] ?? '')
+  // Driver efektif diturunkan dari daftar yang termuat: modal yang dibuka sebelum daftar driver tiba tetap memilih driver pertama.
+  const [driverSel, setDriverSel] = useState(olt?.driver_code ?? '')
+  const driver = driverSel || drivers[0] || ''
   const [host, setHost] = useState(olt?.host ?? '')
   const [snmpPort, setSnmpPort] = useState(String(olt?.snmp_port ?? 161))
   const [sshPort, setSshPort] = useState(String(olt?.ssh_port ?? 22))
@@ -404,8 +460,21 @@ function OltFormModal({ olt, drivers, onClose }: { olt?: OLT; drivers: string[];
   const [clearPass, setClearPass] = useState(false)
   const [notes, setNotes] = useState(olt?.notes ?? '')
   const [active, setActive] = useState(olt?.is_active ?? true)
+  const [testAfter, setTestAfter] = useState(!isEdit)
   const [error, setError] = useState<string | null>(null)
-  const pending = create.isPending || update.isPending
+  const pending = create.isPending || update.isPending || testOLT.isPending
+  const noDriver = drivers.length === 0 && !olt
+  const driverHint = DRIVER_INFO[driver]?.hint
+
+  // Uji koneksi setelah simpan: hasilnya tercatat pada OLT; kegagalan koneksi tidak membatalkan penyimpanan.
+  async function testAfterSave(id: string, label: string) {
+    try {
+      const r = await testOLT.mutateAsync(id)
+      toast.success(`Koneksi ke ${label} berhasil${r?.reported_name ? ` (${r.reported_name})` : ''}.`)
+    } catch (e) {
+      toast.error(`OLT tersimpan, tetapi uji koneksi gagal: ${errMsg(e, 'tidak dapat dihubungi')}`)
+    }
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -414,9 +483,10 @@ function OltFormModal({ olt, drivers, onClose }: { olt?: OLT; drivers: string[];
     const hp = Number(sshPort)
     if (!name.trim() || !host.trim() || !driver) return setError('Nama, driver, dan host wajib diisi.')
     if (![sp, hp].every((p) => Number.isInteger(p) && p >= 1 && p <= 65535)) return setError('Port SNMP dan SSH harus bilangan bulat 1–65535.')
-    if (needTenant && !(Number.isInteger(Number(tenantId)) && Number(tenantId) > 0)) return setError('ID tenant wajib diisi (SUPERADMIN tidak terikat tenant).')
+    if (needTenant && !(Number.isInteger(Number(tenantId)) && Number(tenantId) > 0)) return setError('Pilih tenant pemilik OLT (SUPERADMIN tidak terikat tenant).')
 
     try {
+      let savedId: string
       if (!olt) {
         const input: OLTInput = {
           name: name.trim(), driver_code: driver, host: host.trim(), snmp_port: sp, ssh_port: hp,
@@ -425,7 +495,8 @@ function OltFormModal({ olt, drivers, onClose }: { olt?: OLT; drivers: string[];
         if (needTenant) input.tenant_id = Number(tenantId)
         if (community) input.snmp_community = community
         if (sshPass) input.ssh_password = sshPass
-        await create.mutateAsync(input)
+        const created = await create.mutateAsync(input)
+        savedId = created.id
         toast.success('OLT ditambahkan.')
       } else {
         // PATCH parsial: hanya kirim yang berubah. Kredensial kosong = tidak berubah, kecuali "hapus" dicentang.
@@ -442,10 +513,14 @@ function OltFormModal({ olt, drivers, onClose }: { olt?: OLT; drivers: string[];
         else if (community) input.snmp_community = community
         if (clearPass) input.ssh_password = ''
         else if (sshPass) input.ssh_password = sshPass
-        if (Object.keys(input).length === 0) return onClose()
-        await update.mutateAsync({ id: olt.id, input })
-        toast.success('OLT diperbarui.')
+        if (Object.keys(input).length === 0 && !testAfter) return onClose()
+        if (Object.keys(input).length > 0) {
+          await update.mutateAsync({ id: olt.id, input })
+          toast.success('OLT diperbarui.')
+        }
+        savedId = olt.id
       }
+      if (testAfter) await testAfterSave(savedId, name.trim())
       onClose()
     } catch (err) {
       setError(errMsg(err, 'Gagal menyimpan OLT'))
@@ -453,99 +528,135 @@ function OltFormModal({ olt, drivers, onClose }: { olt?: OLT; drivers: string[];
   }
 
   return (
-    <Modal title={isEdit ? `Ubah OLT — ${olt.name}` : 'Tambah OLT'} onClose={onClose} dismissable={!pending}>
-      <form onSubmit={(e) => void submit(e)} className="space-y-3">
-        {needTenant && (
-          <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
-            ID tenant
-            <input type="number" min={1} max={1_000_000_000} value={tenantId} onChange={(e) => setTenantId(e.target.value)} className={`mt-1 ${inputCls}`} />
-          </label>
+    <Modal title={isEdit ? `Ubah OLT — ${olt.name}` : 'Tambah OLT'} onClose={onClose} dismissable={!pending} wide>
+      <form onSubmit={(e) => void submit(e)} className="space-y-4">
+        {noDriver && (
+          <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
+            Belum ada driver OLT di server, jadi OLT belum bisa disimpan. Aktifkan driver simulator (<code>ACS_OLT_SIM_ENABLED</code>) untuk uji coba, atau tunggu driver vendor.
+          </p>
         )}
-        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
-          Nama
-          <input value={name} maxLength={LIMITS.olt.name} onChange={(e) => setName(e.target.value)} className={`mt-1 ${inputCls}`} />
-        </label>
-        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
-          Driver
-          <select value={driver} onChange={(e) => setDriver(e.target.value)} className={`mt-1 ${inputCls}`}>
-            {!drivers.includes(driver) && driver && <option value={driver}>{driver} (tidak tersedia di server)</option>}
-            {drivers.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
-          Host (IP atau nama host)
-          <input value={host} maxLength={LIMITS.olt.host} onChange={(e) => setHost(e.target.value)} placeholder="10.0.0.1" className={`mt-1 font-mono ${inputCls}`} />
-        </label>
-        <div className="grid grid-cols-2 gap-3">
-          <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
-            Port SNMP
-            <input type="number" min={1} max={65535} value={snmpPort} onChange={(e) => setSnmpPort(e.target.value)} className={`mt-1 ${inputCls}`} />
-          </label>
-          <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
-            Port SSH
-            <input type="number" min={1} max={65535} value={sshPort} onChange={(e) => setSshPort(e.target.value)} className={`mt-1 ${inputCls}`} />
-          </label>
-        </div>
-        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
-          SNMP community
-          <input
-            type="password"
-            autoComplete="off"
-            value={community}
-            maxLength={LIMITS.olt.credential}
-            disabled={clearCommunity}
-            placeholder={olt?.has_snmp_community ? 'Tersimpan — kosongkan agar tidak berubah' : 'Opsional'}
-            onChange={(e) => setCommunity(e.target.value)}
-            className={`mt-1 ${inputCls}`}
-          />
-        </label>
-        {olt?.has_snmp_community && (
-          <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
-            <input type="checkbox" checked={clearCommunity} onChange={(e) => setClearCommunity(e.target.checked)} /> Hapus community tersimpan
-          </label>
-        )}
-        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
-          Username SSH
-          <input value={sshUser} maxLength={LIMITS.olt.credential} autoComplete="off" onChange={(e) => setSshUser(e.target.value)} className={`mt-1 ${inputCls}`} />
-        </label>
-        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
-          Password SSH
-          <input
-            type="password"
-            autoComplete="off"
-            value={sshPass}
-            maxLength={LIMITS.olt.credential}
-            disabled={clearPass}
-            placeholder={olt?.has_ssh_password ? 'Tersimpan — kosongkan agar tidak berubah' : 'Opsional'}
-            onChange={(e) => setSshPass(e.target.value)}
-            className={`mt-1 ${inputCls}`}
-          />
-        </label>
-        {olt?.has_ssh_password && (
-          <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
-            <input type="checkbox" checked={clearPass} onChange={(e) => setClearPass(e.target.checked)} /> Hapus password tersimpan
-          </label>
-        )}
-        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
-          Catatan
-          <input value={notes} maxLength={LIMITS.olt.notes} onChange={(e) => setNotes(e.target.value)} className={`mt-1 ${inputCls}`} />
-        </label>
-        <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
-          <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Aktif (boleh di-poll)
-        </label>
-        <p className="text-xs text-slate-500 dark:text-slate-400">Kredensial disimpan terenkripsi dan tidak pernah ditampilkan kembali.</p>
+
+        <Section title="Identitas">
+          <div className="grid gap-3 sm:grid-cols-2">
+            {needTenant && (
+              <Field label="Tenant" required className="sm:col-span-2" hint="OLT dimiliki satu tenant; hanya tenant itu yang melihat dan mengelolanya.">
+                <select required value={tenantId} onChange={(e) => setTenantId(e.target.value)} className={inputCls}>
+                  <option value="">Pilih tenant…</option>
+                  {tenants.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} ({t.code})
+                      {t.is_active ? '' : ' — nonaktif'}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
+            <Field label="Nama" required>
+              <input required minLength={1} value={name} maxLength={LIMITS.olt.name} onChange={(e) => setName(e.target.value)} placeholder="mis. OLT Pusat Depok" className={inputCls} />
+            </Field>
+            <Field label="Driver" required>
+              <select required value={driver} onChange={(e) => setDriverSel(e.target.value)} className={inputCls}>
+                {drivers.length === 0 && !driver && <option value="">Tidak ada driver tersedia</option>}
+                {!drivers.includes(driver) && driver && <option value={driver}>{driverLabel(driver)} (tidak tersedia di server)</option>}
+                {drivers.map((d) => (
+                  <option key={d} value={d}>
+                    {driverLabel(d)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          {driverHint && <p className="text-xs text-slate-500 dark:text-slate-400">{driverHint}</p>}
+        </Section>
+
+        <Section title="Koneksi" hint="Alamat manajemen OLT dari server ACS. Alamat loopback, link-local, dan metadata cloud ditolak.">
+          <div className="grid gap-3 sm:grid-cols-4">
+            <Field label="Host" required className="sm:col-span-2" hint="IP atau nama host, tanpa http:// atau port.">
+              <input required minLength={1} value={host} maxLength={LIMITS.olt.host} onChange={(e) => setHost(e.target.value)} placeholder="10.0.0.1" className={`font-mono ${inputCls}`} />
+            </Field>
+            <Field label="Port SNMP">
+              <input type="number" min={1} max={65535} value={snmpPort} onChange={(e) => setSnmpPort(e.target.value)} className={inputCls} />
+            </Field>
+            <Field label="Port SSH">
+              <input type="number" min={1} max={65535} value={sshPort} onChange={(e) => setSshPort(e.target.value)} className={inputCls} />
+            </Field>
+          </div>
+        </Section>
+
+        <Section title="Kredensial (opsional)" hint="Disimpan terenkripsi dan tidak pernah ditampilkan kembali. Isi sesuai kebutuhan driver.">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="SNMP community" className="sm:col-span-2">
+              <input
+                type="password"
+                autoComplete="off"
+                value={community}
+                maxLength={LIMITS.olt.credential}
+                disabled={clearCommunity}
+                placeholder={olt?.has_snmp_community ? 'Tersimpan — kosongkan agar tidak berubah' : 'Opsional'}
+                onChange={(e) => setCommunity(e.target.value)}
+                className={inputCls}
+              />
+            </Field>
+            {olt?.has_snmp_community && (
+              <label className="flex items-center gap-2 text-xs text-slate-600 sm:col-span-2 dark:text-slate-400">
+                <input type="checkbox" checked={clearCommunity} onChange={(e) => setClearCommunity(e.target.checked)} /> Hapus community tersimpan
+              </label>
+            )}
+            <Field label="Username SSH">
+              <input value={sshUser} maxLength={LIMITS.olt.credential} autoComplete="off" onChange={(e) => setSshUser(e.target.value)} placeholder="Opsional" className={inputCls} />
+            </Field>
+            <Field label="Password SSH">
+              <input
+                type="password"
+                autoComplete="off"
+                value={sshPass}
+                maxLength={LIMITS.olt.credential}
+                disabled={clearPass}
+                placeholder={olt?.has_ssh_password ? 'Tersimpan — kosongkan agar tidak berubah' : 'Opsional'}
+                onChange={(e) => setSshPass(e.target.value)}
+                className={inputCls}
+              />
+            </Field>
+            {olt?.has_ssh_password && (
+              <label className="flex items-center gap-2 text-xs text-slate-600 sm:col-span-2 dark:text-slate-400">
+                <input type="checkbox" checked={clearPass} onChange={(e) => setClearPass(e.target.checked)} /> Hapus password tersimpan
+              </label>
+            )}
+          </div>
+        </Section>
+
+        <Section title="Lainnya">
+          <Field label="Catatan">
+            <input value={notes} maxLength={LIMITS.olt.notes} onChange={(e) => setNotes(e.target.value)} placeholder="mis. lokasi rak, kontak NOC" className={inputCls} />
+          </Field>
+          <div className="flex flex-wrap gap-x-6 gap-y-2">
+            <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+              <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Aktif (boleh di-poll)
+            </label>
+            <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+              <input type="checkbox" checked={testAfter} onChange={(e) => setTestAfter(e.target.checked)} /> Uji koneksi setelah disimpan
+            </label>
+          </div>
+        </Section>
+
         {error && (
-          <p role="alert" className="text-sm text-red-600">
+          <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
             {error}
           </p>
         )}
-        <button type="submit" disabled={pending} className={`${primaryBtnCls} w-full`}>
-          {isEdit ? 'Simpan perubahan' : 'Tambah OLT'}
-        </button>
+        <div className="flex items-center justify-end gap-2 border-t border-slate-200 pt-4 dark:border-slate-800">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={pending}
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            Batal
+          </button>
+          <button type="submit" disabled={pending || noDriver} className={primaryBtnCls}>
+            {pending ? 'Menyimpan…' : isEdit ? 'Simpan perubahan' : 'Tambah OLT'}
+          </button>
+        </div>
       </form>
     </Modal>
   )

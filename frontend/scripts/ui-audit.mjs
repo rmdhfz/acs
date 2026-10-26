@@ -79,7 +79,10 @@ const OPENERS = /^\s*(\+\s*)?(tambah|buat|upload|unggah|terbitkan|baru|aktifkan|
 const keep = (...tags) => !ONLY || tags.includes(ONLY)
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-const browser = await puppeteer.launch({ executablePath: findChrome(), headless: 'new', args: ['--no-sandbox'] })
+// ACS_AUDIT_CHROME_ARGS (opsional, dipisah spasi): argumen Chrome tambahan, mis. --disable-web-security saat Console disajikan dari
+// port yang tidak diizinkan CORS backend uji. Hanya untuk audit lokal.
+const extraArgs = (process.env.ACS_AUDIT_CHROME_ARGS || '').split(/\s+/).filter(Boolean)
+const browser = await puppeteer.launch({ executablePath: findChrome(), headless: 'new', args: ['--no-sandbox', ...extraArgs] })
 const findings = [] // { where, kind, detail }
 let views = 0
 

@@ -131,7 +131,9 @@ describe('DevicesPage — kolom ringkasan', () => {
       expect(q.get('sort')).toBe('-last_inform_at')
     })
     expect(screen.getByRole('button', { name: /Filter parameter \(3\)/ })).toBeTruthy()
-  })
+    // Mengetik ~50 karakter lewat user-event: pada mesin yang sedang sibuk (Docker, build) melewati batas bawaan 5 detik dan tes
+    // menjadi flaky (terjadi 2 dari 3 jalan penuh). Batas waktu dinaikkan; isi tes tidak berubah.
+  }, 20_000)
 
   it('VIEWER tidak melihat tombol Segarkan data', async () => {
     login(['VIEWER'])

@@ -54,7 +54,7 @@ describe('OltsPage', () => {
     expect((await screen.findAllByText('OLT Pusat')).length).toBeGreaterThan(0) // tabel OLT, opsi filter, dan kolom antrean
     expect(screen.getByText('Terhubung')).toBeTruthy()
     expect(screen.getAllByText(/10\.255\.0\.4/).length).toBeGreaterThan(0) // sel alamat (nama yang dilaporkan OLT juga memuatnya)
-    expect(screen.getByText(/community tersimpan/)).toBeTruthy()
+    expect(screen.getByText(/kredensial tersimpan: community, password SSH/)).toBeTruthy()
     expect(screen.getByText('SIM-OLT-10.255.0.4')).toBeTruthy()
     expect(await screen.findByText('SIMONU0001')).toBeTruthy()
     expect(screen.getAllByText('Menunggu').some((el) => el.tagName !== 'OPTION')).toBe(true) // lencana status (opsi filter punya teks sama)
@@ -108,14 +108,14 @@ describe('OltsPage', () => {
     expect(screen.queryByRole('button', { name: /RES1/ })).toBeNull()
   })
 
-  it('ADMIN menambah OLT: kredensial hanya dikirim bila diisi', async () => {
+  it('ADMIN menambah OLT: kredensial hanya dikirim bila diisi, lalu koneksi diuji otomatis', async () => {
     login(['ADMIN'])
     const calls = mockFetch(backend((r) => (r.method === 'POST' && r.url.endsWith('/olts') ? { status: 201, json: OLT } : undefined)))
     renderApp(ui)
     await userEvent.click(await screen.findByRole('button', { name: /Tambah OLT/ }))
     const dlg = await screen.findByRole('dialog')
-    await userEvent.type(within(dlg).getByLabelText('Nama'), 'OLT Baru')
-    await userEvent.type(within(dlg).getByLabelText(/Host/), '10.1.2.3')
+    await userEvent.type(within(dlg).getByLabelText(/^Nama/), 'OLT Baru')
+    await userEvent.type(within(dlg).getByLabelText(/^Host/), '10.1.2.3')
     await userEvent.type(within(dlg).getByLabelText('SNMP community'), 'rahasia')
     await userEvent.click(within(dlg).getByRole('button', { name: 'Tambah OLT' }))
     await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/olts'))).toBe(true))
@@ -123,9 +123,46 @@ describe('OltsPage', () => {
     expect(body).toMatchObject({ name: 'OLT Baru', driver_code: 'sim', host: '10.1.2.3', snmp_port: 161, ssh_port: 22, snmp_community: 'rahasia', is_active: true })
     expect('ssh_password' in body).toBe(false) // tidak diisi -> tidak dikirim
     expect('tenant_id' in body).toBe(false) // ADMIN: tenant dari token
+    // kotak "Uji koneksi setelah disimpan" aktif bawaan pada OLT baru
+    await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/olts/olt-1/test'))).toBe(true))
   })
 
-  it('validasi: port di luar 1–65535 ditolak (validasi bawaan browser) dan field wajib kosong ditolak (pesan di form), tanpa memanggil API', async () => {
+  it('"Uji koneksi setelah disimpan" dapat dimatikan: OLT tersimpan tanpa memanggil /test', async () => {
+    login(['ADMIN'])
+    const calls = mockFetch(backend((r) => (r.method === 'POST' && r.url.endsWith('/olts') ? { status: 201, json: OLT } : undefined)))
+    renderApp(ui)
+    await userEvent.click(await screen.findByRole('button', { name: /Tambah OLT/ }))
+    const dlg = await screen.findByRole('dialog')
+    await userEvent.type(within(dlg).getByLabelText(/^Nama/), 'OLT Baru')
+    await userEvent.type(within(dlg).getByLabelText(/^Host/), '10.1.2.3')
+    await userEvent.click(within(dlg).getByLabelText('Uji koneksi setelah disimpan'))
+    await userEvent.click(within(dlg).getByRole('button', { name: 'Tambah OLT' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull()) // modal menutup setelah tersimpan
+    expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/olts'))).toBe(true)
+    expect(calls.some((c) => c.url.endsWith('/test'))).toBe(false)
+  })
+
+  it('uji koneksi setelah simpan gagal: OLT tetap tersimpan dan galatnya dijelaskan', async () => {
+    login(['ADMIN'])
+    const calls = mockFetch(
+      backend((r) => {
+        if (r.method === 'POST' && r.url.endsWith('/olts')) return { status: 201, json: OLT }
+        if (r.method === 'POST' && r.url.endsWith('/olts/olt-1/test')) return { status: 502, json: { message: 'OLT tidak dapat dijangkau' } }
+        return undefined
+      }),
+    )
+    renderApp(ui)
+    await userEvent.click(await screen.findByRole('button', { name: /Tambah OLT/ }))
+    const dlg = await screen.findByRole('dialog')
+    await userEvent.type(within(dlg).getByLabelText(/^Nama/), 'OLT Baru')
+    await userEvent.type(within(dlg).getByLabelText(/^Host/), '10.1.2.3')
+    await userEvent.click(within(dlg).getByRole('button', { name: 'Tambah OLT' }))
+    expect(await screen.findByText(/OLT tersimpan, tetapi uji koneksi gagal: OLT tidak dapat dijangkau/)).toBeTruthy()
+    expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/olts'))).toBe(true)
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  })
+
+  it('validasi: field wajib kosong dan port di luar 1–65535 ditolak validasi bawaan browser, tanpa memanggil API', async () => {
     login(['ADMIN'])
     const calls = mockFetch(backend())
     renderApp(ui)
@@ -133,13 +170,15 @@ describe('OltsPage', () => {
     const dlg = await screen.findByRole('dialog')
     const form = dlg.querySelector('form') as HTMLFormElement
 
-    // field wajib kosong -> pesan dari handler
+    // nama dan host kosong -> form tidak valid (required)
+    expect(form.checkValidity()).toBe(false)
     await userEvent.click(within(dlg).getByRole('button', { name: 'Tambah OLT' }))
-    expect(await within(dlg).findByRole('alert')).toBeTruthy()
+    expect(calls.some((c) => c.method === 'POST')).toBe(false)
 
-    // port 70000 -> form tidak valid secara native (min/max), submit tidak sampai ke handler
-    await userEvent.type(within(dlg).getByLabelText('Nama'), 'X')
-    await userEvent.type(within(dlg).getByLabelText(/Host/), '10.1.2.3')
+    // terisi -> valid; port 70000 -> tidak valid lagi (min/max)
+    await userEvent.type(within(dlg).getByLabelText(/^Nama/), 'X')
+    await userEvent.type(within(dlg).getByLabelText(/^Host/), '10.1.2.3')
+    expect(form.checkValidity()).toBe(true)
     const port = within(dlg).getByLabelText('Port SNMP')
     await userEvent.clear(port)
     await userEvent.type(port, '70000')
@@ -148,13 +187,49 @@ describe('OltsPage', () => {
     expect(calls.some((c) => c.method === 'POST')).toBe(false)
   })
 
+  it('tanpa driver terdaftar: modal menjelaskan dan tombol simpan dinonaktifkan', async () => {
+    login(['ADMIN'])
+    mockFetch((r) => {
+      if (r.url.includes('/olt-drivers')) return { json: { data: [], total: 0 } }
+      if (r.url.includes('/olt-onus') || r.url.includes('/olts')) return { json: { data: [], total: 0 } }
+      return { json: [] }
+    })
+    renderApp(ui)
+    await userEvent.click(await screen.findByRole('button', { name: /Tambah OLT/ }))
+    const dlg = await screen.findByRole('dialog')
+    expect(within(dlg).getByText(/Belum ada driver OLT di server/)).toBeTruthy()
+    expect((within(dlg).getByRole('button', { name: 'Tambah OLT' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('memilih driver menampilkan label dan petunjuknya (host khusus simulator)', async () => {
+    login(['ADMIN'])
+    mockFetch(backend())
+    renderApp(ui)
+    await userEvent.click(await screen.findByRole('button', { name: /Tambah OLT/ }))
+    const dlg = await screen.findByRole('dialog')
+    expect(within(dlg).getByRole('option', { name: 'Simulator (uji coba)' })).toBeTruthy()
+    expect(within(dlg).getByText(/10\.255\.0\.4 antrean berputar/)).toBeTruthy()
+  })
+
+  it('Batal menutup modal tanpa menyimpan', async () => {
+    login(['ADMIN'])
+    const calls = mockFetch(backend())
+    renderApp(ui)
+    await userEvent.click(await screen.findByRole('button', { name: /Tambah OLT/ }))
+    const dlg = await screen.findByRole('dialog')
+    await userEvent.type(within(dlg).getByLabelText(/^Nama/), 'Tidak jadi')
+    await userEvent.click(within(dlg).getByRole('button', { name: 'Batal' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(calls.some((c) => c.method !== 'GET')).toBe(false)
+  })
+
   it('ADMIN mengubah OLT: hanya field yang berubah dikirim; "hapus password" mengirim string kosong', async () => {
     login(['ADMIN'])
     const calls = mockFetch(backend((r) => (r.method === 'PATCH' && r.url.endsWith('/olts/olt-1') ? { json: OLT } : undefined)))
     renderApp(ui)
     await userEvent.click(await screen.findByRole('button', { name: 'Ubah OLT Pusat' }))
     const dlg = await screen.findByRole('dialog')
-    const name = within(dlg).getByLabelText('Nama')
+    const name = within(dlg).getByLabelText(/^Nama/)
     await userEvent.clear(name)
     await userEvent.type(name, 'OLT Pusat 2')
     await userEvent.click(within(dlg).getByLabelText('Hapus password tersimpan'))
@@ -211,20 +286,42 @@ describe('OltsPage', () => {
     expect(await screen.findByText(/Belum ada driver OLT yang terdaftar/)).toBeTruthy()
   })
 
-  it('SUPERADMIN wajib mengisi ID tenant saat menambah OLT', async () => {
+  it('SUPERADMIN memilih tenant dari daftar (bukan mengetik ID) saat menambah OLT', async () => {
     login(['SUPERADMIN'])
-    const calls = mockFetch(backend((r) => (r.method === 'POST' && r.url.endsWith('/olts') ? { status: 201, json: OLT } : undefined)))
+    const TENANT = { id: 9, tenant_uuid: 't-9', code: 'ISP', name: 'ISP Sejahtera', is_active: true }
+    const calls = mockFetch(
+      backend((r) => {
+        if (r.method === 'GET' && r.url.includes('/tenants')) return { json: { data: [TENANT, { ...TENANT, id: 10, code: 'OFF', name: 'ISP Lama', is_active: false }], total: 2 } }
+        if (r.method === 'POST' && r.url.endsWith('/olts')) return { status: 201, json: OLT }
+        return undefined
+      }),
+    )
     renderApp(ui)
     await userEvent.click(await screen.findByRole('button', { name: /Tambah OLT/ }))
     const dlg = await screen.findByRole('dialog')
-    await userEvent.type(within(dlg).getByLabelText('Nama'), 'OLT S')
-    await userEvent.type(within(dlg).getByLabelText(/Host/), '10.1.2.3')
+    await userEvent.type(within(dlg).getByLabelText(/^Nama/), 'OLT S')
+    await userEvent.type(within(dlg).getByLabelText(/^Host/), '10.1.2.3')
+    const tenant = await within(dlg).findByLabelText(/^Tenant/)
+    await within(dlg).findByRole('option', { name: /ISP Sejahtera \(ISP\)/ })
+    expect(within(dlg).getByRole('option', { name: /ISP Lama \(OFF\) — nonaktif/ })).toBeTruthy()
+
+    // tenant belum dipilih -> form tidak valid (required), tidak ada POST
+    expect((dlg.querySelector('form') as HTMLFormElement).checkValidity()).toBe(false)
     await userEvent.click(within(dlg).getByRole('button', { name: 'Tambah OLT' }))
-    expect(await within(dlg).findByRole('alert')).toBeTruthy() // tanpa tenant
     expect(calls.some((c) => c.method === 'POST')).toBe(false)
-    await userEvent.type(within(dlg).getByLabelText('ID tenant'), '9')
+
+    await userEvent.selectOptions(tenant, '9')
     await userEvent.click(within(dlg).getByRole('button', { name: 'Tambah OLT' }))
     await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/olts'))).toBe(true))
-    expect((calls.find((c) => c.method === 'POST')!.body as { tenant_id: number }).tenant_id).toBe(9)
+    expect((calls.find((c) => c.method === 'POST' && c.url.endsWith('/olts'))!.body as { tenant_id: number }).tenant_id).toBe(9)
+  })
+
+  it('ADMIN tidak melihat pemilih tenant (OLT selalu milik tenant-nya)', async () => {
+    login(['ADMIN'])
+    mockFetch(backend())
+    renderApp(ui)
+    await userEvent.click(await screen.findByRole('button', { name: /Tambah OLT/ }))
+    const dlg = await screen.findByRole('dialog')
+    expect(within(dlg).queryByLabelText(/^Tenant/)).toBeNull()
   })
 })
