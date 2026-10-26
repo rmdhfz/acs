@@ -44,13 +44,13 @@ func TestNormalizeRXDBM(t *testing.T) {
 		want float64
 		ok   bool
 	}{
-		{-23.5, -23.5, true},      // dBm langsung
-		{-2350, -23.5, true},      // per 0,01 dBm
-		{-23500, -23.5, true},     // per 0,001 dBm (TR-181 OpticalSignalLevel)
-		{-27.01, -27.01, true},    // batas kritis tetap dBm
-		{0, 0, true},              // 0 dBm masuk akal
-		{-5000000, 0, false},      // tak ada skala yang masuk akal
-		{2740000, 0, false},       // µW/ngawur: jangan dinilai
+		{-23.5, -23.5, true},   // dBm langsung
+		{-2350, -23.5, true},   // per 0,01 dBm
+		{-23500, -23.5, true},  // per 0,001 dBm (TR-181 OpticalSignalLevel)
+		{-27.01, -27.01, true}, // batas kritis tetap dBm
+		{0, 0, true},           // 0 dBm masuk akal
+		{-5000000, 0, false},   // tak ada skala yang masuk akal
+		{2740000, 0, false},    // µW/ngawur: jangan dinilai
 	}
 	for _, c := range cases {
 		got, ok := NormalizeRXDBM(c.raw)

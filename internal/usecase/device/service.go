@@ -94,7 +94,7 @@ type Service struct {
 	tenants domain.TenantRepository
 	quota   domain.TenantQuotaRepository // opsional (WithQuota): batas perangkat per tenant
 
-	notifier domain.Notifier // opsional (WithNotifier): notifikasi DEVICE_LIMIT_REACHED
+	notifier domain.Notifier                // opsional (WithNotifier): notifikasi DEVICE_LIMIT_REACHED
 	fleet    domain.FleetInsightsRepository // opsional (WithFleetInsights): wawasan armada dashboard
 
 	// crTrusted — rentang IP tepercaya untuk host ConnectionRequestURL di luar IP sumber Inform (WithCRTrustedCIDRs).

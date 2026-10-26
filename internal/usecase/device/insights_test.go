@@ -8,7 +8,7 @@ import (
 	"acs/internal/domain"
 )
 
-func str(v string) *string   { return &v }
+func str(v string) *string { return &v }
 
 func count(b []domain.BucketCount, key string) int {
 	for _, x := range b {
