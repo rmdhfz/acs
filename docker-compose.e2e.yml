@@ -43,3 +43,6 @@ services:
     ports: !override
       - "127.0.0.1:28080:8080"
       - "127.0.0.1:27547:7547"
+    environment:
+      # Driver OLT simulator (ONU palsu, tanpa koneksi jaringan) untuk skenario S35; hanya di stack e2e.
+      ACS_OLT_SIM_ENABLED: "true"

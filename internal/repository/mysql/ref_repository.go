@@ -27,6 +27,9 @@ var refTableWhitelist = map[string]bool{
 	// whitelist -> membuat langganan webhook selalu gagal 400 dan event tak pernah
 	// terkirim (GetByCode di jalur dispatch ikut ditolak).
 	domain.RefTableWebhookEventTypes: true,
+	// OLT Controller (migrations/0044): dipakai usecase/olt (GetByCode) untuk status poll OLT dan status antrean ONU.
+	domain.RefTableOLTPollStatus:      true,
+	domain.RefTableONUDiscoveryStatus: true,
 }
 
 type refRepository struct {

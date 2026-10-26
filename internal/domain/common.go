@@ -188,6 +188,9 @@ const (
 	RefTableFirmwareRolloutStatus = "ref_firmware_rollout_status"
 	// RefTableWebhookEventTypes — jenis event webhook (migrations/0013).
 	RefTableWebhookEventTypes = "ref_webhook_event_types"
+	// RefTableOLTPollStatus / RefTableONUDiscoveryStatus — OLT Controller (migrations/0044).
+	RefTableOLTPollStatus      = "ref_olt_poll_status"
+	RefTableONUDiscoveryStatus = "ref_onu_discovery_status"
 )
 
 // Kode ref_webhook_event_types (migrations/0013) — jenis event yang dapat

@@ -121,6 +121,8 @@ services:
       # Host yang boleh menjadi URL task Download/Upload buatan API (nama host, *.subdomain, IP, CIDR; pisahkan koma).
       # Kosong = tidak dibatasi. Unduhan dari katalog firmware/berkas ACS (presigned) tidak terkena.
       ACS_TRANSFER_ALLOWED_HOSTS: ${ACS_TRANSFER_ALLOWED_HOSTS:-}
+      # OLT Controller: driver simulator (ONU palsu, tanpa koneksi jaringan) untuk pengembangan/e2e/demo. Bawaan MATI; jangan di produksi.
+      ACS_OLT_SIM_ENABLED: ${ACS_OLT_SIM_ENABLED:-false}
       # Batas request/detik PER IP di REST API (Console/BSS). Login/MFA/reset/signup punya batas sendiri yang lebih ketat.
       ACS_REST_RATE_LIMIT: ${ACS_REST_RATE_LIMIT:-100}
       # Batas request/detik PER IP di endpoint CWMP (naikkan bila banyak CPE berbagi satu IP/CGNAT).

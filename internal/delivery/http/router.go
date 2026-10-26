@@ -24,6 +24,7 @@ import (
 	"acs/internal/usecase/firmware"
 	"acs/internal/usecase/iam"
 	"acs/internal/usecase/notification"
+	"acs/internal/usecase/olt"
 	"acs/internal/usecase/preset"
 	"acs/internal/usecase/provisioning"
 	"acs/internal/usecase/report"
@@ -80,6 +81,8 @@ type Router struct {
 	Capture *capture.Service
 	// Resource faults (migrations/0038): cwmp:Fault aktif dari CPE; nil = rute tidak dipasang.
 	Faults *fault.Service
+	// OLT Controller irisan 1 (migrations/0044): inventaris OLT + antrean ONU belum terdaftar; nil = rute tidak dipasang.
+	OLTs *olt.Service
 	// Virtual parameter (migrations/0039): ekspresi turunan per tenant; nil = rute tidak dipasang.
 	VParams *vparam.Service
 	// Aturan otomasi kondisi-aksi (migrations/0040); nil = rute tidak dipasang.
@@ -250,6 +253,21 @@ func (r *Router) Register(e *echo.Echo) {
 		authed.GET("/faults", r.listFaults)
 		authed.GET("/faults/:uuid", r.getFault)
 		authed.DELETE("/faults/:uuid", r.dismissFault, RequireRoles(adminOrNOC...))
+	}
+
+	if r.OLTs != nil {
+		// OLT Controller (read-only terhadap OLT): baca untuk semua peran staf (scope tenant di usecase); tambah/ubah/hapus/uji koneksi ADMIN;
+		// polling dan abaikan ONU ADMIN/NOC.
+		authed.GET("/olt-drivers", r.listOLTDrivers)
+		authed.GET("/olts", r.listOLTs)
+		authed.GET("/olts/:uuid", r.getOLT)
+		authed.POST("/olts", r.createOLT, RequireRoles(admin...))
+		authed.PATCH("/olts/:uuid", r.updateOLT, RequireRoles(admin...))
+		authed.DELETE("/olts/:uuid", r.deleteOLT, RequireRoles(admin...))
+		authed.POST("/olts/:uuid/test", r.testOLT, RequireRoles(admin...))
+		authed.POST("/olts/:uuid/poll", r.pollOLT, RequireRoles(adminOrNOC...))
+		authed.GET("/olt-onus", r.listOLTONUs)
+		authed.PATCH("/olt-onus/:uuid", r.updateOLTONU, RequireRoles(adminOrNOC...))
 	}
 
 	if r.Automation != nil {

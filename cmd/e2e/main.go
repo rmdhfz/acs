@@ -142,6 +142,7 @@ func main() {
 		{"S32-query-perangkat", scenarioDeviceQuery},
 		{"S33-virtual-parameter", scenarioVirtualParameter},
 		{"S34-aturan-otomasi", scenarioAutomation},
+		{"S35-olt-controller", scenarioOLT},
 	}
 
 	var results []result

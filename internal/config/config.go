@@ -78,6 +78,10 @@ type Config struct {
 	// SaaS publik di mana admin tenant tidak tepercaya; matikan bila receiver webhook ada di LAN yang sama.
 	WebhookBlockPrivate bool
 
+	// OLTSimEnabled — mendaftarkan driver OLT simulator (oltdriver/sim): ONU palsu, tanpa koneksi jaringan, untuk pengembangan/e2e/demo.
+	// Bawaan MATI; jangan diaktifkan di produksi.
+	OLTSimEnabled bool
+
 	// TransferAllowedHosts — host yang boleh menjadi URL task Download/Upload TR-069 yang dibuat lewat API (nama host,
 	// *.subdomain, IP, atau CIDR). nil (default) = tidak dibatasi. Mendorong firmware/konfigurasi dari host sembarang
 	// adalah risiko bila token ADMIN tenant bocor; unduhan dari katalog firmware/berkas ACS (URL presigned) tidak terkena.
@@ -320,6 +324,10 @@ func Load() (*Config, error) {
 	cfg.WebhookBlockPrivate, err = strconv.ParseBool(getEnv("ACS_WEBHOOK_BLOCK_PRIVATE", "false"))
 	if err != nil {
 		return nil, fmt.Errorf("config: ACS_WEBHOOK_BLOCK_PRIVATE tidak valid: %w", err)
+	}
+	cfg.OLTSimEnabled, err = strconv.ParseBool(getEnv("ACS_OLT_SIM_ENABLED", "false"))
+	if err != nil {
+		return nil, fmt.Errorf("config: ACS_OLT_SIM_ENABLED tidak valid: %w", err)
 	}
 	if cfg.TransferAllowedHosts, err = netguard.ParseHostAllowlist(os.Getenv("ACS_TRANSFER_ALLOWED_HOSTS")); err != nil {
 		return nil, fmt.Errorf("config: ACS_TRANSFER_ALLOWED_HOSTS tidak valid: %w", err)

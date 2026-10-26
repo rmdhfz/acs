@@ -29,6 +29,8 @@ import (
 	"acs/internal/delivery/ws"
 	"acs/internal/domain"
 	"acs/internal/metrics"
+	"acs/internal/oltdriver"
+	"acs/internal/oltdriver/sim"
 	"acs/internal/payment/xendit"
 	"acs/internal/repository/hotcache"
 	"acs/internal/repository/mysql"
@@ -47,6 +49,7 @@ import (
 	"acs/internal/usecase/iam"
 	"acs/internal/usecase/notification"
 	"acs/internal/usecase/notify"
+	"acs/internal/usecase/olt"
 	"acs/internal/usecase/preset"
 	"acs/internal/usecase/provisioning"
 	"acs/internal/usecase/report"
@@ -239,6 +242,15 @@ func main() {
 	automationSvc := automation.NewService(hotcache.WrapAutomationRules(mysql.NewAutomationRuleRepository(db), informConfigCacheTTL),
 		mysql.NewAutomationStateRepository(db), mysql.NewAutomationRunRepository(db), deviceSvc, deviceParamRepo, taskSvc, tagRepo, webhookSvc, activityLogRepo)
 	faultSvc := fault.NewService(mysql.NewFaultRepository(db), activityLogRepo)
+	// OLT Controller irisan 1: registry driver. Driver vendor nyata didaftarkan di sini saat ada; simulator hanya bila diaktifkan.
+	oltDrivers := oltdriver.NewRegistry()
+	if cfg.OLTSimEnabled {
+		if err := oltDrivers.Register(sim.New()); err != nil {
+			log.Fatalf("olt: %v", err)
+		}
+		logger.Warn("driver OLT simulator aktif (ACS_OLT_SIM_ENABLED): menampilkan ONU palsu, jangan dipakai di produksi")
+	}
+	oltSvc := olt.NewService(mysql.NewOLTRepository(db), oltDrivers, refRepo, enc, activityLogRepo).WithBlockPrivate(cfg.WebhookBlockPrivate)
 	sessionSvc := session.NewService(deviceSessionRepo, deviceEventRepo, deviceParamRepo, deviceRepo, tenantRepo, refRepo, deviceSvc, taskSvc, provisioningSvc, firmwareSvc, diagnosticsSvc, enc, activityLogRepo, logger, webhookSvc, wsHub).WithOpticalPoll(time.Duration(cfg.OpticalPollMinutes) * time.Minute).WithPPPoEPoll(time.Duration(cfg.PPPoEPollMinutes) * time.Minute).WithFaults(faultSvc).WithAutomation(automationSvc)
 	fileSvc := file.NewService(fileRepo, objStorage, activityLogRepo).WithStorageQuota(tenantStorageQuotaRepo)
 	tagSvc := tag.NewService(tagRepo, activityLogRepo)
@@ -374,6 +386,7 @@ func main() {
 		Transfers:     transferSvc,
 		Capture:       captureSvc,
 		Faults:        faultSvc,
+		OLTs:          oltSvc,
 		VParams:       vparamSvc,
 		Automation:    automationSvc,
 		WSHub:         wsHub,
