@@ -6133,6 +6133,67 @@ paths:
                   # TYPE acs_cwmp_sessions_open gauge
                   acs_cwmp_sessions_open 304
 
+  # ============================== ALERTMANAGER (penerima webhook) ==============================
+  /alertmanager-webhook:
+    post:
+      operationId: alertmanagerWebhook
+      tags: [Metrics]
+      summary: Penerima webhook Alertmanager (alert Prometheus -> notifikasi PLATFORM_ALERT)
+      description: |
+        Dipanggil oleh **Alertmanager**, bukan klien API. Setiap alert menjadi notifikasi `PLATFORM_ALERT` untuk **SUPERADMIN** (in-app,
+        push WebSocket, dan email bila SMTP dikonfigurasi); admin tenant tidak pernah menerimanya karena metriknya agregat lintas tenant.
+        `firing` -> `[ALERT] <summary>` dengan keparahan dari label `severity` (`critical` -> CRITICAL, `info` -> INFO, selain itu
+        WARNING); `resolved` -> `[PULIH] <summary>` berkeparahan INFO. Dedupe: alert yang sama (alertname + label) tidak dibuat ulang dalam
+        6 jam (firing) / 1 jam (resolved), sehingga pengulangan `repeat_interval` Alertmanager tidak membanjiri. Maksimal 100 alert
+        diproses per permintaan (sisanya dilewati dan dihitung di `skipped`); entri tanpa `alertname` atau berstatus tak dikenal dilewati.
+
+        **Autentikasi:** header `Authorization: Bearer <token>` berisi `ACS_ALERTMANAGER_WEBHOOK_TOKEN` (dibandingkan waktu-konstan). Token
+        kosong di server = endpoint **tidak dipasang** (`404`). Bukan JWT/API token pengguna. Body maks 512 KiB; field asing diterima
+        (Alertmanager menambah field antarversi). Respons 2xx menghentikan percobaan ulang Alertmanager; galat sistem dijawab `500` agar dicoba ulang.
+      security: [{ alertmanagerToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AlertmanagerWebhookPayload' }
+      responses:
+        '200':
+          description: Payload diproses.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AlertmanagerWebhookResult' }
+        '400':
+          description: "Payload bukan JSON, versi bukan \"4\", atau alerts kosong."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: "Token Bearer hilang atau salah."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: "Penerima tidak aktif (ACS_ALERTMANAGER_WEBHOOK_TOKEN kosong)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '413':
+          description: "Body lebih dari 512 KiB."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: "Terlalu banyak permintaan (5/detik per IP)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '500':
+          description: "Galat sistem saat membuat notifikasi; Alertmanager akan mencoba ulang."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+
   # ============================== HEALTH (probe orkestrator) ==============================
   /healthz:
     servers:
@@ -8427,6 +8488,12 @@ paths:
 
 components:
   securitySchemes:
+    alertmanagerToken:
+      type: http
+      scheme: bearer
+      description: |
+        Token bersama penerima webhook Alertmanager (`ACS_ALERTMANAGER_WEBHOOK_TOKEN`, minimal 24 karakter), dikirim Alertmanager lewat
+        `Authorization: Bearer <token>`. BUKAN JWT/API token pengguna.
     bearerAuth:
       type: http
       scheme: bearer
@@ -9263,6 +9330,39 @@ components:
           items: { $ref: '#/components/schemas/OLTONU' }
         total: { type: integer }
       required: [data, total]
+
+    AlertmanagerWebhookPayload:
+      type: object
+      description: "Payload webhook Alertmanager versi 4 (hanya field yang dipakai; field lain diterima dan diabaikan)."
+      properties:
+        version: { type: string, enum: ["4"] }
+        status: { type: string, enum: [firing, resolved] }
+        alerts:
+          type: array
+          maxItems: 100
+          items:
+            type: object
+            properties:
+              status: { type: string, enum: [firing, resolved] }
+              labels:
+                type: object
+                additionalProperties: { type: string }
+                description: "Wajib memuat `alertname`; `severity` menentukan keparahan notifikasi."
+              annotations:
+                type: object
+                additionalProperties: { type: string }
+                description: "`summary` menjadi judul, `description` menjadi isi."
+              startsAt: { type: string }
+              endsAt: { type: string }
+            required: [status, labels]
+      required: [version, alerts]
+
+    AlertmanagerWebhookResult:
+      type: object
+      properties:
+        accepted: { type: integer, description: "Alert yang diteruskan ke notifikasi (termasuk yang ditahan dedupe)." }
+        skipped: { type: integer, description: "Alert tidak valid atau melebihi batas 100 per permintaan." }
+      required: [accepted, skipped]
 
     TenantListResponse:
       type: object

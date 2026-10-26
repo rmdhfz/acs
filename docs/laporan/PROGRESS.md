@@ -2,6 +2,35 @@
 
 ---
 
+## SESI 2026-10-26 (3) (alert Prometheus/Alertmanager benar-benar sampai ke operator)
+
+Temuan sesi sebelumnya ("Alertmanager tidak pernah mengirim alert") diselidiki sampai akar: rantainya putus di **dua** tempat, bukan satu. (1) `deploy/prometheus.yml` tidak punya blok `alerting:`, jadi Prometheus tidak pernah mengirim alert ke Alertmanager; (2) receiver Alertmanager memanggil `/api/v1/alertmanager-webhook` yang tidak ada di kode (404). Komentar di berkas konfigurasi masih menyebut "tidak ada Alertmanager" (usang).
+
+### DIKERJAKAN
+1. **Penerima webhook** `POST /api/v1/alertmanager-webhook` (`delivery/http/alertmanager_handler.go`, `usecase/alerts`): token Bearer bersama (`ACS_ALERTMANAGER_WEBHOOK_TOKEN`, min. 24 karakter, tidak lemah), dibandingkan waktu-konstan lewat hash; kosong = rute tidak dipasang (CLAUDE.md: tidak ada endpoint mutasi tanpa autentikasi). Pembatas laju 5/detik, body maks. 512 KiB, tanpa strict-decode (Alertmanager menambah field antarversi), maks. 100 alert per permintaan, teks dibersihkan dan dipangkas.
+2. **Notifikasi `PLATFORM_ALERT`** (migrasi `0045`, data bukan skema) dengan audiens bawaan SUPERADMIN (metrik lintas tenant, tidak pernah ke admin tenant). Keparahan dari label `severity`, `[PULIH]` untuk resolved, dedupe 6 jam / 1 jam. Memakai ulang mesin notifikasi yang ada (in-app, push WebSocket, email).
+3. **Konfigurasi**: blok `alerting:` di `prometheus.yml`; `alertmanager/config.yml` dengan autentikasi Bearer (`credentials_file`), `send_resolved`, grouping per vendor; service `alertmanager` di compose menuliskan token dari `.env` ke berkas sementara (tidak ada rahasia di repo); komentar usang diperbaiki.
+
+### DIVERIFIKASI
+| Gerbang | Hasil |
+|---|---|
+| `amtool check-config` dan `promtool check config` pada berkas repo | ✅ |
+| Tes unit usecase/handler/config (autentikasi 11 varian, sanitasi, dedupe, batas, galat tidak bocor) + uji mutasi (auth dilewati, label tak ikut kunci dedupe, validasi status dimatikan) | ✅ ketiganya tertangkap |
+| Migrasi 0045 di MariaDB nyata: up dari nol, `schema.sql` identik, berkas down lalu up | ✅ |
+| e2e **S36** di stack terpisah | ✅ |
+| **Rantai penuh** dengan Prometheus dan Alertmanager sungguhan memakai definisi service compose repo (aturan uji sementara yang pasti firing) | ✅ notifikasi CRITICAL untuk SUPERADMIN dalam 20 detik; Prometheus melaporkan Alertmanager aktif |
+
+### TEMUAN / PELAJARAN
+- S36 awalnya gagal 429: pembatas laju webhook (5/detik) terkena 5 percobaan token salah beruntun di skenario. Pembatasnya benar; skenario kini mencoba ulang saat 429.
+- Stack monitoring (Prometheus/Alertmanager/Grafana) tidak ikut berjalan di dev (`--no-deps` per service); aktifkan eksplisit (RUNBOOK §I4).
+
+### BELUM / KETERBATASAN JUJUR
+- Aturan alert hanya dua (backlog PENDING, FAILED per vendor); ambang awal belum ditinjau terhadap data produksi.
+- Tidak ada penerima Slack/email langsung dari Alertmanager: email berjalan lewat notifikasi acsd (butuh SMTP). Grafana dashboard ada tetapi tidak diaudit sesi ini.
+- Token belum diisi di `.env` dev pengguna; endpoint tidak aktif di sana sampai diisi.
+
+---
+
 ## SESI 2026-10-26 (2) (OLT Controller irisan 1: kerangka, simulator, UI)
 
 Pertanyaan pembuka: "apakah kita bisa kerjakan Lapisan 1 agar benar-benar ACS?" — jawabannya: sistem sudah ACS (TR-069 = lapisan 2); lapisan 1 (auto-provisioning ONU di OLT) adalah fase baru. Keputusan pengguna: OLT lab ZTE tersedia, cakupan langkah pertama = rancangan + kerangka + simulator (tanpa tulis ke OLT, tanpa data vendor nyata). Rancangan: [`../arsitektur/OLT_CONTROLLER_DESIGN.md`](../arsitektur/OLT_CONTROLLER_DESIGN.md).
@@ -24,7 +53,7 @@ Pertanyaan pembuka: "apakah kita bisa kerjakan Lapisan 1 agar benar-benar ACS?" 
 
 ### TEMUAN
 - **`QueryGuard` menolak parameter `*_id` non-numerik**: `GET /olt-onus?olt_id=<uuid>` selalu 400. Hanya e2e yang menangkapnya (tes unit memakai fake). Filter diganti `olt`; aturan global sengaja tidak dilonggarkan.
-- **Alertmanager tidak pernah mengirim alert**: `deploy/alertmanager/config.yml` mengarah ke `http://acsd:8080/api/v1/alertmanager-webhook`, tetapi endpoint itu **tidak ada di kode** (alert dijawab 404). Alertmanager dan Grafana sendiri sudah ada di compose; klaim lama "belum ada" keliru. **Belum diperbaiki.**
+- **Alertmanager tidak pernah mengirim alert**: `deploy/alertmanager/config.yml` mengarah ke `http://acsd:8080/api/v1/alertmanager-webhook`, tetapi endpoint itu **tidak ada di kode** (alert dijawab 404). Alertmanager dan Grafana sendiri sudah ada di compose; klaim lama "belum ada" keliru. **Diperbaiki di sesi (3) di atas** (ternyata rantainya putus di dua tempat, bukan satu).
 - **Kontras warna** di `/tasks` (`text-slate-400` tanpa varian gelap) ditemukan audit UI dan diperbaiki; kontras versi OLT di mode gelap diperbaiki.
 - Kesalahan prosedur dicatat di memori: backtick di `node -e` merusak teks yang disisipkan ke `types.ts`/`hooks.ts` (ditemukan dan diperbaiki sebelum commit); `migrate down` tanpa argumen turun penuh (hanya di DB sekali-pakai).
 

@@ -170,6 +170,7 @@ const EXCEPTIONS = new Map([
   ['GET /auth/oidc/login', 'redirect browser, bukan fetch'],
   ['GET /auth/oidc/callback', 'redirect browser, bukan fetch'],
   ['POST /billing/xendit/webhook', 'callback server-ke-server dari Xendit (token X-CALLBACK-TOKEN), bukan dari UI'],
+  ['POST /alertmanager-webhook', 'callback server-ke-server dari Alertmanager (token Bearer bersama ACS_ALERTMANAGER_WEBHOOK_TOKEN), bukan dari UI'],
 ])
 
 // Endpoint yang BISA dipanggil frontend tapi memang sengaja belum/tidak dipakai,
