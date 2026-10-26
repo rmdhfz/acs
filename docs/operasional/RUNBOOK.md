@@ -204,6 +204,10 @@ Nilai parameter bernama sensitif (`password|passphrase|psk|secret|token|key`) di
 `docker compose run --rm --no-deps --entrypoint /app/seal-secrets acsd`
 **Backup DB dulu.** Setelah itu jangan menjalankan `acsd` versi lama pada DB yang sama (akan mengirim ciphertext ke CPE), dan **jangan kehilangan/ganti `ACS_CREDENTIAL_ENC_KEY`** (nilai tak terbaca; acsd gagal-tertutup, bukan mengirim sampah). Nilai yang dilaporkan CPE (`device_parameters`) tidak dienkripsi tetapi disamarkan di API untuk non-admin.
 
+### I2. Kuota penyimpanan berkas per tenant
+`POST /files` (ADMIN tenant) kini dibatasi total ukuran berkas aktif per tenant: `tenants.max_storage_bytes` (NULL = tak dibatasi, bawaan semua tenant lama). SUPERADMIN mengaturnya lewat `PATCH /tenants/{id}/storage-quota` atau modal **Kuota & Paket** di Administrasi (input dalam MB). Unggahan yang akan melampaui batas dijawab **429**; berkas yang sudah ada tidak dihapus bila batas diturunkan. Katalog firmware global (`firmware_files`) tidak dihitung. Cek-lalu-tulis tanpa kunci: unggahan serentak dapat melampaui batas sebesar beberapa berkas. `DELETE /files/{id}` kini juga menghapus objeknya dari MinIO (sebelumnya objek yatim tertinggal, sehingga siklus unggah-hapus bisa menghabiskan bucket tanpa tersentuh kuota).
+**Urutan deploy migrasi 0043:** kolom baru di `tenants` mematahkan `acsd` lama (struct tanpa kolom itu gagal membaca `SELECT *`). Bangun ulang `acsd` lalu migrasi, atau lakukan serentak.
+
 ### J. Variabel lingkungan operasional (ringkas)
 | Variabel | Bawaan | Fungsi |
 |---|---|---|
@@ -218,6 +222,7 @@ Nilai parameter bernama sensitif (`password|passphrase|psk|secret|token|key`) di
 | `ACS_TRUSTED_PROXIES` | kosong | CIDR proxy yang boleh menentukan IP klien lewat `X-Forwarded-For` (wajib di belakang proxy) |
 | `ACS_CR_TRUSTED_CIDRS` | kosong | CIDR yang boleh menjadi host `ConnectionRequestURL` walau bukan IP sumber Inform (ACS di balik NAT/Docker Desktop, mis. `10.0.0.0/8`). Tetap hanya literal IP & lolos netguard; kosong = ketat |
 | `ACS_WEBHOOK_BLOCK_PRIVATE` | false | SaaS publik: tolak target webhook di RFC1918/ULA/CGNAT (validasi **dan** saat menyambung — menutup DNS rebinding) |
+| `ACS_TRANSFER_ALLOWED_HOSTS` | kosong | Host yang boleh menjadi `url` task Download/Upload buatan API (nama host, `*.subdomain` — tidak mencakup apex —, IP, atau CIDR; pisahkan koma; port diabaikan). Kosong = tak dibatasi. Unduhan dari katalog firmware/berkas ACS (presigned) tidak terkena. Entri tidak valid = `acsd` gagal start |
 | `ACS_HA` | false | mode multi-instance (§H) |
 | `ACS_OPTICAL_POLL_MINUTES` | 360 | interval polling redaman optik per perangkat (0 = mati, minimum 15) |
 | `ACS_PPPOE_POLL_MINUTES` | 1440 | interval penyegaran username PPPoE per perangkat (0 = mati, minimum 60) |

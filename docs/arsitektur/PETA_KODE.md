@@ -4,7 +4,7 @@
 > "apa ada di mana" tanpa menjelajah ulang repo. Konteks bisnis: `docs/produk/PRD.md`; keputusan arsitektur: `docs/arsitektur/TECH.md`;
 > aturan kerja & konvensi: `CLAUDE.md`. Perbarui setelah menambah paket/endpoint/tabel/halaman (`--check` untuk memeriksa).
 
-Ringkasan: 200 operasi REST • 68 tabel • 42 migrasi (terakhir `0042_automation_daily_ceiling`) • 34 skenario e2e.
+Ringkasan: 203 operasi REST • 68 tabel • 43 migrasi (terakhir `0043_tenant_storage_quota`) • 34 skenario e2e.
 
 ## Alur & lapisan (Clean Architecture)
 `domain` (entitas + antarmuka) → `usecase/*` (aturan bisnis) → `repository/mysql` (query sqlx) / `delivery/{cwmp,http,ws,usp}` (adapter masuk).
@@ -65,7 +65,7 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | `pkg/cwmpxml` | 3 | berisi struct dan (de)serialisasi envelope CWMP 1.x (Broadband Forum TR-069) secara manual dengan encoding/xml stdlib — tanpa generator WSDL, sesuai keputusan di TECH.md §1/§12. |
 | `pkg/digestauth` | 1 | mengimplementasikan HTTP Digest Authentication (RFC 7616 / RFC 2617) untuk dua sisi: klien (ACS menjawab tantangan CPE pada Connection Request TR-069) dan verifier sederhana (dipakai simulator CPE). |
 | `pkg/mailer` | 1 | mengirim email lewat SMTP (STARTTLS atau TLS implisit) dengan antrean asinkron + retry. |
-| `pkg/netguard` | 1 | menolak target permintaan keluar (outbound HTTP/UDP) yang menunjuk alamat internal — pertahanan SSRF untuk jalur di mana URL/host berasal dari input yang tidak sepenuhnya tepercaya (Connection Request |
+| `pkg/netguard` | 2 | menolak target permintaan keluar (outbound HTTP/UDP) yang menunjuk alamat internal — pertahanan SSRF untuk jalur di mana URL/host berasal dari input yang tidak sepenuhnya tepercaya (Connection Request |
 | `pkg/objectstorage` | 1 | wrapper tipis di atas SDK MinIO (S3-compatible) — infra concern, dipakai usecase lewat interface domain.ObjectStorage (bukan dipakai langsung), analog pkg/cryptoutil untuk enkripsi kredensial. |
 | `pkg/passwordhash` | 1 | menyimpan & memverifikasi password dengan Argon2id (RFC 9106, pemenang Password Hashing Competition) dalam format PHC string: $argon2id$v=19$m=65536,t=3,p=2$<salt b64>$<hash b64> Parameter ikut tersim |
 | `pkg/redisutil` | 2 | — |
@@ -247,6 +247,13 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | POST | `/firmware/rollout-batches/{id}/advance` | Paksa evaluasi wave rollout sekarang |
 | POST | `/firmware/rollout-batches/{id}/cancel` | Batalkan firmware rollout batch |
 
+**Health** (2)
+
+| Method | Path | Ringkasan |
+|---|---|---|
+| GET | `/healthz` | Liveness — proses hidup dan HTTP merespons |
+| GET | `/readyz` | Readiness — dependensi kritis dapat dijangkau |
+
 **Metrics** (1)
 
 | Method | Path | Ringkasan |
@@ -337,11 +344,12 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | POST | `/tasks/{id}/cancel` | Membatalkan task yang belum selesai |
 | POST | `/tasks/{id}/retry` | Coba ulang task yang gagal (task yang sama, bukan task baru) |
 
-**Tenants** (10)
+**Tenants** (11)
 
 | Method | Path | Ringkasan |
 |---|---|---|
 | PATCH | `/tenants/{id}/device-limit` | Atur batas perangkat tenant (paket SaaS) |
+| PATCH | `/tenants/{id}/storage-quota` | Atur kuota penyimpanan berkas tenant |
 | POST | `/tenants` | Membuat tenant baru |
 | GET | `/tenants` | Daftar seluruh tenant |
 | GET | `/tenants/current` | Info branding tenant milik actor sendiri |
@@ -418,7 +426,7 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | `ref_ztp_trigger_event` | 11 | Kapan sebuah zero_touch_rules dievaluasi relatif thd event CWMP Inform (migrations/0009) |
 | `ref_firmware_rollout_status` | 10 | Status lifecycle satu firmware_rollout_batches (migrations/0011) |
 | `ref_roles` | 10 | — |
-| `tenants` | 21 | Entitas ISP/brand yang menggunakan platform ACS ini (multi-tenant) |
+| `tenants` | 22 | Entitas ISP/brand yang menggunakan platform ACS ini (multi-tenant) |
 | `users` | 23 | — |
 | `tenant_signups` | 12 | Pendaftaran tenant mandiri menunggu verifikasi email |
 | `user_recovery_codes` | 5 | Kode pemulihan MFA sekali pakai (hash saja) |
@@ -561,7 +569,7 @@ Berkas tes frontend: 37.
 | S34-aturan-otomasi | `scenarioAutomation` |
 
 ## Migrasi (`migrations/`)
-`0001_init_schema` · `0002_tenant_cwmp_inform_credentials` · `0003_tenant_branding` · `0004_vendor_baseline_catalog` · `0005_tenant_task_quota` · `0006_task_metrics_indexes` · `0007_firmware_storage_key` · `0008_user_login_lockout` · `0009_ztp_rule_matching_actions` · `0010_vpm_software_version_pattern` · `0011_firmware_rollout_batches` · `0012_device_session_cwmp_namespace` · `0013_webhook_subscriptions` · `0014_device_config_snapshots` · `0015_device_geolocation` · `0016_firmware_rollout_scheduling` · `0017_performance_indexes` · `0018_generic_files` · `0019_tags_and_presets` · `0020_user_devices_mapping` · `0021_preset_engine` · `0022_seed_vendor_ouis` · `0023_password_reset_tokens` · `0024_users_password_changed_at` · `0025_diagnostics_mappings` · `0026_mapping_value_scale_optical` · `0027_user_mfa_totp` · `0028_tenant_device_limit_and_signups` · `0029_generic_vendor_and_more_oui` · `0030_notifications` · `0031_user_oidc_subject` · `0032_billing` · `0033_menu_bugreport_transfers` · `0034_bugreport_expected_screenshot` · `0035_vendor_optictimes_zte_models` · `0036_notification_optical_alert` · `0037_device_capture` · `0038_device_faults` · `0039_virtual_parameters` · `0040_automation_rules` · `0041_devices_serial_index` · `0042_automation_daily_ceiling`
+`0001_init_schema` · `0002_tenant_cwmp_inform_credentials` · `0003_tenant_branding` · `0004_vendor_baseline_catalog` · `0005_tenant_task_quota` · `0006_task_metrics_indexes` · `0007_firmware_storage_key` · `0008_user_login_lockout` · `0009_ztp_rule_matching_actions` · `0010_vpm_software_version_pattern` · `0011_firmware_rollout_batches` · `0012_device_session_cwmp_namespace` · `0013_webhook_subscriptions` · `0014_device_config_snapshots` · `0015_device_geolocation` · `0016_firmware_rollout_scheduling` · `0017_performance_indexes` · `0018_generic_files` · `0019_tags_and_presets` · `0020_user_devices_mapping` · `0021_preset_engine` · `0022_seed_vendor_ouis` · `0023_password_reset_tokens` · `0024_users_password_changed_at` · `0025_diagnostics_mappings` · `0026_mapping_value_scale_optical` · `0027_user_mfa_totp` · `0028_tenant_device_limit_and_signups` · `0029_generic_vendor_and_more_oui` · `0030_notifications` · `0031_user_oidc_subject` · `0032_billing` · `0033_menu_bugreport_transfers` · `0034_bugreport_expected_screenshot` · `0035_vendor_optictimes_zte_models` · `0036_notification_optical_alert` · `0037_device_capture` · `0038_device_faults` · `0039_virtual_parameters` · `0040_automation_rules` · `0041_devices_serial_index` · `0042_automation_daily_ceiling` · `0043_tenant_storage_quota`
 
 ## Perintah penting
 - Go: `go vet ./...`, `go test ./...`; race + integrasi MariaDB via Docker `golang:1.26.9` (lihat `docs/pengujian/PENGUJIAN_E2E.md`).

@@ -154,6 +154,8 @@ tags:
     description: Langganan SaaS lewat Xendit (Invoice API) — paket, status langganan, checkout, invoice, sinkronisasi, dan callback publik (migrations/0032). Bawaan MATI (`ACS_BILLING_ENABLED`).
   - name: Metrics
     description: Endpoint observability format Prometheus (bukan JSON), tanpa autentikasi.
+  - name: Health
+    description: Probe liveness/readiness untuk orkestrator/load balancer (`/healthz`, `/readyz`), tanpa autentikasi, di luar `/api/v1`.
 
 paths:
   # ============================== AUTH ==============================
@@ -1132,6 +1134,51 @@ paths:
               type: object
               properties:
                 max_devices: { type: integer, minimum: 0, maximum: 10000000, nullable: true }
+      responses:
+        '204':
+          description: Tersimpan.
+        '400':
+          description: Nilai tidak valid.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Bukan SUPERADMIN.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Tenant tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /tenants/{id}/storage-quota:
+    patch:
+      operationId: setTenantStorageQuota
+      tags: [Tenants]
+      summary: Atur kuota penyimpanan berkas tenant
+      description: |
+        SUPERADMIN. `max_storage_bytes` null = tak dibatasi (maksimum 100 TiB). Membatasi total ukuran berkas aktif tenant di
+        `POST /files`; unggahan yang akan melampauinya ditolak **429**. Berkas yang sudah ada tidak dihapus bila batas
+        diturunkan di bawah pemakaian (hanya unggahan berikutnya yang ditolak). Katalog firmware global tidak dihitung.
+        Pengecekan cek-lalu-tulis (unggahan serentak dapat melampaui sedikit).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, description: ID numerik internal tenant., schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                max_storage_bytes: { type: integer, format: int64, minimum: 0, maximum: 109951162777600, nullable: true }
       responses:
         '204':
           description: Tersimpan.
@@ -3386,7 +3433,10 @@ paths:
         `SET_PARAMETER_VALUES` butuh `values` (objek nama→string) dan opsional
         `types` (nama→tipe XSD: string/int/unsignedInt/boolean/dateTime/base64;
         bila tak diberikan dipakai tipe yang pernah dilaporkan CPE, default
-        `xsd:string`), `DOWNLOAD` butuh `url` http(s). `storage_key` tidak boleh
+        `xsd:string`), `DOWNLOAD` butuh `url` http(s) — bila operator mengisi
+        `ACS_TRANSFER_ALLOWED_HOSTS`, host `url` pada task `DOWNLOAD`/`UPLOAD`
+        harus ada di daftar itu (selain itu `400`; kosong = tak dibatasi).
+        `storage_key` tidak boleh
         diisi lewat API. Tipe `SET_PARAMETER_ATTRIBUTES`/`GET_PARAMETER_ATTRIBUTES`
         belum didukung (`400`). `priority` 1–9 (default 5 bila 0; 1 = tertinggi),
         `max_retries` 0–10 (default 3 bila 0). Retry memakai backoff 1m, 2m, 4m…
@@ -5714,6 +5764,60 @@ paths:
                   # TYPE acs_cwmp_sessions_open gauge
                   acs_cwmp_sessions_open 304
 
+  # ============================== HEALTH (probe orkestrator) ==============================
+  /healthz:
+    servers:
+      - url: /
+        description: Di LUAR basis `/api/v1` (rute akar server REST).
+    get:
+      operationId: healthz
+      tags: [Health]
+      summary: Liveness — proses hidup dan HTTP merespons
+      description: |
+        Tanpa autentikasi dan tanpa dependensi sama sekali (tidak menyentuh DB/Redis), supaya orkestrator tidak me-restart ACS
+        hanya karena DB bermasalah. Selalu `200` selama proses hidup. Header `Cache-Control: no-store`.
+        Catatan koleksi Postman: generator memakai `{{baseUrl}}` (berakhiran `/api/v1`) untuk semua request; untuk probe ini ganti URL
+        menjadi host tanpa `/api/v1` (mis. `http://localhost:18080/healthz`).
+      security: []
+      responses:
+        '200':
+          description: Proses hidup.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [ok] }
+                required: [status]
+
+  /readyz:
+    servers:
+      - url: /
+        description: Di LUAR basis `/api/v1` (rute akar server REST).
+    get:
+      operationId: readyz
+      tags: [Health]
+      summary: Readiness — dependensi kritis dapat dijangkau
+      description: |
+        Tanpa autentikasi (dipanggil probe orkestrator/load balancer). Memeriksa dependensi secara paralel dengan batas waktu
+        2 detik. Respons hanya memuat status per dependensi (`ok`/`down`), TIDAK PERNAH teks error (bisa memuat host/DSN).
+        **503** bila ada dependensi kritis (DB) yang `down`; dependensi non-kritis (Redis, cache opsional) hanya dilaporkan.
+        Header `Cache-Control: no-store`.
+        Catatan koleksi Postman: generator memakai `{{baseUrl}}` (berakhiran `/api/v1`) untuk semua request; untuk probe ini ganti URL
+        menjadi host tanpa `/api/v1` (mis. `http://localhost:18080/healthz`).
+      security: []
+      responses:
+        '200':
+          description: Siap — semua dependensi kritis `ok`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReadinessResponse' }
+        '503':
+          description: Tidak siap — minimal satu dependensi kritis `down`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReadinessResponse' }
+
   # ============================== AUTH — OIDC (opsional) ==============================
   /auth/oidc/login:
     get:
@@ -6254,7 +6358,11 @@ paths:
       description: |
         ADMIN/SUPERADMIN. `multipart/form-data`. Di-scope ke tenant actor.
         Maksimum 256 MiB. `file_type` mengikuti kode TR-069 (`1 Firmware
-        Upgrade Image`, `3 Vendor Configuration File`, dst.).
+        Upgrade Image`, `3 Vendor Configuration File`, dst.). Ditolak `429`
+        bila total berkas aktif tenant akan melampaui `max_storage_bytes`
+        (kuota penyimpanan, lihat `PATCH /tenants/{id}/storage-quota`; cek-lalu-tulis,
+        unggahan serentak dapat melampaui sedikit). `DELETE /files/{id}` juga
+        menghapus objeknya dari object storage.
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true
@@ -6269,6 +6377,11 @@ paths:
               schema: { $ref: '#/components/schemas/GenericFile' }
         '400':
           description: Bagian `file` hilang/invalid, atau file terlalu besar.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Kuota penyimpanan tenant tercapai.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -8652,9 +8765,20 @@ components:
         primary_color: { type: string, nullable: true, example: "#1a73e8" }
         max_pending_tasks: { type: integer, nullable: true, description: "NULL berarti tidak dibatasi." }
         max_devices: { type: integer, nullable: true, description: "Batas perangkat aktif tenant (paket SaaS); null = tak dibatasi." }
+        max_storage_bytes: { type: integer, format: int64, nullable: true, description: "Batas total ukuran berkas aktif tenant (byte); null = tak dibatasi." }
       allOf:
         - $ref: '#/components/schemas/Audit'
       required: [id, tenant_uuid, code, name, is_active]
+
+    ReadinessResponse:
+      type: object
+      properties:
+        status: { type: string, enum: [ready, not_ready] }
+        checks:
+          type: object
+          description: "Status per dependensi (`database`, `redis`, ...): `ok` atau `down`."
+          additionalProperties: { type: string, enum: [ok, down] }
+      required: [status, checks]
 
     TenantListResponse:
       type: object

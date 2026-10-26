@@ -2,6 +2,21 @@
 
 ---
 
+## SESI 2026-10-26 (tindak lanjut temuan audit: backfill rahasia task, kuota storage, allowlist transfer)
+
+Temuan "belum ditutup" dari LANJUTAN 13 diverifikasi ulang ke kode (catatan lama usang): **strict-decode JSON (R9)** sudah tertutup (`StrictJSONSerializer` global di `restEcho`), **sinkron `limits.ts`** untuk device/firmware sudah cocok dengan kolom, `ACS_WEBHOOK_BLOCK_PRIVATE` sudah ada (hanya keputusan deploy; kini tercantum di `.env.example`). Yang benar-benar terbuka dan kini ditutup:
+
+1. **`seal-secrets` mem-backfill `tasks.parameters` lama** (`SealExistingTaskSecrets`): penyegelan task (d21d6fc) hanya berlaku untuk task baru, sedangkan task UAT 21 Okt (password WiFi) masih plaintext. Idempoten, per halaman id, mempertahankan `updated_at`. Terbukti di MariaDB 10.11 nyata + uji mutasi.
+2. **Kuota penyimpanan per tenant** (migrasi `0043`, `tenants.max_storage_bytes`, NULL = tak dibatasi): ditegakkan di `POST /files` (429), diatur SUPERADMIN lewat `PATCH /tenants/{id}/storage-quota` + modal Kuota & Paket. **Celah turunan yang ditemukan dan ditutup:** `DELETE /files/{id}` hanya soft delete di DB dan tidak menghapus objek MinIO, sehingga siklus unggah-hapus menghabiskan bucket bersama tanpa menyentuh kuota; kini objek ikut dihapus. Kuota lunak (cek-lalu-tulis, sama seperti kuota task).
+3. **Allowlist host transfer** (`ACS_TRANSFER_ALLOWED_HOSTS`, opt-in, kosong = perilaku lama): host `url` pada task Download/Upload buatan API harus ada di daftar (nama host, `*.subdomain`, IP, CIDR). `UPLOAD` ikut dibatasi karena risikonya eksfiltrasi konfigurasi/log. Task bersumber katalog (storage_key) tidak terkena.
+4. **Spec**: `/healthz` dan `/readyz` ditambahkan (ada di kode, belum di spec); 203 operation, redocly valid (10 peringatan by-design), Postman diregen 200 → 203 request.
+
+**Risiko diterima (T4):** `POST /devices` membalas 409 bila pasangan (OUI, serial) sudah terdaftar di tenant mana pun, sehingga ADMIN satu tenant dapat menguji apakah serial tertentu dipakai tenant lain. Ini inheren pada kunci unik global OUI+serial yang dibutuhkan untuk identifikasi Inform; pesan galat sudah generik. Mengubahnya berarti mengubah model unik, bukan perbaikan kecil.
+
+**Belum dikerjakan / keterbatasan jujur:** device_parameters (nilai yang dilaporkan CPE) tetap plaintext by design (dibaca ADMIN, dipakai filter & virtual parameter). Postman: URL `/healthz`/`/readyz` memakai `{{baseUrl}}` (generator mengabaikan `servers` per path), dicatat di deskripsi. Diff besar di koleksi Postman murni churn `id` acak generator.
+
+---
+
 ## SESI 2026-10-15 (persiapan uji lapangan: OUI seed, self-heal vendor, gladi jaringan)
 
 Pertanyaan pembuka: apa yang bisa dikerjakan menuju uji lapangan? Cek status: `dev` lebih maju 32 commit dari `main` (fast-forward bersih); sesi dimulai di `dev` `332f5a3`, working tree bersih. Host kini punya Go 1.27 (tanpa cgo → `-race` tidak bisa lokal) dan Docker Desktop (dinyalakan sesi ini).
