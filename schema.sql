@@ -6770,3 +6770,22 @@ INSERT INTO ref_notification_types (code, name, description, severity_id, defaul
         (SELECT id FROM ref_notification_severity WHERE code = 'WARNING'), 1, 0, 0),
     ('ONU_STATE_ALERT', 'ONU LOS / dying gasp', 'ONU di OLT masuk keadaan LOS (kehilangan sinyal optik) atau dying gasp (kehilangan daya), diringkas per polling OLT.',
         (SELECT id FROM ref_notification_severity WHERE code = 'WARNING'), 1, 0, 0);
+
+-- 0049_olt_onu_state_events: riwayat perubahan keadaan ONU di OLT (log; audit minimal, dipangkas fisik oleh retensi). Lihat header migrations/0049.
+CREATE TABLE olt_onu_state_events (
+    id             BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    olt_id         BIGINT UNSIGNED NOT NULL,
+    serial_number  VARCHAR(32)     NOT NULL COMMENT 'Serial ONU apa adanya dari OLT (kunci riwayat bersama olt_id)',
+    pon_port       VARCHAR(32)     NOT NULL DEFAULT '' COMMENT 'Port PON pada saat perubahan teramati',
+    from_state_id  BIGINT UNSIGNED NULL COMMENT 'NULL = baru terlihat',
+    to_state_id    BIGINT UNSIGNED NULL COMMENT 'NULL = tidak lagi dilaporkan OLT',
+    rx_power_dbm   DECIMAL(6,2)    NULL COMMENT 'Daya terima sisi OLT pada saat itu (dBm); NULL = tidak dilaporkan',
+    occurred_at    DATETIME(3)     NOT NULL COMMENT 'Waktu polling yang mengamati perubahan (bukan waktu perubahan sebenarnya)',
+    created_at     DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_olt_onu_events_onu (olt_id, serial_number, id),
+    KEY idx_olt_onu_events_time (occurred_at),
+    CONSTRAINT fk_olt_onu_events_olt FOREIGN KEY (olt_id) REFERENCES olts (id),
+    CONSTRAINT fk_olt_onu_events_from FOREIGN KEY (from_state_id) REFERENCES ref_olt_onu_state (id),
+    CONSTRAINT fk_olt_onu_events_to FOREIGN KEY (to_state_id) REFERENCES ref_olt_onu_state (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Riwayat perubahan keadaan ONU terdaftar di OLT (log; audit minimal, dipangkas fisik oleh retensi); lihat header migrations/0049';

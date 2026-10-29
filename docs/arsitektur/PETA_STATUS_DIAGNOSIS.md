@@ -112,4 +112,10 @@ tak diketahui, online; lalu port) dipakai Console sebagai urutan bawaan; tanpa `
 OFFLINE/LOS/DYING_GASP (UNKNOWN tidak dihitung masalah) dan chip "Bermasalah saja". (5) Dugaan per port PON: >= 3 ONU **dan** >= 50% ONU port itu LOS => "kemungkinan feeder/distribusi/splitter"; dying gasp
 dengan ambang sama => "kemungkinan listrik padam di area". Ini **heuristik konservatif, bukan kepastian** (ambang belum dikalibrasi dengan data OLT nyata) dan selalu diberi catatan itu di banner. Dihitung di
 frontend dari ringkasan port (`lib/oltInventory.ts`); belum ada versi sisi server, jadi notifikasi tidak memakainya. (6) Notifikasi `ONU_STATE_ALERT` kini menautkan ke
-`/olts?olt=<uuid>&problem=1`: halaman OLT membuka OLT itu dengan filter bermasalah menyala; OLT yang tak dikenal pada tautan jatuh ke OLT pertama. Belum ada: riwayat perubahan keadaan per ONU (butuh tabel log).
+`/olts?olt=<uuid>&problem=1`: halaman OLT membuka OLT itu dengan filter bermasalah menyala; OLT yang tak dikenal pada tautan jatuh ke OLT pertama. Riwayat per ONU: lihat di bawah.
+
+**Riwayat perubahan keadaan per ONU (migrasi 0049).** Tabel log `olt_onu_state_events` (audit minimal, dipangkas fisik oleh retensi log `ACS_LOG_RETENTION_DAYS`, yang sekaligus menjadi batas panjang riwayat) mencatat tiap perubahan yang
+**teramati polling**: ONU baru terlihat (`from_state` kosong), berganti keadaan, atau tidak lagi dilaporkan OLT (`to_state` kosong; muncul lagi = peristiwa "baru" lagi). Kunci = (OLT, serial), bukan id baris ONU (baris
+dihapus-lunak dan dihidupkan lagi). `GET /olts/{uuid}/registered-onus/{onu}/history` mengembalikan riwayat terbaru dulu, `changes_24h`, dan `flapping` (>= 4 perubahan sejati dalam 1 jam; heuristik, belum dikalibrasi dengan OLT
+nyata). Di Console: tombol "Riwayat" pada tiap baris ONU membuka garis waktu. **Batas yang harus dibaca:** waktu = saat polling mengamati (bukan saat terjadi); gangguan yang pulih di antara dua polling tidak terlihat, jadi selang polling
+panjang menyembunyikan flapping cepat; kegagalan menyimpan riwayat tidak menggagalkan polling (hanya tercatat di log, riwayat bolong). Baris pertama OLT baru memuat satu peristiwa "baru" per ONU (OLT besar = puluhan ribu baris sekali saja).

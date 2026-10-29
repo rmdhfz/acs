@@ -383,6 +383,71 @@ func scenarioOLTInventory(ctx context.Context, w *World) result {
 		return failr("INV-06: inventaris setelah poll 2 = %v", got)
 	}
 
+	// ---- INV-09: riwayat perubahan keadaan ONU (migrations/0049) ----
+	// OLT berputar: poll 1 mencatat 5 ONU baru, poll 2 mengubah SIMREG0002 ONLINE -> LOS. Riwayat SIMREG0002 = [ONLINE>LOS, baru>ONLINE] (terbaru dulu).
+	var losONU regONU
+	for _, r := range rows {
+		if r.SerialNumber == "SIMREG0002" {
+			losONU = r
+		}
+	}
+	if losONU.ID == "" {
+		return failr("INV-09: SIMREG0002 tidak ada di daftar OLT berputar")
+	}
+	var hist struct {
+		Data []struct {
+			PonPort   string   `json:"pon_port"`
+			FromState *string  `json:"from_state"`
+			ToState   *string  `json:"to_state"`
+			RXPower   *float64 `json:"rx_power_dbm"`
+			Occurred  string   `json:"occurred_at"`
+		} `json:"data"`
+		Total      int  `json:"total"`
+		Changes24h int  `json:"changes_24h"`
+		Flapping   bool `json:"flapping"`
+	}
+	histURL := "/api/v1/olts/" + rot.ID + "/registered-onus/" + losONU.ID + "/history"
+	if err := w.pilotAdmin.do(http.MethodGet, histURL, nil, &hist); err != nil {
+		return failr("INV-09: GET riwayat: %v", err)
+	}
+	if hist.Total != 2 || len(hist.Data) != 2 || hist.Changes24h != 1 || hist.Flapping {
+		return failr("INV-09: total=%d changes_24h=%d flapping=%v, mau 2/1/false: %+v", hist.Total, hist.Changes24h, hist.Flapping, hist.Data)
+	}
+	a, b := hist.Data[0], hist.Data[1]
+	if a.FromState == nil || *a.FromState != "ONLINE" || a.ToState == nil || *a.ToState != "LOS" || b.FromState != nil || b.ToState == nil || *b.ToState != "ONLINE" || a.Occurred == "" || a.PonPort == "" {
+		return failr("INV-09: urutan/isi riwayat salah (terbaru dulu: ONLINE>LOS, lalu baru>ONLINE): %+v", hist.Data)
+	}
+	// ONU yang tidak berubah hanya punya peristiwa "baru"
+	var stableONU regONU
+	for _, r := range rows {
+		if r.SerialNumber == "SIMREG0001" {
+			stableONU = r
+		}
+	}
+	var h1 struct {
+		Total      int `json:"total"`
+		Changes24h int `json:"changes_24h"`
+	}
+	if err := w.pilotAdmin.do(http.MethodGet, "/api/v1/olts/"+rot.ID+"/registered-onus/"+stableONU.ID+"/history", nil, &h1); err != nil || h1.Total != 1 || h1.Changes24h != 0 {
+		return failr("INV-09: ONU stabil harus 1 peristiwa (baru) dan 0 perubahan: %+v err=%v", h1, err)
+	}
+	// akses: ONU tak ada 404, identifier kepanjangan 400, tenant lain ditolak, tanpa token 401, ONU dari OLT lain 404
+	if st, _ := w.pilotAdmin.status(http.MethodGet, "/api/v1/olts/"+rot.ID+"/registered-onus/00000000-0000-0000-0000-000000000000/history", nil); st != http.StatusNotFound {
+		return failr("INV-09: ONU tak ada harus 404, dapat %d", st)
+	}
+	if st, _ := w.pilotAdmin.status(http.MethodGet, "/api/v1/olts/"+rot.ID+"/registered-onus/"+strings.Repeat("x", 40)+"/history", nil); st != http.StatusBadRequest {
+		return failr("INV-09: identifier kepanjangan harus 400, dapat %d", st)
+	}
+	if st, _ := w.pilot2Admin.status(http.MethodGet, histURL, nil); st != http.StatusForbidden && st != http.StatusNotFound {
+		return failr("INV-09: tenant lain harus ditolak, dapat %d", st)
+	}
+	if st, _ := NewClient(w.super.base, false).status(http.MethodGet, histURL, nil); st != http.StatusUnauthorized {
+		return failr("INV-09: tanpa token harus 401, dapat %d", st)
+	}
+	if st, _ := w.pilotAdmin.status(http.MethodGet, "/api/v1/olts/"+main.ID+"/registered-onus/"+losONU.ID+"/history", nil); st != http.StatusNotFound {
+		return failr("INV-09: ONU dari OLT lain harus 404, dapat %d", st)
+	}
+
 	// ---- INV-08: pemberitahuan perubahan keadaan ONU ----
 	// Poll 2 mengubah SIMREG0002 ONLINE -> LOS: tepat SATU event webhook per polling (daftar perubahan, tanpa PK) dan satu notifikasi
 	// ONU_STATE_ALERT (WARNING: hanya 1 LOS) untuk ADMIN tenant; tenant lain tidak menerima apa pun.

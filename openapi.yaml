@@ -3946,6 +3946,51 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  /olts/{uuid}/registered-onus/{onu}/history:
+    get:
+      operationId: getOLTONUStateHistory
+      tags: [OLT]
+      summary: Riwayat perubahan keadaan satu ONU terdaftar
+      description: |
+        Perubahan keadaan yang TERAMATI polling ACS, terbaru dulu. `from_state` kosong = ONU baru terlihat (atau muncul kembali setelah sempat tidak
+        dilaporkan OLT); `to_state` kosong = ONU tidak lagi dilaporkan OLT. `occurred_at` = waktu polling yang mengamati perubahan, BUKAN waktu perubahan
+        sebenarnya; perubahan yang terjadi dan pulih di antara dua polling tidak terlihat. Panjang riwayat dibatasi retensi log (`ACS_LOG_RETENTION_DAYS`).
+        `changes_24h` menghitung perubahan keadaan sejati (dari dan ke keduanya ada) dalam 24 jam; `flapping` = >= 4 perubahan dalam 1 jam terakhir
+        (heuristik, belum dikalibrasi dengan OLT nyata). `{onu}` = `id` pada `GET /olts/{uuid}/registered-onus`. Semua peran staf; non-SUPERADMIN hanya OLT
+        tenant-nya. Hanya baca.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: uuid, in: path, required: true, schema: { type: string, maxLength: 36 } }
+        - { name: onu, in: path, required: true, description: "`id` ONU terdaftar.", schema: { type: string, maxLength: 36 } }
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: Riwayat dan ringkasan kestabilan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OLTONUStateHistory' }
+        '400':
+          description: Identifier melebihi batas, atau inventaris ONU terdaftar tidak diaktifkan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: OLT milik tenant lain, atau peran ENDUSER.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: OLT atau ONU tidak ditemukan (ONU dari OLT lain juga 404).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   /olts/{uuid}/ports:
     get:
       operationId: listOLTPorts
@@ -9841,6 +9886,27 @@ components:
         device_status: { type: string, nullable: true, description: "Kode status perangkat tertaut." }
         olt_last_poll_at: { type: string, format: date-time, nullable: true }
       required: [id, olt_id, olt_name, pon_port, serial_number, state, first_seen_at, last_seen_at, last_state_change_at]
+
+    OLTONUStateHistory:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/OLTONUStateEvent' }
+        total: { type: integer }
+        changes_24h: { type: integer, description: "Perubahan keadaan sejati dalam 24 jam terakhir." }
+        flapping: { type: boolean, description: ">= 4 perubahan dalam 1 jam terakhir (heuristik)." }
+      required: [data, total, changes_24h, flapping]
+
+    OLTONUStateEvent:
+      type: object
+      properties:
+        pon_port: { type: string }
+        from_state: { type: string, nullable: true, enum: [ONLINE, OFFLINE, LOS, DYING_GASP, UNKNOWN], description: "`null` = ONU baru terlihat." }
+        to_state: { type: string, nullable: true, enum: [ONLINE, OFFLINE, LOS, DYING_GASP, UNKNOWN], description: "`null` = tidak lagi dilaporkan OLT." }
+        rx_power_dbm: { type: number, nullable: true, description: "Daya terima sisi OLT pada saat itu." }
+        occurred_at: { type: string, format: date-time, description: "Waktu polling yang mengamati perubahan (bukan waktu perubahan sebenarnya)." }
+      required: [pon_port, from_state, to_state, rx_power_dbm, occurred_at]
 
     OLTRegisteredONUListResponse:
       type: object

@@ -281,6 +281,7 @@ func (r *Router) Register(e *echo.Echo) {
 		authed.GET("/olt-onus", r.listOLTONUs)
 		// Inventaris ONU terdaftar (hanya baca; scope tenant lewat OLT-nya) dan posisi sebuah perangkat di jaringan OLT.
 		authed.GET("/olts/:uuid/registered-onus", r.listOLTRegisteredONUs)
+		authed.GET("/olts/:uuid/registered-onus/:onu/history", r.onuStateHistory)
 		authed.GET("/olts/:uuid/ports", r.listOLTPorts)
 		authed.GET("/devices/:id/olt", r.deviceOLT)
 		authed.PATCH("/olt-onus/:uuid", r.updateOLTONU, RequireRoles(adminOrNOC...))

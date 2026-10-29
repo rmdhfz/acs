@@ -4,7 +4,7 @@
 > "apa ada di mana" tanpa menjelajah ulang repo. Konteks bisnis: `docs/produk/PRD.md`; keputusan arsitektur: `docs/arsitektur/TECH.md`;
 > aturan kerja & konvensi: `CLAUDE.md`. Perbarui setelah menambah paket/endpoint/tabel/halaman (`--check` untuk memeriksa).
 
-Ringkasan: 224 operasi REST • 74 tabel • 48 migrasi (terakhir `0048_offline_los_notifications`) • 39 skenario e2e.
+Ringkasan: 225 operasi REST • 75 tabel • 49 migrasi (terakhir `0049_olt_onu_state_events`) • 39 skenario e2e.
 
 ## Alur & lapisan (Clean Architecture)
 `domain` (entitas + antarmuka) → `usecase/*` (aturan bisnis) → `repository/mysql` (query sqlx) / `delivery/{cwmp,http,ws,usp}` (adapter masuk).
@@ -289,7 +289,7 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | PUT | `/notifications/preferences` | Simpan pengaturan kanal notifikasi |
 | POST | `/notifications/announce` | Siarkan pengumuman ke staf (SUPERADMIN) |
 
-**OLT** (12)
+**OLT** (13)
 
 | Method | Path | Ringkasan |
 |---|---|---|
@@ -302,6 +302,7 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | POST | `/olts/{uuid}/test` | Uji koneksi ke OLT (Probe) |
 | POST | `/olts/{uuid}/poll` | Baca ONU belum terdaftar dari OLT dan rekonsiliasi antrean |
 | GET | `/olts/{uuid}/registered-onus` | ONU yang sudah terdaftar di sebuah OLT (snapshot polling) |
+| GET | `/olts/{uuid}/registered-onus/{onu}/history` | Riwayat perubahan keadaan satu ONU terdaftar |
 | GET | `/olts/{uuid}/ports` | Ringkasan per port PON dari ONU terdaftar |
 | GET | `/olt-onus` | Antrean ONU yang dilaporkan OLT sebagai belum terdaftar |
 | PATCH | `/olt-onus/{uuid}` | Abaikan atau pulihkan entri antrean |
@@ -525,6 +526,7 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | `olt_unregistered_onus` | 17 | ONU yang dilaporkan OLT sebagai belum terdaftar; unik per (olt, serial), kemunculan ulang memperbarui baris |
 | `ref_olt_onu_state` | 10 | — |
 | `olt_registered_onus` | 20 | ONU terdaftar di OLT (snapshot polling); unik per (olt, serial), tautan ke devices lewat serial + tenant |
+| `olt_onu_state_events` | 9 | Riwayat perubahan keadaan ONU terdaftar di OLT (log; audit minimal, dipangkas fisik oleh retensi); lihat header migrations/0049 |
 
 ## Frontend
 **Rute Console** (`frontend/src/App.tsx`)
@@ -567,11 +569,11 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | `/` | PublicHome |
 | `*` | NotFoundPage |
 
-**Komponen** (`frontend/src/components`, 52): AssignVendorModal, AuthShell, BugReportModal, CatalogDataTools, ChangePasswordModal, CommandPalette, ConfigHistory, CopyButton, CreditFooter, DataTools, DeviceDiagnosisCard, DeviceFormModal, DeviceMap, DeviceOltCard, DeviceOverview, DevicesMapView, DeviceWifiTab, EmptyState, ExportMenu, FleetInsights, GoogleSignInButton, ImportWizard, Layout, LocationPickerMap, LocationPickerModal, MenuManagerModal, MfaCard, Modal, NavClock, NotificationAttributesModal, NotificationBell, OltInventory, OpticalCell, OpticalDiscovery, Pager, Paginate, ParameterTree, PasswordStrengthBar, ProtectedRoute, QueryErrorBanner, QueryErrorToaster, RecordActions, RowMenu, SessionCapture, SidebarNav, Spinner, StatCard, StatusBadge, TaskParts, UnlocatedDevicesPanel, UserDevicesModal, VirtualValuesCard
+**Komponen** (`frontend/src/components`, 53): AssignVendorModal, AuthShell, BugReportModal, CatalogDataTools, ChangePasswordModal, CommandPalette, ConfigHistory, CopyButton, CreditFooter, DataTools, DeviceDiagnosisCard, DeviceFormModal, DeviceMap, DeviceOltCard, DeviceOverview, DevicesMapView, DeviceWifiTab, EmptyState, ExportMenu, FleetInsights, GoogleSignInButton, ImportWizard, Layout, LocationPickerMap, LocationPickerModal, MenuManagerModal, MfaCard, Modal, NavClock, NotificationAttributesModal, NotificationBell, OltInventory, OnuHistoryModal, OpticalCell, OpticalDiscovery, Pager, Paginate, ParameterTree, PasswordStrengthBar, ProtectedRoute, QueryErrorBanner, QueryErrorToaster, RecordActions, RowMenu, SessionCapture, SidebarNav, Spinner, StatCard, StatusBadge, TaskParts, UnlocatedDevicesPanel, UserDevicesModal, VirtualValuesCard
 
 **Lib/hooks** (`frontend/src/lib`, 39): api, auth, autolabel, clientAdapter, clipboard, confirm, coordinates, csv, deviceMap, exporter, focusTrap, format, hooks, i18n.extra, i18n, importer, leafletGlobal, limits, mapConfig, menu, notifications, oltInventory, optical, opticalDiscovery, password, pool, queryErrors, screenshot, session, taskSummary, theme, toast, transferLog, types, usePaged, useStatusParam, wake, wifi, ws
 
-Berkas tes frontend: 47.
+Berkas tes frontend: 48.
 
 ## Skenario e2e (`cmd/e2e`)
 | Skenario | Fungsi |
@@ -617,7 +619,7 @@ Berkas tes frontend: 47.
 | S39-olt-onu-terdaftar | `scenarioOLTInventory` |
 
 ## Migrasi (`migrations/`)
-`0001_init_schema` · `0002_tenant_cwmp_inform_credentials` · `0003_tenant_branding` · `0004_vendor_baseline_catalog` · `0005_tenant_task_quota` · `0006_task_metrics_indexes` · `0007_firmware_storage_key` · `0008_user_login_lockout` · `0009_ztp_rule_matching_actions` · `0010_vpm_software_version_pattern` · `0011_firmware_rollout_batches` · `0012_device_session_cwmp_namespace` · `0013_webhook_subscriptions` · `0014_device_config_snapshots` · `0015_device_geolocation` · `0016_firmware_rollout_scheduling` · `0017_performance_indexes` · `0018_generic_files` · `0019_tags_and_presets` · `0020_user_devices_mapping` · `0021_preset_engine` · `0022_seed_vendor_ouis` · `0023_password_reset_tokens` · `0024_users_password_changed_at` · `0025_diagnostics_mappings` · `0026_mapping_value_scale_optical` · `0027_user_mfa_totp` · `0028_tenant_device_limit_and_signups` · `0029_generic_vendor_and_more_oui` · `0030_notifications` · `0031_user_oidc_subject` · `0032_billing` · `0033_menu_bugreport_transfers` · `0034_bugreport_expected_screenshot` · `0035_vendor_optictimes_zte_models` · `0036_notification_optical_alert` · `0037_device_capture` · `0038_device_faults` · `0039_virtual_parameters` · `0040_automation_rules` · `0041_devices_serial_index` · `0042_automation_daily_ceiling` · `0043_tenant_storage_quota` · `0044_olt_controller` · `0045_notification_platform_alert` · `0046_device_inform_interval` · `0047_olt_registered_onus` · `0048_offline_los_notifications`
+`0001_init_schema` · `0002_tenant_cwmp_inform_credentials` · `0003_tenant_branding` · `0004_vendor_baseline_catalog` · `0005_tenant_task_quota` · `0006_task_metrics_indexes` · `0007_firmware_storage_key` · `0008_user_login_lockout` · `0009_ztp_rule_matching_actions` · `0010_vpm_software_version_pattern` · `0011_firmware_rollout_batches` · `0012_device_session_cwmp_namespace` · `0013_webhook_subscriptions` · `0014_device_config_snapshots` · `0015_device_geolocation` · `0016_firmware_rollout_scheduling` · `0017_performance_indexes` · `0018_generic_files` · `0019_tags_and_presets` · `0020_user_devices_mapping` · `0021_preset_engine` · `0022_seed_vendor_ouis` · `0023_password_reset_tokens` · `0024_users_password_changed_at` · `0025_diagnostics_mappings` · `0026_mapping_value_scale_optical` · `0027_user_mfa_totp` · `0028_tenant_device_limit_and_signups` · `0029_generic_vendor_and_more_oui` · `0030_notifications` · `0031_user_oidc_subject` · `0032_billing` · `0033_menu_bugreport_transfers` · `0034_bugreport_expected_screenshot` · `0035_vendor_optictimes_zte_models` · `0036_notification_optical_alert` · `0037_device_capture` · `0038_device_faults` · `0039_virtual_parameters` · `0040_automation_rules` · `0041_devices_serial_index` · `0042_automation_daily_ceiling` · `0043_tenant_storage_quota` · `0044_olt_controller` · `0045_notification_platform_alert` · `0046_device_inform_interval` · `0047_olt_registered_onus` · `0048_offline_los_notifications` · `0049_olt_onu_state_events`
 
 ## Perintah penting
 - Go: `go vet ./...`, `go test ./...`; race + integrasi MariaDB via Docker `golang:1.26.9` (lihat `docs/pengujian/PENGUJIAN_E2E.md`).

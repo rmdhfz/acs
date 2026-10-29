@@ -250,6 +250,7 @@ func (s *Service) reconcileInventory(ctx context.Context, o *domain.OLT, clean [
 
 	now := time.Now()
 	sum := &RegisteredSummary{Seen: len(clean), ByState: map[string]int{}}
+	var events []domain.ONUStateEvent
 	var changes []StateChange
 	rows := make([]domain.RegisteredONU, 0, len(clean))
 	seen := make(map[string]struct{}, len(clean))
@@ -272,9 +273,12 @@ func (s *Service) reconcileInventory(ctx context.Context, o *domain.OLT, clean [
 				sum.StateChanged++
 				row.LastStateChangeAt = now
 				changes = append(changes, StateChange{SerialNumber: c.SerialNumber, PonPort: c.PonPort, From: ex.State, To: c.State})
+				from := ex.StateID
+				events = append(events, domain.ONUStateEvent{OLTID: o.ID, SerialNumber: c.SerialNumber, PonPort: c.PonPort, FromStateID: &from, ToStateID: &sid, RxPowerDBM: c.RxPowerDBM, OccurredAt: now})
 			}
 		} else {
 			sum.New++
+			events = append(events, domain.ONUStateEvent{OLTID: o.ID, SerialNumber: c.SerialNumber, PonPort: c.PonPort, ToStateID: &sid, RxPowerDBM: c.RxPowerDBM, OccurredAt: now})
 		}
 		rows = append(rows, row)
 	}
@@ -285,6 +289,8 @@ func (s *Service) reconcileInventory(ctx context.Context, o *domain.OLT, clean [
 	for _, e := range existing {
 		if _, still := seen[strings.ToUpper(e.SerialNumber)]; !still {
 			gone = append(gone, e.ID)
+			from := e.StateID
+			events = append(events, domain.ONUStateEvent{OLTID: o.ID, SerialNumber: e.SerialNumber, PonPort: e.PonPort, FromStateID: &from, RxPowerDBM: e.RxPowerDBM, OccurredAt: now})
 		}
 	}
 	if len(gone) > 0 {
@@ -293,7 +299,51 @@ func (s *Service) reconcileInventory(ctx context.Context, o *domain.OLT, clean [
 		}
 	}
 	sum.Removed = len(gone)
+	// Riwayat hanyalah catatan tambahan: kegagalan menyimpannya tidak boleh menggagalkan polling (inventaris sudah benar), cukup dicatat.
+	if err := s.inv.InsertStateEvents(ctx, events); err != nil {
+		log.Printf("olt: gagal menyimpan riwayat keadaan ONU (olt %d, %d peristiwa): %v", o.ID, len(events), err)
+	}
 	return sum, changes, nil
+}
+
+// StateHistory = riwayat perubahan keadaan satu ONU beserta ringkasan kestabilan.
+type StateHistory struct {
+	Events []domain.ONUStateEvent
+	Total  int
+	// Changes24h = jumlah perubahan keadaan sejati (bukan sekadar muncul/hilang) dalam 24 jam terakhir; Flapping = perubahan >= domain.ONUFlapMinChanges
+	// dalam domain.ONUFlapWindow terakhir. Keduanya hanya dari perubahan yang teramati polling.
+	Changes24h int
+	Flapping   bool
+}
+
+// ONUHistory mengembalikan riwayat perubahan keadaan ONU (identifier publik) milik sebuah OLT, scope tenant lewat OLT-nya. ONU tak ada pada
+// OLT itu = ErrNotFound. Panjang riwayat dibatasi retensi log (ACS_LOG_RETENTION_DAYS).
+func (s *Service) ONUHistory(ctx context.Context, actor domain.Actor, oltUUID, onuUUID string, p domain.Pagination) (*StateHistory, error) {
+	if err := s.requireInventory(); err != nil {
+		return nil, err
+	}
+	o, err := s.load(ctx, actor, oltUUID)
+	if err != nil {
+		return nil, err
+	}
+	onu, err := s.inv.FindRegisteredByUUID(ctx, o.ID, onuUUID)
+	if err != nil {
+		return nil, err
+	}
+	events, total, err := s.inv.ListStateEvents(ctx, o.ID, onu.SerialNumber, p)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	day, err := s.inv.CountStateChanges(ctx, o.ID, onu.SerialNumber, now.Add(-24*time.Hour))
+	if err != nil {
+		return nil, err
+	}
+	hour, err := s.inv.CountStateChanges(ctx, o.ID, onu.SerialNumber, now.Add(-domain.ONUFlapWindow))
+	if err != nil {
+		return nil, err
+	}
+	return &StateHistory{Events: events, Total: total, Changes24h: day, Flapping: hour >= domain.ONUFlapMinChanges}, nil
 }
 
 // ---- pembacaan ----

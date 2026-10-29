@@ -217,6 +217,19 @@ func (r *Router) listOLTRegisteredONUs(c *echo.Context) error {
 	return c.JSON(http.StatusOK, listResponse{Data: rows, Total: total})
 }
 
+// onuStateHistory — GET /olts/:uuid/registered-onus/:onu/history: riwayat perubahan keadaan satu ONU (terbaru dulu) + ringkasan kestabilan.
+func (r *Router) onuStateHistory(c *echo.Context) error {
+	oltUUID, onuUUID := c.Param("uuid"), c.Param("onu")
+	if err := checkMaxLen(lenRule{"uuid", oltUUID, 36}, lenRule{"onu", onuUUID, 36}); err != nil {
+		return err
+	}
+	h, err := r.OLTs.ONUHistory(c.Request().Context(), ActorFrom(c), oltUUID, onuUUID, paginationFromQuery(c))
+	if err != nil {
+		return handleErr(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]any{"data": h.Events, "total": h.Total, "changes_24h": h.Changes24h, "flapping": h.Flapping})
+}
+
 // listOLTPorts — GET /olts/:uuid/ports: ringkasan per port PON dari ONU terdaftar (hanya baca; bukan kontrol port).
 func (r *Router) listOLTPorts(c *echo.Context) error {
 	uuid := c.Param("uuid")

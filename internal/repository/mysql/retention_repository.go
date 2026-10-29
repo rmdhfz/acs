@@ -37,6 +37,8 @@ func (r *retentionRepository) PruneLogs(ctx context.Context, cutoff time.Time) (
 		// device_session_captures (migrations/0037): capture SOAP per perangkat, audit minimal -- dihapus FISIK (log volume tinggi).
 		{"device_session_captures", `DELETE FROM device_session_captures WHERE created_at < ? LIMIT ` + strconv.Itoa(retentionBatch)},
 		{"notifications", `DELETE FROM notifications WHERE created_at < ? LIMIT ` + strconv.Itoa(retentionBatch)},
+		// olt_onu_state_events (migrations/0049): riwayat perubahan keadaan ONU di OLT, audit minimal -- dihapus FISIK (log volume tinggi).
+		{"olt_onu_state_events", `DELETE FROM olt_onu_state_events WHERE occurred_at < ? LIMIT ` + strconv.Itoa(retentionBatch)},
 	}
 	out := make(map[string]int64, len(steps))
 	for _, st := range steps {

@@ -36,6 +36,7 @@ import type {
   RefLookup,
   SelfServiceDevice,
   CustomerDiagnosis,
+  ONUStateHistory,
   Task,
   TaskStatusCount,
   Tenant,
@@ -2317,6 +2318,17 @@ export interface RegisteredONUFilters {
   sort?: 'severity' | 'port'
   page?: number
   page_size?: number
+}
+
+// Riwayat perubahan keadaan satu ONU. Dibaca saat modal dibuka, jadi tidak di-poll (disegarkan lewat penutupan/pembukaan ulang).
+export function useOLTONUHistory(oltId: string, onuId: string, page: number, pageSize: number) {
+  return useQuery({
+    queryKey: ['olt-onu-history', oltId, onuId, page, pageSize],
+    queryFn: () => api.get<ONUStateHistory>(`/olts/${oltId}/registered-onus/${onuId}/history${buildQuery({ page, page_size: pageSize })}`),
+    enabled: !!oltId && !!onuId,
+    placeholderData: (prev) => prev,
+    gcTime: 0,
+  })
 }
 
 export function useOLTRegisteredONUs(oltId: string, filters: RegisteredONUFilters, enabled = true) {

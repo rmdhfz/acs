@@ -25,6 +25,69 @@ type fakeInv struct {
 	due      []domain.OLT
 	activeBy map[uint64]int
 	upserts  int
+	events   []domain.ONUStateEvent
+	eventErr error
+}
+
+func (f *fakeInv) FindRegisteredByUUID(_ context.Context, oltID uint64, onuUUID string) (*domain.RegisteredONU, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, r := range f.rows {
+		if r.OLTID == oltID && r.UUID == onuUUID {
+			return f.join(r), nil
+		}
+	}
+	return nil, domain.ErrNotFound
+}
+
+func (f *fakeInv) InsertStateEvents(_ context.Context, ev []domain.ONUStateEvent) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.eventErr != nil {
+		return f.eventErr
+	}
+	f.events = append(f.events, ev...)
+	return nil
+}
+
+func (f *fakeInv) ListStateEvents(_ context.Context, oltID uint64, serial string, p domain.Pagination) ([]domain.ONUStateEvent, int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var all []domain.ONUStateEvent
+	for i := len(f.events) - 1; i >= 0; i-- { // terbaru dulu
+		e := f.events[i]
+		if e.OLTID == oltID && strings.EqualFold(e.SerialNumber, serial) {
+			if e.FromStateID != nil {
+				c := codeOf(stateIDs, *e.FromStateID)
+				e.FromState = &c
+			}
+			if e.ToStateID != nil {
+				c := codeOf(stateIDs, *e.ToStateID)
+				e.ToState = &c
+			}
+			all = append(all, e)
+		}
+	}
+	lo, hi := p.Offset(), p.Offset()+p.Limit()
+	if lo > len(all) {
+		lo = len(all)
+	}
+	if hi > len(all) {
+		hi = len(all)
+	}
+	return all[lo:hi], len(all), nil
+}
+
+func (f *fakeInv) CountStateChanges(_ context.Context, oltID uint64, serial string, since time.Time) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n := 0
+	for _, e := range f.events {
+		if e.OLTID == oltID && strings.EqualFold(e.SerialNumber, serial) && !e.OccurredAt.Before(since) && e.FromStateID != nil && e.ToStateID != nil {
+			n++
+		}
+	}
+	return n, nil
 }
 
 func newFakeInv(repo *fakeRepo) *fakeInv {

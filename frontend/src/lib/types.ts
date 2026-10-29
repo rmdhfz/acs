@@ -671,6 +671,22 @@ export interface OLTPollSummary {
 }
 
 // GET /olts/:uuid/registered-onus: ONU terdaftar di OLT. device_id/device_status = tautan ke perangkat ACS (serial + tenant sama); null = tak ada.
+// Satu perubahan keadaan ONU yang teramati polling ACS. from_state null = baru terlihat; to_state null = tidak lagi dilaporkan OLT.
+export interface ONUStateEvent {
+  pon_port: string
+  from_state: OLTONUState | null
+  to_state: OLTONUState | null
+  rx_power_dbm: number | null
+  occurred_at: string
+}
+
+export interface ONUStateHistory {
+  data: ONUStateEvent[]
+  total: number
+  changes_24h: number
+  flapping: boolean
+}
+
 export interface RegisteredONU {
   id: string
   olt_id: string

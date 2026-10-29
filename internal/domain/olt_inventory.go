@@ -124,6 +124,20 @@ type PONPortSummary struct {
 	LastSeenAt *time.Time `db:"last_seen_at" json:"last_seen_at"`
 }
 
+// ONUStateEvent = satu perubahan keadaan ONU yang teramati polling (tabel olt_onu_state_events, migrations/0049). FromState kosong = baru
+// terlihat; ToState kosong = tidak lagi dilaporkan OLT. OccurredAt = waktu polling yang mengamatinya (bukan waktu perubahan sebenarnya).
+type ONUStateEvent struct {
+	OLTID        uint64    `db:"olt_id" json:"-"`
+	SerialNumber string    `db:"serial_number" json:"-"`
+	PonPort      string    `db:"pon_port" json:"pon_port"`
+	FromStateID  *uint64   `db:"from_state_id" json:"-"`
+	ToStateID    *uint64   `db:"to_state_id" json:"-"`
+	FromState    *string   `db:"from_state" json:"from_state"`
+	ToState      *string   `db:"to_state" json:"to_state"`
+	RxPowerDBM   *float64  `db:"rx_power_dbm" json:"rx_power_dbm"`
+	OccurredAt   time.Time `db:"occurred_at" json:"occurred_at"`
+}
+
 // OLTInventoryRepository — hanya query, tanpa keputusan (rekonsiliasi diputuskan usecase/olt). Antarmuka terpisah dari OLTRepository
 // supaya kontrak OLTRepository tidak melebar.
 type OLTInventoryRepository interface {
@@ -142,4 +156,19 @@ type OLTInventoryRepository interface {
 	CountActiveOLTs(ctx context.Context, tenantID uint64) (int, error)
 	// ListOLTsDueForPoll = OLT aktif yang belum pernah dipoll atau terakhir dipoll sebelum `before` (terlama dulu), lintas tenant.
 	ListOLTsDueForPoll(ctx context.Context, before time.Time, limit int) ([]OLT, error)
+	// FindRegisteredByUUID mencari ONU (termasuk yang sudah dihapus-lunak) pada satu OLT lewat identifier publik; ErrNotFound bila tak ada.
+	FindRegisteredByUUID(ctx context.Context, oltID uint64, onuUUID string) (*RegisteredONU, error)
+	// InsertStateEvents menyimpan riwayat perubahan (batch). Kegagalan tidak boleh menggagalkan polling: pemanggil hanya mencatatnya.
+	InsertStateEvents(ctx context.Context, events []ONUStateEvent) error
+	// ListStateEvents: riwayat satu ONU (olt + serial tak peka huruf), terbaru dulu.
+	ListStateEvents(ctx context.Context, oltID uint64, serial string, p Pagination) ([]ONUStateEvent, int, error)
+	// CountStateChanges: jumlah perubahan keadaan SEJATI (dari dan ke keduanya ada) sejak waktu itu; dasar deteksi flapping.
+	CountStateChanges(ctx context.Context, oltID uint64, serial string, since time.Time) (int, error)
 }
+
+// Ambang flapping: ONU yang berganti keadaan >= ONUFlapMinChanges kali dalam ONUFlapWindow dianggap tidak stabil. Dihitung dari perubahan yang
+// teramati polling, jadi selang polling yang panjang membuat flapping cepat tak terdeteksi. Heuristik; belum dikalibrasi dengan OLT nyata.
+const (
+	ONUFlapWindow     = time.Hour
+	ONUFlapMinChanges = 4
+)

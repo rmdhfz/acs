@@ -205,3 +205,64 @@ func (r *oltRepository) ListOLTsDueForPoll(ctx context.Context, before time.Time
 	}
 	return rows, nil
 }
+
+func (r *oltRepository) FindRegisteredByUUID(ctx context.Context, oltID uint64, onuUUID string) (*domain.RegisteredONU, error) {
+	var row domain.RegisteredONU
+	if err := r.db.GetContext(ctx, &row,
+		`SELECT `+regCols+regLinkCols+regFrom+regLinkFrom+`WHERE n.olt_id = ? AND n.onu_uuid = ? AND o.is_deleted = 0`, oltID, onuUUID); err != nil {
+		return nil, translateErr(err)
+	}
+	return &row, nil
+}
+
+// stateEventsInsertChunk membatasi baris per INSERT (placeholder dan ukuran paket).
+const stateEventsInsertChunk = 500
+
+func (r *oltRepository) InsertStateEvents(ctx context.Context, events []domain.ONUStateEvent) error {
+	for start := 0; start < len(events); start += stateEventsInsertChunk {
+		end := start + stateEventsInsertChunk
+		if end > len(events) {
+			end = len(events)
+		}
+		var sb strings.Builder
+		sb.WriteString(`INSERT INTO olt_onu_state_events (olt_id, serial_number, pon_port, from_state_id, to_state_id, rx_power_dbm, occurred_at) VALUES `)
+		args := make([]interface{}, 0, (end-start)*7)
+		for i, e := range events[start:end] {
+			if i > 0 {
+				sb.WriteString(",")
+			}
+			sb.WriteString("(?,?,?,?,?,?,?)")
+			args = append(args, e.OLTID, e.SerialNumber, e.PonPort, e.FromStateID, e.ToStateID, e.RxPowerDBM, e.OccurredAt)
+		}
+		if _, err := r.db.ExecContext(ctx, sb.String(), args...); err != nil {
+			return translateErr(err)
+		}
+	}
+	return nil
+}
+
+func (r *oltRepository) ListStateEvents(ctx context.Context, oltID uint64, serial string, p domain.Pagination) ([]domain.ONUStateEvent, int, error) {
+	var total int
+	if err := r.db.GetContext(ctx, &total, `SELECT COUNT(*) FROM olt_onu_state_events WHERE olt_id = ? AND serial_number = ?`, oltID, serial); err != nil {
+		return nil, 0, translateErr(err)
+	}
+	rows := []domain.ONUStateEvent{}
+	if err := r.db.SelectContext(ctx, &rows,
+		`SELECT e.olt_id, e.serial_number, e.pon_port, e.from_state_id, e.to_state_id, fs.code AS from_state, ts.code AS to_state, e.rx_power_dbm, e.occurred_at
+		 FROM olt_onu_state_events e
+		 LEFT JOIN ref_olt_onu_state fs ON fs.id = e.from_state_id LEFT JOIN ref_olt_onu_state ts ON ts.id = e.to_state_id
+		 WHERE e.olt_id = ? AND e.serial_number = ? ORDER BY e.id DESC LIMIT ? OFFSET ?`, oltID, serial, p.Limit(), p.Offset()); err != nil {
+		return nil, 0, translateErr(err)
+	}
+	return rows, total, nil
+}
+
+func (r *oltRepository) CountStateChanges(ctx context.Context, oltID uint64, serial string, since time.Time) (int, error) {
+	var n int
+	if err := r.db.GetContext(ctx, &n,
+		`SELECT COUNT(*) FROM olt_onu_state_events WHERE olt_id = ? AND serial_number = ? AND occurred_at >= ?
+		 AND from_state_id IS NOT NULL AND to_state_id IS NOT NULL`, oltID, serial, since); err != nil {
+		return 0, translateErr(err)
+	}
+	return n, nil
+}

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { AlertTriangle, ChevronLeft, ChevronRight, Network } from 'lucide-react'
 import { EmptyState } from './EmptyState'
+import { OnuHistoryModal } from './OnuHistoryModal'
 import { StatusBadge } from './StatusBadge'
 import { useOLTPorts, useOLTRegisteredONUs, type RegisteredONUFilters } from '../lib/hooks'
 import { formatRelativeTime } from '../lib/format'
@@ -35,6 +36,7 @@ export function OltInventory({ olts }: { olts: OLT[] }) {
   const [search, setSearch] = useState('')
   const [problem, setProblem] = useState(() => params.get('problem') === '1')
   const [page, setPage] = useState(1)
+  const [historyOf, setHistoryOf] = useState<{ id: string; serial_number: string } | null>(null)
   // OLT berganti = filter dan halaman kembali ke awal (port milik OLT lain tidak berlaku). Render pertama tidak mereset, supaya filter dari
   // tautan dalam tidak terhapus.
   const prevOlt = useRef(oltId)
@@ -46,6 +48,7 @@ export function OltInventory({ olts }: { olts: OLT[] }) {
     setSearch('')
     setProblem(false)
     setPage(1)
+    setHistoryOf(null)
   }, [oltId])
 
   const filters: RegisteredONUFilters = useMemo(
@@ -256,6 +259,7 @@ export function OltInventory({ olts }: { olts: OLT[] }) {
                     <th className="px-3 py-2">RX OLT</th>
                     <th className="px-3 py-2">Keadaan sejak</th>
                     <th className="px-3 py-2">Perangkat ACS</th>
+                    <th className="px-3 py-2" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -292,6 +296,16 @@ export function OltInventory({ olts }: { olts: OLT[] }) {
                           </span>
                         )}
                       </td>
+                      <td className="px-3 py-2 text-right">
+                        <button
+                          type="button"
+                          onClick={() => setHistoryOf({ id: r.id, serial_number: r.serial_number })}
+                          aria-label={`Riwayat keadaan ${r.serial_number}`}
+                          className="text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+                        >
+                          Riwayat
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -314,6 +328,7 @@ export function OltInventory({ olts }: { olts: OLT[] }) {
           </>
         )}
       </div>
+      {historyOf && <OnuHistoryModal oltId={oltId} onu={historyOf} onClose={() => setHistoryOf(null)} />}
     </section>
   )
 }
