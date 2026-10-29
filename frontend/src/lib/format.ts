@@ -18,6 +18,24 @@ export function formatRelativeTime(iso: string | null): string {
   return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+// formatDurationSeconds menulis durasi (detik) dalam dua satuan terbesar: "45 detik", "5 menit", "3 jam 20 menit", "2 hari 4 jam".
+// Sama dengan penulisan diagnosis di backend (usecase/troubleshoot) supaya angka di kartu dan di teks temuan terbaca seragam.
+export function formatDurationSeconds(totalSeconds: number | null | undefined): string {
+  if (totalSeconds == null || !Number.isFinite(totalSeconds)) return '-'
+  const sec = Math.max(0, Math.floor(totalSeconds))
+  if (sec < 60) return `${sec} detik`
+  const min = Math.floor(sec / 60)
+  if (min < 60) return `${min} menit`
+  const hours = Math.floor(sec / 3600)
+  if (sec < 48 * 3600) {
+    const m = min % 60
+    return m === 0 ? `${hours} jam` : `${hours} jam ${m} menit`
+  }
+  const days = Math.floor(hours / 24)
+  const h = hours % 24
+  return h === 0 ? `${days} hari` : `${days} hari ${h} jam`
+}
+
 // formatJSONField pretty-print field JSON mentah dari backend seperti
 // Task.parameters/response atau DeviceDiagnostic.result (domain.Task/
 // DeviceDiagnostic Go: json.RawMessage, bukan lagi []byte biasa -- browser

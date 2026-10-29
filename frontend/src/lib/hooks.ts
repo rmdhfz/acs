@@ -9,7 +9,9 @@ import type {
   CurrentTenant,
   Device,
   DeviceDiagnostic,
+  DeviceDiagnosis,
   DeviceEvent,
+  DeviceMapResponse,
   DeviceFault,
   OLT,
   OLTInput,
@@ -112,6 +114,29 @@ export function useDevices(filters: DeviceFilters, enabled = true) {
     queryFn: () => api.get<ListResponse<Device>>(`/devices${buildQuery(filters)}`),
     refetchInterval: LIVE_REFRESH_MS,
     placeholderData: (prev) => prev,
+    enabled,
+  })
+}
+
+// Filter peta: sama dengan daftar (tanpa paginasi/urutan) + bbox "barat,selatan,timur,utara".
+export type DeviceMapFilters = Omit<DeviceFilters, 'page' | 'page_size' | 'sort'> & { bbox?: string }
+
+// Titik perangkat bergeolokasi untuk peta. Disegarkan live lewat WebSocket (DEVICE_ONLINE/DEVICE_OFFLINE menginvalidasi ['device-map']).
+export function useDeviceMap(filters: DeviceMapFilters, enabled = true) {
+  return useQuery({
+    queryKey: ['device-map', filters],
+    queryFn: () => api.get<DeviceMapResponse>(`/devices/map${buildQuery(filters)}`),
+    refetchInterval: LIVE_REFRESH_MS,
+    placeholderData: (prev) => prev,
+    enabled,
+  })
+}
+
+// Diagnosis "kenapa offline?" — bukti sisi ACS; dihitung saat diminta, jadi tidak di-poll (disegarkan lewat WebSocket/tombol).
+export function useDeviceDiagnosis(deviceId: number, enabled = true) {
+  return useQuery({
+    queryKey: ['device-diagnosis', deviceId],
+    queryFn: () => api.get<DeviceDiagnosis>(`/devices/${deviceId}/diagnosis`),
     enabled,
   })
 }

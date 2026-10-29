@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { AlertTriangle, CheckCircle2, ExternalLink, ListChecks, MapPin, NotebookText, Pencil, Radio, SlidersHorizontal, Wifi } from 'lucide-react'
 import { AssignVendorModal } from './AssignVendorModal'
 import { CopyButton } from './CopyButton'
+import { DeviceDiagnosisCard } from './DeviceDiagnosisCard'
 import { formatDateTime, formatRelativeTime } from '../lib/format'
 import { useWakeDevice } from '../lib/wake'
 import type { Device } from '../lib/types'
@@ -9,7 +10,7 @@ import type { Device } from '../lib/types'
 // Ringkasan perangkat: apa yang paling sering ditanyakan operator (statusnya? firmware? bisa di-Connection Request?
 // di mana lokasinya?) di bagian atas, detail teknis (UUID, OUI, dst.) di bawah. Hanya tampilan — semua data dari Device.
 
-export type OverviewTarget = 'wifi' | 'parameters' | 'tasks'
+export type OverviewTarget = 'wifi' | 'parameters' | 'tasks' | 'optical'
 
 const card = 'rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900'
 
@@ -97,6 +98,8 @@ export function DeviceOverview({
           hint={device.last_boot_event_at ? formatDateTime(device.last_boot_event_at) : 'Belum ada event BOOT'}
         />
       </div>
+
+      <DeviceDiagnosisCard device={device} statusCode={statusCode} canAct={canEdit} onEdit={onEdit} onGoTo={onGoTo} />
 
       {!hasCr && (
         <div role="status" className="flex flex-wrap items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">

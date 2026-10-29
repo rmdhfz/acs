@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatRelativeTime } from './format'
+import { formatDurationSeconds, formatRelativeTime } from './format'
 
 const ago = (sec: number) => new Date(Date.now() - sec * 1000).toISOString()
 
@@ -15,5 +15,28 @@ describe('formatRelativeTime', () => {
   it('kosong/tak valid → "-"', () => {
     expect(formatRelativeTime(null)).toBe('-')
     expect(formatRelativeTime('bukan tanggal')).toBe('-')
+  })
+})
+
+describe('formatDurationSeconds', () => {
+  it('dua satuan terbesar, seragam dengan teks diagnosis backend', () => {
+    expect(formatDurationSeconds(0)).toBe('0 detik')
+    expect(formatDurationSeconds(45)).toBe('45 detik')
+    expect(formatDurationSeconds(59)).toBe('59 detik')
+    expect(formatDurationSeconds(60)).toBe('1 menit')
+    expect(formatDurationSeconds(3599)).toBe('59 menit')
+    expect(formatDurationSeconds(3600)).toBe('1 jam')
+    expect(formatDurationSeconds(200 * 60)).toBe('3 jam 20 menit')
+    expect(formatDurationSeconds(47 * 3600)).toBe('47 jam')
+    expect(formatDurationSeconds(48 * 3600)).toBe('2 hari')
+    expect(formatDurationSeconds(52 * 3600)).toBe('2 hari 4 jam')
+    expect(formatDurationSeconds(30 * 3600)).toBe('30 jam')
+  })
+  it('kosong, negatif, dan tak hingga tidak merusak tampilan', () => {
+    expect(formatDurationSeconds(null)).toBe('-')
+    expect(formatDurationSeconds(undefined)).toBe('-')
+    expect(formatDurationSeconds(NaN)).toBe('-')
+    expect(formatDurationSeconds(Infinity)).toBe('-')
+    expect(formatDurationSeconds(-30)).toBe('0 detik')
   })
 })

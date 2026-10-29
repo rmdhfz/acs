@@ -22,6 +22,8 @@ import {
   WifiOff,
   X,
   XCircle,
+  List as ListIcon,
+  Map as MapIcon,
 } from 'lucide-react'
 import { StatCard } from '../components/StatCard'
 import { StatusBadge } from '../components/StatusBadge'
@@ -31,6 +33,7 @@ import { DeviceFormModal } from '../components/DeviceFormModal'
 import { ExportMenu } from '../components/ExportMenu'
 import { OpticalCell } from '../components/OpticalCell'
 import { ImportWizard } from '../components/ImportWizard'
+import { DevicesMapView } from '../components/DevicesMapView'
 import { deviceAdapter, deviceExportColumns, loadDeviceExportRows } from '../imports/devices'
 import { useQueryClient } from '@tanstack/react-query'
 import { useConfirm } from '../lib/confirm'
@@ -80,6 +83,8 @@ export function DevicesPage() {
   const deleteMut = useDeleteDevice()
   const refreshSummary = useRefreshDeviceSummary()
   const [showCreate, setShowCreate] = useState(false)
+  // Tampilan daftar: tabel (bawaan) atau peta. Filter di atas berlaku sama untuk keduanya.
+  const [view, setView] = useState<'table' | 'map'>('table')
   const [showImport, setShowImport] = useState(false)
   const [editDevice, setEditDevice] = useState<Device | null>(null)
   const [search, setSearch] = useState('')
@@ -318,6 +323,22 @@ export function DevicesPage() {
         />
       </div>
 
+      <div role="group" aria-label="Tampilan perangkat" className="mb-4 inline-flex rounded-full border border-slate-300 bg-white p-0.5 text-sm dark:border-slate-700 dark:bg-slate-900">
+        {([['table', 'Tabel', ListIcon], ['map', 'Peta', MapIcon]] as const).map(([key, label, Icon]) => (
+          <button
+            key={key}
+            type="button"
+            aria-pressed={view === key}
+            onClick={() => setView(key)}
+            className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 font-medium transition-colors ${
+              view === key ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800'
+            }`}
+          >
+            <Icon className="h-4 w-4" /> {label}
+          </button>
+        ))}
+      </div>
+
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[220px]">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
@@ -496,6 +517,9 @@ export function DevicesPage() {
         </div>
       )}
 
+      {view === 'map' ? (
+        <DevicesMapView filters={activeFilters} onOpenDevice={(id) => navigate(`/devices/${id}`)} />
+      ) : (
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         {isLoading ? (
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -687,6 +711,7 @@ export function DevicesPage() {
           </>
         )}
       </div>
+      )}
 
       {showCreate && <DeviceFormModal mode="create" onClose={() => setShowCreate(false)} />}
       {editDevice && <DeviceFormModal mode="edit" device={editDevice} onClose={() => setEditDevice(null)} />}

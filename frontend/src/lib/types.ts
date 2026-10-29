@@ -110,6 +110,8 @@ export interface Device {
   inform_username: string | null
   last_inform_at: string | null
   last_boot_event_at: string | null
+  // Interval Periodic Inform yang dilaporkan perangkat (detik); null = belum diketahui. Dasar ambang offline per perangkat.
+  inform_interval_seconds?: number | null
   latitude: number | null
   longitude: number | null
   notes: string | null
@@ -120,6 +122,58 @@ export interface Device {
   pppoe_username?: string | null
   created_at: string
   updated_at: string
+}
+
+// ---- Peta & diagnosis offline (GET /devices/map, GET /devices/:id/diagnosis) ----
+
+export interface DeviceMapPoint {
+  id: number
+  device_uuid: string
+  serial_number: string
+  product_class: string | null
+  latitude: number
+  longitude: number
+  // Kode ref_device_status (ONLINE, OFFLINE, ...); kosong bila tak dikenal.
+  status: string
+  last_inform_at: string | null
+}
+
+export interface DeviceMapResponse {
+  data: DeviceMapPoint[]
+  // total = cocok filter; located = di antaranya berkoordinat (total - located = belum punya lokasi); truncated = titik dipotong batas.
+  total: number
+  located: number
+  truncated: boolean
+}
+
+export type DiagnosisSeverity = 'critical' | 'warning' | 'info'
+
+export interface DiagnosisFinding {
+  code: string
+  severity: DiagnosisSeverity
+  title: string
+  evidence: string
+  hint: string
+}
+
+export type DiagnosisVerdict = 'NEVER_CONNECTED' | 'REACHABLE' | 'OFFLINE'
+export type DiagnosisAction = 'CONNECTION_REQUEST' | 'READ_INFORM_INTERVAL' | 'OPEN_OPTICAL'
+
+export interface DeviceDiagnosis {
+  device_id: number
+  status: string
+  verdict: DiagnosisVerdict
+  summary: string
+  last_inform_at: string | null
+  silent_seconds: number | null
+  inform_interval_seconds: number | null
+  // Nama parameter lengkap untuk membaca interval Inform (sesuai model data TR-098/TR-181); kosong bila model data belum diketahui.
+  inform_interval_parameter: string
+  offline_threshold_seconds: number
+  findings: DiagnosisFinding[]
+  actions: DiagnosisAction[]
+  limits: string
+  generated_at: string
 }
 
 export interface DeviceEvent {

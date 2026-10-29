@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { DevicesPage } from './DevicesPage'
@@ -39,6 +39,11 @@ function handler(extra?: (r: { url: string; method: string }) => { status?: numb
     return extra?.(r)
   }
 }
+
+// Leaflet tidak dijalankan di jsdom; yang diuji di sini adalah perpindahan tampilan Tabel/Peta dan filter yang dibawa ke peta.
+vi.mock('../components/DeviceMap', () => ({
+  default: (p: { points: unknown[] }) => <div data-testid="map-stub" data-count={p.points.length} />,
+}))
 
 const ui = (
   <ConfirmProvider>
@@ -141,5 +146,32 @@ describe('DevicesPage — kolom ringkasan', () => {
     renderApp(ui)
     expect(await screen.findAllByText('ELWGC09C2814')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /segarkan data/i })).toBeNull()
+  })
+})
+
+describe('DevicesPage — tampilan Tabel / Peta', () => {
+  const mapResp = { data: [{ id: 1, device_uuid: 'u1', serial_number: 'ELWGC09C2814', product_class: 'F660', latitude: -6.2, longitude: 106.8, status: 'ONLINE', last_inform_at: null }], total: 4, located: 1, truncated: false }
+
+  it('bawaan Tabel; "Peta" menampilkan peta dengan filter yang sama dan "Tabel" kembali ke daftar', async () => {
+    login(['ADMIN'])
+    const calls = mockFetch(handler((r) => (r.url.includes('/devices/map') ? { json: mapResp } : undefined)))
+    renderApp(ui)
+    expect(await screen.findAllByText('ELWGC09C2814')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Tabel/ }).getAttribute('aria-pressed')).toBe('true')
+    expect(calls.some((c) => c.url.includes('/devices/map'))).toBe(false) // peta tidak dimuat sebelum diminta
+
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText(/Cari device/), 'ZTE')
+    await user.click(screen.getByRole('button', { name: /Peta/ }))
+    expect(await screen.findByTestId('map-stub')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Peta/ }).getAttribute('aria-pressed')).toBe('true')
+    expect(screen.queryByRole('table')).toBeNull()
+    expect(screen.getByRole('status').textContent).toContain('3 dari 4 perangkat belum punya koordinat')
+    const mapCall = calls.filter((c) => c.url.includes('/devices/map')).at(-1)!
+    expect(new URL(mapCall.url, 'http://x').searchParams.get('search')).toBe('ZTE')
+
+    await user.click(screen.getByRole('button', { name: /Tabel/ }))
+    expect(await screen.findByRole('table')).toBeTruthy()
+    expect(screen.queryByTestId('map-stub')).toBeNull()
   })
 })

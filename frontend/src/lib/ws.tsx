@@ -60,12 +60,14 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
           } else if (data.type === 'NOTIFICATION') {
              // Notifikasi persisten baru untuk pengguna ini: NotificationProvider menyegarkan daftar & menampilkan toast.
              window.dispatchEvent(new CustomEvent('acs:notification', { detail: data.payload }))
-          } else if (data.type === 'DEVICE_ONLINE') {
-             // Invalidate daftar device
+          } else if (data.type === 'DEVICE_ONLINE' || data.type === 'DEVICE_OFFLINE') {
+             // Status perangkat berubah: segarkan daftar, peta, ringkasan, dan (bila terbuka) detail + diagnosisnya.
              queryClient.invalidateQueries({ queryKey: ['devices'] })
+             queryClient.invalidateQueries({ queryKey: ['device-map'] })
+             queryClient.invalidateQueries({ queryKey: ['device-stats'] })
              if (data.payload?.device_id) {
-                // Invalidate device detail
                 queryClient.invalidateQueries({ queryKey: ['device', data.payload.device_id] })
+                queryClient.invalidateQueries({ queryKey: ['device-diagnosis', data.payload.device_id] })
              }
           }
         } catch (e) {
