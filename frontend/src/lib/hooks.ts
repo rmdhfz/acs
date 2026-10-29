@@ -12,6 +12,9 @@ import type {
   DeviceDiagnosis,
   DeviceEvent,
   DeviceMapResponse,
+  DeviceOLT,
+  PONPortSummary,
+  RegisteredONU,
   DeviceFault,
   OLT,
   OLTInput,
@@ -2289,9 +2292,52 @@ export function useOLTONUs(filters: OLTONUFilters) {
   })
 }
 
+// ---- ONU terdaftar & port PON (irisan B; hanya baca) ----
+
+export interface RegisteredONUFilters {
+  pon_port?: string
+  state?: string
+  search?: string
+  page?: number
+  page_size?: number
+}
+
+export function useOLTRegisteredONUs(oltId: string, filters: RegisteredONUFilters, enabled = true) {
+  return useQuery({
+    queryKey: ['olt-registered', oltId, filters],
+    queryFn: () => api.get<ListResponse<RegisteredONU>>(`/olts/${oltId}/registered-onus${buildQuery(filters)}`),
+    enabled: enabled && !!oltId,
+    refetchInterval: LIVE_REFRESH_MS,
+    placeholderData: (prev) => prev,
+  })
+}
+
+export function useOLTPorts(oltId: string, enabled = true) {
+  return useQuery({
+    queryKey: ['olt-ports', oltId],
+    queryFn: () => api.get<ListResponse<PONPortSummary>>(`/olts/${oltId}/ports`),
+    enabled: enabled && !!oltId,
+    refetchInterval: LIVE_REFRESH_MS,
+  })
+}
+
+// Posisi perangkat di jaringan OLT. Galat (mis. inventaris tidak aktif) tidak dicoba ulang: kartu yang memakainya menyembunyikan diri.
+export function useDeviceOLT(deviceId: number, enabled = true) {
+  return useQuery({
+    queryKey: ['device-olt', deviceId],
+    queryFn: () => api.get<DeviceOLT>(`/devices/${deviceId}/olt`),
+    enabled,
+    retry: false,
+  })
+}
+
 function invalidateOLT(qc: ReturnType<typeof useQueryClient>) {
   void qc.invalidateQueries({ queryKey: ['olts'] })
   void qc.invalidateQueries({ queryKey: ['olt-onus'] })
+  void qc.invalidateQueries({ queryKey: ['olt-registered'] })
+  void qc.invalidateQueries({ queryKey: ['olt-ports'] })
+  void qc.invalidateQueries({ queryKey: ['device-olt'] })
+  void qc.invalidateQueries({ queryKey: ['device-diagnosis'] })
 }
 
 export function useCreateOLT() {

@@ -169,6 +169,18 @@ export interface DeviceDiagnosis {
   inform_interval_seconds: number | null
   // Nama parameter lengkap untuk membaca interval Inform (sesuai model data TR-098/TR-181); kosong bila model data belum diketahui.
   inform_interval_parameter: string
+  // Bukti dari sisi OLT; null bila tak ada (tenant tanpa OLT, ONU tak ditemukan, atau inventaris tidak aktif).
+  olt: {
+    olt_name: string
+    pon_port: string
+    onu_index: string | null
+    state: OLTONUState
+    vendor_state: string | null
+    rx_power_dbm: number | null
+    last_seen_at: string
+    last_state_change_at: string
+    olt_polled_at: string | null
+  } | null
   offline_threshold_seconds: number
   findings: DiagnosisFinding[]
   actions: DiagnosisAction[]
@@ -623,6 +635,18 @@ export interface OLTONU {
   resolved_at: string | null
 }
 
+// Keadaan ONU menurut OLT, dinormalisasi driver; UNKNOWN = tak terpetakan (tidak ditebak).
+export type OLTONUState = 'ONLINE' | 'OFFLINE' | 'LOS' | 'DYING_GASP' | 'UNKNOWN'
+
+export interface OLTRegisteredSummary {
+  seen: number
+  new: number
+  removed: number
+  state_changed: number
+  skipped: number
+  by_state: Record<string, number>
+}
+
 export interface OLTPollSummary {
   seen: number
   new: number
@@ -630,6 +654,52 @@ export interface OLTPollSummary {
   resolved: number
   skipped: number
   queue_length: number
+  // Ada bila driver OLT mendukung pembacaan ONU terdaftar.
+  registered?: OLTRegisteredSummary
+}
+
+// GET /olts/:uuid/registered-onus: ONU terdaftar di OLT. device_id/device_status = tautan ke perangkat ACS (serial + tenant sama); null = tak ada.
+export interface RegisteredONU {
+  id: string
+  olt_id: string
+  olt_name: string
+  tenant_id: number
+  pon_port: string
+  onu_index: string | null
+  serial_number: string
+  onu_type: string | null
+  state: OLTONUState
+  vendor_state: string | null
+  // Daya terima SISI OLT (dBm); berbeda dari redaman yang dilaporkan ONT lewat TR-069.
+  rx_power_dbm: number | null
+  first_seen_at: string
+  last_seen_at: string
+  last_state_change_at: string
+  device_id: number | null
+  device_status: string | null
+  olt_last_poll_at: string | null
+}
+
+// GET /olts/:uuid/ports: ringkasan per port PON (diturunkan dari ONU terdaftar; bukan kontrol port).
+export interface PONPortSummary {
+  pon_port: string
+  total: number
+  online: number
+  offline: number
+  los: number
+  dying_gasp: number
+  unknown: number
+  linked: number
+  min_rx_dbm: number | null
+  avg_rx_dbm: number | null
+  last_seen_at: string | null
+}
+
+// GET /devices/:id/olt
+export interface DeviceOLT {
+  linked: boolean
+  onu: RegisteredONU | null
+  tenant_has_olt: boolean
 }
 
 // Virtual parameter: nilai turunan dari parameter perangkat lewat ekspresi deklaratif (GET /virtual-parameters).

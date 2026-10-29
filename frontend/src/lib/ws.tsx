@@ -60,6 +60,13 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
           } else if (data.type === 'NOTIFICATION') {
              // Notifikasi persisten baru untuk pengguna ini: NotificationProvider menyegarkan daftar & menampilkan toast.
              window.dispatchEvent(new CustomEvent('acs:notification', { detail: data.payload }))
+          } else if (data.type === 'ONU_STATE_CHANGED') {
+             // Polling OLT mendapati keadaan ONU berubah: segarkan inventaris, ringkasan port, posisi perangkat, dan diagnosis (bukti OLT-nya berubah).
+             queryClient.invalidateQueries({ queryKey: ['olt-registered'] })
+             queryClient.invalidateQueries({ queryKey: ['olt-ports'] })
+             queryClient.invalidateQueries({ queryKey: ['device-olt'] })
+             queryClient.invalidateQueries({ queryKey: ['device-diagnosis'] })
+             queryClient.invalidateQueries({ queryKey: ['olts'] })
           } else if (data.type === 'DEVICE_ONLINE' || data.type === 'DEVICE_OFFLINE') {
              // Status perangkat berubah: segarkan daftar, peta, ringkasan, dan (bila terbuka) detail + diagnosisnya.
              queryClient.invalidateQueries({ queryKey: ['devices'] })

@@ -97,7 +97,7 @@ export function DeviceDiagnosisCard({
         <div className="space-y-4 px-5 py-4">
           <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{data.summary}</p>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Diam {formatDurationSeconds(data.silent_seconds)} · ambang offline {formatDurationSeconds(data.offline_threshold_seconds)} · interval Inform{' '}
+            {data.silent_seconds == null ? 'Belum pernah Inform' : `Diam ${formatDurationSeconds(data.silent_seconds)}`} · ambang offline {formatDurationSeconds(data.offline_threshold_seconds)} · interval Inform{' '}
             {data.inform_interval_seconds ? formatDurationSeconds(data.inform_interval_seconds) : 'belum diketahui'}
           </p>
 

@@ -16,6 +16,7 @@ const DIAG: DeviceDiagnosis = {
   summary: 'Dugaan utama: Redaman optik terakhir kritis. RX -29.1 dBm pada 2026-10-29 08:00 UTC.',
   last_inform_at: '2026-10-29T08:00:00Z', silent_seconds: 3 * 3600 + 20 * 60, inform_interval_seconds: null,
   inform_interval_parameter: 'InternetGatewayDevice.ManagementServer.PeriodicInformInterval',
+  olt: null,
   offline_threshold_seconds: 900,
   findings: [
     { code: 'OPTICAL_BAD', severity: 'critical', title: 'Redaman optik terakhir kritis', evidence: 'RX -29.1 dBm pada 2026-10-29 08:00 UTC.', hint: 'Bersihkan konektor.' },
@@ -57,6 +58,18 @@ describe('DeviceDiagnosisCard', () => {
     expect(screen.getByText('Saran: Bersihkan konektor.')).toBeTruthy()
     expect(screen.getByText(/Diam 3 jam 20 menit · ambang offline 15 menit · interval Inform belum diketahui/)).toBeTruthy()
     expect(screen.getByText(DIAG.limits)).toBeTruthy()
+  })
+
+  it('perangkat yang belum pernah Inform: menulis "Belum pernah Inform", bukan "Diam -"', async () => {
+    login(['NOC'])
+    mockFetch((r) =>
+      r.url.includes('/diagnosis')
+        ? { json: { ...DIAG, verdict: 'NEVER_CONNECTED', silent_seconds: null, last_inform_at: null, summary: 'Perangkat belum pernah terhubung ke ACS.' } }
+        : undefined,
+    )
+    renderCard('UNREGISTERED', true)
+    expect(await screen.findByText(/Belum pernah Inform · ambang offline 15 menit/)).toBeTruthy()
+    expect(screen.queryByText(/Diam -/)).toBeNull()
   })
 
   it('perangkat online: tidak memuat apa pun sampai operator menekan "Periksa koneksi"', async () => {

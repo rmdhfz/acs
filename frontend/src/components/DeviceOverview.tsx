@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, ExternalLink, ListChecks, MapPin, Notebook
 import { AssignVendorModal } from './AssignVendorModal'
 import { CopyButton } from './CopyButton'
 import { DeviceDiagnosisCard } from './DeviceDiagnosisCard'
+import { DeviceOltCard } from './DeviceOltCard'
 import { formatDateTime, formatRelativeTime } from '../lib/format'
 import { useWakeDevice } from '../lib/wake'
 import type { Device } from '../lib/types'
@@ -100,6 +101,8 @@ export function DeviceOverview({
       </div>
 
       <DeviceDiagnosisCard device={device} statusCode={statusCode} canAct={canEdit} onEdit={onEdit} onGoTo={onGoTo} />
+
+      <DeviceOltCard deviceId={device.id} />
 
       {!hasCr && (
         <div role="status" className="flex flex-wrap items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">

@@ -7,6 +7,7 @@ import { useConfirm } from '../lib/confirm'
 import { ApiError } from '../lib/api'
 import { LIMITS } from '../lib/limits'
 import { EmptyState } from '../components/EmptyState'
+import { OltInventory } from '../components/OltInventory'
 import { Modal } from '../components/Modal'
 import { StatusBadge } from '../components/StatusBadge'
 import {
@@ -246,6 +247,9 @@ export function OltsPage() {
           </div>
         )}
       </div>
+
+      {/* ---- ONU terdaftar & port PON (keadaan menurut OLT) ---- */}
+      {olts.length > 0 && <OltInventory olts={olts} />}
 
       {/* ---- Antrean ONU belum terdaftar ---- */}
       <h2 className="mb-3 text-base font-semibold text-slate-900 dark:text-slate-100">ONU belum terdaftar</h2>
