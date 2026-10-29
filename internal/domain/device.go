@@ -61,6 +61,8 @@ type DeviceFilter struct {
 	TagID        *uint64 // hanya device yang punya tag ini (device_tags, migrations/0019)
 	// OpticalLevel menyaring berdasarkan RX terakhir (kosong = semua): OpticalOK/Warn/Bad/Unknown.
 	OpticalLevel string
+	// HasLocation — nil = tanpa saring; true = hanya yang punya koordinat lengkap; false = yang belum punya (lintang ATAU bujur kosong).
+	HasLocation *bool
 	// NoVendor — hanya device yang vendornya belum terpetakan (vendor_id NULL, tampil "Belum dikenal").
 	NoVendor bool
 	// Params: kondisi pada nilai device_parameters (semua harus terpenuhi / AND). Lihat ParseParamCond.
@@ -157,6 +159,7 @@ type DeviceRepository interface {
 // StaleDevice = perangkat yang baru saja ditandai OFFLINE oleh penyapu.
 type StaleDevice struct {
 	ID           uint64     `db:"id"`
+	DeviceUUID   string     `db:"device_uuid"`
 	TenantID     *uint64    `db:"tenant_id"`
 	SerialNumber string     `db:"serial_number"`
 	LastInformAt *time.Time `db:"last_inform_at"`

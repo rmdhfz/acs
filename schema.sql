@@ -6757,3 +6757,16 @@ CREATE TABLE olt_registered_onus (
     CONSTRAINT fk_olt_reg_onus_state FOREIGN KEY (state_id) REFERENCES ref_olt_onu_state (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   COMMENT='ONU terdaftar di OLT (snapshot polling); unik per (olt, serial), tautan ke devices lewat serial + tenant';
+
+-- 0048_offline_los_notifications: webhook DEVICE_OFFLINE/ONU_STATE_CHANGED dan notifikasi DEVICE_OFFLINE/ONU_STATE_ALERT (operasi data; lihat header migrations/0048).
+INSERT INTO ref_webhook_event_types (code, name, description) VALUES
+    ('DEVICE_OFFLINE', 'Device Offline',
+        'Perangkat berpindah ke OFFLINE karena tidak Inform melewati ambang offline per perangkat (satu event per perangkat)'),
+    ('ONU_STATE_CHANGED', 'ONU State Changed',
+        'Keadaan ONU terdaftar di OLT berubah di antara dua polling (satu event per polling OLT, berisi daftar perubahan)');
+
+INSERT INTO ref_notification_types (code, name, description, severity_id, default_in_app, default_email, is_mandatory) VALUES
+    ('DEVICE_OFFLINE', 'Perangkat offline', 'Perangkat baru saja ditandai offline karena berhenti melapor (diringkas per sapuan).',
+        (SELECT id FROM ref_notification_severity WHERE code = 'WARNING'), 1, 0, 0),
+    ('ONU_STATE_ALERT', 'ONU LOS / dying gasp', 'ONU di OLT masuk keadaan LOS (kehilangan sinyal optik) atau dying gasp (kehilangan daya), diringkas per polling OLT.',
+        (SELECT id FROM ref_notification_severity WHERE code = 'WARNING'), 1, 0, 0);

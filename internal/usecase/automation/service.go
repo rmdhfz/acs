@@ -136,7 +136,11 @@ func (s *Service) validateActions(ctx context.Context, tenantID uint64, actions 
 				return err
 			}
 		case domain.AutomationActionSetParameter:
-			if !domain.ValidParamName(a.Name) {
+			if domain.HasParamWildcard(a.Name) {
+				if !domain.ValidParamPattern(a.Name) {
+					return fmt.Errorf("%w: %s: pola name tidak valid (raw path InternetGatewayDevice./Device.; '*' hanya sebagai segmen instance utuh, bukan segmen pertama/terakhir, maks %d)", domain.ErrInvalidInput, at, domain.AutomationMaxWildcards)
+				}
+			} else if !domain.ValidParamName(a.Name) {
 				return fmt.Errorf("%w: %s: name tidak valid (logical key atau raw path; huruf, angka, '.', '_', '-')", domain.ErrInvalidInput, at)
 			}
 			if blockedTarget(a.Name) {
@@ -148,7 +152,10 @@ func (s *Service) validateActions(ctx context.Context, tenantID uint64, actions 
 			if strings.TrimSpace(a.Value) == "" {
 				return fmt.Errorf("%w: %s: value wajib (ekspresi; teks literal ditulis 'dalam kutip')", domain.ErrInvalidInput, at)
 			}
-			if err := s.checkExpr(at+" value", a.Value); err != nil {
+			if err := checkWildcardRefs(at, a.Value, domain.ParamWildcardCount(a.Name)); err != nil {
+				return err
+			}
+			if err := s.checkExpr(at+" value", neutralizeWildcards(a.Value)); err != nil {
 				return err
 			}
 			if len(a.Names) > 0 || a.TagID != nil {
@@ -192,10 +199,16 @@ func (s *Service) validateActions(ctx context.Context, tenantID uint64, actions 
 	return nil
 }
 
+// countSetParams = bobot anggaran set_parameter: aksi biasa 1, aksi berwildcard sebesar instance maksimumnya (itulah beban terburuknya per Inform).
 func countSetParams(actions []domain.AutomationAction) int {
 	n := 0
 	for _, a := range actions {
-		if a.Type == domain.AutomationActionSetParameter {
+		if a.Type != domain.AutomationActionSetParameter {
+			continue
+		}
+		if domain.HasParamWildcard(a.Name) {
+			n += domain.AutomationMaxWildcardInstances
+		} else {
 			n++
 		}
 	}
@@ -230,6 +243,9 @@ func (s *Service) validateCondition(cond string) error {
 	}
 	if len([]rune(cond)) > domain.AutomationConditionMaxLen {
 		return fmt.Errorf("%w: condition maksimal %d karakter", domain.ErrInvalidInput, domain.AutomationConditionMaxLen)
+	}
+	if refs := wildcardRefs(cond); len(refs) > 0 {
+		return fmt.Errorf("%w: condition tidak mendukung wildcard '*' (%s); gunakan wildcard pada nama target set_parameter — aksi yang sudah sesuai tidak dikerjakan ulang", domain.ErrInvalidInput, refs[0])
 	}
 	return s.checkExpr("condition", cond)
 }
@@ -611,22 +627,21 @@ func (s *Service) resolve(ctx context.Context, dev *domain.Device, pc *planCtx, 
 	return path, err
 }
 
-// preload meresolusi semua target set_parameter dari aturan yang jatuh tempo lalu memuat nilai saat ini dalam satu query.
-func (s *Service) preload(ctx context.Context, dev *domain.Device, pc *planCtx, rules []*domain.AutomationRule) error {
+// preload meresolusi semua target set_parameter dari aksi aturan yang jatuh tempo (wildcard sudah diekspansi) lalu memuat nilai saat ini
+// dalam satu query.
+func (s *Service) preload(ctx context.Context, dev *domain.Device, pc *planCtx, actions []domain.AutomationAction) error {
 	var paths []string
-	for _, r := range rules {
-		for _, a := range r.Actions {
-			if a.Type != domain.AutomationActionSetParameter || blockedTarget(a.Name) {
-				continue
-			}
-			p, err := s.resolve(ctx, dev, pc, a.Name)
-			if err != nil || blockedTarget(p) {
-				continue
-			}
-			if _, loaded := pc.cur[p]; !loaded {
-				pc.cur[p] = nil
-				paths = append(paths, p)
-			}
+	for _, a := range actions {
+		if a.Type != domain.AutomationActionSetParameter || blockedTarget(a.Name) {
+			continue
+		}
+		p, err := s.resolve(ctx, dev, pc, a.Name)
+		if err != nil || blockedTarget(p) {
+			continue
+		}
+		if _, loaded := pc.cur[p]; !loaded {
+			pc.cur[p] = nil
+			paths = append(paths, p)
 		}
 	}
 	if len(paths) == 0 {
@@ -932,19 +947,57 @@ func (s *Service) Evaluate(ctx context.Context, dev *domain.Device, events []str
 
 	// Lintasan 2: resolusi target + nilai saat ini untuk SEMUA aturan jatuh tempo dalam satu query, lalu rencanakan & eksekusi.
 	pc := newPlanCtx()
-	dueRules := make([]*domain.AutomationRule, len(dues))
+	// Aksi berwildcard diekspansi per instance (hanya untuk aturan jatuh tempo; tanpa aksi berwildcard = nol query tambahan), lalu nilai
+	// rujukan yang baru muncul akibat ekspansi dimuat dalam satu query tambahan.
+	expanded := make([][]domain.AutomationAction, len(dues))
+	notes := make([][]step, len(dues))
+	var allActions []domain.AutomationAction
+	var more []string
 	for i, d := range dues {
-		dueRules[i] = d.rule
-	}
-	if err := s.preload(ctx, dev, pc, dueRules); err != nil {
-		return err
-	}
-	for _, d := range dues {
-		rule, st := d.rule, d.st
-		steps, err := s.plan(ctx, dev, rule.Actions, get, pc)
+		acts, ns, err := s.expandWildcards(ctx, dev, d.rule.Actions)
 		if err != nil {
 			return err
 		}
+		expanded[i], notes[i] = acts, ns
+		allActions = append(allActions, acts...)
+		if hasWildcardAction(d.rule.Actions) {
+			for _, a := range acts {
+				if a.Type != domain.AutomationActionSetParameter {
+					continue
+				}
+				if e, err := s.parse(a.Value); err == nil {
+					for _, ref := range e.Refs() {
+						if !vexpr.IsContextRef(ref) && !seen[ref] {
+							seen[ref] = true
+							more = append(more, ref)
+						}
+					}
+				}
+			}
+		}
+	}
+	if len(more) > 0 {
+		m, err := s.params.ValuesFor(ctx, []uint64{dev.ID}, more)
+		if err != nil {
+			return err
+		}
+		if values == nil {
+			values = map[string]string{}
+		}
+		for k, v := range m[dev.ID] {
+			values[k] = v
+		}
+	}
+	if err := s.preload(ctx, dev, pc, allActions); err != nil {
+		return err
+	}
+	for i, d := range dues {
+		rule, st := d.rule, d.st
+		steps, err := s.plan(ctx, dev, expanded[i], get, pc)
+		if err != nil {
+			return err
+		}
+		steps = append(steps, notes[i]...)
 		if !anyChange(steps) {
 			// Kondisi benar tetapi perangkat sudah sesuai target (konvergen): tidak ada yang dikerjakan; hitungan berturut direset.
 			if st.ConsecutiveFires > 0 {
@@ -1051,8 +1104,13 @@ func (s *Service) Test(ctx context.Context, actor domain.Actor, in TestInput, de
 		cond, _ = s.parse(strings.TrimSpace(in.Condition))
 		refs = append(refs, cond.Refs()...)
 	}
+	// aksi berwildcard diekspansi per instance (nama konkret + nilai terikat) sebelum rujukannya dibaca; yang dilewati tampil sebagai langkah
+	actions, notes, err := s.expandWildcards(ctx, dev, in.Actions)
+	if err != nil {
+		return nil, err
+	}
 	// rujukan dari nilai aksi juga ditampilkan agar penulis aturan melihat sumber nilai
-	for _, a := range in.Actions {
+	for _, a := range actions {
 		if a.Type == domain.AutomationActionSetParameter {
 			if e, perr := s.parse(a.Value); perr == nil {
 				refs = append(refs, e.Refs()...)
@@ -1096,10 +1154,11 @@ func (s *Service) Test(ctx context.Context, actor domain.Actor, in TestInput, de
 		res.Refs = append(res.Refs, r)
 	}
 	res.Matched = cond == nil || cond.Eval(get).Truthy()
-	steps, err := s.plan(ctx, dev, in.Actions, get, newPlanCtx())
+	steps, err := s.plan(ctx, dev, actions, get, newPlanCtx())
 	if err != nil {
 		return nil, err
 	}
+	steps = append(steps, notes...)
 	for _, st := range steps {
 		ts := TestStep{Type: st.Action.Type, Detail: st.describe(), Path: st.Path, Current: st.Current, Change: st.Change, Skip: st.Skip}
 		if st.Action.Type == domain.AutomationActionSetParameter && st.Path != "" {

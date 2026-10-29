@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -125,6 +126,12 @@ func (r *oltRepository) ListRegisteredONUs(ctx context.Context, f domain.Registe
 		where = append(where, "n.state_id = ?")
 		args = append(args, *f.StateID)
 	}
+	if f.ProblemOnly {
+		where = append(where, "s.code IN (?, ?, ?)")
+		for _, c := range domain.ONUProblemStates {
+			args = append(args, c)
+		}
+	}
 	if f.Search != "" {
 		like := "%" + likeEscape(f.Search) + "%"
 		where = append(where, "(n.serial_number LIKE ? OR n.pon_port LIKE ?)")
@@ -136,11 +143,19 @@ func (r *oltRepository) ListRegisteredONUs(ctx context.Context, f domain.Registe
 		return nil, 0, translateErr(err)
 	}
 	rows := []domain.RegisteredONU{}
-	// Urutan stabil untuk paginasi: port, nomor ONU (numerik bila memungkinkan), serial.
+	// Urutan stabil untuk paginasi: (opsional keparahan keadaan dulu,) port, nomor ONU (numerik bila memungkinkan), serial.
+	order := ` ORDER BY n.pon_port, CAST(n.onu_index AS UNSIGNED), n.serial_number`
+	if f.SortSeverity {
+		sev := "CASE s.code"
+		for i, c := range domain.ONUSeverityOrder {
+			sev += fmt.Sprintf(" WHEN '%s' THEN %d", c, i) // konstanta kode dari domain (bukan masukan pengguna)
+		}
+		sev += " ELSE 99 END"
+		order = ` ORDER BY ` + sev + `, n.pon_port, CAST(n.onu_index AS UNSIGNED), n.serial_number`
+	}
 	args = append(args, p.Limit(), p.Offset())
 	if err := r.db.SelectContext(ctx, &rows,
-		`SELECT `+regCols+regLinkCols+regFrom+regLinkFrom+`WHERE `+whereSQL+
-			` ORDER BY n.pon_port, CAST(n.onu_index AS UNSIGNED), n.serial_number LIMIT ? OFFSET ?`, args...); err != nil {
+		`SELECT `+regCols+regLinkCols+regFrom+regLinkFrom+`WHERE `+whereSQL+order+` LIMIT ? OFFSET ?`, args...); err != nil {
 		return nil, 0, translateErr(err)
 	}
 	return rows, total, nil

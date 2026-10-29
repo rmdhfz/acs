@@ -26,6 +26,10 @@ const (
 	NotifAnnouncement       = "ANNOUNCEMENT"
 	// Redaman optik perangkat melewati ambang waspada/kritis (migrations/0036).
 	NotifOpticalAlert = "OPTICAL_ALERT"
+	// Perangkat baru saja ditandai OFFLINE oleh penyapu dan ONU di OLT masuk LOS/dying gasp (migrations/0048). Keduanya DIRINGKAS per
+	// tenant/OLT per sapuan (bukan satu notifikasi per perangkat) supaya pemadaman massal tidak membanjiri kotak masuk.
+	NotifDeviceOffline = "DEVICE_OFFLINE"
+	NotifONUStateAlert = "ONU_STATE_ALERT"
 	// Alert infrastruktur dari Prometheus/Alertmanager (migrations/0045); audiens bawaan SUPERADMIN.
 	NotifPlatformAlert = "PLATFORM_ALERT"
 	// Langganan SaaS (migrations/0032).

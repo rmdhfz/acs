@@ -54,6 +54,14 @@ func deviceFilterFromQuery(c *echo.Context) (domain.DeviceFilter, error) {
 	if f.OpticalLevel != "" && !domain.ValidOpticalLevel(f.OpticalLevel) {
 		return f, echo.NewHTTPError(http.StatusBadRequest, "optical_level harus ok, warn, bad, atau unknown")
 	}
+	switch v := c.QueryParam("has_location"); v {
+	case "":
+	case "true", "false":
+		b := v == "true"
+		f.HasLocation = &b
+	default:
+		return f, echo.NewHTTPError(http.StatusBadRequest, "has_location harus true atau false")
+	}
 	if err := checkMaxLen(lenRule{"serial_number", f.SerialNumber, 128}); err != nil {
 		return f, err
 	}

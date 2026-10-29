@@ -313,6 +313,10 @@ func (r *Router) Register(e *echo.Echo) {
 	// NBI kompatibel-sebagian GenieACS (hanya baca): query/projection/sort/skip/limit diterjemahkan ke query perangkat yang sama,
 	// jadi scope tenant/RBAC identik dengan GET /devices.
 	authed.GET("/nbi/devices", r.nbiListDevices)
+	// NBI tahap 2: buat/ulang/hapus tugas. RBAC = POST /tasks (NOC: tipe baca/ringan; ADMIN: semua yang didukung); id = UUID publik.
+	authed.POST("/nbi/devices/:id/tasks", r.nbiCreateTask, RequireRoles(adminOrNOC...))
+	authed.POST("/nbi/tasks/:id/retry", r.nbiRetryTask, RequireRoles(adminOrNOC...))
+	authed.DELETE("/nbi/tasks/:id", r.nbiDeleteTask, RequireRoles(adminOrNOC...))
 	// Peta perangkat: rute statis didaftarkan sebelum /devices/:id. Baca untuk semua peran staf (scope tenant di usecase).
 	authed.GET("/devices/map", r.deviceMap)
 	if r.Troubleshoot != nil {

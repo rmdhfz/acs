@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -125,9 +126,29 @@ func (f *fakeInv) ListRegisteredONUs(_ context.Context, fl domain.RegisteredONUF
 		if fl.Search != "" && !strings.Contains(strings.ToUpper(j.SerialNumber+" "+j.PonPort), strings.ToUpper(fl.Search)) {
 			continue
 		}
+		if fl.ProblemOnly {
+			isProblem := false
+			for _, c := range domain.ONUProblemStates {
+				isProblem = isProblem || j.State == c
+			}
+			if !isProblem {
+				continue
+			}
+		}
 		out = append(out, *j)
 	}
 	sortRegistered(out)
+	if fl.SortSeverity {
+		rank := func(code string) int {
+			for i, c := range domain.ONUSeverityOrder {
+				if c == code {
+					return i
+				}
+			}
+			return 99
+		}
+		sort.SliceStable(out, func(a, b int) bool { return rank(out[a].State) < rank(out[b].State) })
+	}
 	return out, len(out), nil
 }
 
@@ -650,5 +671,53 @@ func TestPollDue(t *testing.T) {
 	}
 	if n, _ := newRig(t).svc.PollDue(context.Background(), time.Minute); n != 0 {
 		t.Errorf("tanpa inventaris tidak memoll")
+	}
+}
+
+// Filter "bermasalah saja" dan urutan keparahan diteruskan ke repositori; sort asing ditolak (400), tidak diabaikan diam-diam.
+func TestListRegistered_ProblemDanSortSeverity(t *testing.T) {
+	d := &scriptedInv{states: [][]domain.ReportedONU{{
+		{PonPort: "p/1", ONUIndex: "1", SerialNumber: "A-ONLINE", State: domain.OLTStateOnline},
+		{PonPort: "p/1", ONUIndex: "2", SerialNumber: "B-OFFLINE", State: domain.OLTStateOffline},
+		{PonPort: "p/1", ONUIndex: "3", SerialNumber: "C-LOS", State: domain.OLTStateLOS},
+		{PonPort: "p/1", ONUIndex: "4", SerialNumber: "D-UNKNOWN", State: domain.OLTStateUnknown},
+		{PonPort: "p/1", ONUIndex: "5", SerialNumber: "E-DYING", State: domain.OLTStateDyingGasp},
+	}}}
+	r := newInvRig(t, d)
+	o := mkWith(t, r, d.Code())
+	if _, err := r.svc.Poll(context.Background(), nocA, o.UUID); err != nil {
+		t.Fatal(err)
+	}
+	list := func(in RegisteredListInput) ([]string, error) {
+		in.OLTUUID = o.UUID
+		rows, _, err := r.svc.ListRegistered(context.Background(), nocA, in, domain.Pagination{})
+		var out []string
+		for _, x := range rows {
+			out = append(out, x.SerialNumber)
+		}
+		return out, err
+	}
+	eq := func(a, b []string) bool { return strings.Join(a, ",") == strings.Join(b, ",") }
+
+	if got, _ := list(RegisteredListInput{Problem: true}); len(got) != 3 || eq(got, []string{"A-ONLINE"}) {
+		t.Errorf("problem: UNKNOWN dan ONLINE bukan masalah; dapat %v", got)
+	}
+	for _, s := range []string{"A-ONLINE", "D-UNKNOWN"} {
+		if got, _ := list(RegisteredListInput{Problem: true}); strings.Contains(strings.Join(got, ","), s) {
+			t.Errorf("%s tak boleh ikut 'bermasalah saja': %v", s, got)
+		}
+	}
+	if got, _ := list(RegisteredListInput{Sort: SortBySeverity}); !eq(got, []string{"C-LOS", "E-DYING", "B-OFFLINE", "D-UNKNOWN", "A-ONLINE"}) {
+		t.Errorf("urut keparahan = %v", got)
+	}
+	if got, _ := list(RegisteredListInput{Sort: SortBySeverity, Problem: true}); !eq(got, []string{"C-LOS", "E-DYING", "B-OFFLINE"}) {
+		t.Errorf("keparahan + bermasalah = %v", got)
+	}
+	// tanpa sort: urutan lama tidak berubah (kompatibel mundur)
+	if got, _ := list(RegisteredListInput{}); len(got) != 5 || got[0] != "A-ONLINE" {
+		t.Errorf("bawaan harus urutan port/serial, dapat %v", got)
+	}
+	if _, err := list(RegisteredListInput{Sort: "acak"}); !errors.Is(err, domain.ErrInvalidInput) {
+		t.Errorf("sort asing harus ErrInvalidInput: %v", err)
 	}
 }

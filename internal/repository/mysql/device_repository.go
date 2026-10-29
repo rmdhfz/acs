@@ -169,6 +169,13 @@ func buildDeviceWhere(f domain.DeviceFilter) (string, []interface{}, error) {
 	if f.NoVendor {
 		where = append(where, "vendor_id IS NULL")
 	}
+	if f.HasLocation != nil {
+		if *f.HasLocation {
+			where = append(where, "(latitude IS NOT NULL AND longitude IS NOT NULL)")
+		} else {
+			where = append(where, "(latitude IS NULL OR longitude IS NULL)")
+		}
+	}
 	if f.OpticalLevel != "" {
 		// RX dari pembacaan terakhir (urutan sama dengan ringkasan daftar); tanpa pembacaan/RX NULL = unknown.
 		const rx = "(SELECT m.rx_power_dbm FROM device_optical_metrics m WHERE m.device_id = devices.id ORDER BY m.recorded_at DESC, m.id DESC LIMIT 1)"
@@ -407,7 +414,7 @@ func (r *deviceRepository) MarkStaleOffline(ctx context.Context, offlineStatusID
 
 	var stale []domain.StaleDevice
 	if err := tx.SelectContext(ctx, &stale,
-		`SELECT id, tenant_id, serial_number, last_inform_at FROM devices
+		`SELECT id, device_uuid, tenant_id, serial_number, last_inform_at FROM devices
 		 WHERE is_deleted = 0 AND device_status_id <> ? AND last_inform_at IS NOT NULL
 		   AND TIMESTAMPDIFF(SECOND, last_inform_at, ?) >
 		       GREATEST(?, LEAST(?, CEIL(? * COALESCE(inform_interval_seconds, 0))))
@@ -648,6 +655,23 @@ func (r *deviceParameterRepository) ListByDevice(ctx context.Context, deviceID u
 		`SELECT * FROM device_parameters WHERE device_id = ? AND parameter_name LIKE ? ORDER BY parameter_name`,
 		deviceID, likeEscape(prefix)+"%")
 	return rows, translateErr(err)
+}
+
+// CandidatePaths memenuhi domain.DeviceParameterPathLister: tiap '*' pada pola menjadi '%' (LIKE), bagian literal di-escape. Hasil adalah superset
+// (LIKE '%' juga melahap titik); penyaringan ketat '*' = satu segmen angka dilakukan usecase lewat domain.FilterParamPattern.
+func (r *deviceParameterRepository) CandidatePaths(ctx context.Context, deviceID uint64, pattern string, limit int) ([]string, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
+	parts := strings.Split(pattern, "*")
+	for i, p := range parts {
+		parts[i] = likeEscape(p)
+	}
+	var names []string
+	err := r.db.SelectContext(ctx, &names,
+		`SELECT parameter_name FROM device_parameters WHERE device_id = ? AND parameter_name LIKE ? ORDER BY parameter_name LIMIT ?`,
+		deviceID, strings.Join(parts, "%"), limit)
+	return names, translateErr(err)
 }
 
 func (r *deviceParameterRepository) Get(ctx context.Context, deviceID uint64, name string) (*domain.DeviceParameter, error) {

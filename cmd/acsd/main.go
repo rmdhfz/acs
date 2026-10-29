@@ -261,7 +261,7 @@ func main() {
 	fileSvc := file.NewService(fileRepo, objStorage, activityLogRepo).WithStorageQuota(tenantStorageQuotaRepo)
 	tagSvc := tag.NewService(tagRepo, activityLogRepo)
 	presetSvc := preset.NewService(presetRepo, activityLogRepo)
-	selfServiceSvc := selfservice.NewService(userDeviceRepo, deviceRepo, refRepo, taskSvc, activityLogRepo).WithUsers(userRepo)
+	selfServiceSvc := selfservice.NewService(userDeviceRepo, deviceRepo, refRepo, taskSvc, activityLogRepo).WithUsers(userRepo).WithDiagnoser(troubleshootSvc) // diagnosis versi pelanggan (daftar putih, tanpa data internal)
 
 	// ---- Notifikasi persisten (in-app + email + push WebSocket per pengguna), migrations/0030 ----
 	// Satu notifSvc dipasang ke service pemicu lewat domain.Notifier (nil-safe; kegagalan notifikasi tidak
@@ -274,7 +274,8 @@ func main() {
 	authSvc.WithNotifier(notifSvc)
 	iamSvc.WithNotifier(notifSvc)
 	signupSvc.WithNotifier(notifSvc)
-	deviceSvc.WithNotifier(notifSvc)
+	deviceSvc.WithNotifier(notifSvc).WithWebhooks(webhookSvc) // DEVICE_OFFLINE: notifikasi ringkasan + webhook per perangkat
+	oltSvc.WithNotifier(notifSvc).WithWebhooks(webhookSvc)    // ONU_STATE_ALERT (LOS/dying gasp) + webhook ONU_STATE_CHANGED
 	deviceSvc.WithFleetInsights(mysql.NewFleetInsightsRepository(db))
 	sessionSvc.WithNotifier(notifSvc)
 	firmwareSvc.WithNotifier(notifSvc)

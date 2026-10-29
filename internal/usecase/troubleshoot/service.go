@@ -63,6 +63,13 @@ func (s *Service) Diagnose(ctx context.Context, actor domain.Actor, deviceID uin
 	if err != nil {
 		return nil, err
 	}
+	return s.DiagnoseDevice(ctx, dev)
+}
+
+// DiagnoseDevice = Diagnose untuk perangkat yang SUDAH diautorisasi pemanggil (mis. portal pelanggan setelah cek kepemilikan akun<->perangkat,
+// yang tidak berbasis scope tenant). Pemanggil wajib menyaring hasilnya sebelum sampai ke pengguna non-staf: diagnosis memuat nilai internal.
+func (s *Service) DiagnoseDevice(ctx context.Context, dev *domain.Device) (*domain.DeviceDiagnosis, error) {
+	deviceID := dev.ID
 	ev := Evidence{Now: s.now(), Device: *dev, MinThreshold: s.minThreshold}
 	if ref, err := s.refs.GetByID(ctx, domain.RefTableDeviceStatus, dev.DeviceStatusID); err == nil {
 		ev.StatusCode = ref.Code

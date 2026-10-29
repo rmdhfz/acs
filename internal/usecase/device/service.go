@@ -94,7 +94,8 @@ type Service struct {
 	tenants domain.TenantRepository
 	quota   domain.TenantQuotaRepository // opsional (WithQuota): batas perangkat per tenant
 
-	notifier  domain.Notifier                // opsional (WithNotifier): notifikasi DEVICE_LIMIT_REACHED
+	notifier  domain.Notifier                // opsional (WithNotifier): notifikasi DEVICE_LIMIT_REACHED dan DEVICE_OFFLINE
+	webhooks  domain.WebhookEnqueuer         // opsional (WithWebhooks): webhook DEVICE_OFFLINE
 	publisher domain.EventPublisher          // opsional (WithPublisher): siaran realtime DEVICE_OFFLINE
 	mapReader domain.DeviceMapReader         // opsional (WithMap): titik peta perangkat
 	fleet     domain.FleetInsightsRepository // opsional (WithFleetInsights): wawasan armada dashboard
@@ -171,6 +172,20 @@ func (s *Service) Get(ctx context.Context, actor domain.Actor, id uint64) (*doma
 	s.backfillCRURL(ctx, d)
 	d.CRCredentialsSet = d.ConnectionRequestUsername != nil && *d.ConnectionRequestUsername != "" && len(d.ConnectionRequestPasswordEnc) > 0
 	return d, nil
+}
+
+// GetByUUID = Get lewat identifier publik (device_uuid), dipakai NBI. Perangkat tenant lain dikembalikan sebagai ErrNotFound (bukan
+// ErrForbidden) supaya UUID tidak dapat dipakai untuk menguji keberadaan perangkat milik tenant lain.
+func (s *Service) GetByUUID(ctx context.Context, actor domain.Actor, uuid string) (*domain.Device, error) {
+	d, err := s.devices.GetByUUID(ctx, uuid)
+	if err != nil {
+		return nil, err
+	}
+	dev, err := s.Get(ctx, actor, d.ID)
+	if errors.Is(err, domain.ErrForbidden) {
+		return nil, domain.ErrNotFound
+	}
+	return dev, err
 }
 
 // backfillCRURL mengisi connection_request_url dari parameter ManagementServer.ConnectionRequestURL yang SUDAH pernah
@@ -772,15 +787,16 @@ func (s *Service) WithPublisher(p domain.EventPublisher) *Service {
 }
 
 // MarkStaleOffline menandai OFFLINE device yang tidak Inform lagi melewati ambang per perangkat (FR-22; lihat
-// domain.OfflineThreshold: 2,5 x interval Periodic Inform yang dilaporkan perangkat, minimal minThreshold) dan menyiarkan
-// DEVICE_OFFLINE ke tenant pemiliknya. Dipanggil periodik dari goroutine di cmd/acsd — lihat TECH.md §9 (app server stateless,
+// domain.OfflineThreshold: 2,5 x interval Periodic Inform yang dilaporkan perangkat, minimal minThreshold), menyiarkan
+// DEVICE_OFFLINE ke tenant pemiliknya, lalu memberi tahu lewat webhook (per perangkat) dan notifikasi (ringkasan per tenant; offline_notify.go). Dipanggil periodik dari goroutine di cmd/acsd — lihat TECH.md §9 (app server stateless,
 // aman dijalankan dari instance manapun). Mengembalikan jumlah perangkat yang berpindah status.
 func (s *Service) MarkStaleOffline(ctx context.Context, minThreshold time.Duration) (int64, error) {
 	offlineStatus, err := s.refs.GetByCode(ctx, domain.RefTableDeviceStatus, domain.DeviceStatusOffline)
 	if err != nil {
 		return 0, err
 	}
-	moved, err := s.devices.MarkStaleOffline(ctx, offlineStatus.ID, minThreshold, time.Now())
+	now := time.Now()
+	moved, err := s.devices.MarkStaleOffline(ctx, offlineStatus.ID, minThreshold, now)
 	if err != nil {
 		return 0, err
 	}
@@ -796,6 +812,7 @@ func (s *Service) MarkStaleOffline(ctx context.Context, minThreshold time.Durati
 			})
 		}
 	}
+	s.announceOffline(ctx, moved, now)
 	return int64(len(moved)), nil
 }
 

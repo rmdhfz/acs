@@ -204,6 +204,10 @@ const (
 	WebhookEventTaskFailed           = "TASK_FAILED"
 	// Aturan otomasi memicu aksi pada perangkat (aksi webhook; migrations/0040).
 	WebhookEventAutomationTriggered = "AUTOMATION_TRIGGERED"
+	// Perangkat berpindah ke OFFLINE oleh penyapu (satu event per perangkat) dan keadaan ONU di OLT berubah (satu event per polling,
+	// berisi daftar perubahan); migrations/0048.
+	WebhookEventDeviceOffline   = "DEVICE_OFFLINE"
+	WebhookEventONUStateChanged = "ONU_STATE_CHANGED"
 )
 
 // RefRepository adalah akses generik ke tabel ref_* — menghindari 9 repository

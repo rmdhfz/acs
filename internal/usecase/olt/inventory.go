@@ -42,6 +42,18 @@ func (s *Service) WithPublisher(p domain.EventPublisher) *Service {
 	return s
 }
 
+// WithNotifier mengaktifkan notifikasi in-app ONU_STATE_ALERT saat ONU masuk LOS/dying gasp (diringkas per polling OLT).
+func (s *Service) WithNotifier(n domain.Notifier) *Service {
+	s.notifier = n
+	return s
+}
+
+// WithWebhooks mengaktifkan webhook ONU_STATE_CHANGED untuk BSS/NMS (satu event per polling yang menemukan perubahan keadaan).
+func (s *Service) WithWebhooks(w domain.WebhookEnqueuer) *Service {
+	s.webhooks = w
+	return s
+}
+
 // WithDevices mengaktifkan pencarian ONU milik sebuah perangkat (ForDevice) dengan scope tenant dari usecase perangkat.
 func (s *Service) WithDevices(d DeviceReader) *Service {
 	s.devices = d
@@ -125,16 +137,91 @@ func (s *Service) pollInventory(ctx context.Context, o *domain.OLT, drv domain.O
 		return nil, err
 	}
 	sum.Skipped = skipped
-	if len(changes) > 0 && s.publisher != nil {
+	if len(changes) > 0 {
 		shown := changes
 		if len(shown) > maxStateChangesInEvent {
 			shown = shown[:maxStateChangesInEvent]
 		}
-		s.publisher.BroadcastToTenant(o.TenantID, "ONU_STATE_CHANGED", map[string]interface{}{
+		payload := map[string]interface{}{
 			"olt_id": o.UUID, "olt_name": o.Name, "changed": len(changes), "changes": shown,
-		})
+		}
+		if s.publisher != nil {
+			s.publisher.BroadcastToTenant(o.TenantID, "ONU_STATE_CHANGED", payload)
+		}
+		s.announceStateChanges(ctx, o, changes, payload)
 	}
 	return sum, nil
+}
+
+// onuLOSCriticalCount: ONU LOS sebanyak ini (atau lebih) pada satu polling OLT lebih mirip putusnya kabel feeder/distribusi daripada
+// gangguan di rumah satu pelanggan, jadi notifikasinya CRITICAL (di bawahnya WARNING).
+const onuLOSCriticalCount = 5
+
+// maxONUsInAlert = jumlah ONU yang disebut di isi notifikasi ringkasan; selebihnya hanya dihitung.
+const maxONUsInAlert = 5
+
+// announceStateChanges memberitahu perubahan keadaan ONU di luar siaran realtime. Kegagalan tidak menggagalkan polling.
+//   - webhook ONU_STATE_CHANGED: SATU event per polling (payload sama dengan siaran WebSocket: jumlah total + maks maxStateChangesInEvent
+//     rincian, `truncated` bila terpotong). Bukan satu per ONU: OLT yang reboot dapat mengubah ribuan ONU sekaligus.
+//   - notifikasi ONU_STATE_ALERT: hanya bila ada ONU yang BARU masuk LOS atau dying gasp; diringkas per polling OLT.
+func (s *Service) announceStateChanges(ctx context.Context, o *domain.OLT, changes []StateChange, payload map[string]interface{}) {
+	tid := o.TenantID
+	if s.webhooks != nil {
+		p := make(map[string]interface{}, len(payload)+1)
+		for k, v := range payload {
+			p[k] = v
+		}
+		p["truncated"] = len(changes) > maxStateChangesInEvent
+		_ = s.webhooks.Enqueue(ctx, domain.WebhookEventONUStateChanged, &tid, p)
+	}
+	if s.notifier == nil {
+		return
+	}
+	if ev, ok := onuStateAlert(o, changes); ok {
+		_ = s.notifier.Notify(ctx, ev)
+	}
+}
+
+// onuStateAlert menyusun notifikasi ringkasan untuk ONU yang baru masuk LOS/dying gasp pada satu polling; ok=false bila tak ada.
+func onuStateAlert(o *domain.OLT, changes []StateChange) (domain.NotificationEvent, bool) {
+	var hit []StateChange
+	los := 0
+	for _, c := range changes {
+		if c.To == domain.OLTStateLOS || c.To == domain.OLTStateDyingGasp {
+			hit = append(hit, c)
+			if c.To == domain.OLTStateLOS {
+				los++
+			}
+		}
+	}
+	if len(hit) == 0 {
+		return domain.NotificationEvent{}, false
+	}
+	tid := o.TenantID
+	shown := hit
+	if len(shown) > maxONUsInAlert {
+		shown = shown[:maxONUsInAlert]
+	}
+	parts := make([]string, len(shown))
+	for i, c := range shown {
+		parts[i] = fmt.Sprintf("%s (%s, %s)", c.SerialNumber, c.PonPort, c.To)
+	}
+	body := fmt.Sprintf("OLT %s: %d ONU masuk LOS atau dying gasp: %s", o.Name, len(hit), strings.Join(parts, ", "))
+	if rest := len(hit) - len(shown); rest > 0 {
+		body += fmt.Sprintf(" dan %d lainnya", rest)
+	}
+	body += ". LOS pada banyak ONU di satu port PON biasanya berarti kabel feeder/distribusi terputus; dying gasp berarti ONU kehilangan daya."
+	severity := domain.NotificationSeverityWarning
+	if los >= onuLOSCriticalCount {
+		severity = domain.NotificationSeverityCritical
+	}
+	return domain.NotificationEvent{
+		TypeCode: domain.NotifONUStateAlert, TenantID: &tid, SeverityOverride: severity,
+		Title: fmt.Sprintf("%d ONU LOS/dying gasp di %s", len(hit), o.Name),
+		Body:  body,
+		// Tautan dalam: buka OLT ini dengan filter "bermasalah saja" sudah aktif (query dibaca halaman OLT).
+		Link: "/olts?olt=" + o.UUID + "&problem=1",
+	}, true
 }
 
 // reconcileInventory: serial baru → baris baru; serial yang ada → diperbarui (keadaan, RX, last_seen_at); serial yang tidak lagi dilaporkan →
@@ -217,7 +304,16 @@ type RegisteredListInput struct {
 	PonPort string
 	State   string // kode ref_olt_onu_state; kosong = semua
 	Search  string
+	// Problem: hanya ONU LOS/dying gasp/offline. Sort: "" atau "port" = port, nomor ONU, serial; "severity" = masalah dulu.
+	Problem bool
+	Sort    string
 }
+
+// Nilai Sort yang sah pada RegisteredListInput.
+const (
+	SortByPort     = "port"
+	SortBySeverity = "severity"
+)
 
 func (s *Service) requireInventory() error {
 	if s.inv == nil {
@@ -235,7 +331,11 @@ func (s *Service) ListRegistered(ctx context.Context, actor domain.Actor, in Reg
 	if err != nil {
 		return nil, 0, err
 	}
-	f := domain.RegisteredONUFilter{OLTID: &o.ID, TenantID: &o.TenantID, PonPort: in.PonPort, Search: in.Search}
+	if in.Sort != "" && in.Sort != SortByPort && in.Sort != SortBySeverity {
+		return nil, 0, fmt.Errorf("%w: sort harus port atau severity", domain.ErrInvalidInput)
+	}
+	f := domain.RegisteredONUFilter{OLTID: &o.ID, TenantID: &o.TenantID, PonPort: in.PonPort, Search: in.Search,
+		ProblemOnly: in.Problem, SortSeverity: in.Sort == SortBySeverity}
 	if in.State != "" {
 		st, err := s.refs.GetByCode(ctx, domain.RefTableOLTONUState, in.State)
 		if err != nil {

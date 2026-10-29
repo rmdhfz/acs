@@ -41,6 +41,9 @@ type Service struct {
 	inv       domain.OLTInventoryRepository
 	publisher domain.EventPublisher
 	devices   DeviceReader
+	// Opsional (WithNotifier/WithWebhooks): notifikasi ONU_STATE_ALERT (LOS/dying gasp) dan webhook ONU_STATE_CHANGED.
+	notifier domain.Notifier
+	webhooks domain.WebhookEnqueuer
 	// polling — penjaga satu polling per OLT dalam satu instance: OLT nyata membatasi sesi bersamaan, dan dua polling
 	// serentak hanya menggandakan beban. (Antar-instance tidak dijaga; rekonsiliasi idempoten.)
 	polling sync.Map

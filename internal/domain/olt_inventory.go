@@ -96,7 +96,17 @@ type RegisteredONUFilter struct {
 	PonPort  string
 	StateID  *uint64
 	Search   string // serial atau port (LIKE)
+	// ProblemOnly: hanya ONU yang bermasalah menurut OLT (OFFLINE, LOS, DYING_GASP). UNKNOWN (tak terpetakan) sengaja TIDAK dihitung masalah.
+	ProblemOnly bool
+	// SortSeverity: masalah dulu (LOS, dying gasp, offline, tak diketahui, online), lalu port/nomor ONU/serial. Kosong = port, nomor ONU, serial.
+	SortSeverity bool
 }
+
+// Kode urutan keparahan keadaan ONU untuk RegisteredONUFilter.SortSeverity (satu sumber untuk SQL dan fake uji).
+var ONUSeverityOrder = []string{OLTStateLOS, OLTStateDyingGasp, OLTStateOffline, OLTStateUnknown, OLTStateOnline}
+
+// ONUProblemStates = keadaan yang dihitung "bermasalah" oleh filter ProblemOnly.
+var ONUProblemStates = []string{OLTStateLOS, OLTStateDyingGasp, OLTStateOffline}
 
 // PONPortSummary = ringkasan satu port PON dari ONU terdaftar. Port diturunkan dari data ONU (bukan tabel port): status admin port
 // (aktif/nonaktif) tidak diketahui tanpa driver nyata, jadi tidak ditampilkan.

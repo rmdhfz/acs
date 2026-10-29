@@ -62,13 +62,14 @@ func TestDeviceRepository_MarkStaleOffline_Integration(t *testing.T) {
 
 	now := time.Now()
 	ids := make([]uint64, len(cases))
+	uuids := make([]string, len(cases))
 	for i, c := range cases {
 		oui, serial := "ABCDEF", "IT-OFF-"+uuid.NewString()[:8]
 		d := &domain.Device{DeviceUUID: uuid.NewString(), DeviceStatusID: onlineID, OUI: &oui, SerialNumber: serial}
 		if err := repo.Create(ctx, d); err != nil {
 			t.Fatalf("%s: create: %v", c.name, err)
 		}
-		ids[i] = d.ID
+		ids[i], uuids[i] = d.ID, d.DeviceUUID
 		t.Cleanup(func() { _, _ = db.Exec(`DELETE FROM devices WHERE oui = ? AND serial_number = ?`, oui, serial) })
 
 		status := onlineID
@@ -119,6 +120,12 @@ func TestDeviceRepository_MarkStaleOffline_Integration(t *testing.T) {
 	}
 	if m, ok := movedSet[ids[0]]; ok && (m.SerialNumber == "" || m.LastInformAt == nil) {
 		t.Errorf("StaleDevice harus membawa serial & last_inform_at untuk siaran: %+v", m)
+	}
+	// device_uuid = identifier publik pada webhook DEVICE_OFFLINE: harus persis yang tersimpan, bukan kosong.
+	for i, id := range ids {
+		if m, ok := movedSet[id]; ok && m.DeviceUUID != uuids[i] {
+			t.Errorf("%s: StaleDevice.DeviceUUID = %q, mau %q", cases[i].name, m.DeviceUUID, uuids[i])
+		}
 	}
 
 	// Sapuan kedua: tidak ada yang berpindah lagi dari baris uji (idempoten, tidak ada siaran ganda).

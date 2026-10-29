@@ -140,11 +140,16 @@ func TestOLTInventoryRepository_Integration(t *testing.T) {
 		f    domain.RegisteredONUFilter
 		want []string
 	}{
-		"per port":                   {domain.RegisteredONUFilter{OLTID: &oltA1.ID, PonPort: "p/2"}, []string{"zz-s21", "ZZ-S22"}},
-		"per keadaan":                {domain.RegisteredONUFilter{OLTID: &oltA1.ID, StateID: &los}, []string{"ZZ-S02"}},
-		"cari serial":                {domain.RegisteredONUFilter{OLTID: &oltA1.ID, Search: "s2"}, []string{"zz-s21", "ZZ-S22"}},
-		"tenant A tak lihat":         {domain.RegisteredONUFilter{TenantID: &tnA.ID, Search: "ZZ-S10"}, []string{"ZZ-S10"}},
-		"tenant B hanya OLT sendiri": {domain.RegisteredONUFilter{TenantID: &tnB.ID, Search: "ZZ-S"}, []string{"ZZ-S10"}},
+		"per port":                    {domain.RegisteredONUFilter{OLTID: &oltA1.ID, PonPort: "p/2"}, []string{"zz-s21", "ZZ-S22"}},
+		"per keadaan":                 {domain.RegisteredONUFilter{OLTID: &oltA1.ID, StateID: &los}, []string{"ZZ-S02"}},
+		"bermasalah saja":             {domain.RegisteredONUFilter{OLTID: &oltA1.ID, ProblemOnly: true}, []string{"ZZ-S02", "zz-s21"}},
+		"bermasalah + port":           {domain.RegisteredONUFilter{OLTID: &oltA1.ID, ProblemOnly: true, PonPort: "p/2"}, []string{"zz-s21"}},
+		"bermasalah + keadaan online": {domain.RegisteredONUFilter{OLTID: &oltA1.ID, ProblemOnly: true, StateID: ptrU64(stateID(domain.OLTStateOnline))}, []string{}},
+		"urut keparahan":              {domain.RegisteredONUFilter{OLTID: &oltA1.ID, SortSeverity: true}, []string{"ZZ-S02", "zz-s21", "ZZ-S10", "ZZ-S22"}},
+		"urut keparahan + bermasalah": {domain.RegisteredONUFilter{OLTID: &oltA1.ID, SortSeverity: true, ProblemOnly: true}, []string{"ZZ-S02", "zz-s21"}},
+		"cari serial":                 {domain.RegisteredONUFilter{OLTID: &oltA1.ID, Search: "s2"}, []string{"zz-s21", "ZZ-S22"}},
+		"tenant A tak lihat":          {domain.RegisteredONUFilter{TenantID: &tnA.ID, Search: "ZZ-S10"}, []string{"ZZ-S10"}},
+		"tenant B hanya OLT sendiri":  {domain.RegisteredONUFilter{TenantID: &tnB.ID, Search: "ZZ-S"}, []string{"ZZ-S10"}},
 	} {
 		got, _, err := inv.ListRegisteredONUs(ctx, c.f, domain.Pagination{})
 		if err != nil || !same(serials(got), c.want) {
@@ -293,3 +298,5 @@ func TestOLTInventoryRepository_Integration(t *testing.T) {
 		t.Errorf("OLT yang baru dipoll tidak boleh jatuh tempo untuk jendela 1 jam")
 	}
 }
+
+func ptrU64(v uint64) *uint64 { return &v }

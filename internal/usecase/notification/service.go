@@ -125,7 +125,7 @@ func isStaffRole(r string) bool {
 // punya bawaan (harus AudienceSelf dengan UserID eksplisit).
 func defaultAudiences(code string) []domain.NotificationAudience {
 	switch code {
-	case domain.NotifDeviceOfflineSpike, domain.NotifTaskFailures, domain.NotifOpticalAlert:
+	case domain.NotifDeviceOfflineSpike, domain.NotifTaskFailures, domain.NotifOpticalAlert, domain.NotifDeviceOffline, domain.NotifONUStateAlert:
 		return []domain.NotificationAudience{{Kind: domain.AudienceTenantRoles, Roles: []string{domain.RoleAdmin, domain.RoleNOC}}}
 	case domain.NotifRolloutPaused:
 		return []domain.NotificationAudience{{Kind: domain.AudienceTenantRoles, Roles: []string{domain.RoleAdmin}}}

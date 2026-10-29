@@ -199,9 +199,17 @@ func (r *Router) listOLTRegisteredONUs(c *echo.Context) error {
 		OLTUUID: c.Param("uuid"), PonPort: c.QueryParam("pon_port"), State: c.QueryParam("state"), Search: c.QueryParam("search"),
 	}
 	if err := checkMaxLen(lenRule{"uuid", in.OLTUUID, 36}, lenRule{"pon_port", in.PonPort, domain.ONUPortMaxLen},
-		lenRule{"state", in.State, 32}, lenRule{"search", in.Search, 255}); err != nil {
+		lenRule{"state", in.State, 32}, lenRule{"search", in.Search, 255}, lenRule{"sort", c.QueryParam("sort"), 16}); err != nil {
 		return err
 	}
+	switch c.QueryParam("problem") {
+	case "", "false":
+	case "true":
+		in.Problem = true
+	default:
+		return badRequest("problem harus true atau false")
+	}
+	in.Sort = c.QueryParam("sort")
 	rows, total, err := r.OLTs.ListRegistered(c.Request().Context(), ActorFrom(c), in, paginationFromQuery(c))
 	if err != nil {
 		return handleErr(c, err)

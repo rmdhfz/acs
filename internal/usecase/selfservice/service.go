@@ -23,6 +23,7 @@ type Service struct {
 	tasks       *task.Service
 	activity    domain.ActivityLogRepository
 	users       domain.UserRepository // opsional: penautan akun<->perangkat oleh admin (link.go)
+	diagnoser   Diagnoser             // opsional (WithDiagnoser): diagnosis versi pelanggan (diagnosis.go)
 
 	cdMu     sync.Mutex
 	cooldown map[[2]uint64]time.Time

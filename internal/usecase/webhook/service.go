@@ -1,7 +1,7 @@
 // Package webhook mengelola langganan webhook keluar (typed event) dan
 // pengirimannya ke sistem pihak ketiga (BSS/OSS/NMS) — `/goal` directive #3,
 // PRD.md §4.1. Event yang didukung: DEVICE_FAULT, PARAMETER_VALUE_CHANGE,
-// TASK_FAILED (lihat domain.WebhookEvent*).
+// TASK_FAILED, AUTOMATION_TRIGGERED, DEVICE_OFFLINE, ONU_STATE_CHANGED (lihat domain.WebhookEvent*).
 //
 // Alur:
 //   - usecase lain (session, task) memanggil Service.Enqueue (via

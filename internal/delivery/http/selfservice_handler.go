@@ -17,6 +17,7 @@ func (r *Router) mountSelfServiceRoutes(api *echo.Group) {
 	ss.GET("/devices/:id", r.getMyDevice)
 	ss.PATCH("/devices/:id/wifi", r.changeMyWiFi)
 	ss.POST("/devices/:id/reboot", r.rebootMyDevice)
+	ss.GET("/devices/:id/diagnosis", r.diagnoseMyDevice)
 }
 
 // ---- Penautan akun ENDUSER <-> perangkat (ADMIN/SUPERADMIN) ----
@@ -110,6 +111,20 @@ func (r *Router) changeMyWiFi(c *echo.Context) error {
 		return handleErr(c, err)
 	}
 	return c.JSON(http.StatusAccepted, task)
+}
+
+// diagnoseMyDevice — GET /self-service/devices/:id/diagnosis: "Internet saya bermasalah?" dalam bahasa awam. Hasil dibangun dari daftar putih
+// (usecase/selfservice/diagnosis.go), tanpa nilai internal (redaman, OLT, port, serial).
+func (r *Router) diagnoseMyDevice(c *echo.Context) error {
+	id, err := parseUint64Param(c, "id")
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "id tidak valid")
+	}
+	d, err := r.SelfService.DiagnoseMyDevice(c.Request().Context(), ActorFrom(c), id)
+	if err != nil {
+		return handleErr(c, err)
+	}
+	return c.JSON(http.StatusOK, d)
 }
 
 func (r *Router) rebootMyDevice(c *echo.Context) error {
