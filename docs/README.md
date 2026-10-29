@@ -12,6 +12,7 @@ Indeks seluruh dokumen. Path di sini dan di dokumen lain dihitung dari **root re
 | Menguji dengan ONT fisik | [`pengujian/PENGUJIAN_LAPANGAN.md`](pengujian/PENGUJIAN_LAPANGAN.md), [`pengujian/PANDUAN_PENGUJIAN_LAPANGAN.html`](pengujian/PANDUAN_PENGUJIAN_LAPANGAN.html) |
 | Menjalankan uji otomatis (e2e + simulator) | [`pengujian/PENGUJIAN_E2E.md`](pengujian/PENGUJIAN_E2E.md) |
 | Menguji fitur baru (faults, query bebas, virtual parameter, otomasi) di ONT fisik | [`pengujian/PANDUAN_UJI_ONT_FITUR_BARU.md`](pengujian/PANDUAN_UJI_ONT_FITUR_BARU.md) |
+| Mengumpulkan bukti OLT ZTE, dukungan STUN/TR-111, bukti Connection Request, dan fitur 29 Okt di perangkat nyata (skrip `field-kit` dan `mask-olt-output`) | [`pengujian/KIT_UJI_LAPANGAN.md`](pengujian/KIT_UJI_LAPANGAN.md) |
 | Benchmark vs GenieACS di server terpisah (beberapa run, median) | [`pengujian/BENCHMARK_SERVER_TERPISAH.md`](pengujian/BENCHMARK_SERVER_TERPISAH.md), hasil terakhir: [`pengujian/BENCHMARK_GENIEACS.md`](pengujian/BENCHMARK_GENIEACS.md) |
 | Tahu status kesiapan & skor | [`laporan/CHECKLIST_SAAS.md`](laporan/CHECKLIST_SAAS.md) |
 | Melihat riwayat pekerjaan | [`laporan/PROGRESS.md`](laporan/PROGRESS.md) |
