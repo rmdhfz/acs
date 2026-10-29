@@ -3734,6 +3734,130 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  /olts/{uuid}/registered-onus:
+    get:
+      operationId: listOLTRegisteredONUs
+      tags: [OLT]
+      summary: ONU yang sudah terdaftar di sebuah OLT (snapshot polling)
+      description: |
+        Diisi oleh `POST /olts/{uuid}/poll` bila driver OLT mendukung pembacaan ONU terdaftar. Keadaan (`state`) sudah DINORMALISASI driver ke kode
+        `ONLINE`, `OFFLINE`, `LOS`, `DYING_GASP`, atau `UNKNOWN` (tak terpetakan — tidak ditebak); nilai aslinya ada di `vendor_state`. Data berasal dari
+        polling terakhir (lihat `last_seen_at` dan `olt_last_poll_at`), bukan keadaan detik ini. `device_id`/`device_status` = tautan ke perangkat ACS
+        dengan serial yang sama (tak peka huruf besar/kecil) di TENANT yang sama; `null` = tak ada perangkat. Semua peran staf; non-SUPERADMIN
+        hanya OLT tenant-nya. Hanya baca: tidak ada penulisan ke OLT.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: uuid, in: path, required: true, schema: { type: string, maxLength: 36 } }
+        - { name: pon_port, in: query, description: "Filter port PON persis (format apa adanya dari OLT).", schema: { type: string, maxLength: 32 } }
+        - { name: state, in: query, description: Kode keadaan., schema: { type: string, enum: [ONLINE, OFFLINE, LOS, DYING_GASP, UNKNOWN] } }
+        - { name: search, in: query, description: Cocokkan serial atau port. Maks 255 karakter., schema: { type: string, maxLength: 255 } }
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: Daftar ONU terdaftar (urut port, nomor ONU, serial).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OLTRegisteredONUListResponse' }
+        '400':
+          description: "Keadaan tak dikenal atau masukan melebihi batas; atau inventaris ONU terdaftar tidak diaktifkan."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "OLT milik tenant lain, atau peran ENDUSER."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: OLT tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /olts/{uuid}/ports:
+    get:
+      operationId: listOLTPorts
+      tags: [OLT]
+      summary: Ringkasan per port PON dari ONU terdaftar
+      description: |
+        Port DITURUNKAN dari data ONU (bukan tabel port): jumlah ONU per keadaan, berapa yang tertaut ke perangkat ACS, RX terendah/rata-rata sisi OLT, dan
+        kapan terakhir terlihat. Status admin port (aktif/nonaktif) tidak diketahui tanpa driver nyata sehingga tidak ditampilkan; ini BUKAN kontrol port.
+        Semua peran staf; non-SUPERADMIN hanya OLT tenant-nya.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: uuid, in: path, required: true, schema: { type: string, maxLength: 36 } }
+      responses:
+        '200':
+          description: Ringkasan per port (urut nama port).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PONPortListResponse' }
+        '400':
+          description: Inventaris ONU terdaftar tidak diaktifkan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: OLT milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: OLT tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /devices/{id}/olt:
+    get:
+      operationId: deviceOLT
+      tags: [Devices]
+      summary: Posisi perangkat di jaringan OLT
+      description: |
+        Mencari ONU dengan serial yang sama di OLT aktif milik TENANT perangkat. `linked=false` dengan `tenant_has_olt=true` berarti tenant punya OLT tetapi
+        serial ini tidak ada pada polling terakhir (format serial OLT vs TR-069 bisa berbeda, ONU belum diregistrasi, atau OLT belum dipoll);
+        `tenant_has_olt=false` = tenant tanpa OLT aktif. Akses mengikuti perangkat (tenant lain `403`/`404`). Semua peran staf.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: Posisi perangkat di OLT.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceOLT' }
+        '400':
+          description: id bukan angka, atau inventaris ONU terdaftar tidak diaktifkan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Perangkat milik tenant lain, atau peran ENDUSER."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Perangkat tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   /olt-onus:
     get:
       operationId: listOLTONUs
@@ -6514,6 +6638,8 @@ paths:
         Status perangkat: `DEVICE_ONLINE` (`{device_id}`, saat perangkat Inform) dan `DEVICE_OFFLINE`
         (`{device_id, serial_number, last_inform_at}`, saat penyapu menandai perangkat offline — diam melewati ambang
         per perangkat, lihat `inform_interval_seconds` pada skema Device); keduanya hanya ke tenant pemilik perangkat.
+        `ONU_STATE_CHANGED` (`{olt_id, olt_name, changed, changes: [{serial_number, pon_port, from, to}]}`, maks 50 rincian — `changed` selalu jumlah
+        sebenarnya) disiarkan ke tenant pemilik OLT saat sebuah polling mendapati keadaan ONU terdaftar berubah (bukan untuk ONU baru/hilang).
       security: [{ bearerAuth: [] }]
       responses:
         '101':
@@ -9489,6 +9615,86 @@ components:
         notes: { type: string, maxLength: 255 }
         is_active: { type: boolean }
 
+    OLTRegisteredONU:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        olt_id: { type: string, format: uuid, description: "UUID OLT pemilik." }
+        olt_name: { type: string }
+        tenant_id: { type: integer, format: int64 }
+        pon_port: { type: string, description: "Penunjuk port apa adanya dari OLT (format spesifik vendor)." }
+        onu_index: { type: string, nullable: true, description: "Nomor ONU pada port itu menurut OLT." }
+        serial_number: { type: string, description: "Apa adanya dari OLT; dicocokkan tanpa peka huruf besar/kecil dengan serial perangkat ACS." }
+        onu_type: { type: string, nullable: true }
+        state: { type: string, enum: [ONLINE, OFFLINE, LOS, DYING_GASP, UNKNOWN], description: "Keadaan ternormalisasi; UNKNOWN = tak terpetakan oleh driver." }
+        vendor_state: { type: string, nullable: true, description: "Keadaan asli dari OLT sebelum dinormalisasi (tak tepercaya, dipangkas)." }
+        rx_power_dbm: { type: number, format: double, nullable: true, description: "Daya terima SISI OLT (dBm); berbeda dari redaman yang dilaporkan ONT lewat TR-069." }
+        first_seen_at: { type: string, format: date-time }
+        last_seen_at: { type: string, format: date-time, description: "Polling terakhir yang memuat ONU ini." }
+        last_state_change_at: { type: string, format: date-time, description: "Kapan keadaan ini mulai TERPANTAU (bukan waktu kejadian sebenarnya)." }
+        device_id: { type: integer, format: int64, nullable: true, description: "Perangkat ACS dengan serial yang sama di tenant OLT; null = tak ada." }
+        device_status: { type: string, nullable: true, description: "Kode status perangkat tertaut." }
+        olt_last_poll_at: { type: string, format: date-time, nullable: true }
+      required: [id, olt_id, olt_name, pon_port, serial_number, state, first_seen_at, last_seen_at, last_state_change_at]
+
+    OLTRegisteredONUListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/OLTRegisteredONU' }
+        total: { type: integer }
+      required: [data, total]
+
+    PONPortSummary:
+      type: object
+      properties:
+        pon_port: { type: string }
+        total: { type: integer }
+        online: { type: integer }
+        offline: { type: integer }
+        los: { type: integer }
+        dying_gasp: { type: integer }
+        unknown: { type: integer }
+        linked: { type: integer, description: "Di antara total, yang tertaut ke perangkat ACS." }
+        min_rx_dbm: { type: number, format: double, nullable: true }
+        avg_rx_dbm: { type: number, format: double, nullable: true }
+        last_seen_at: { type: string, format: date-time, nullable: true }
+      required: [pon_port, total, online, offline, los, dying_gasp, unknown, linked]
+
+    PONPortListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/PONPortSummary' }
+        total: { type: integer }
+      required: [data, total]
+
+    DeviceOLT:
+      type: object
+      properties:
+        linked: { type: boolean }
+        onu:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/OLTRegisteredONU'
+        tenant_has_olt: { type: boolean }
+      required: [linked, onu, tenant_has_olt]
+
+    OLTRegisteredSummary:
+      type: object
+      description: "Ringkasan rekonsiliasi ONU terdaftar pada satu polling."
+      properties:
+        seen: { type: integer }
+        new: { type: integer, description: "Belum pernah ada (atau sebelumnya hilang)." }
+        removed: { type: integer, description: "Sebelumnya ada, kini tak dilaporkan OLT (dihapus-lunak)." }
+        state_changed: { type: integer, description: "Keadaan berbeda dari polling sebelumnya (tidak termasuk ONU baru)." }
+        skipped: { type: integer }
+        by_state: { type: object, additionalProperties: { type: integer } }
+      required: [seen, new, removed, state_changed, skipped, by_state]
+
     OLTPollSummary:
       type: object
       properties:
@@ -9498,6 +9704,10 @@ components:
         resolved: { type: integer, description: "Sebelumnya PENDING/IGNORED, kini tidak dilaporkan lagi menjadi RESOLVED." }
         skipped: { type: integer, description: "Entri tak valid/duplikat dari perangkat yang dilewati." }
         queue_length: { type: integer, description: "Jumlah PENDING sesudah rekonsiliasi." }
+        registered:
+          allOf:
+            - $ref: '#/components/schemas/OLTRegisteredSummary'
+          description: "Ringkasan ONU terdaftar; tidak ada bila driver OLT ini tak mendukung pembacaan ONU terdaftar. Bila bagian ini gagal, polling dicatat gagal dan galatnya dikembalikan (antrean belum-terdaftar yang sudah direkonsiliasi tetap tersimpan)."
       required: [seen, new, reappeared, resolved, skipped, queue_length]
 
     OLTONU:
@@ -9811,9 +10021,23 @@ components:
         actions:
           type: array
           items: { type: string, enum: [CONNECTION_REQUEST, READ_INFORM_INTERVAL, OPEN_OPTICAL] }
-        limits: { type: string, description: "Batas diagnosis (data sisi OLT belum tersedia). Selalu ada." }
+        olt:
+          type: object
+          nullable: true
+          description: "Posisi perangkat di jaringan OLT yang dipakai sebagai bukti; null bila tak ditemukan, tenant tanpa OLT, atau inventaris tidak aktif."
+          properties:
+            olt_name: { type: string }
+            pon_port: { type: string }
+            onu_index: { type: string, nullable: true }
+            state: { type: string, enum: [ONLINE, OFFLINE, LOS, DYING_GASP, UNKNOWN] }
+            vendor_state: { type: string, nullable: true }
+            rx_power_dbm: { type: number, format: double, nullable: true }
+            last_seen_at: { type: string, format: date-time }
+            last_state_change_at: { type: string, format: date-time }
+            olt_polled_at: { type: string, format: date-time, nullable: true }
+        limits: { type: string, description: "Batas diagnosis. Tanpa bukti OLT: data sisi OLT belum dipakai. Dengan bukti OLT: keadaan OLT berasal dari polling terakhir. Selalu ada." }
         generated_at: { type: string, format: date-time }
-      required: [device_id, status, verdict, summary, inform_interval_parameter, offline_threshold_seconds, findings, actions, limits, generated_at]
+      required: [device_id, status, verdict, summary, inform_interval_parameter, offline_threshold_seconds, olt, findings, actions, limits, generated_at]
 
     DiagnosisFinding:
       type: object

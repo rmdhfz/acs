@@ -20,7 +20,7 @@ nyata dan tidak punya kuirk per-firmware. Gunanya:
 
 ---
 
-## 1. Yang Diuji (tabel memuat S1–S29 dan S37–S38; S30–S36 belum diuraikan di sini — daftar lengkap 38 skenario ada di `docs/arsitektur/PETA_KODE.md`)
+## 1. Yang Diuji (tabel memuat S1–S29 dan S37–S39; S30–S36 belum diuraikan di sini — daftar lengkap 38 skenario ada di `docs/arsitektur/PETA_KODE.md`)
 
 | # | Skenario | Yang dibuktikan |
 |---|---|---|
@@ -55,6 +55,7 @@ nyata dan tidak punya kuirk per-firmware. Gunanya:
 | S29 | Capture sesi CWMP | Saklar capture per perangkat (nyala/mati/maks 60 menit, validasi 400, RBAC & isolasi tenant); pesan SOAP dua arah terekam; **passphrase disamarkan** di daftar, detail, dan ekspor NDJSON; ACS mengirim SetParameterValues dengan `xsi:type` literal (regresi T-07); setelah dimatikan tidak ada pesan baru |
 | S37 | NBI kompatibel GenieACS | `GET /nbi/devices`: query `DeviceID.SerialNumber`, parameter (`$eq`/`$exists`) dan `_lastInform`, projection bersarang `{"_value"}`, `_id` = `device_uuid` tanpa PK/rahasia, sort naik/turun saling kebalikan, `skip`/`limit` tanpa baris terlewat/terulang, 10 masukan di luar subset (regex, `_id`, JSON rusak, skip bukan kelipatan limit, ...) → 400; tenant lain kosong, tanpa token 401, ENDUSER 403 |
 | S38 | Peta, diagnosis offline, interval Inform | `GET /devices/map`: hanya yang berkoordinat digambar, `total`/`located` jujur, `bbox` (termasuk lintas bujur 180), 7 masukan buruk 400, tenant lain kosong/401/ENDUSER 403. `GET /devices/{id}/diagnosis`: verdict konsisten dengan ambang offline (`diam > ambang`), pra-registrasi = `NEVER_CONNECTED`, akses 404/400/401/403, nama parameter interval sesuai model data (TR-098/TR-181). Interval Inform ditemukan baik dari Inform (zte) maupun lewat tugas baca (nokia, TR-181; profil simulator `OmitPeriodicInformInterval` meniru ONT nyata) |
+| S39 | OLT: ONU terdaftar | Irisan B1 lewat driver simulator: poll mengisi inventaris (5 ONU, keadaan netral ONLINE/OFFLINE/LOS/DYING_GASP), filter port/keadaan/cari + masukan buruk 400, ringkasan per port, **tautan serial↔perangkat** (huruf kecil di ACS, tanpa lintas-tenant), diagnosis memakai bukti OLT (LOS/dying gasp kritis, ONLINE-tapi-senyap, serial tak ditemukan) dan `limits` berubah, isolasi tenant (403/404, tak tertaut), VIEWER boleh baca, mode berputar (1 baru/1 berubah/1 hilang), OLT dihapus melepas tautan. Polling berkala dan siaran WebSocket diuji di unit test |
 
 Status terakhir: **24/24 PASS** (2026-10-18), termasuk run ulang penuh setelah penambahan vendor generik/OUI, revalidasi WebSocket, hitungan sesi per tenant, dan batas laju REST yang dapat diatur. Catatan jujur: seluruh skenario memakai **simulator** — bukan bukti perilaku pada firmware nyata (lihat `docs/pengujian/PENGUJIAN_LAPANGAN.md`).
 

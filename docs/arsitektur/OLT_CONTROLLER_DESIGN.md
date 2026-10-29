@@ -1,6 +1,6 @@
 # OLT Controller — Rancangan Lapisan 1 (auto-provisioning ONU di sisi OLT)
 
-Status: **irisan 1 (kerangka + simulator), read-only, tanpa data vendor nyata**. Dokumen ini adalah rencana dan batas kerja; ubah bila keputusan berubah.
+Status: **irisan 1 (kerangka + simulator) dan irisan B1 (inventaris ONU terdaftar, §10), read-only, tanpa data vendor nyata**. Dokumen ini adalah rencana dan batas kerja; ubah bila keputusan berubah.
 
 ## 1. Mengapa ada dokumen ini
 
@@ -99,12 +99,36 @@ Tidak ada yang ditulis dari ingatan, jadi irisan 2 menunggu bahan ini dari OLT l
 4. Bila SNMP dipakai: community read-only dan hasil `snmpwalk` pada cabang yang memuat ONU belum terdaftar.
 5. Perilaku sesi SSH/Telnet: prompt, paginasi (`--More--`), batas waktu, dan jumlah sesi bersamaan yang diizinkan.
 
+Tambahan untuk **ONU terdaftar** (§10; juga tempel keluarannya, jangan ringkasan):
+
+6. Keluaran perintah yang menampilkan ONU **yang sudah terdaftar**: minimal satu sampel dengan ONU berkeadaan normal, satu dengan ONU yang LOS, satu dengan dying gasp, dan satu offline. Dari sini dibaca port PON, nomor ONU, serial, dan **teks keadaan aslinya**.
+7. **Daftar lengkap nilai keadaan** yang dikenal OLT itu (termasuk yang tidak kita duga) beserta artinya, supaya pemetaan ke ONLINE/OFFLINE/LOS/DYING_GASP tidak menebak. Yang tak terpetakan tetap menjadi UNKNOWN dan nilai aslinya tampil di UI.
+8. Format **serial number** ONU di OLT dibanding serial yang dilaporkan ONT lewat TR-069 untuk ONU yang sama (mis. awalan vendor, heksa vs teks). Tautan ONU ↔ perangkat memakai kecocokan serial tak peka huruf besar/kecil; bila formatnya berbeda, normalisasi harus ditulis per driver.
+9. (Opsional) perintah daya terima sisi OLT per ONU dan status administratif port PON — hanya dipakai bila ada keluaran nyata.
+
+## 10. Irisan B1 — inventaris ONU terdaftar (kerangka + simulator)
+
+Ditambahkan 2026-10-29. **Tanpa driver vendor nyata dan tanpa penulisan ke OLT.** Tujuannya: bentuk data, tautan ke perangkat ACS, tampilan, dan bukti diagnosis sudah jadi dan teruji, sehingga driver nyata (irisan 2) tinggal memetakan keluaran perangkat ke satu struktur.
+
+- **Kemampuan opsional driver:** `domain.OLTInventoryDriver.ListRegisteredONUs` dicek lewat type assertion pada `OLTDriver`; driver yang hanya bisa membaca antrean belum-terdaftar tidak dipaksa. Driver mengembalikan `domain.ReportedONU{PonPort, ONUIndex, SerialNumber, ONUType, State, VendorState, RxPowerDBM}`.
+- **Kewajiban driver:** (1) `State` = kode `ONLINE|OFFLINE|LOS|DYING_GASP|UNKNOWN`; keadaan yang tidak yakin dipetakan **UNKNOWN**, bukan ditebak; (2) `VendorState` = teks asli dari OLT; (3) `RxPowerDBM` = nil bila OLT tidak melaporkan; (4) galat dibungkus `ErrOLTUnreachable/ErrOLTAuthFailed`, teks perangkat tidak bocor.
+- **Pembersihan di usecase (teks perangkat tak tepercaya):** serial 1..32 tanpa karakter kontrol, duplikat serial (tak peka huruf besar/kecil) dibuang, field dipangkas/entri dilewati, keadaan di luar kode yang dikenal → UNKNOWN, RX di luar -80..+30 dBm dibuang, maks 20000 ONU per OLT (lebih dari itu polling **tidak diterapkan**, agar ONU di luar batas tidak dianggap hilang).
+- **Rekonsiliasi (`Poll`):** serial baru → baris baru; serial yang ada → diperbarui (`last_state_change_at` hanya maju bila keadaan berubah); serial yang tak dilaporkan lagi → dihapus-lunak, dan dihidupkan kembali bila muncul. Bila bagian ONU terdaftar gagal setelah antrean belum-terdaftar tersimpan, polling dicatat gagal dan galatnya dikembalikan (status OK tidak menyembunyikan inventaris yang basi).
+- **Realtime:** perubahan keadaan disiarkan sebagai `ONU_STATE_CHANGED` ke tenant pemilik OLT (maks 50 rincian; `changed` selalu jumlah sebenarnya). Polling berkala opsional `ACS_OLT_POLL_MINUTES` (bawaan 0 = mati), goroutine dan kunci sendiri, maks 20 OLT per menit.
+- **Tautan ke ACS:** ONU ↔ perangkat lewat serial (tak peka huruf besar/kecil) **dan tenant yang sama**; serial yang sama pada dua perangkat berbeda OUI → yang paling baru Inform. Bila format serial OLT berbeda dari TR-069 (butir 8 di §8), tautan tidak terbentuk dan UI/diagnosis menyatakannya ("tidak ditemukan di data OLT"), bukan menebak.
+- **Diagnosis memakai bukti OLT** (lihat `PETA_STATUS_DIAGNOSIS.md`): LOS dan dying gasp menjadi kesimpulan fisik; "ONU online di OLT tetapi tak terlihat di ACS" membebaskan lapisan optik; usia data selalu disebut (basi > 30 menit).
+- **Port:** ringkasan per port diturunkan dari data ONU. Status administratif port (aktif/nonaktif) **tidak diketahui** tanpa driver nyata, sehingga tidak ditampilkan; tidak ada kontrol port.
+- **Simulator (`sim`):** lima ONU di dua port dengan keadaan campuran; host `10.255.0.4` berputar (baru, berubah ONLINE→LOS, hilang, kosong, kembali) untuk menguji rekonsiliasi dan siaran. e2e S39.
+
+**Belum:** driver ZTE nyata, serial dengan format berbeda, status port, RX sisi OLT dari perangkat nyata, penulisan (authorize ONU / port) — semuanya menunggu bahan §8 dan keputusan produk.
+
 ## 9. Peta jalan
 
 | Irisan | Isi | Syarat |
 |---|---|---|
 | **1** | Kerangka, simulator, inventaris, antrean, UI | — (dokumen ini) |
 | 2 | Driver ZTE read-only: ONU belum terdaftar + `Probe`, polling periodik | Bahan §8 dari OLT lab |
+| B1 | Inventaris ONU terdaftar + tautan ke ACS + bukti diagnosis, **dengan simulator** (§10) | — (selesai 2026-10-29) |
 | 3 | Optik (RX/TX) dan status port dari sisi OLT | Irisan 2 + keluaran nyata |
 | 4 | Authorize ONU + profil, **lab-only**, dengan dry-run, persetujuan eksplisit, dan rollback | Irisan 2–3 terbukti; keputusan produk soal persetujuan |
 | 5 | Menghubungkan ONU di OLT ↔ CPE di ACS (SN ↔ serial) agar zero-touch tersambung ujung ke ujung | Data nyata tentang format SN di perangkat kita |

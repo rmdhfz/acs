@@ -4,7 +4,7 @@
 > "apa ada di mana" tanpa menjelajah ulang repo. Konteks bisnis: `docs/produk/PRD.md`; keputusan arsitektur: `docs/arsitektur/TECH.md`;
 > aturan kerja & konvensi: `CLAUDE.md`. Perbarui setelah menambah paket/endpoint/tabel/halaman (`--check` untuk memeriksa).
 
-Ringkasan: 217 operasi REST • 72 tabel • 46 migrasi (terakhir `0046_device_inform_interval`) • 38 skenario e2e.
+Ringkasan: 220 operasi REST • 74 tabel • 47 migrasi (terakhir `0047_olt_registered_onus`) • 39 skenario e2e.
 
 ## Alur & lapisan (Clean Architecture)
 `domain` (entitas + antarmuka) → `usecase/*` (aturan bisnis) → `repository/mysql` (query sqlx) / `delivery/{cwmp,http,ws,usp}` (adapter masuk).
@@ -17,7 +17,7 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | `cmd/acsbench` | 2 | Command acsbench membandingkan ACS kita dengan GenieACS memakai beban IDENTIK dari simulator CPE (internal/simcpe): fase registrasi (Inform 0 BOOTSTRAP), fase periodik (Inform 2 PERIODIC berulang), da |
 | `cmd/acsd` | 1 | Command acsd adalah entrypoint utama ACS: menjalankan endpoint CWMP (untuk CPE) dan REST API internal (untuk BSS/OSS/portal NOC) sebagai dua server terpisah dalam satu proses, sesuai TECH.md §2. |
 | `cmd/cpesim` | 1 | Command cpesim adalah CLI simulator CPE TR-069/CWMP multi-vendor (logika inti di internal/simcpe, dipakai bersama cmd/e2e). |
-| `cmd/e2e` | 30 | Command e2e menjalankan skenario end-to-end terhadap stack ACS yang benar- benar hidup (docker-compose): REST API + endpoint CWMP + MariaDB + MinIO. |
+| `cmd/e2e` | 31 | Command e2e menjalankan skenario end-to-end terhadap stack ACS yang benar- benar hidup (docker-compose): REST API + endpoint CWMP + MariaDB + MinIO. |
 | `cmd/loadtest` | 1 | Command loadtest mensimulasikan banyak sesi CWMP concurrent (Inform -> InformResponse -> POST kosong penutup) untuk mengukur p95 latency Inform, sesuai NFR di ROADMAP.md Fase 3 ("Load test: ribuan ses |
 | `cmd/migrate` | 1 | Command migrate menjalankan migrasi database terurut dari folder migrations/ menggunakan golang-migrate (TECH.md §1). |
 | `cmd/seal-secrets` | 1 | Command seal-secrets mengenkripsi (AES-GCM, kunci ACS_CREDENTIAL_ENC_KEY) nilai rahasia yang MASIH plaintext di provisioning_profile_parameters, presets.configurations, dan tasks.parameters — langkah  |
@@ -27,13 +27,13 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | `internal/delivery/http` | 48 | delivery layer REST (Echo) untuk konsumsi internal/BSS (TECH.md §2). |
 | `internal/delivery/usp` | 1 | — |
 | `internal/delivery/ws` | 1 | — |
-| `internal/domain` | 33 | berisi entities dan interface kontrak (repository & usecase) sesuai Clean Architecture yang dipakai proyek ini — lihat TECH.md §2. |
+| `internal/domain` | 34 | berisi entities dan interface kontrak (repository & usecase) sesuai Clean Architecture yang dipakai proyek ini — lihat TECH.md §2. |
 | `internal/metrics` | 2 | berisi custom Prometheus Collector untuk endpoint GET /api/v1/metrics (ROADMAP.md Fase 2, TECH.md §10 Observability). |
 | `internal/oltdriver` | 1 | registry driver OLT (domain.OLTDriver). |
 | `internal/oltdriver/sim` | 1 | driver OLT simulator: deterministik, TANPA koneksi jaringan, dan tanpa meniru format keluaran vendor mana pun. |
 | `internal/payment/xendit` | 1 | klien HTTP kecil untuk Xendit Invoice API v2 (membuat dan membaca invoice). |
 | `internal/repository/hotcache` | 1 | membungkus repository yang dibaca pada SETIAP Inform CWMP (aturan ZTP, preset enforce) dengan cache TTL pendek di memori proses. |
-| `internal/repository/mysql` | 35 | berisi implementasi sqlx dari interface repository yang didefinisikan di internal/domain. |
+| `internal/repository/mysql` | 36 | berisi implementasi sqlx dari interface repository yang didefinisikan di internal/domain. |
 | `internal/repository/redisrepo` | 1 | — |
 | `internal/simcpe` | 7 | simulator CPE TR-069/CWMP multi-vendor yang dipakai bersama oleh cmd/cpesim (CLI manual) dan cmd/e2e (skenario otomatis). |
 | `internal/usecase/alerts` | 1 | menerima alert dari Alertmanager (payload webhook versi 4) dan mengubahnya menjadi notifikasi PLATFORM_ALERT untuk operator platform (SUPERADMIN): in-app, push WebSocket, dan email lewat usecase/notification. |
@@ -52,7 +52,7 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | `internal/usecase/iam` | 1 | menangani tenant dan user management dasar (FR-26/27/28) — dibutuhkan agar sistem punya jalur untuk membuat tenant/user pertama kali, di luar 6 usecase inti yang didaftarkan TECH.md §2. |
 | `internal/usecase/notification` | 1 | — notifikasi persisten (in-app + email) untuk staf Console (migrations/0030). |
 | `internal/usecase/notify` | 2 | menyusun email transaksional (reset password, peringatan keamanan, selamat datang). |
-| `internal/usecase/olt` | 1 | OLT Controller irisan 1 (docs/arsitektur/OLT_CONTROLLER_DESIGN.md): inventaris OLT per tenant, tes koneksi, dan antrean ONU yang dilaporkan OLT sebagai belum terdaftar. |
+| `internal/usecase/olt` | 2 | OLT Controller irisan 1 (docs/arsitektur/OLT_CONTROLLER_DESIGN.md): inventaris OLT per tenant, tes koneksi, dan antrean ONU yang dilaporkan OLT sebagai belum terdaftar. |
 | `internal/usecase/preset` | 1 | — |
 | `internal/usecase/provisioning` | 2 | menangani provisioning profile dan zero-touch provisioning (ZTP) — lihat TECH.md §6, FR-13..FR-18. |
 | `internal/usecase/report` | 1 | menyusun laporan SaaS untuk SUPERADMIN (operator platform). |
@@ -174,7 +174,7 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | GET | `/data-transfers` | Riwayat impor/ekspor |
 | GET | `/data-transfers/{uuid}` | Detail satu proses impor/ekspor |
 
-**Devices** (35)
+**Devices** (36)
 
 | Method | Path | Ringkasan |
 |---|---|---|
@@ -199,6 +199,7 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | GET | `/devices/{id}/events` | Histori event Inform CWMP (BOOT, PERIODIC, VALUE CHANGE, dst.) |
 | GET | `/devices/{id}/optical-metrics` | Histori metrik optik GPON/EPON (Rx/Tx power, suhu, dst.) |
 | GET | `/devices/{id}/activity` | Timeline audit trail aksi admin/operator terhadap device |
+| GET | `/devices/{id}/olt` | Posisi perangkat di jaringan OLT |
 | POST | `/devices/{id}/reboot` | Reboot perangkat |
 | POST | `/devices/{id}/factory-reset` | Factory Reset perangkat |
 | POST | `/devices/{id}/push-file` | Push file (konfigurasi/log) ke perangkat |
@@ -285,7 +286,7 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | PUT | `/notifications/preferences` | Simpan pengaturan kanal notifikasi |
 | POST | `/notifications/announce` | Siarkan pengumuman ke staf (SUPERADMIN) |
 
-**OLT** (10)
+**OLT** (12)
 
 | Method | Path | Ringkasan |
 |---|---|---|
@@ -297,6 +298,8 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | DELETE | `/olts/{uuid}` | Hapus OLT (soft delete) beserta antrean ONU-nya |
 | POST | `/olts/{uuid}/test` | Uji koneksi ke OLT (Probe) |
 | POST | `/olts/{uuid}/poll` | Baca ONU belum terdaftar dari OLT dan rekonsiliasi antrean |
+| GET | `/olts/{uuid}/registered-onus` | ONU yang sudah terdaftar di sebuah OLT (snapshot polling) |
+| GET | `/olts/{uuid}/ports` | Ringkasan per port PON dari ONU terdaftar |
 | GET | `/olt-onus` | Antrean ONU yang dilaporkan OLT sebagai belum terdaftar |
 | PATCH | `/olt-onus/{uuid}` | Abaikan atau pulihkan entri antrean |
 
@@ -516,6 +519,8 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | `ref_onu_discovery_status` | 10 | — |
 | `olts` | 25 | Inventaris OLT per tenant (OLT Controller irisan 1, read-only); kredensial terenkripsi |
 | `olt_unregistered_onus` | 17 | ONU yang dilaporkan OLT sebagai belum terdaftar; unik per (olt, serial), kemunculan ulang memperbarui baris |
+| `ref_olt_onu_state` | 10 | — |
+| `olt_registered_onus` | 20 | ONU terdaftar di OLT (snapshot polling); unik per (olt, serial), tautan ke devices lewat serial + tenant |
 
 ## Frontend
 **Rute Console** (`frontend/src/App.tsx`)
@@ -558,11 +563,11 @@ Handler hanya parsing/validasi; keputusan akses & bisnis di usecase; repository 
 | `/` | PublicHome |
 | `*` | NotFoundPage |
 
-**Komponen** (`frontend/src/components`, 47): AssignVendorModal, AuthShell, BugReportModal, CatalogDataTools, ChangePasswordModal, CommandPalette, ConfigHistory, CopyButton, CreditFooter, DataTools, DeviceDiagnosisCard, DeviceFormModal, DeviceMap, DeviceOverview, DevicesMapView, DeviceWifiTab, EmptyState, ExportMenu, FleetInsights, GoogleSignInButton, ImportWizard, Layout, MenuManagerModal, MfaCard, Modal, NavClock, NotificationAttributesModal, NotificationBell, OpticalCell, OpticalDiscovery, Pager, Paginate, ParameterTree, PasswordStrengthBar, ProtectedRoute, QueryErrorBanner, QueryErrorToaster, RecordActions, RowMenu, SessionCapture, SidebarNav, Spinner, StatCard, StatusBadge, TaskParts, UserDevicesModal, VirtualValuesCard
+**Komponen** (`frontend/src/components`, 49): AssignVendorModal, AuthShell, BugReportModal, CatalogDataTools, ChangePasswordModal, CommandPalette, ConfigHistory, CopyButton, CreditFooter, DataTools, DeviceDiagnosisCard, DeviceFormModal, DeviceMap, DeviceOltCard, DeviceOverview, DevicesMapView, DeviceWifiTab, EmptyState, ExportMenu, FleetInsights, GoogleSignInButton, ImportWizard, Layout, MenuManagerModal, MfaCard, Modal, NavClock, NotificationAttributesModal, NotificationBell, OltInventory, OpticalCell, OpticalDiscovery, Pager, Paginate, ParameterTree, PasswordStrengthBar, ProtectedRoute, QueryErrorBanner, QueryErrorToaster, RecordActions, RowMenu, SessionCapture, SidebarNav, Spinner, StatCard, StatusBadge, TaskParts, UserDevicesModal, VirtualValuesCard
 
-**Lib/hooks** (`frontend/src/lib`, 36): api, auth, autolabel, clientAdapter, clipboard, confirm, csv, deviceMap, exporter, focusTrap, format, hooks, i18n.extra, i18n, importer, leafletGlobal, limits, menu, notifications, optical, opticalDiscovery, password, pool, queryErrors, screenshot, session, taskSummary, theme, toast, transferLog, types, usePaged, useStatusParam, wake, wifi, ws
+**Lib/hooks** (`frontend/src/lib`, 37): api, auth, autolabel, clientAdapter, clipboard, confirm, csv, deviceMap, exporter, focusTrap, format, hooks, i18n.extra, i18n, importer, leafletGlobal, limits, menu, notifications, oltInventory, optical, opticalDiscovery, password, pool, queryErrors, screenshot, session, taskSummary, theme, toast, transferLog, types, usePaged, useStatusParam, wake, wifi, ws
 
-Berkas tes frontend: 41.
+Berkas tes frontend: 44.
 
 ## Skenario e2e (`cmd/e2e`)
 | Skenario | Fungsi |
@@ -605,9 +610,10 @@ Berkas tes frontend: 41.
 | S36-webhook-alertmanager | `scenarioAlertmanager` |
 | S37-nbi-kompatibel-genieacs | `scenarioNBI` |
 | S38-peta-diagnosis-interval | `scenarioMapDiagnosis` |
+| S39-olt-onu-terdaftar | `scenarioOLTInventory` |
 
 ## Migrasi (`migrations/`)
-`0001_init_schema` · `0002_tenant_cwmp_inform_credentials` · `0003_tenant_branding` · `0004_vendor_baseline_catalog` · `0005_tenant_task_quota` · `0006_task_metrics_indexes` · `0007_firmware_storage_key` · `0008_user_login_lockout` · `0009_ztp_rule_matching_actions` · `0010_vpm_software_version_pattern` · `0011_firmware_rollout_batches` · `0012_device_session_cwmp_namespace` · `0013_webhook_subscriptions` · `0014_device_config_snapshots` · `0015_device_geolocation` · `0016_firmware_rollout_scheduling` · `0017_performance_indexes` · `0018_generic_files` · `0019_tags_and_presets` · `0020_user_devices_mapping` · `0021_preset_engine` · `0022_seed_vendor_ouis` · `0023_password_reset_tokens` · `0024_users_password_changed_at` · `0025_diagnostics_mappings` · `0026_mapping_value_scale_optical` · `0027_user_mfa_totp` · `0028_tenant_device_limit_and_signups` · `0029_generic_vendor_and_more_oui` · `0030_notifications` · `0031_user_oidc_subject` · `0032_billing` · `0033_menu_bugreport_transfers` · `0034_bugreport_expected_screenshot` · `0035_vendor_optictimes_zte_models` · `0036_notification_optical_alert` · `0037_device_capture` · `0038_device_faults` · `0039_virtual_parameters` · `0040_automation_rules` · `0041_devices_serial_index` · `0042_automation_daily_ceiling` · `0043_tenant_storage_quota` · `0044_olt_controller` · `0045_notification_platform_alert` · `0046_device_inform_interval`
+`0001_init_schema` · `0002_tenant_cwmp_inform_credentials` · `0003_tenant_branding` · `0004_vendor_baseline_catalog` · `0005_tenant_task_quota` · `0006_task_metrics_indexes` · `0007_firmware_storage_key` · `0008_user_login_lockout` · `0009_ztp_rule_matching_actions` · `0010_vpm_software_version_pattern` · `0011_firmware_rollout_batches` · `0012_device_session_cwmp_namespace` · `0013_webhook_subscriptions` · `0014_device_config_snapshots` · `0015_device_geolocation` · `0016_firmware_rollout_scheduling` · `0017_performance_indexes` · `0018_generic_files` · `0019_tags_and_presets` · `0020_user_devices_mapping` · `0021_preset_engine` · `0022_seed_vendor_ouis` · `0023_password_reset_tokens` · `0024_users_password_changed_at` · `0025_diagnostics_mappings` · `0026_mapping_value_scale_optical` · `0027_user_mfa_totp` · `0028_tenant_device_limit_and_signups` · `0029_generic_vendor_and_more_oui` · `0030_notifications` · `0031_user_oidc_subject` · `0032_billing` · `0033_menu_bugreport_transfers` · `0034_bugreport_expected_screenshot` · `0035_vendor_optictimes_zte_models` · `0036_notification_optical_alert` · `0037_device_capture` · `0038_device_faults` · `0039_virtual_parameters` · `0040_automation_rules` · `0041_devices_serial_index` · `0042_automation_daily_ceiling` · `0043_tenant_storage_quota` · `0044_olt_controller` · `0045_notification_platform_alert` · `0046_device_inform_interval` · `0047_olt_registered_onus`
 
 ## Perintah penting
 - Go: `go vet ./...`, `go test ./...`; race + integrasi MariaDB via Docker `golang:1.26.9` (lihat `docs/pengujian/PENGUJIAN_E2E.md`).
