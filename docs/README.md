@@ -16,7 +16,7 @@ Indeks seluruh dokumen. Path di sini dan di dokumen lain dihitung dari **root re
 | Tahu status kesiapan & skor | [`laporan/CHECKLIST_SAAS.md`](laporan/CHECKLIST_SAAS.md) |
 | Melihat riwayat pekerjaan | [`laporan/PROGRESS.md`](laporan/PROGRESS.md) |
 | Memahami kebutuhan produk | [`produk/PRD.md`](produk/PRD.md), [`produk/ROADMAP.md`](produk/ROADMAP.md) |
-| Memahami arsitektur & keputusan teknis | [`arsitektur/TECH.md`](arsitektur/TECH.md) (+ desain Preset, USP/TR-369, [OLT Controller](arsitektur/OLT_CONTROLLER_DESIGN.md), panduan arsitektur PDF) |
+| Memahami arsitektur & keputusan teknis | [`arsitektur/TECH.md`](arsitektur/TECH.md) (+ desain Preset, USP/TR-369, [OLT Controller](arsitektur/OLT_CONTROLLER_DESIGN.md), [Connection Request di balik NAT/CGNAT](arsitektur/CONNECTION_REQUEST_NAT_DESIGN.md) (usulan), [Peta, status realtime & diagnosis offline](arsitektur/PETA_STATUS_DIAGNOSIS.md), panduan arsitektur PDF) |
 | Membaca kontrak API | [`../openapi.yaml`](../openapi.yaml) · koleksi Postman [`../ACS-API.postman_collection.json`](../ACS-API.postman_collection.json) |
 
 ## Struktur

@@ -112,6 +112,8 @@ tags:
     description: Manajemen user aplikasi dan role assignment per tenant.
   - name: Devices
     description: Inventory CPE (ONT/ONU/router) — status, parameter TR-069, event, metrik optik, aktivitas.
+  - name: NBI
+    description: Antarmuka kompatibel-sebagian dengan NBI GenieACS (hanya baca) — query/projection/sort/skip/limit bergaya GenieACS diterjemahkan ke query perangkat yang sama dengan `GET /devices`.
   - name: Tasks
     description: Antrean RPC CWMP (GetParameterValues, SetParameterValues, Reboot, Download, dst.).
   - name: Automation
@@ -2127,6 +2129,197 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '403':
           description: Bukan ADMIN+.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /devices/map:
+    get:
+      operationId: deviceMap
+      tags: [Devices]
+      summary: Titik perangkat untuk peta
+      description: |
+        Perangkat yang punya koordinat (`latitude` dan `longitude` keduanya terisi), ringan untuk digambar di peta. Filter dasar sama dengan
+        `GET /devices` (`search`, `serial_number`, `vendor_id`, `device_model_id`, `device_status_id`, `tag_id`, `optical_level`, `no_vendor`,
+        `tenant_id` hanya efektif untuk superadmin) dan query bebas (`param`, `last_inform_before`/`after`); aturan scope tenant dan proteksi
+        parameter rahasia identik. Semua peran staf; non-superadmin hanya melihat tenant-nya sendiri; ENDUSER 403.
+
+        `total` = perangkat yang cocok filter, `located` = di antaranya yang punya koordinat (`total - located` = belum punya lokasi dan tidak
+        bisa digambar). Keduanya menggambarkan FILTER, bukan `bbox`. Titik dibatasi 5000 per permintaan (`truncated: true` bila terpotong —
+        persempit dengan filter atau `bbox`). Status = kode `ref_device_status` saat ini (ONLINE/OFFLINE/...).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: bbox
+          in: query
+          description: "Persegi geografis `barat,selatan,timur,utara` dalam derajat (urutan GeoJSON/Leaflet). `barat > timur` berarti melintasi bujur 180. Lintang -90..90 dengan selatan <= utara, bujur -180..180; selain itu 400."
+          schema: { type: string }
+          example: '106.7,-6.4,107.0,-6.1'
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: serial_number
+          in: query
+          schema: { type: string, maxLength: 128 }
+        - name: vendor_id
+          in: query
+          schema: { type: integer, format: int64 }
+        - name: device_status_id
+          in: query
+          schema: { type: integer, format: int64 }
+        - name: tag_id
+          in: query
+          schema: { type: integer, format: int64 }
+        - name: optical_level
+          in: query
+          schema: { type: string, enum: [ok, warn, bad, unknown] }
+        - name: param
+          in: query
+          description: Kondisi pada nilai parameter, sama dengan `GET /devices` (maks 5).
+          style: form
+          explode: true
+          schema: { type: array, maxItems: 5, items: { type: string } }
+        - $ref: '#/components/parameters/tenantIdQuery'
+      responses:
+        '200':
+          description: Titik peta dan hitungan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceMapResponse' }
+        '400':
+          description: "`bbox` tidak valid, atau filter/query bebas tidak valid (sama dengan `GET /devices`)."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Peran ENDUSER, atau actor non-superadmin tanpa `tenant_id`."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /devices/{id}/diagnosis:
+    get:
+      operationId: deviceDiagnosis
+      tags: [Devices]
+      summary: Diagnosis "kenapa offline?" dari bukti sisi ACS
+      description: |
+        Hipotesis berbukti, BUKAN vonis penyebab. Dihitung saat diminta dari data yang ACS punya: Inform terakhir dan ambang offline perangkat,
+        interval Inform, event (BOOT), riwayat redaman optik yang dilaporkan perangkat, fault aktif, antrean task, dan kemampuan Connection Request.
+        Tiap temuan membawa `evidence` (fakta terukur) dan `hint` (langkah saran), diurut dari paling parah. `summary` hanya menyebut
+        PENYEBAB berbukti sebagai "Dugaan utama"; gejala dan keterbatasan (berkeparahan `info`) tidak dijadikan dugaan utama. `limits` selalu
+        menyatakan bahwa penyebab di jaringan fisik (fiber, port PON, LOS/dying gasp, OLT) tidak terlihat dari TR-069. Hanya baca; semua peran
+        staf dalam scope tenant-nya (tenant lain 404/403; ENDUSER 403). `actions` = kode aksi yang disarankan; UI memetakannya ke endpoint yang
+        sudah ada (hak aksesnya tetap ditegakkan endpoint itu): `CONNECTION_REQUEST` (`POST /devices/{id}/connection-request`),
+        `READ_INFORM_INTERVAL` (`POST /devices/{id}/tasks/get-parameter-values`), `OPEN_OPTICAL` (riwayat redaman optik).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: Diagnosis perangkat.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceDiagnosis' }
+        '400':
+          description: id bukan angka.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Peran ENDUSER, atau perangkat milik tenant lain."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Perangkat tidak ditemukan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /nbi/devices:
+    get:
+      operationId: nbiListDevices
+      tags: [NBI]
+      summary: Daftar perangkat bergaya NBI GenieACS (hanya baca)
+      description: |
+        Padanan sebagian `GET /devices` pada NBI GenieACS, supaya integrator yang sudah memakai `query`/`projection`/`sort`/`skip`/`limit`
+        GenieACS tidak menulis ulang kliennya. Ini PENERJEMAH ke query perangkat yang sama dengan `GET /devices` — bukan mesin query Mongo:
+        operator dari daftar tetap, nama parameter divalidasi, nilai di-bind. Scope tenant dan RBAC identik dengan `GET /devices` (peran
+        staf; ENDUSER 403; non-superadmin hanya melihat tenant-nya sendiri; parameter rahasia hanya untuk ADMIN/SUPERADMIN).
+        Apa pun di luar subset di bawah ditolak 400 dengan pesan yang menyebut yang didukung — tidak diabaikan diam-diam.
+
+        **Berbeda dari GenieACS (disengaja):** `_id` adalah `device_uuid` (bukan `OUI-ProductClass-Serial`) dan belum bisa dipakai di `query`;
+        autentikasi wajib (GenieACS bawaan terbuka); tanpa `projection` dokumen hanya memuat `_id`, `_lastInform`, `_registered`, `DeviceID`
+        (tidak seluruh pohon parameter); `projection` memilih path parameter PERSIS (bukan subtree, maks 20); hanya `_value` (teks) —
+        tanpa `_type`/`_writable`/`_timestamp`, `DeviceID.Manufacturer`, dan `_tags`; `limit` bawaan 50, maks 200 dan `skip` harus kelipatan
+        `limit`; tanpa `$regex`, `$in`, `$or`/`$and`. Jumlah total ada di header `X-Total-Count`. Penulisan (tugas) belum ada di NBI ini —
+        gunakan `/devices/{id}/tasks/*`.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: query
+          in: query
+          description: |
+            Objek JSON (maks 4096 byte); kunci digabung AND. Didukung:
+            `"DeviceID.SerialNumber": "<serial>"` (cocok persis, memakai indeks);
+            `"_lastInform": {"$gte": "<RFC3339>", "$lt": "<RFC3339>"}` (hanya dua operator ini karena batas repositori `>=`/`<`; `$gt`/`$lte` = 400);
+            `"<path TR-069>": <nilai>` atau `{"$eq|$ne|$gt|$gte|$lt|$lte": <nilai>, "$exists": true|false}` untuk path berawalan
+            `InternetGatewayDevice.` / `Device.` (akhiran `._value` boleh; maks 5 kondisi; nilai teks atau angka). Operator numerik pada nilai non-angka tidak pernah cocok.
+          schema: { type: string, maxLength: 4096 }
+          example: '{"DeviceID.SerialNumber":"ZTEGC0000001"}'
+        - name: projection
+          in: query
+          description: "Daftar dipisah koma. `_id`, `_lastInform`, `_registered`, `DeviceID` selalu ada (boleh disebut, tanpa efek). Selebihnya path parameter lengkap yang nilainya disertakan secara bersarang `{\"A\":{\"B\":{\"_value\":\"v\"}}}`; parameter yang belum pernah dilaporkan tidak muncul."
+          schema: { type: string }
+          example: InternetGatewayDevice.DeviceInfo.SoftwareVersion
+        - name: sort
+          in: query
+          description: 'Objek JSON dengan SATU kunci dan arah `1`/`-1`. Kunci: `_lastInform`, `_registered`, `DeviceID.SerialNumber`, `DeviceID.ProductClass`. Bawaan: id menurun.'
+          schema: { type: string }
+          example: '{"_lastInform":-1}'
+        - name: skip
+          in: query
+          description: Bilangan >= 0 dan KELIPATAN `limit` (selain itu 400, bukan dibulatkan, agar tidak ada baris terlewat/terulang).
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: limit
+          in: query
+          description: Jumlah baris 1..200.
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        '200':
+          description: Larik dokumen perangkat (kosong bila tak ada yang cocok).
+          headers:
+            X-Total-Count:
+              description: Jumlah seluruh perangkat yang cocok (sebelum `skip`/`limit`).
+              schema: { type: integer }
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/NbiDevice' }
+        '400':
+          description: "`query`/`sort`/`projection`/`skip`/`limit` di luar subset yang didukung atau tidak valid (pesan berawalan `nbi:`), atau parameter rahasia oleh peran tanpa hak."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: "Peran ENDUSER (portal pelanggan dikurung ke `/self-service`), atau actor non-superadmin tanpa `tenant_id`."
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -6318,6 +6511,9 @@ paths:
         WAJIB pada request handshake. Tidak ada body response HTTP biasa.
         Event `NOTIFICATION` (`{id, type, severity, title, link}`) dikirim HANYA ke koneksi milik pengguna
         penerima (bukan seluruh tenant); detail lengkap diambil lewat `GET /notifications`.
+        Status perangkat: `DEVICE_ONLINE` (`{device_id}`, saat perangkat Inform) dan `DEVICE_OFFLINE`
+        (`{device_id, serial_number, last_inform_at}`, saat penyapu menandai perangkat offline — diam melewati ambang
+        per perangkat, lihat `inform_interval_seconds` pada skema Device); keduanya hanya ke tenant pemilik perangkat.
       security: [{ bearerAuth: [] }]
       responses:
         '101':
@@ -9543,6 +9739,14 @@ components:
         inform_username: { type: string, nullable: true }
         last_inform_at: { type: string, format: date-time, nullable: true }
         last_boot_event_at: { type: string, format: date-time, nullable: true }
+        inform_interval_seconds:
+          type: integer
+          format: int64
+          nullable: true
+          description: |
+            Interval Periodic Inform yang DILAPORKAN perangkat (`ManagementServer.PeriodicInformInterval`, detik); `null` = belum diketahui
+            (kebanyakan CPE tidak melaporkannya di Inform; ACS membacanya lewat tugas GetParameterValues). Dasar ambang offline per perangkat:
+            offline bila diam lebih lama dari `max(batas minimum, 2,5 × interval)`, maksimal 7 hari. Batas minimum 15 menit (`ACS_OFFLINE_MIN_MINUTES`).
         latitude: { type: number, format: double, nullable: true, description: "Koordinat lokasi pemasangan (opsional, di-set lewat `PATCH /devices/{id}`)." }
         longitude: { type: number, format: double, nullable: true, description: "Koordinat lokasi pemasangan (opsional, di-set lewat `PATCH /devices/{id}`)." }
         notes: { type: string, nullable: true }
@@ -9559,6 +9763,92 @@ components:
           items: { $ref: '#/components/schemas/DeviceListItem' }
         total: { type: integer }
       required: [data, total]
+
+    DeviceMapResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/DeviceMapPoint' }
+        total: { type: integer, description: "Perangkat yang cocok filter (bukan hanya yang berkoordinat)." }
+        located: { type: integer, description: "Di antara `total`, yang punya koordinat lengkap. `total - located` = belum punya lokasi." }
+        truncated: { type: boolean, description: "`true` bila titik dalam `bbox` melebihi 5000 dan dipotong." }
+      required: [data, total, located, truncated]
+
+    DeviceMapPoint:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        device_uuid: { type: string, format: uuid }
+        serial_number: { type: string }
+        product_class: { type: string, nullable: true }
+        latitude: { type: number, format: double }
+        longitude: { type: number, format: double }
+        status: { type: string, description: "Kode ref_device_status saat ini (ONLINE, OFFLINE, ...); kosong bila kode tidak dikenal." }
+        last_inform_at: { type: string, format: date-time, nullable: true }
+      required: [id, device_uuid, serial_number, latitude, longitude, status]
+
+    DeviceDiagnosis:
+      type: object
+      properties:
+        device_id: { type: integer, format: int64 }
+        status: { type: string, description: Kode ref_device_status saat ini. }
+        verdict:
+          type: string
+          enum: [NEVER_CONNECTED, REACHABLE, OFFLINE]
+          description: "`OFFLINE` hanya bila diam LEBIH LAMA dari `offline_threshold_seconds` (aturan yang sama dengan penyapu)."
+        summary: { type: string, description: "Satu kalimat; 'Dugaan utama: ...' hanya bila ada penyebab berbukti." }
+        last_inform_at: { type: string, format: date-time, nullable: true }
+        silent_seconds: { type: integer, format: int64, nullable: true, description: "Lamanya diam sejak Inform terakhir; null bila belum pernah Inform." }
+        inform_interval_seconds: { type: integer, format: int64, nullable: true }
+        inform_interval_parameter:
+          type: string
+          description: "Nama parameter lengkap untuk membaca interval Inform pada perangkat ini (`InternetGatewayDevice.ManagementServer.PeriodicInformInterval` atau `Device.ManagementServer.PeriodicInformInterval`, sesuai model data); kosong bila model datanya belum diketahui — aksi `READ_INFORM_INTERVAL` tidak ditawarkan saat itu."
+        offline_threshold_seconds: { type: integer, format: int64 }
+        findings:
+          type: array
+          items: { $ref: '#/components/schemas/DiagnosisFinding' }
+        actions:
+          type: array
+          items: { type: string, enum: [CONNECTION_REQUEST, READ_INFORM_INTERVAL, OPEN_OPTICAL] }
+        limits: { type: string, description: "Batas diagnosis (data sisi OLT belum tersedia). Selalu ada." }
+        generated_at: { type: string, format: date-time }
+      required: [device_id, status, verdict, summary, inform_interval_parameter, offline_threshold_seconds, findings, actions, limits, generated_at]
+
+    DiagnosisFinding:
+      type: object
+      properties:
+        code: { type: string, example: OPTICAL_BAD }
+        severity: { type: string, enum: [critical, warning, info] }
+        title: { type: string }
+        evidence: { type: string, description: Fakta terukur yang mendasari temuan. }
+        hint: { type: string, description: Langkah saran. }
+      required: [code, severity, title, evidence, hint]
+
+    NbiDevice:
+      description: |
+        Dokumen perangkat bergaya NBI GenieACS. Selain kunci tetap di bawah, parameter yang diminta lewat `projection` muncul bersarang
+        menurut path-nya (`{"InternetGatewayDevice":{"DeviceInfo":{"SoftwareVersion":{"_value":"V1"}}}}`); sebuah simpul yang sekaligus
+        parameter dan cabang membawa `_value` berdampingan dengan anak-anaknya. Tidak membawa PK internal, tenant, atau kredensial.
+      type: object
+      properties:
+        _id: { type: string, format: uuid, description: "`device_uuid` perangkat (identitas publik; bukan PK internal)." }
+        _registered: { type: string, format: date-time, description: Waktu perangkat pertama didaftarkan (UTC). }
+        _lastInform: { type: string, format: date-time, description: "Inform terakhir (UTC); tidak ada bila belum pernah Inform." }
+        DeviceID:
+          type: object
+          properties:
+            OUI: { $ref: '#/components/schemas/NbiValue' }
+            ProductClass: { $ref: '#/components/schemas/NbiValue' }
+            SerialNumber: { $ref: '#/components/schemas/NbiValue' }
+      required: [_id, _registered, DeviceID]
+      additionalProperties: true
+
+    NbiValue:
+      type: object
+      properties:
+        _value: { type: string, description: "Nilai teks seperti yang tersimpan; string kosong bila tidak diketahui." }
+      required: [_value]
 
     DeviceListItem:
       description: Device + ringkasan baris daftar perangkat.

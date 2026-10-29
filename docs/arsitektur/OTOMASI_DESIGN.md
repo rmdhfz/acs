@@ -76,3 +76,32 @@ setelah 30 hari). Dua tabel terakhir memakai audit minimal — pengecualian yang
 - Pemicu `VALUE_CHANGE` dan jadwal berkala (sekarang hanya mengikuti Inform; kondisi dapat memeriksa `{@events}`).
 - Menguji pagar "suspend" end-to-end di e2e (cooldown minimum 300 detik membuatnya tak praktis; diuji di unit test dengan jam palsu).
 - Ukuran biaya dengan banyak aturan per tenant pada skala ratusan ribu perangkat.
+
+## Keputusan berikutnya: JavaScript tersandbox? (usulan 2026-10-29, belum disetujui, belum ada kode)
+
+Bagian ini membuka kembali keputusan di atas ("deklaratif, bukan skrip"). **Rekomendasi: jangan bangun sekarang.** Alasannya bukan teknis semata: belum ada satu pun
+kebutuhan konkret yang terbukti tak bisa diekspresikan aturan deklaratif, dan celah paling mungkin (lihat bawah) bisa ditutup jauh lebih murah dan aman tanpa skrip.
+
+**Celah yang terverifikasi di kode (bukan dugaan):** rujukan parameter pada ekspresi/aksi adalah **nama persis** (`{Nama.Parameter}`); tidak ada wildcard atau iterasi instance
+(`WLANConfiguration.*`, `WANConnectionDevice.*`), tidak ada variabel antar-langkah, aksi tertutup (`set_parameter`, `reboot`, `get_parameter_values`, `add_tag`, `webhook`).
+GenieACS menutup kasus "semua instance WLAN" dengan perulangan di skrip. **Hipotesis yang harus dikonfirmasi pengguna:** itulah kebutuhan nyata, bukan skrip bebas.
+
+**Urutan yang disarankan:**
+1. Kumpulkan ≥2 kebutuhan nyata yang gagal secara deklaratif (contoh provision GenieACS yang dipakai tim NOC). Tanpa itu, skrip = fitur tanpa pengguna dengan permukaan serangan besar.
+2. Bila celahnya wildcard/instance: tambahkan **rujukan berwildcard + aksi "untuk setiap instance"** ke `pkg/vexpr`/aksi (tertutup, berbatas, nol sandbox).
+3. Hanya bila 1–2 tidak cukup: spike JavaScript tersandbox dengan syarat di bawah.
+
+**Bila JavaScript jadi dibangun — syarat desain (tidak dinegosiasikan):**
+- **Skrip menghitung RENCANA, tidak melakukan efek.** Fungsi murni: masukan = snapshot parameter yang dirujuk + konteks perangkat milik tenant itu sendiri; keluaran = daftar aksi
+  yang sama dengan aksi aturan. Pelaksanaannya lewat **eksekutor aksi yang sudah ada**, sehingga semua pagar (larangan `ManagementServer.*`, parameter rahasia, cooldown/suspend,
+  batas 24 jam, kuota task) berlaku tanpa diubah. Tanpa I/O, jaringan, berkas, timer, atau panggilan balik ke ACS.
+- **VM baru per eksekusi, tanpa state bersama:** data tenant lain tidak pernah ada di memori VM — isolasi lintas-tenant by construction, bukan by sandbox sempurna.
+- **Batas keras:** waktu CPU (mis. 50 ms) dengan interupsi, memori VM terbatas, ukuran skrip (mis. 16 KiB), maks aksi per eksekusi (30), kapasitas pekerja global + per-tenant.
+  Melampaui batas = eksekusi dibatalkan, dicatat, dan skrip di-suspend (pola yang sama dengan aturan). **Inform tidak pernah ditahan/gagal karena skrip** (gagal-terbuka: lewati dan catat).
+- **Pra-saring** dengan kondisi `vexpr` yang ada agar skrip hanya jalan saat kondisi cocok; bytecode di-cache; metrik durasi/timeouts/ditolak.
+- **Mesin:** pilihan dengan jaminan memori terkuat adalah QuickJS yang dijalankan di dalam wazero (batas halaman memori + pembatalan lewat context). goja (Go murni) punya
+  interupsi tetapi **tidak punya batas memori bawaan** — risiko `new Array(1e9)`. Kandidat binding QuickJS-di-wazero **wajib melewati spike** (kematangan, pemeliharaan, performa) sebelum dipilih; tidak diasumsikan.
+- **Pengujian keamanan sebelum diaktifkan:** loop tak hingga, bom memori/string, ReDoS, pencemaran prototipe, upaya keluar sandbox, uji dua tenant tak saling melihat, fuzz masukan; tinjauan
+  keamanan independen. Saklar `ACS_SCRIPTS_ENABLED` bawaan **MATI**; mutasi/uji hanya ADMIN, ditolak pada sesi impersonasi; dry-run seperti `/automation-rules/test`.
+
+**Keputusan untuk pemilik produk:** (a) apakah ada kebutuhan konkret yang gagal secara deklaratif, (b) setuju mencoba wildcard/instance dulu (langkah 2), (c) bila JS tetap diinginkan, setuju spike QuickJS-di-wazero sebagai syarat.

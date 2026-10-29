@@ -184,6 +184,7 @@ const REVIEWED_UNUSED = new Map([
   ['GET /virtual-parameters/:p', 'daftar /virtual-parameters sudah membawa seluruh definisi dan editor memuat dari baris daftar; detail untuk integrasi/BSS'],
   ['GET /faults/:p', 'daftar /faults sudah membawa semua field fault; halaman tidak punya tampilan detail yang butuh fetch terpisah (endpoint untuk integrasi/BSS)'],
   ['GET /olts/:p', 'daftar /olts sudah membawa seluruh field OLT dan modal ubah dimuat dari baris daftar; detail untuk integrasi/BSS'],
+  ['GET /nbi/devices', 'antarmuka kompatibel-sebagian NBI GenieACS untuk integrator/BSS yang memindahkan klien; Console memakai GET /devices dan GET /devices/map'],
 ])
 
 const excepted = unusedEndpoints.filter((r) => EXCEPTIONS.has(key(r)))

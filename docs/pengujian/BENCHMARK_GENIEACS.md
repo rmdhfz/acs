@@ -112,6 +112,23 @@ di semua run). Setiap sel = dua run, sesi/dtk · p95:
   **Jujur:** sebagian besar lonjakan fase tugas berasal dari pencarian serial yang dulu memindai tabel (kelemahan produk nyata bagi integrator BSS).
 - Batas klaim sama seperti di atas: simulator, satu laptop, konfigurasi bawaan, belum perangkat nyata.
 
+## Eksperimen pool koneksi DB — 29 Oktober 2026 (hasil negatif, tidak ada perubahan kode)
+
+Profil `general_log` fase tugas (±28 query/tugas, tak ada satu query dominan) menunjukkan ±1.170 koneksi MariaDB baru per run karena
+`ACS_DB_MAX_IDLE_CONNS` bawaan 10 < 64 sesi paralel. A/B (1.000 perangkat, concurrency 64, 3 putaran, 300 tugas; DB kosong tiap run;
+urutan idle=10, 50, 50, 10; 0 galat):
+
+| | idle=10 (bawaan) | idle=50 |
+|---|---|---|
+| Koneksi baru | 1.179 / 1.162 | 61 / 60 |
+| Tugas p95 (run 1 / run 2) | 238 / 280 ms | 217 / 348 ms |
+| Periodik putaran 3 p95 | 87 / 91 ms | 93 / 91 ms |
+
+Churn koneksi hilang ±20×, tetapi throughput dan p95 **tidak berubah di luar noise antar-run** (loopback Docker, koneksi murah). Default
+tidak diubah: `idle=max` menahan 50 koneksi permanen per instance, sehingga 3 instance HA mendekati `max_connections=151` MariaDB. Pada DB
+jarak jauh/TLS efeknya bisa berbeda dan belum diukur; naikkan lewat env bila terbukti perlu. Dua `INSERT activity_logs` per tugas (audit
+usecase + log API) dicatat apa adanya, belum dinilai disengaja atau berlebih.
+
 ## Perbandingan fitur (diverifikasi pada GenieACS 1.2.16 yang berjalan)
 
 NBI GenieACS menjawab 200 pada `/devices`, `/tasks`, `/presets`, `/provisions`, `/virtual_parameters`, `/files`, `/faults`, `/objects`;
