@@ -13,8 +13,11 @@ const ONU = (over: Partial<RegisteredONU> = {}): RegisteredONU => ({
   device_status: 'OFFLINE', olt_last_poll_at: minutesAgo(2), ...over,
 })
 
-function serve(body: DeviceOLT | { status: number }) {
+function serve(body: DeviceOLT | { status: number }, ontRx?: number | null) {
   mockFetch((r) => {
+    if (r.url.includes('/devices/42/optical-metrics')) {
+      return ontRx === undefined ? { json: { data: [], total: 0 } } : { json: { data: [{ id: 1, device_id: 42, rx_power_dbm: ontRx, tx_power_dbm: null, voltage: null, bias_current_ma: null, temperature_celsius: null, distance_meters: null, recorded_at: minutesAgo(5) }], total: 1 } }
+    }
     if (!r.url.includes('/devices/42/olt')) return undefined
     return 'status' in body ? { status: body.status, json: { message: 'x' } } : { json: body }
   })
@@ -68,5 +71,44 @@ describe('DeviceOltCard', () => {
     const { container } = renderApp(<DeviceOltCard deviceId={42} />)
     await new Promise((r) => setTimeout(r, 50))
     expect(container.querySelector('section')).toBeNull()
+  })
+
+  it('RX dari dua arah diberi label arah dan tingkat masing-masing, dengan catatan bahwa keduanya bukan besaran yang sama', async () => {
+    serve({ linked: true, onu: ONU({ state: 'ONLINE', rx_power_dbm: -28.2 }), tenant_has_olt: true }, -19.5)
+    renderApp(<DeviceOltCard deviceId={42} />)
+    expect(await screen.findByText('RX sisi OLT (upstream)')).toBeTruthy()
+    expect(screen.getByText('RX sisi ONT (downstream)')).toBeTruthy()
+    expect(await screen.findByText('-19.5 dBm')).toBeTruthy()
+    expect(screen.getByText('-28.2 dBm').closest('dd')!.textContent).toContain('(kritis)')
+    expect(screen.getByText('-19.5 dBm').closest('dd')!.textContent).toContain('(normal)')
+    expect(screen.getByText(/dibaca 5 menit lalu|dibaca/)).toBeTruthy()
+    expect(screen.getByText(/bukan besaran yang sama/)).toBeTruthy()
+  })
+
+  it('tanpa pembacaan ONT: tanda strip dan keterangan jujur, tanpa tingkat', async () => {
+    serve({ linked: true, onu: ONU({ state: 'ONLINE', rx_power_dbm: -21.0 }), tenant_has_olt: true })
+    renderApp(<DeviceOltCard deviceId={42} />)
+    expect(await screen.findByText('belum ada pembacaan')).toBeTruthy()
+    const ont = screen.getByText('RX sisi ONT (downstream)').parentElement!
+    expect(ont.textContent).not.toMatch(/\((normal|lemah|kritis)\)/)
+  })
+
+  it('RX sisi OLT tidak diberi tingkat bila ONU tidak online (tak bermakna)', async () => {
+    serve({ linked: true, onu: ONU({ state: 'LOS', rx_power_dbm: -31.0 }), tenant_has_olt: true }, -20.0)
+    renderApp(<DeviceOltCard deviceId={42} />)
+    await screen.findByText('-31.0 dBm')
+    expect(screen.getByText('-31.0 dBm').closest('dd')!.textContent).not.toMatch(/kritis|lemah|normal/)
+  })
+
+  it('"sejak": baris yang baru ditemukan diberi label jujur; perubahan yang teramati memakai waktunya', async () => {
+    const seen = minutesAgo(3)
+    serve({ linked: true, onu: ONU({ first_seen_at: seen, last_state_change_at: seen }), tenant_has_olt: true })
+    const { unmount } = renderApp(<DeviceOltCard deviceId={42} />)
+    expect(await screen.findByText(/waktu mulainya sebelum itu tidak diketahui/)).toBeTruthy()
+    expect(screen.queryByText(/Keadaan terpantau sejak/)).toBeNull()
+    unmount()
+    serve({ linked: true, onu: ONU(), tenant_has_olt: true })
+    renderApp(<DeviceOltCard deviceId={42} />)
+    expect(await screen.findByText(/Keadaan terpantau sejak/)).toBeTruthy()
   })
 })

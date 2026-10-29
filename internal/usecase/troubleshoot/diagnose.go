@@ -19,6 +19,9 @@ const (
 	bootFlapCount           = 3
 	opticalDropDB           = 3.0 // penurunan RX (dB) terhadap pembacaan terbaik di jendela terakhir
 	opticalTrendReadings    = 6   // pembacaan sebelum yang terbaru yang dibandingkan
+	// opticalPairMaxGap = selisih waktu terbesar antara pembacaan RX ONT dan polling OLT yang masih dianggap sebanding. Lebih jauh dari ini, kedua
+	// angka menggambarkan keadaan jalur yang berbeda dan tidak boleh dibandingkan.
+	opticalPairMaxGap = 2 * time.Hour
 )
 
 // Evidence = semua bukti yang dikumpulkan untuk satu perangkat. Diagnose adalah fungsi murni atasnya (tanpa DB/jam sistem).
@@ -103,12 +106,14 @@ func Diagnose(e Evidence) domain.DeviceDiagnosis {
 			"Tidak ada tindakan; status dihitung ulang tiap menit.")
 		a.oltRules()
 		a.opticalRules(false)
+		a.opticalPairRule()
 		a.bootFlapRule()
 		a.faultRule()
 	case domain.VerdictOffline:
 		a.oltRules() // lebih dulu: laporan OLT paling dekat ke penyebab fisik, dan temuan sekelas mempertahankan urutan penambahan
 		a.offlineRules()
 		a.opticalRules(true)
+		a.opticalPairRule()
 		a.bootFlapRule()
 		a.faultRule()
 		a.pendingTasksRule()
@@ -296,6 +301,66 @@ func (a *analysis) opticalRules(offline bool) {
 				"Degradasi bertahap biasanya konektor longgar/kotor atau fiber tertekuk. Jadwalkan pengecekan lapangan.")
 			a.action(domain.DiagActionOpenOptical)
 		}
+	}
+}
+
+// opticalPairRule membandingkan redaman dari DUA arah: RX sisi OLT (upstream, cahaya dari ONU) dan RX sisi ONT yang dilaporkan lewat TR-069
+// (downstream, cahaya dari OLT). Keduanya BUKAN besaran yang sama (panjang gelombang dan daya pemancar berbeda), jadi tidak dikurangkan menjadi
+// "redaman"; yang dibandingkan hanya tingkatnya terhadap ambang yang sama (domain.OpticalLevelOf; ambang khusus OLT tertentu bisa berbeda, belum
+// dikalibrasi). Pola yang dicari: lemah di dua arah => jalur fiber bersama; lemah di satu arah saja => komponen di sisi itu. Hanya bila kedua
+// pembacaan sebanding waktunya dan ONU online di OLT (RX sisi OLT hanya bermakna bila ONU sedang mengirim).
+func (a *analysis) opticalPairRule() {
+	o := a.e.OLT
+	if o == nil || o.RxPowerDBM == nil || o.State != domain.OLTStateOnline || o.OLTPolledAt == nil {
+		return
+	}
+	var ont *OpticalAt
+	for i := range a.e.Optical {
+		if a.e.Optical[i].RXDBM != nil {
+			ont = &a.e.Optical[i]
+			break
+		}
+	}
+	if ont == nil {
+		return
+	}
+	gap := o.OLTPolledAt.Sub(ont.At)
+	if gap < 0 {
+		gap = -gap
+	}
+	oltRX, ontRX := *o.RxPowerDBM, *ont.RXDBM
+	basis := fmt.Sprintf("RX sisi OLT %.1f dBm (upstream, polling OLT %s lalu) dan RX sisi ONT %.1f dBm (downstream, dibaca %s lalu).",
+		oltRX, humanDuration(a.e.Now.Sub(*o.OLTPolledAt)), ontRX, humanDuration(a.e.Now.Sub(ont.At)))
+	if gap > opticalPairMaxGap {
+		if a.d.Verdict == domain.VerdictReachable {
+			a.add(domain.SeverityInfo, "OPTICAL_PAIR_NOT_COMPARABLE", "Redaman OLT dan ONT tidak sebanding",
+				basis+fmt.Sprintf(" Selisih waktu %s melebihi %s.", humanDuration(gap), humanDuration(opticalPairMaxGap)),
+				"Kedua pembacaan berasal dari waktu yang berjauhan, jadi tidak dibandingkan. Poll OLT dan segarkan redaman optik perangkat.")
+		}
+		return
+	}
+	weak := func(l string) bool { return l == domain.OpticalWarn || l == domain.OpticalBad }
+	oltLvl, ontLvl := domain.OpticalLevelOf(&oltRX), domain.OpticalLevelOf(&ontRX)
+	sev := domain.SeverityWarning
+	if oltLvl == domain.OpticalBad || ontLvl == domain.OpticalBad {
+		sev = domain.SeverityCritical
+	}
+	switch {
+	case weak(oltLvl) && weak(ontLvl):
+		a.add(sev, "OPTICAL_BOTH_WEAK", "Redaman lemah di kedua arah", basis,
+			"Kedua arah sama-sama lemah: penyebab paling mungkin ada di jalur fiber yang dipakai bersama (konektor kotor, tikungan, ODP/splitter), bukan pada satu pemancar. Prioritaskan pengecekan jalur.")
+		a.action(domain.DiagActionOpenOptical)
+	case weak(oltLvl):
+		a.add(sev, "OPTICAL_UPSTREAM_WEAK", "Hanya arah upstream (ONU ke OLT) yang lemah", basis,
+			"Downstream normal tetapi upstream lemah: curigai pemancar ONU yang menurun atau konektor/ujung fiber di sisi ONU yang kotor; jalur bersama kurang mungkin. Bandingkan dengan ONU lain di port yang sama.")
+		a.action(domain.DiagActionOpenOptical)
+	case weak(ontLvl):
+		a.add(sev, "OPTICAL_DOWNSTREAM_WEAK", "Hanya arah downstream (OLT ke ONU) yang lemah", basis,
+			"Upstream normal tetapi downstream lemah: periksa konektor penerima ONT. Pastikan juga path RX yang dipetakan untuk model ini benar, karena nilai/satuan yang salah akan tampak seperti redaman lemah.")
+		a.action(domain.DiagActionOpenOptical)
+	case a.d.Verdict != domain.VerdictReachable:
+		a.add(domain.SeverityInfo, "OPTICAL_PAIR_OK", "Redaman normal di kedua arah", basis,
+			"Tidak ada tanda masalah di jalur optik dari kedua arah; penyebab lebih mungkin di jalur IP/TR-069 atau pengaturan ONU.")
 	}
 }
 

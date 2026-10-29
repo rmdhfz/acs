@@ -254,6 +254,16 @@ export function useDeviceOpticalMetrics(id: number) {
   })
 }
 
+// Pembacaan RX ONT terbaru saja (daftar terbaru dulu, satu baris): dipakai kartu "Posisi di jaringan" untuk membandingkan dengan RX sisi OLT.
+export function useLatestOpticalMetric(id: number, enabled = true) {
+  return useQuery({
+    queryKey: ['device', id, 'optical-latest'],
+    queryFn: () => api.get<ListResponse<DeviceOpticalMetric>>(`/devices/${id}/optical-metrics?page_size=1`),
+    enabled,
+    refetchInterval: LIVE_REFRESH_MS,
+  })
+}
+
 // ---- Dashboard analitik (ROADMAP.md Fase 1) ----
 
 export function useDeviceStats() {
