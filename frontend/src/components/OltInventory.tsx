@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, Network } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { AlertTriangle, ChevronLeft, ChevronRight, Network } from 'lucide-react'
 import { EmptyState } from './EmptyState'
 import { StatusBadge } from './StatusBadge'
 import { useOLTPorts, useOLTRegisteredONUs, type RegisteredONUFilters } from '../lib/hooks'
 import { formatRelativeTime } from '../lib/format'
-import { ONU_STATE_LABEL, formatRx, isOltDataStale, onuStateBadge, onuStateLabel, portTone, sumPorts, type PortTone } from '../lib/oltInventory'
+import { ONU_STATE_LABEL, flaggedPorts, formatRx, isOltDataStale, onuStateBadge, onuStateLabel, portHint, portTone, stateSince, sumPorts, type PortTone } from '../lib/oltInventory'
 import type { OLT, OLTONUState } from '../lib/types'
 
 const PAGE_SIZE = 50
@@ -23,7 +23,9 @@ const TONE_ROW: Record<PortTone, string> = {
 // ONU terdaftar & port PON dari polling OLT (hanya baca). Keadaan berasal dari polling terakhir, bukan detik ini: usia data selalu ditampilkan
 // dan data lebih tua dari 30 menit diberi catatan. Tautan "Perangkat ACS" = serial yang sama di tenant yang sama.
 export function OltInventory({ olts }: { olts: OLT[] }) {
-  const [selected, setSelected] = useState('')
+  // Tautan dalam (mis. dari notifikasi ONU LOS): /olts?olt=<uuid>&problem=1 membuka OLT itu dengan filter "bermasalah saja" sudah aktif.
+  const [params] = useSearchParams()
+  const [selected, setSelected] = useState(() => params.get('olt') ?? '')
   const oltId = olts.some((o) => o.id === selected) ? selected : (olts[0]?.id ?? '')
   const olt = olts.find((o) => o.id === oltId)
 
@@ -31,18 +33,24 @@ export function OltInventory({ olts }: { olts: OLT[] }) {
   const [state, setState] = useState('')
   const [port, setPort] = useState('')
   const [search, setSearch] = useState('')
+  const [problem, setProblem] = useState(() => params.get('problem') === '1')
   const [page, setPage] = useState(1)
-  // OLT berganti = filter dan halaman kembali ke awal (port milik OLT lain tidak berlaku).
+  // OLT berganti = filter dan halaman kembali ke awal (port milik OLT lain tidak berlaku). Render pertama tidak mereset, supaya filter dari
+  // tautan dalam tidak terhapus.
+  const prevOlt = useRef(oltId)
   useEffect(() => {
+    if (prevOlt.current === oltId) return
+    prevOlt.current = oltId
     setState('')
     setPort('')
     setSearch('')
+    setProblem(false)
     setPage(1)
   }, [oltId])
 
   const filters: RegisteredONUFilters = useMemo(
-    () => ({ pon_port: port || undefined, state: state || undefined, search: search.trim() || undefined, page, page_size: PAGE_SIZE }),
-    [port, state, search, page],
+    () => ({ pon_port: port || undefined, state: state || undefined, search: search.trim() || undefined, problem: problem || undefined, sort: 'severity', page, page_size: PAGE_SIZE }),
+    [port, state, search, problem, page],
   )
   const ports = useOLTPorts(oltId)
   const onus = useOLTRegisteredONUs(oltId, filters, tab === 'onus')
@@ -54,6 +62,7 @@ export function OltInventory({ olts }: { olts: OLT[] }) {
   const total = onus.data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const stale = isOltDataStale(olt.last_poll_at)
+  const flagged = flaggedPorts(portRows)
   const unavailable = ports.isError || (tab === 'onus' && onus.isError)
 
   return (
@@ -103,6 +112,7 @@ export function OltInventory({ olts }: { olts: OLT[] }) {
           <span className="text-xs text-slate-600 dark:text-slate-300">
             {totals.total} ONU · {totals.online} online
             {totals.problem > 0 && <strong className="ml-1 text-red-600 dark:text-red-400">· {totals.problem} LOS/dying gasp</strong>}
+            {totals.offline > 0 && <strong className="ml-1 text-slate-700 dark:text-slate-300">· {totals.offline} offline</strong>}
           </span>
         )}
         {tab === 'onus' && (
@@ -123,6 +133,14 @@ export function OltInventory({ olts }: { olts: OLT[] }) {
                 </option>
               ))}
             </select>
+            <button
+              type="button"
+              aria-pressed={problem}
+              onClick={() => { setProblem((v) => !v); setPage(1) }}
+              className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${problem ? 'border-red-600 bg-red-600 text-white' : 'border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'}`}
+            >
+              Bermasalah saja
+            </button>
             <input
               type="text"
               maxLength={100}
@@ -135,6 +153,30 @@ export function OltInventory({ olts }: { olts: OLT[] }) {
           </div>
         )}
       </div>
+
+      {flagged.length > 0 && (
+        <div role="alert" aria-label="Port PON dengan dugaan gangguan" className="mx-5 mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
+          <p className="flex items-center gap-2 font-medium">
+            <AlertTriangle className="h-4 w-4 shrink-0" /> Dugaan gangguan per port PON
+          </p>
+          <ul className="mt-1 space-y-1 text-xs">
+            {flagged.map((f) => (
+              <li key={f.port}>
+                <button
+                  type="button"
+                  onClick={() => { setPort(f.port); setProblem(true); setPage(1); setTab('onus') }}
+                  className="font-mono font-semibold underline-offset-2 hover:underline"
+                  aria-label={`Lihat ONU bermasalah di port ${f.port}`}
+                >
+                  {f.port}
+                </button>
+                : {f.hint.text}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 text-xs opacity-80">Ini dugaan dari pola data OLT (banyak ONU di satu port), bukan kepastian.</p>
+        </div>
+      )}
 
       <div className="px-5 pb-5 pt-4">
         {unavailable ? (
@@ -158,6 +200,7 @@ export function OltInventory({ olts }: { olts: OLT[] }) {
                     <th className="px-3 py-2 text-right">Lainnya</th>
                     <th className="px-3 py-2 text-right">Tertaut ACS</th>
                     <th className="px-3 py-2">RX OLT (min / rata-rata)</th>
+                    <th className="px-3 py-2">Dugaan</th>
                     <th className="px-3 py-2" />
                   </tr>
                 </thead>
@@ -175,6 +218,7 @@ export function OltInventory({ olts }: { olts: OLT[] }) {
                       <td className="px-3 py-2 text-xs text-slate-600 dark:text-slate-300">
                         {formatRx(p.min_rx_dbm)} / {formatRx(p.avg_rx_dbm)}
                       </td>
+                      <td className="px-3 py-2 text-xs text-slate-600 dark:text-slate-300">{portHint(p)?.kind === 'FEEDER' ? 'Feeder/distribusi' : portHint(p)?.kind === 'POWER' ? 'Listrik area' : '—'}</td>
                       <td className="px-3 py-2 text-right">
                         <button
                           type="button"
@@ -194,7 +238,7 @@ export function OltInventory({ olts }: { olts: OLT[] }) {
         ) : rows.length === 0 ? (
           onus.isLoading ? (
             <p className="py-6 text-center text-sm text-slate-500 dark:text-slate-400">Memuat...</p>
-          ) : total === 0 && !port && !state && !search ? (
+          ) : total === 0 && !port && !state && !search && !problem ? (
             <Empty polled={!!olt.last_poll_at} />
           ) : (
             <p className="py-6 text-center text-sm text-slate-500 dark:text-slate-400">Tidak ada ONU yang cocok dengan filter.</p>
@@ -225,7 +269,18 @@ export function OltInventory({ olts }: { olts: OLT[] }) {
                         {r.vendor_state && r.state === 'UNKNOWN' && <span className="ml-2 text-xs text-slate-500 dark:text-slate-400">({r.vendor_state})</span>}
                       </td>
                       <td className="px-3 py-2 text-xs tabular-nums">{formatRx(r.rx_power_dbm)}</td>
-                      <td className="px-3 py-2 text-xs text-slate-500 dark:text-slate-400">{formatRelativeTime(r.last_state_change_at)}</td>
+                      <td className="px-3 py-2 text-xs text-slate-500 dark:text-slate-400">
+                        {(() => {
+                          const s = stateSince(r)
+                          return s.observed ? (
+                            formatRelativeTime(s.at)
+                          ) : (
+                            <span title="ACS belum pernah melihat keadaan ini berubah, jadi waktu mulainya tidak diketahui (bisa jauh lebih lama).">
+                              terlihat sejak {formatRelativeTime(s.at)}
+                            </span>
+                          )
+                        })()}
+                      </td>
                       <td className="px-3 py-2 text-xs">
                         {r.device_id != null ? (
                           <Link to={`/devices/${r.device_id}`} className="font-medium text-indigo-600 hover:underline dark:text-indigo-400">

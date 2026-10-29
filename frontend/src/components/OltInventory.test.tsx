@@ -174,4 +174,98 @@ describe('OltInventory', () => {
     const { container } = renderApp(<OltInventory olts={[]} />)
     expect(container.querySelector('section')).toBeNull()
   })
+
+  const lastOnuQuery = (calls: { url: string }[]) => new URL(calls.filter((c) => c.url.includes('registered-onus')).at(-1)!.url, 'http://x').searchParams
+
+  it('urutan masalah-dulu diminta bawaan; "Bermasalah saja" menambah problem=true dan bisa dimatikan lagi', async () => {
+    const calls = mockFetch(handler())
+    renderApp(<OltInventory olts={[olt('olt-1', 'OLT Pusat', 1)]} />)
+    await screen.findByText('SIMREG0001')
+    expect(lastOnuQuery(calls).get('sort')).toBe('severity')
+    expect(lastOnuQuery(calls).has('problem')).toBe(false)
+    const user = userEvent.setup()
+    const chip = screen.getByRole('button', { name: 'Bermasalah saja' })
+    expect(chip.getAttribute('aria-pressed')).toBe('false')
+    await user.click(chip)
+    expect(chip.getAttribute('aria-pressed')).toBe('true')
+    await waitFor(() => expect(lastOnuQuery(calls).get('problem')).toBe('true'))
+    await user.click(chip)
+    await waitFor(() => expect(lastOnuQuery(calls).has('problem')).toBe(false))
+  })
+
+  it('tautan dalam /olts?olt=...&problem=1: memilih OLT itu dan menyalakan filter sejak render pertama', async () => {
+    const calls = mockFetch(handler())
+    renderApp(<OltInventory olts={[olt('olt-1', 'OLT Satu', 1), olt('olt-2', 'OLT Dua', 1)]} />, '/olts?olt=olt-2&problem=1')
+    await screen.findByText('SIMREG0001')
+    const onuCalls = calls.filter((c) => c.url.includes('registered-onus'))
+    expect(onuCalls.every((c) => c.url.includes('/olts/olt-2/'))).toBe(true) // tak pernah memuat OLT pertama dulu
+    expect(lastOnuQuery(calls).get('problem')).toBe('true')
+    expect(screen.getByRole('button', { name: 'Bermasalah saja' }).getAttribute('aria-pressed')).toBe('true')
+    expect((screen.getByLabelText('Pilih OLT') as HTMLSelectElement).value).toBe('olt-2')
+  })
+
+  it('tautan dalam dengan OLT yang tidak dikenal jatuh ke OLT pertama (tanpa galat)', async () => {
+    mockFetch(handler())
+    renderApp(<OltInventory olts={[olt('olt-1', 'OLT Satu', 1), olt('olt-2', 'OLT Dua', 1)]} />, '/olts?olt=hilang')
+    await screen.findByText('SIMREG0001')
+    expect((screen.getByLabelText('Pilih OLT') as HTMLSelectElement).value).toBe('olt-1')
+  })
+
+  it('ganti OLT manual mereset filter (termasuk "bermasalah saja")', async () => {
+    const calls = mockFetch(handler())
+    renderApp(<OltInventory olts={[olt('olt-1', 'OLT Satu', 1), olt('olt-2', 'OLT Dua', 1)]} />, '/olts?problem=1')
+    await screen.findByText('SIMREG0001')
+    expect(lastOnuQuery(calls).get('problem')).toBe('true')
+    await userEvent.setup().selectOptions(screen.getByLabelText('Pilih OLT'), 'olt-2')
+    await waitFor(() => {
+      const q = lastOnuQuery(calls)
+      expect(calls.filter((c) => c.url.includes('registered-onus')).at(-1)!.url).toContain('/olts/olt-2/')
+      expect(q.has('problem')).toBe(false)
+    })
+  })
+
+  it('"Keadaan sejak": baris baru ditemukan diberi label jujur, perubahan yang teramati memakai waktunya', async () => {
+    const seen = minutesAgo(2)
+    mockFetch(
+      handler({
+        onus: [
+          onu(2, { state: 'LOS', first_seen_at: seen, last_state_change_at: seen }),
+          onu(1, { state: 'ONLINE', first_seen_at: minutesAgo(600), last_state_change_at: minutesAgo(120) }),
+        ],
+      }),
+    )
+    renderApp(<OltInventory olts={[olt('olt-1', 'OLT Pusat', 1)]} />)
+    await screen.findByText('SIMREG0002')
+    const rows = screen.getAllByRole('row')
+    const losRow = rows.find((r) => within(r).queryByText('SIMREG0002'))!
+    expect(within(losRow).getByText(/terlihat sejak/)).toBeTruthy()
+    const okRow = rows.find((r) => within(r).queryByText('SIMREG0001'))!
+    expect(within(okRow).queryByText(/terlihat sejak/)).toBeNull()
+  })
+
+  it('ringkasan menyebut jumlah offline; banner dugaan muncul untuk port dengan LOS massal dan menyaring port itu', async () => {
+    const hot: PONPortSummary = { pon_port: 'sim/2/1', total: 8, online: 1, offline: 0, los: 7, dying_gasp: 0, unknown: 0, linked: 0, min_rx_dbm: null, avg_rx_dbm: null, last_seen_at: minutesAgo(1) }
+    const calls = mockFetch(handler({ ports: [...PORTS, hot] }))
+    renderApp(<OltInventory olts={[olt('olt-1', 'OLT Pusat', 1)]} />)
+    await screen.findByText('SIMREG0001')
+    expect(screen.getByText(/1 offline/)).toBeTruthy()
+    const banner = await screen.findByRole('alert', { name: 'Port PON dengan dugaan gangguan' })
+    expect(within(banner).getByText(/7 dari 8 ONU LOS/)).toBeTruthy()
+    expect(within(banner).getByText(/bukan kepastian/)).toBeTruthy()
+    expect(within(banner).queryByText('sim/1/1')).toBeNull() // port kecil biasa tidak ditandai
+    await userEvent.setup().click(within(banner).getByRole('button', { name: 'Lihat ONU bermasalah di port sim/2/1' }))
+    await waitFor(() => {
+      const q = lastOnuQuery(calls)
+      expect(q.get('pon_port')).toBe('sim/2/1')
+      expect(q.get('problem')).toBe('true')
+    })
+  })
+
+  it('tanpa port yang memenuhi ambang: tidak ada banner', async () => {
+    mockFetch(handler())
+    renderApp(<OltInventory olts={[olt('olt-1', 'OLT Pusat', 1)]} />)
+    await screen.findByText('SIMREG0001')
+    expect(screen.queryByRole('alert', { name: 'Port PON dengan dugaan gangguan' })).toBeNull()
+  })
 })
+

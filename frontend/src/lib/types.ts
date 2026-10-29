@@ -483,6 +483,18 @@ export interface SelfServiceDevice {
   online: boolean
 }
 
+// Diagnosis versi pelanggan (GET /self-service/devices/{id}/diagnosis): teks awam dari daftar putih backend, tanpa data internal.
+export type CustomerDiagnosisCause = 'CONNECTED' | 'NOT_YET_CONNECTED' | 'POWER' | 'FIBER' | 'NO_RECENT_CONTACT'
+export interface CustomerDiagnosis {
+  online: boolean
+  cause: CustomerDiagnosisCause
+  headline: string
+  steps: string[]
+  can_reboot: boolean
+  disclaimer: string
+  generated_at: string
+}
+
 export interface Tag {
   id: number
   tenant_id: number | null

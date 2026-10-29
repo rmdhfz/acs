@@ -22,7 +22,11 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const tokenAtConnect = useRef<string | null>(null)
 
   useEffect(() => {
+    // disposed = efek ini sudah dibersihkan (unmount, atau StrictMode memasang dua kali di dev). Tanpa penanda ini onclose socket lama tetap
+    // menjadwalkan sambung ulang SETELAH cleanup, sehingga muncul koneksi ganda, dan penutupan sebelum terhubung dicatat sebagai "WS Error".
+    let disposed = false
     const connect = () => {
+      if (disposed) return
       const token = getAuthToken()
       if (!token) {
         // Belum login — coba lagi nanti supaya WS tetap tersambung setelah login.
@@ -83,6 +87,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       }
 
       ws.onclose = () => {
+        if (disposed) return
         setConnected(false)
         // Auto reconnect dengan exponential backoff (maks 30 dtk) supaya tidak
         // membanjiri server saat backend WS memang tidak tersedia.
@@ -91,6 +96,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       }
 
       ws.onerror = (e) => {
+        if (disposed) return
         console.error("WS Error", e)
         ws.close()
       }
@@ -109,9 +115,13 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     }, 10000)
 
     return () => {
+      disposed = true
       window.clearInterval(tokenWatch)
       if (reconnectTimeout.current) clearTimeout(reconnectTimeout.current)
-      if (wsRef.current) wsRef.current.close()
+      if (wsRef.current) {
+        wsRef.current.onmessage = null
+        wsRef.current.close()
+      }
     }
   }, [queryClient])
 

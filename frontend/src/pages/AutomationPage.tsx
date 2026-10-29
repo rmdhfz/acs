@@ -388,7 +388,11 @@ function RuleModal({ rule, onClose }: { rule: AutomationRule | null; onClose: ()
                   </select>
                 )}
                 {a.type === 'set_parameter' && (
-                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Nilai adalah ekspresi: teks tetap ditulis dalam kutip. Parameter rahasia diatur lewat provisioning profile.</p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    Nilai adalah ekspresi: teks tetap ditulis dalam kutip. Parameter rahasia diatur lewat provisioning profile. Untuk semua instance sebuah tabel (mis. semua SSID),
+                    tulis <span className="font-mono">*</span> sebagai segmen nomor pada raw path, mis. <span className="font-mono">InternetGatewayDevice.LANDevice.1.WLANConfiguration.*.SSID</span> (maks 8 instance yang
+                    pernah dilaporkan perangkat; rujukan <span className="font-mono">{'{...*...}'}</span> pada nilai mengikuti instance yang sama; tidak berlaku di kondisi).
+                  </p>
                 )}
               </div>
             ))}

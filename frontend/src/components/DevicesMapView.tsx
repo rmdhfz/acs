@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { MapPin } from 'lucide-react'
 import { EmptyState } from './EmptyState'
 import { PageSpinner } from './Spinner'
+import { UnlocatedDevicesPanel } from './UnlocatedDevicesPanel'
 import { useDeviceMap, type DeviceFilters } from '../lib/hooks'
 import { countStatuses, mapNotice, statusStyle } from '../lib/deviceMap'
 
@@ -45,15 +46,18 @@ export function DevicesMapView({ filters, onOpenDevice }: Props) {
   if (isLoading) return <PageSpinner />
   if (data && data.located === 0) {
     return (
-      <EmptyState
-        icon={MapPin}
-        title={data.total === 0 ? 'Tidak ada perangkat yang cocok dengan filter' : 'Belum ada perangkat yang punya koordinat'}
-        description={
-          data.total === 0
-            ? 'Ubah atau hapus filter untuk melihat perangkat di peta.'
-            : `${data.total} perangkat cocok dengan filter tetapi belum punya lokasi. Isi latitude dan longitude lewat Edit perangkat, atau lewat impor massal (kolom latitude dan longitude).`
-        }
-      />
+      <div className="space-y-4">
+        <EmptyState
+          icon={MapPin}
+          title={data.total === 0 ? 'Tidak ada perangkat yang cocok dengan filter' : 'Belum ada perangkat yang punya koordinat'}
+          description={
+            data.total === 0
+              ? 'Ubah atau hapus filter untuk melihat perangkat di peta.'
+              : `${data.total} perangkat cocok dengan filter tetapi belum punya lokasi. Tetapkan dari daftar di bawah (klik peta atau tempel koordinat), lewat Edit perangkat, atau lewat impor massal (kolom latitude dan longitude).`
+          }
+        />
+        {data.total > 0 && <UnlocatedDevicesPanel filters={base} />}
+      </div>
     )
   }
 
@@ -81,6 +85,7 @@ export function DevicesMapView({ filters, onOpenDevice }: Props) {
           }}
         />
       </Suspense>
+      {data && data.total > data.located && <UnlocatedDevicesPanel filters={base} />}
     </section>
   )
 }

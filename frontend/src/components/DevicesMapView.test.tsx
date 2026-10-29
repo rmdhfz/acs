@@ -16,6 +16,14 @@ vi.mock('./DeviceMap', () => ({
   ),
 }))
 
+vi.mock('./LocationPickerModal', () => ({
+  LocationPickerModal: (p: { device: { id: number; serial_number: string }; onClose: () => void }) => (
+    <div data-testid="picker-stub" data-device={p.device.id}>
+      <button onClick={p.onClose}>tutup picker</button>
+    </div>
+  ),
+}))
+
 const pt = (id: number, status: string): DeviceMapPoint => ({
   id, device_uuid: `u${id}`, serial_number: `SN${id}`, product_class: 'F660', latitude: -6.2, longitude: 106.8, status, last_inform_at: null,
 })
@@ -24,9 +32,11 @@ const resp = (over: Partial<DeviceMapResponse> & { data: DeviceMapPoint[] }): De
   total: over.data.length, located: over.data.length, truncated: false, ...over,
 })
 
+const asRole = (role: string) => localStorage.setItem('acs_user', JSON.stringify({ id: 1, uuid: 'u', username: 'u', roles: [role], tenant_id: 7 }))
+
 beforeEach(() => {
   setAuthToken('JWT')
-  localStorage.setItem('acs_user', JSON.stringify({ id: 1, uuid: 'u', username: 'u', roles: ['NOC'], tenant_id: 7 }))
+  asRole('NOC')
 })
 afterEach(() => {
   setAuthToken(null)
@@ -127,5 +137,81 @@ describe('DevicesMapView', () => {
     renderApp(<DevicesMapView filters={{ search: 'a' }} onOpenDevice={() => {}} />)
     const stub = await screen.findByTestId('map-stub')
     expect(stub.getAttribute('data-fit')).toBe(JSON.stringify({ search: 'a' }))
+  })
+
+  describe('perangkat belum punya lokasi', () => {
+    const unlocated = (n: number, total = n) => ({
+      data: Array.from({ length: n }, (_, i) => ({ id: 100 + i, serial_number: `NOLOC${i}`, product_class: 'F609' })),
+      total,
+    })
+    const handler = (map: DeviceMapResponse, list: { data: unknown[]; total: number }) => (r: { url: string }) => {
+      if (r.url.includes('/devices/map')) return { json: map }
+      if (r.url.includes('/devices?')) return { json: list }
+      return undefined
+    }
+
+    it('semua berlokasi: panel tidak ada dan daftar tidak diminta', async () => {
+      const calls = mockFetch(handler(resp({ data: [pt(1, 'ONLINE')] }), unlocated(0)))
+      renderApp(<DevicesMapView filters={{}} onOpenDevice={() => {}} />)
+      await screen.findByTestId('map-stub')
+      expect(screen.queryByRole('region', { name: 'Perangkat belum punya lokasi' })).toBeNull()
+      expect(calls.some((c) => c.url.includes('has_location'))).toBe(false)
+    })
+
+    it('sebagian belum berlokasi: panel menampilkan jumlah dan memakai filter aktif + has_location=false', async () => {
+      const calls = mockFetch(handler(resp({ data: [pt(1, 'ONLINE')], total: 3, located: 1 }), unlocated(2, 2)))
+      renderApp(<DevicesMapView filters={{ search: 'ZTE', page: 4, sort: '-id' }} onOpenDevice={() => {}} />)
+      const panel = await screen.findByRole('region', { name: 'Perangkat belum punya lokasi' })
+      expect(await screen.findByText('NOLOC0')).toBeTruthy()
+      expect(panel.textContent).toContain('Belum punya lokasi (2)')
+      const url = new URL(calls.find((c) => c.url.includes('has_location'))!.url, 'http://x')
+      expect(url.searchParams.get('has_location')).toBe('false')
+      expect(url.searchParams.get('search')).toBe('ZTE')
+      expect(url.searchParams.get('page')).toBe('1') // paginasi daftar peta tidak ikut halaman tabel
+      expect(url.searchParams.get('page_size')).toBe('10')
+    })
+
+    it('NOC dapat membuka pemilih untuk perangkat itu dan menutupnya', async () => {
+      mockFetch(handler(resp({ data: [pt(1, 'ONLINE')], total: 3, located: 1 }), unlocated(2)))
+      renderApp(<DevicesMapView filters={{}} onOpenDevice={() => {}} />)
+      const user = userEvent.setup()
+      await user.click(await screen.findByRole('button', { name: 'Tetapkan lokasi NOLOC1' }))
+      expect((await screen.findByTestId('picker-stub')).getAttribute('data-device')).toBe('101')
+      await user.click(screen.getByRole('button', { name: 'tutup picker' }))
+      expect(screen.queryByTestId('picker-stub')).toBeNull()
+    })
+
+    it('peran hanya-baca (VIEWER) melihat daftar tetapi tanpa tombol tetapkan', async () => {
+      asRole('VIEWER')
+      mockFetch(handler(resp({ data: [pt(1, 'ONLINE')], total: 3, located: 1 }), unlocated(2)))
+      renderApp(<DevicesMapView filters={{}} onOpenDevice={() => {}} />)
+      expect(await screen.findByText('NOLOC0')).toBeTruthy()
+      expect(screen.queryByRole('button', { name: /Tetapkan lokasi/ })).toBeNull()
+    })
+
+    it('tak satu pun berlokasi: panel ikut tampil di keadaan kosong', async () => {
+      mockFetch(handler(resp({ data: [], total: 2, located: 0 }), unlocated(2)))
+      renderApp(<DevicesMapView filters={{}} onOpenDevice={() => {}} />)
+      expect(await screen.findByText('Belum ada perangkat yang punya koordinat')).toBeTruthy()
+      expect(await screen.findByText('NOLOC1')).toBeTruthy()
+      expect(screen.queryByTestId('map-stub')).toBeNull()
+    })
+
+    it('filter tak cocok sama sekali: tidak ada panel', async () => {
+      const calls = mockFetch(handler(resp({ data: [], total: 0, located: 0 }), unlocated(0)))
+      renderApp(<DevicesMapView filters={{ search: 'zzz' }} onOpenDevice={() => {}} />)
+      await screen.findByText('Tidak ada perangkat yang cocok dengan filter')
+      expect(calls.some((c) => c.url.includes('has_location'))).toBe(false)
+    })
+
+    it('lebih dari satu halaman: berpindah halaman meminta page berikutnya', async () => {
+      const calls = mockFetch(handler(resp({ data: [pt(1, 'ONLINE')], total: 26, located: 1 }), unlocated(10, 25)))
+      renderApp(<DevicesMapView filters={{}} onOpenDevice={() => {}} />)
+      const user = userEvent.setup()
+      expect(await screen.findByText('Halaman 1 dari 3')).toBeTruthy()
+      await user.click(screen.getByRole('button', { name: 'Berikutnya' }))
+      await screen.findByText('Halaman 2 dari 3')
+      expect(calls.some((c) => c.url.includes('has_location=false') && c.url.includes('page=2'))).toBe(true)
+    })
   })
 })

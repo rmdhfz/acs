@@ -35,6 +35,7 @@ import type {
   ProvisioningProfileParameter,
   RefLookup,
   SelfServiceDevice,
+  CustomerDiagnosis,
   Task,
   TaskStatusCount,
   Tenant,
@@ -102,6 +103,8 @@ export interface DeviceFilters {
   // Level RX terakhir (ambang -25/-27 dBm, lihat lib/optical.ts) dan "vendor belum dikenal".
   optical_level?: 'ok' | 'warn' | 'bad' | 'unknown'
   no_vendor?: boolean
+  // true = hanya yang punya koordinat lengkap; false = yang belum punya (dasar daftar "tetapkan lokasi" di peta).
+  has_location?: boolean
   // Query bebas (lihat GET /devices): kondisi nilai parameter `nama~op~nilai` (berulang, AND) dan urutan (`kolom` / `-kolom`).
   param?: string[]
   sort?: string
@@ -1437,6 +1440,17 @@ export function useChangeMyWiFi() {
   })
 }
 
+// Dihitung saat diminta (tombol "Internet saya bermasalah?"), tidak di-poll.
+export function useMyDeviceDiagnosis(id: number | undefined) {
+  return useQuery({
+    queryKey: ['my-device-diagnosis', id],
+    queryFn: () => api.get<CustomerDiagnosis>(`/self-service/devices/${id}/diagnosis`),
+    enabled: id !== undefined,
+    staleTime: 0,
+    gcTime: 0,
+  })
+}
+
 export function useRebootMyDevice() {
   return useMutation({
     mutationFn: (deviceId: number) => api.post<void>(`/self-service/devices/${deviceId}/reboot`, {}),
@@ -2298,6 +2312,9 @@ export interface RegisteredONUFilters {
   pon_port?: string
   state?: string
   search?: string
+  // true = hanya ONU OFFLINE/LOS/dying gasp. sort: 'severity' = masalah dulu; kosong = port, nomor ONU, serial.
+  problem?: boolean
+  sort?: 'severity' | 'port'
   page?: number
   page_size?: number
 }

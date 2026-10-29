@@ -18,9 +18,18 @@ export function QueryErrorBanner() {
 
   useEffect(() => {
     const cache = qc.getQueryCache()
-    const sync = () => setFailed(cache.findAll({ predicate: failedActive }))
+    let alive = true
+    const sync = () => {
+      if (alive) setFailed(cache.findAll({ predicate: failedActive }))
+    }
     sync()
-    return cache.subscribe(sync)
+    // Notifikasi cache bisa datang SAAT komponen lain sedang render (useQuery membuat observer di fase render). setState sinkron di
+    // sini memicu peringatan React "Cannot update a component while rendering a different component"; ditunda ke microtask.
+    const unsubscribe = cache.subscribe(() => queueMicrotask(sync))
+    return () => {
+      alive = false
+      unsubscribe()
+    }
   }, [qc])
 
   if (failed.length === 0) return null

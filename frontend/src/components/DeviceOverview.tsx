@@ -4,6 +4,7 @@ import { AssignVendorModal } from './AssignVendorModal'
 import { CopyButton } from './CopyButton'
 import { DeviceDiagnosisCard } from './DeviceDiagnosisCard'
 import { DeviceOltCard } from './DeviceOltCard'
+import { LocationPickerModal } from './LocationPickerModal'
 import { formatDateTime, formatRelativeTime } from '../lib/format'
 import { useWakeDevice } from '../lib/wake'
 import type { Device } from '../lib/types'
@@ -71,6 +72,7 @@ export function DeviceOverview({
 }) {
   const online = statusCode === 'ONLINE'
   const [assigningVendor, setAssigningVendor] = useState(false)
+  const [pickingLocation, setPickingLocation] = useState(false)
   const wakeDevice = useWakeDevice(device, onEdit)
   const hasCr = !!device.connection_request_url
   const credsMissing = hasCr && device.connection_request_credentials_set === false
@@ -79,6 +81,11 @@ export function DeviceOverview({
   const editBtn = canEdit ? (
     <button onClick={onEdit} className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:underline dark:text-blue-400">
       <Pencil className="h-3.5 w-3.5" /> Edit
+    </button>
+  ) : null
+  const locationBtn = canEdit ? (
+    <button onClick={() => setPickingLocation(true)} className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:underline dark:text-blue-400">
+      <MapPin className="h-3.5 w-3.5" /> Pilih di peta
     </button>
   ) : null
 
@@ -228,7 +235,7 @@ export function DeviceOverview({
         </section>
 
         <section className={card}>
-          <CardHeader title="Lokasi" action={editBtn} />
+          <CardHeader title="Lokasi" action={locationBtn} />
           <div className="flex items-start gap-3 px-5 py-4 text-sm">
             <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
             {hasLoc ? (
@@ -241,7 +248,7 @@ export function DeviceOverview({
                 </a>
               </div>
             ) : (
-              <p className="text-slate-500 dark:text-slate-400">Lokasi belum diisi.{canEdit ? ' Klik Edit untuk menambahkan koordinat.' : ''}</p>
+              <p className="text-slate-500 dark:text-slate-400">Lokasi belum diisi.{canEdit ? ' Klik Pilih di peta untuk menetapkannya.' : ''}</p>
             )}
           </div>
         </section>
@@ -259,6 +266,7 @@ export function DeviceOverview({
         </section>
       </div>
       {assigningVendor && <AssignVendorModal device={device} onClose={() => setAssigningVendor(false)} />}
+      {pickingLocation && <LocationPickerModal device={device} onClose={() => setPickingLocation(false)} />}
     </div>
   )
 }

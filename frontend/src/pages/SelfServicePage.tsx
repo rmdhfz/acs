@@ -1,11 +1,11 @@
 import { useI18n } from '../lib/i18n'
 import { useState, type FormEvent } from 'react'
-import { Wifi, RotateCw, Router as RouterIcon, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Wifi, RotateCw, Router as RouterIcon, CheckCircle2, AlertCircle, LifeBuoy } from 'lucide-react'
 import { EmptyState } from '../components/EmptyState'
 import { PageSpinner } from '../components/Spinner'
 import { ApiError } from '../lib/api'
 import { useConfirm } from '../lib/confirm'
-import { useMyDevices, useMyDevice, useChangeMyWiFi, useRebootMyDevice } from '../lib/hooks'
+import { useMyDevices, useMyDevice, useMyDeviceDiagnosis, useChangeMyWiFi, useRebootMyDevice } from '../lib/hooks'
 import type { SelfServiceDevice } from '../lib/types'
 
 const inputCls =
@@ -49,6 +49,7 @@ export default function SelfServicePage() {
 function DeviceCard({ device }: { device: SelfServiceDevice }) {
   const [showWiFi, setShowWiFi] = useState(false)
   const [showInfo, setShowInfo] = useState(false)
+  const [showDiag, setShowDiag] = useState(false)
   // Rincian terbaru dari GET /self-service/devices/:id — hanya dimuat saat dibuka.
   const { data: fresh, isLoading: infoLoading } = useMyDevice(showInfo ? device.id : undefined)
   const rebootMut = useRebootMyDevice()
@@ -142,6 +143,18 @@ function DeviceCard({ device }: { device: SelfServiceDevice }) {
         )}
       </div>
 
+      <div className="mt-3">
+        <button
+          type="button"
+          onClick={() => setShowDiag((v) => !v)}
+          aria-expanded={showDiag}
+          className="flex items-center gap-1.5 text-sm font-medium text-indigo-700 hover:underline dark:text-indigo-300"
+        >
+          <LifeBuoy className="h-4 w-4" /> {showDiag ? 'Tutup pemeriksaan' : 'Internet saya bermasalah?'}
+        </button>
+        {showDiag && <DiagnosisPanel deviceId={device.id} />}
+      </div>
+
       <div className="mt-4 border-t border-slate-100 pt-4 dark:border-slate-800">
         {showWiFi ? (
           <WiFiForm deviceId={device.id} onClose={() => setShowWiFi(false)} />
@@ -154,6 +167,36 @@ function DeviceCard({ device }: { device: SelfServiceDevice }) {
           </button>
         )}
       </div>
+    </div>
+  )
+}
+
+// Hasil sudah berbahasa awam dari backend; panel ini hanya menampilkannya (tidak menafsirkan kode apa pun).
+function DiagnosisPanel({ deviceId }: { deviceId: number }) {
+  const { data, isLoading, isError, refetch, isFetching } = useMyDeviceDiagnosis(deviceId)
+  if (isLoading) return <p className="mt-3 text-sm text-slate-600 dark:text-slate-400">Memeriksa…</p>
+  if (isError || !data) {
+    return (
+      <p role="alert" className="mt-3 text-sm text-red-600 dark:text-red-400">
+        Pemeriksaan belum dapat dilakukan. Coba lagi sebentar lagi.
+      </p>
+    )
+  }
+  return (
+    <div role="status" className="mt-3 rounded-2xl bg-slate-50 p-4 text-sm dark:bg-slate-800/50">
+      <p className={`flex items-start gap-2 font-medium ${data.online ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-800 dark:text-amber-300'}`}>
+        {data.online ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> : <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />}
+        {data.headline}
+      </p>
+      <ol className="mt-2 list-decimal space-y-1 pl-5 text-slate-700 dark:text-slate-300">
+        {data.steps.map((s) => (
+          <li key={s}>{s}</li>
+        ))}
+      </ol>
+      <p className="mt-3 text-xs text-slate-600 dark:text-slate-400">{data.disclaimer}</p>
+      <button type="button" onClick={() => void refetch()} disabled={isFetching} className="mt-2 text-xs font-medium text-indigo-700 hover:underline disabled:opacity-60 dark:text-indigo-300">
+        {isFetching ? 'Memeriksa…' : 'Periksa ulang'}
+      </button>
     </div>
   )
 }

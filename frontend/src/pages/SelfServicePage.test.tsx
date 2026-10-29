@@ -87,4 +87,45 @@ describe('SelfServicePage (portal pelanggan)', () => {
     await u.click(screen.getByRole('button', { name: /lihat rincian perangkat/i }))
     expect(await screen.findByText('V9.1-baru')).toBeTruthy()
   })
+
+  it('"Internet saya bermasalah?": tidak meminta apa pun sebelum dibuka, lalu menampilkan teks awam dan bisa diperiksa ulang', async () => {
+    let n = 0
+    const calls = mockFetch(({ url, method }) => {
+      if (url.endsWith('/self-service/devices') && method === 'GET') return { json: { data: [dev], total: 1 } }
+      if (url.endsWith('/self-service/devices/3/diagnosis')) {
+        n++
+        return {
+          json: {
+            online: false, cause: 'FIBER', headline: 'Sinyal serat optik ke perangkat Anda tampaknya terganggu.',
+            steps: ['Periksa kabel serat optik.', 'Hubungi penyedia internet Anda.'], can_reboot: false,
+            disclaimer: 'Ini perkiraan otomatis.', generated_at: '2026-10-29T07:00:00Z',
+          },
+        }
+      }
+    })
+    renderPage()
+    const u = userEvent.setup()
+    await screen.findByText('ZTE-0001')
+    expect(calls.some((c) => c.url.includes('/diagnosis'))).toBe(false)
+    await u.click(screen.getByRole('button', { name: /internet saya bermasalah/i }))
+    expect(await screen.findByText(/sinyal serat optik/i)).toBeTruthy()
+    expect(screen.getByText('Periksa kabel serat optik.')).toBeTruthy()
+    expect(screen.getByText('Ini perkiraan otomatis.')).toBeTruthy()
+    await u.click(screen.getByRole('button', { name: /periksa ulang/i }))
+    await waitFor(() => expect(n).toBe(2))
+  })
+
+  it('pemeriksaan gagal: pesan sopan, bukan galat mentah', async () => {
+    mockFetch(({ url, method }) => {
+      if (url.endsWith('/self-service/devices') && method === 'GET') return { json: { data: [dev], total: 1 } }
+      if (url.endsWith('/diagnosis')) return { status: 500, json: { message: 'sql: detail internal' } }
+    })
+    renderPage()
+    const u = userEvent.setup()
+    await screen.findByText('ZTE-0001')
+    await u.click(screen.getByRole('button', { name: /internet saya bermasalah/i }))
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toMatch(/belum dapat dilakukan/i)
+    expect(alert.textContent).not.toMatch(/sql/)
+  })
 })

@@ -5,6 +5,9 @@ import { DeviceOverview } from './DeviceOverview'
 import { ConfirmProvider } from '../lib/confirm'
 import { setAuthToken } from '../lib/api'
 import { mockFetch, renderApp } from '../test/utils'
+
+// Peta pemilih lokasi (Leaflet) tidak diuji di jsdom.
+vi.mock('./LocationPickerMap', () => ({ default: () => <div data-testid="map-stub" /> }))
 import type { Device } from '../lib/types'
 
 const base = {
@@ -133,5 +136,18 @@ describe('DeviceOverview', () => {
       ui(WITH_URL, { canEdit: false })
       expect(screen.queryByRole('button', { name: /refresh ont/i })).toBeNull()
     })
+  })
+
+  it('kartu Lokasi: "Pilih di peta" membuka pemilih bagi yang boleh mengubah, dan tidak ada bagi yang tidak', async () => {
+    mockFetch(() => undefined)
+    const { unmount } = ui({}, { canEdit: true })
+    expect(screen.getByText(/Klik Pilih di peta untuk menetapkannya/)).toBeTruthy()
+    await userEvent.setup().click(screen.getByRole('button', { name: /pilih di peta/i }))
+    expect(await screen.findByText('Tetapkan lokasi — ELWGC09CED21')).toBeTruthy()
+    unmount()
+
+    ui({}, { canEdit: false })
+    expect(screen.queryByRole('button', { name: /pilih di peta/i })).toBeNull()
+    expect(screen.queryByText(/Klik Pilih di peta/)).toBeNull()
   })
 })

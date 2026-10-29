@@ -23,6 +23,30 @@ function setup(fn: () => Promise<string>) {
 afterEach(() => vi.restoreAllMocks())
 
 describe('QueryErrorBanner — status galat inline', () => {
+  // Regresi: di aplikasi, banner terpasang lebih dulu (Layout) dan halaman memasang query SESUDAHNYA; pembuatan query di fase render memberi
+  // notifikasi cache saat itu juga. setState sinkron di sini memicu peringatan React "Cannot update a component while rendering a different component".
+  it('tidak memicu peringatan setState-saat-render ketika halaman memasang query setelah banner terpasang', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const qc = new QueryClient()
+    const tree = (withPage: boolean) => (
+      <QueryClientProvider client={qc}>
+        <QueryErrorBanner />
+        {withPage && (
+          <Failing
+            fn={async () => {
+              throw new ApiError(503, 'x')
+            }}
+          />
+        )}
+      </QueryClientProvider>
+    )
+    const { rerender } = render(tree(false))
+    rerender(tree(true))
+    await screen.findByRole('alert')
+    const warned = spy.mock.calls.some((c) => String(c[0]).includes('Cannot update a component'))
+    expect(warned).toBe(false)
+  })
+
   it('menampilkan peringatan tetap saat data halaman gagal dimuat, dan pulih setelah "Coba lagi"', async () => {
     let calls = 0
     setup(async () => {

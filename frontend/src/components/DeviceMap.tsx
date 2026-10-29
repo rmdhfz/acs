@@ -5,15 +5,12 @@ import 'leaflet/dist/leaflet.css'
 import 'leaflet.markercluster/dist/MarkerCluster.css'
 import { bboxParam, clusterColor, countStatuses, DEFAULT_CENTER, DEFAULT_ZOOM, statusStyle } from '../lib/deviceMap'
 import { formatRelativeTime } from '../lib/format'
+import { TILE_ATTRIBUTION, TILE_URL } from '../lib/mapConfig'
 import type { DeviceMapPoint } from '../lib/types'
 
 // Peta perangkat (Leaflet + OpenStreetMap, open source). Dimuat lazy oleh DevicesMapView supaya pustaka peta tidak membebani bundel awal.
 //
-// Sumber ubin dapat diganti saat build lewat VITE_MAP_TILE_URL / VITE_MAP_ATTRIBUTION. Bawaan = server ubin publik OpenStreetMap yang
-// kebijakannya melarang pemakaian berat: untuk produksi gunakan penyedia ubin sendiri atau self-host.
-const env = import.meta.env as Record<string, string | undefined>
-const TILE_URL = env.VITE_MAP_TILE_URL || 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
-const TILE_ATTRIBUTION = env.VITE_MAP_ATTRIBUTION || '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+// Sumber ubin: lib/mapConfig.ts (dapat diganti lewat VITE_MAP_TILE_URL / VITE_MAP_ATTRIBUTION; bawaan OSM publik, bukan untuk produksi berat).
 
 interface DeviceMarkerOptions extends L.CircleMarkerOptions {
   status?: string
