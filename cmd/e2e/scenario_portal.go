@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -52,6 +53,10 @@ func scenarioPortal(ctx context.Context, w *World) result {
 	if st, _ := cust.status(http.MethodGet, fmt.Sprintf("/api/v1/self-service/devices/%d", d.ID), nil); st != 404 {
 		return failr("perangkat belum ditautkan harus 404, dapat %d", st)
 	}
+	diagURL := fmt.Sprintf("/api/v1/self-service/devices/%d/diagnosis", d.ID)
+	if st, _ := cust.status(http.MethodGet, diagURL, nil); st != 404 {
+		return failr("PORTAL-DIAG: diagnosis perangkat yang belum ditautkan harus 404, dapat %d", st)
+	}
 
 	// 2. kontrol akses penautan
 	if st, _ := w.pilot2Admin.status(http.MethodPut, link, nil); st != 403 && st != 404 {
@@ -78,6 +83,30 @@ func scenarioPortal(ctx context.Context, w *World) result {
 	}
 	if st, _ := cust.status(http.MethodGet, "/api/v1/devices", nil); st != 403 {
 		return failr("ENDUSER ke API staf harus 403, dapat %d", st)
+	}
+
+	// 3b. "Internet saya bermasalah?": hasil berbahasa awam dari daftar putih, tanpa satu pun nilai internal; akses staf ke rute ini ditolak
+	_, _, rawDiag, derr := cust.getRaw(diagURL)
+	if derr != nil {
+		return failr("PORTAL-DIAG: GET diagnosis: %v", derr)
+	}
+	var diag map[string]any
+	if err := json.Unmarshal(rawDiag, &diag); err != nil || len(diag) != 7 {
+		return failr("PORTAL-DIAG: bentuk respons harus tepat 7 field: %v %s", err, rawDiag)
+	}
+	if c, _ := diag["cause"].(string); c == "" || diag["headline"] == "" || diag["disclaimer"] == "" {
+		return failr("PORTAL-DIAG: isi tak lengkap: %s", rawDiag)
+	}
+	for _, leak := range []string{d.SerialNumber, "tenant", "olt", "OLT", "dBm", "rx_power", "inform", "ManagementServer", "findings", "evidence"} {
+		if leak != "" && strings.Contains(string(rawDiag), leak) {
+			return failr("PORTAL-DIAG: respons pelanggan membocorkan %q: %s", leak, rawDiag)
+		}
+	}
+	if st, _ := w.pilotAdmin.status(http.MethodGet, diagURL, nil); st != 403 {
+		return failr("PORTAL-DIAG: staf di rute pelanggan harus 403, dapat %d", st)
+	}
+	if st, _ := cust.status(http.MethodGet, "/api/v1/self-service/devices/abc/diagnosis", nil); st != 400 {
+		return failr("PORTAL-DIAG: id tak valid harus 400, dapat %d", st)
 	}
 
 	// 4. ganti WiFi: validasi lalu sampai ke CPE
@@ -113,5 +142,8 @@ func scenarioPortal(ctx context.Context, w *World) result {
 	if st, _ := cust.status(http.MethodGet, fmt.Sprintf("/api/v1/self-service/devices/%d", d.ID), nil); st != 404 {
 		return failr("setelah dilepas harus 404, dapat %d", st)
 	}
-	return pass("portal pelanggan: tanpa tautan tak melihat apa pun (404); tenant lain 403; ADMIN menautkan; pelanggan melihat 1 perangkat, validasi WiFi 400, SSID sampai ke CPE; lepas tautan → 404")
+	if st, _ := cust.status(http.MethodGet, diagURL, nil); st != 404 {
+		return failr("PORTAL-DIAG: setelah dilepas diagnosis harus 404, dapat %d", st)
+	}
+	return pass("portal pelanggan: diagnosis \"Internet saya bermasalah?\" 7 field tanpa data internal (404 sebelum ditautkan/sesudah dilepas, staf 403);  tanpa tautan tak melihat apa pun (404); tenant lain 403; ADMIN menautkan; pelanggan melihat 1 perangkat, validasi WiFi 400, SSID sampai ke CPE; lepas tautan → 404")
 }

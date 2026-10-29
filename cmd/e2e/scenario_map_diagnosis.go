@@ -15,6 +15,7 @@ import (
 //
 //	MAP-01  GET /devices/map: hanya perangkat ber-koordinat yang digambar; total/located jujur; status dan device_uuid ikut; tanpa PK rahasia
 //	MAP-02  bbox menyaring (termasuk bbox melintasi bujur 180); masukan buruk 400
+//	MAP-04  GET /devices?has_location=true|false menyaring menurut ada/tidaknya koordinat; nilai lain 400
 //	MAP-03  isolasi tenant, tanpa token 401, ENDUSER 403
 //	DIAG-01 GET /devices/{id}/diagnosis konsisten dengan ambang offline perangkat; perangkat pra-registrasi = NEVER_CONNECTED
 //	DIAG-02 akses: tenant lain tak melihat, id tak valid 400, tak ada 404, tanpa token 401, ENDUSER 403
@@ -119,6 +120,39 @@ func scenarioMapDiagnosis(ctx context.Context, w *World) result {
 		if st, _, b := getMap(w.pilotAdmin, kv...); st != http.StatusBadRequest {
 			return failr("MAP-02: %s -> HTTP %d, harusnya 400 (%s)", name, st, b)
 		}
+	}
+
+	// MAP-04: daftar perangkat dapat disaring menurut ada/tidaknya koordinat (dasar panel "tetapkan lokasi" di peta). zte sudah diberi
+	// koordinat di MAP-01, nokia belum.
+	hasLoc := func(serial, val string) (int, int) {
+		q := url.Values{}
+		q.Set("search", serial)
+		q.Set("has_location", val)
+		devs, err := w.pilotAdmin.listDevices(q)
+		if err != nil {
+			if ae, ok := err.(*apiError); ok {
+				return ae.Status, 0
+			}
+			return 0, 0
+		}
+		n := 0
+		for _, d := range devs {
+			if d.SerialNumber == serial {
+				n++
+			}
+		}
+		return 200, n
+	}
+	for _, c := range []struct {
+		serial, val string
+		want        int
+	}{{zSerial, "true", 1}, {zSerial, "false", 0}, {nSerial, "false", 1}, {nSerial, "true", 0}} {
+		if st, n := hasLoc(c.serial, c.val); st != 200 || n != c.want {
+			return failr("MAP-04: GET /devices?search=%s&has_location=%s -> HTTP %d, %d cocok (harusnya %d)", c.serial, c.val, st, n, c.want)
+		}
+	}
+	if st, _ := hasLoc(zSerial, "mungkin"); st != http.StatusBadRequest {
+		return failr("MAP-04: has_location tidak valid harus 400, dapat %d", st)
 	}
 
 	// MAP-03
@@ -280,5 +314,5 @@ func scenarioMapDiagnosis(ctx context.Context, w *World) result {
 		return failr("IVL-01: nama parameter interval zte (TR-098) = %q", zd.InformIntervalParameter)
 	}
 
-	return pass("peta: hanya yang berkoordinat digambar, total/located jujur, bbox (termasuk lintas bujur 180) benar, 7 masukan buruk 400, tenant lain kosong/401/ENDUSER 403; diagnosis konsisten dengan ambang offline, pra-registrasi NEVER_CONNECTED, akses 404/400/401/403; interval Inform ditemukan baik dari Inform (zte) maupun lewat tugas baca (nokia, TR-181)")
+	return pass("peta: hanya yang berkoordinat digambar, total/located jujur, bbox (termasuk lintas bujur 180) benar, 7 masukan buruk 400, saringan has_location pada daftar perangkat, tenant lain kosong/401/ENDUSER 403; diagnosis konsisten dengan ambang offline, pra-registrasi NEVER_CONNECTED, akses 404/400/401/403; interval Inform ditemukan baik dari Inform (zte) maupun lewat tugas baca (nokia, TR-181)")
 }

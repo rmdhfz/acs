@@ -117,6 +117,13 @@ func scenarioOLTInventory(ctx context.Context, w *World) result {
 		return id, nil
 	}
 	mkDevice := func(c *Client, serial string) (uint64, error) { return mkDeviceOUI(c, "ABCDEF", serial) }
+	serialsOf := func(rows []regONU) []string {
+		out := make([]string, len(rows))
+		for i, r := range rows {
+			out[i] = r.SerialNumber
+		}
+		return out
+	}
 	states := func(rows []regONU) map[string]string {
 		m := map[string]string{}
 		for _, r := range rows {
@@ -156,9 +163,12 @@ func scenarioOLTInventory(ctx context.Context, w *World) result {
 		q    url.Values
 		want int
 	}{
-		"per port":    {url.Values{"pon_port": {"sim/1/1"}}, 3},
-		"per keadaan": {url.Values{"state": {"LOS"}}, 1},
-		"cari serial": {url.Values{"search": {"REG0004"}}, 1},
+		"per port":                    {url.Values{"pon_port": {"sim/1/1"}}, 3},
+		"per keadaan":                 {url.Values{"state": {"LOS"}}, 1},
+		"cari serial":                 {url.Values{"search": {"REG0004"}}, 1},
+		"bermasalah":                  {url.Values{"problem": {"true"}}, 3},                          // LOS + dying gasp + offline
+		"bermasalah di port 1/2":      {url.Values{"problem": {"true"}, "pon_port": {"sim/1/2"}}, 1}, // hanya SIMREG0005 (offline)
+		"problem=false tak menyaring": {url.Values{"problem": {"false"}}, 5},
 	} {
 		r, tot, err := listReg(w.pilotAdmin, main.ID, c.q)
 		if err != nil || len(r) != c.want || tot != c.want {
@@ -169,10 +179,20 @@ func scenarioOLTInventory(ctx context.Context, w *World) result {
 		"keadaan tak dikenal": {"state": {"MELAYANG"}},
 		"port kepanjangan":    {"pon_port": {strings.Repeat("x", 40)}},
 		"cari kepanjangan":    {"search": {strings.Repeat("x", 300)}},
+		"problem tak valid":   {"problem": {"mungkin"}},
+		"sort tak dikenal":    {"sort": {"acak"}},
 	} {
 		if st, _ := w.pilotAdmin.status(http.MethodGet, "/api/v1/olts/"+main.ID+"/registered-onus?"+q.Encode(), nil); st != http.StatusBadRequest {
 			return failr("INV-01: %s -> HTTP %d, harusnya 400", name, st)
 		}
+	}
+
+	// urut keparahan: LOS, dying gasp, offline dulu; tanpa sort urutan port lama tetap
+	if r, _, err := listReg(w.pilotAdmin, main.ID, url.Values{"sort": {"severity"}}); err != nil || len(r) != 5 || r[0].SerialNumber != "SIMREG0002" || r[1].SerialNumber != "SIMREG0003" || r[2].SerialNumber != "SIMREG0005" {
+		return failr("INV-01: sort=severity harus LOS, dying gasp, offline lebih dulu: %v err=%v", serialsOf(r), err)
+	}
+	if r, _, err := listReg(w.pilotAdmin, main.ID, url.Values{}); err != nil || len(r) != 5 || r[0].SerialNumber != "SIMREG0001" {
+		return failr("INV-01: tanpa sort urutan lama (port, nomor ONU) harus tetap: %v err=%v", serialsOf(r), err)
 	}
 
 	// ---- INV-02 ----
@@ -314,8 +334,42 @@ func scenarioOLTInventory(ctx context.Context, w *World) result {
 	if err != nil {
 		return failr("INV-06: buat OLT berputar: %v", err)
 	}
+	// INV-08 (disiapkan di sini): langganan webhook ONU_STATE_CHANGED harus sudah ada SEBELUM perubahan keadaan terjadi.
+	var sub struct {
+		ID uint64 `json:"id"`
+	}
+	if err := w.pilotAdmin.do(http.MethodPost, "/api/v1/webhooks", map[string]any{
+		"event_type": "ONU_STATE_CHANGED", "name": "e2e-onu-" + run, "target_url": "https://203.0.113.9/e2e-onu-hook",
+	}, &sub); err != nil || sub.ID == 0 {
+		return failr("INV-08: buat langganan ONU_STATE_CHANGED: %v", err)
+	}
+	cleanups = append(cleanups, func() { _ = w.pilotAdmin.do(http.MethodDelete, fmt.Sprintf("/api/v1/webhooks/%d", sub.ID), nil, nil) })
+	type delivery struct {
+		Payload struct {
+			Event string `json:"event"`
+			Data  struct {
+				OLTID     string `json:"olt_id"`
+				OLTName   string `json:"olt_name"`
+				Changed   int    `json:"changed"`
+				Truncated bool   `json:"truncated"`
+				Changes   []struct {
+					Serial string `json:"serial_number"`
+					From   string `json:"from"`
+					To     string `json:"to"`
+				} `json:"changes"`
+			} `json:"data"`
+		} `json:"payload"`
+	}
+	deliveries := func() ([]delivery, error) {
+		var env listEnvelope[delivery]
+		err := w.pilotAdmin.do(http.MethodGet, fmt.Sprintf("/api/v1/webhooks/%d/deliveries", sub.ID), nil, &env)
+		return env.Data, err
+	}
 	if p, err = poll(w.pilotAdmin, rot.ID); err != nil || p.Registered == nil || p.Registered.New != 5 || p.Registered.StateChanged != 0 {
 		return failr("INV-06: poll 1 = %+v err=%v", p.Registered, err)
+	}
+	if ds, err := deliveries(); err != nil || len(ds) != 0 {
+		return failr("INV-08: polling pertama (semua ONU baru) tak boleh memicu webhook: %d err=%v", len(ds), err)
 	}
 	if p, err = poll(w.pilotAdmin, rot.ID); err != nil || p.Registered == nil {
 		return failr("INV-06: poll 2: %v", err)
@@ -328,6 +382,80 @@ func scenarioOLTInventory(ctx context.Context, w *World) result {
 	if got["SIMREG0002"] != "LOS" || got["SIMREG0006"] != "ONLINE" || got["SIMREG0005"] != "" || len(got) != 5 {
 		return failr("INV-06: inventaris setelah poll 2 = %v", got)
 	}
+
+	// ---- INV-08: pemberitahuan perubahan keadaan ONU ----
+	// Poll 2 mengubah SIMREG0002 ONLINE -> LOS: tepat SATU event webhook per polling (daftar perubahan, tanpa PK) dan satu notifikasi
+	// ONU_STATE_ALERT (WARNING: hanya 1 LOS) untuk ADMIN tenant; tenant lain tidak menerima apa pun.
+	ds, err := deliveries()
+	if err != nil || len(ds) != 1 {
+		return failr("INV-08: poll 2 harus membuat tepat 1 pengiriman webhook, dapat %d err=%v", len(ds), err)
+	}
+	if d := ds[0].Payload; d.Event != "ONU_STATE_CHANGED" || d.Data.OLTID != rot.ID || d.Data.OLTName != "e2e-inv-rot-"+run || d.Data.Changed != 1 || d.Data.Truncated ||
+		len(d.Data.Changes) != 1 || d.Data.Changes[0].Serial != "SIMREG0002" || d.Data.Changes[0].From != "ONLINE" || d.Data.Changes[0].To != "LOS" {
+		return failr("INV-08: payload webhook salah: %+v", d)
+	}
+	alertTitle := "1 ONU LOS/dying gasp di e2e-inv-rot-" + run
+	countAlert := func(c *Client) (int, string, error) {
+		var l struct {
+			Data []struct {
+				Type     string `json:"type"`
+				Severity string `json:"severity"`
+				Title    string `json:"title"`
+				Body     string `json:"body"`
+			} `json:"data"`
+		}
+		if err := c.do(http.MethodGet, "/api/v1/notifications?page_size=100", nil, &l); err != nil {
+			return 0, "", err
+		}
+		n, sev := 0, ""
+		for _, it := range l.Data {
+			if it.Type == "ONU_STATE_ALERT" && it.Title == alertTitle {
+				n++
+				sev = it.Severity
+				if !strings.Contains(it.Body, "SIMREG0002") {
+					return 0, "", fmt.Errorf("isi notifikasi tak menyebut ONU: %q", it.Body)
+				}
+			}
+		}
+		return n, sev, nil
+	}
+	if n, sev, err := countAlert(w.pilotAdmin); err != nil || n != 1 || sev != "WARNING" {
+		return failr("INV-08: ADMIN tenant harus menerima 1 notifikasi ONU_STATE_ALERT WARNING, dapat n=%d sev=%q err=%v", n, sev, err)
+	}
+	if n, _, err := countAlert(w.pilot2Admin); err != nil || n != 0 {
+		return failr("INV-08: notifikasi bocor ke tenant lain (n=%d err=%v)", n, err)
+	}
+	var prefs struct {
+		Data []struct {
+			Type  string `json:"type"`
+			InApp bool   `json:"in_app"`
+			Email bool   `json:"email"`
+		} `json:"data"`
+	}
+	if err := w.pilotAdmin.do(http.MethodGet, "/api/v1/notifications/preferences", nil, &prefs); err != nil {
+		return failr("INV-08: GET /notifications/preferences: %v", err)
+	}
+	seen := map[string]bool{}
+	for _, ty := range prefs.Data {
+		if ty.Type == "DEVICE_OFFLINE" || ty.Type == "ONU_STATE_ALERT" {
+			seen[ty.Type] = true
+			if !ty.InApp || ty.Email {
+				return failr("INV-08: %s harus in-app aktif & email mati secara bawaan: %+v", ty.Type, ty)
+			}
+		}
+	}
+	if len(seen) != 2 {
+		return failr("INV-08: jenis notifikasi DEVICE_OFFLINE/ONU_STATE_ALERT tidak terdaftar: %v", seen)
+	}
+	var sub2 struct {
+		ID uint64 `json:"id"`
+	}
+	if err := w.pilotAdmin.do(http.MethodPost, "/api/v1/webhooks", map[string]any{
+		"event_type": "DEVICE_OFFLINE", "name": "e2e-off-" + run, "target_url": "https://203.0.113.9/e2e-offline-hook",
+	}, &sub2); err != nil || sub2.ID == 0 {
+		return failr("INV-08: langganan DEVICE_OFFLINE harus diterima: %v", err)
+	}
+	_ = w.pilotAdmin.do(http.MethodDelete, fmt.Sprintf("/api/v1/webhooks/%d", sub2.ID), nil, nil)
 
 	// ---- INV-07: OLT dihapus ----
 	if err := w.pilotAdmin.do(http.MethodDelete, "/api/v1/olts/"+main.ID, nil, nil); err != nil {
@@ -347,5 +475,5 @@ func scenarioOLTInventory(ctx context.Context, w *World) result {
 		return failr("INV-07: tanpa OLT tersisa tautan harus lepas dan tenant_has_olt=false: %+v err=%v", v, err)
 	}
 
-	return pass("poll mengisi inventaris (5 ONU, keadaan netral) + filter port/keadaan/cari & 3 masukan buruk 400; ringkasan port benar; tautan serial↔perangkat (huruf kecil) tanpa lintas-tenant; diagnosis memakai bukti OLT (LOS/dying gasp kritis, ONLINE-tapi-senyap, tak ditemukan) dan limits berubah; tenant lain 403/404 & tak tertaut, tanpa token 401, VIEWER boleh baca; mode berputar (1 baru/1 berubah/1 hilang); OLT dihapus melepas tautan")
+	return pass("poll mengisi inventaris (5 ONU, keadaan netral) + filter port/keadaan/cari & 3 masukan buruk 400; ringkasan port benar; tautan serial↔perangkat (huruf kecil) tanpa lintas-tenant; diagnosis memakai bukti OLT (LOS/dying gasp kritis, ONLINE-tapi-senyap, tak ditemukan) dan limits berubah; tenant lain 403/404 & tak tertaut, tanpa token 401, VIEWER boleh baca; mode berputar (1 baru/1 berubah/1 hilang); perubahan ONLINE→LOS memicu tepat 1 webhook ONU_STATE_CHANGED (tanpa PK) + 1 notifikasi ONU_STATE_ALERT hanya untuk tenant pemilik, jenis DEVICE_OFFLINE/ONU_STATE_ALERT terdaftar (in-app saja); OLT dihapus melepas tautan")
 }

@@ -185,6 +185,9 @@ const REVIEWED_UNUSED = new Map([
   ['GET /faults/:p', 'daftar /faults sudah membawa semua field fault; halaman tidak punya tampilan detail yang butuh fetch terpisah (endpoint untuk integrasi/BSS)'],
   ['GET /olts/:p', 'daftar /olts sudah membawa seluruh field OLT dan modal ubah dimuat dari baris daftar; detail untuk integrasi/BSS'],
   ['GET /nbi/devices', 'antarmuka kompatibel-sebagian NBI GenieACS untuk integrator/BSS yang memindahkan klien; Console memakai GET /devices dan GET /devices/map'],
+  ['POST /nbi/devices/:p/tasks', 'NBI tahap 2 (integrator/BSS); Console membuat tugas lewat endpoint /devices/:id/tasks/* dan POST /tasks'],
+  ['POST /nbi/tasks/:p/retry', 'NBI tahap 2 (integrator/BSS); Console memakai POST /tasks/:id/retry'],
+  ['DELETE /nbi/tasks/:p', 'NBI tahap 2 (integrator/BSS); Console memakai POST /tasks/:id/cancel'],
 ])
 
 const excepted = unusedEndpoints.filter((r) => EXCEPTIONS.has(key(r)))

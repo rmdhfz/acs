@@ -1923,6 +1923,10 @@ paths:
           in: query
           description: "`true` = hanya device yang vendornya belum terpetakan (tampil \"Belum dikenal\")."
           schema: { type: boolean }
+        - name: has_location
+          in: query
+          description: "`true` = hanya device yang punya koordinat lengkap; `false` = yang belum punya (lintang atau bujur kosong) — dasar daftar \"tetapkan lokasi\" di peta. Nilai lain = 400."
+          schema: { type: boolean }
         - name: param
           in: query
           description: |
@@ -2264,8 +2268,7 @@ paths:
         autentikasi wajib (GenieACS bawaan terbuka); tanpa `projection` dokumen hanya memuat `_id`, `_lastInform`, `_registered`, `DeviceID`
         (tidak seluruh pohon parameter); `projection` memilih path parameter PERSIS (bukan subtree, maks 20); hanya `_value` (teks) —
         tanpa `_type`/`_writable`/`_timestamp`, `DeviceID.Manufacturer`, dan `_tags`; `limit` bawaan 50, maks 200 dan `skip` harus kelipatan
-        `limit`; tanpa `$regex`, `$in`, `$or`/`$and`. Jumlah total ada di header `X-Total-Count`. Penulisan (tugas) belum ada di NBI ini —
-        gunakan `/devices/{id}/tasks/*`.
+        `limit`; tanpa `$regex`, `$in`, `$or`/`$and`. Jumlah total ada di header `X-Total-Count`. Tugas: lihat `POST /nbi/devices/{id}/tasks`.
       security: [{ bearerAuth: [] }]
       parameters:
         - name: query
@@ -2320,6 +2323,167 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '403':
           description: "Peran ENDUSER (portal pelanggan dikurung ke `/self-service`), atau actor non-superadmin tanpa `tenant_id`."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /nbi/devices/{id}/tasks:
+    post:
+      operationId: nbiCreateTask
+      tags: [NBI]
+      summary: Buat tugas pada perangkat (bergaya NBI GenieACS)
+      description: |
+        Penerjemah tipis ke antrean tugas yang sama dengan `POST /tasks`: validasi parameter, kuota task tenant, scope tenant, dan penyegelan nilai
+        rahasia dilakukan `task.Service`. `{id}` = **`device_uuid`** (`_id` pada `GET /nbi/devices`), bukan PK. Peran: `ADMIN`/`SUPERADMIN` untuk semua
+        tugas yang didukung; `NOC` hanya `getParameterValues` dan `reboot` (sama dengan `POST /tasks`). Perangkat tenant lain = `404`.
+
+        Tugas yang didukung: `setParameterValues` (`parameterValues: [[nama, nilai, tipe-xsd?], ...]`, maks 100; nilai string/angka/boolean, `null` ditolak),
+        `getParameterValues` (`parameterNames`), `reboot`. Tugas lain (mis. `factoryReset`, `download`) → `400` yang menyebut daftar didukung.
+
+        **Berbeda dari GenieACS (disengaja):** ACS tidak pernah MENUNGGU perangkat — respons selalu `202` dengan dokumen tugas berstatus antre
+        (`status: PENDING`). `?timeout=` diterima tanpa efek; `?connection_request` memicu Connection Request best-effort (kegagalannya tidak menggagalkan
+        pembuatan tugas; tugas tetap antre sampai Inform berikutnya). Parameter query lain → `400`. Nilai parameter bernama rahasia pada dokumen respons
+        SELALU disamarkan (`[redacted]`).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: "`device_uuid` perangkat."
+          schema: { type: string, format: uuid }
+        - name: timeout
+          in: query
+          description: Diterima demi kompatibilitas GenieACS; tanpa efek (ACS tidak menunggu).
+          schema: { type: integer }
+        - name: connection_request
+          in: query
+          description: "Bila ada (nilai apa pun), memicu Connection Request best-effort setelah tugas dibuat."
+          schema: { type: string }
+          allowEmptyValue: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NbiTaskRequest' }
+      responses:
+        '202':
+          description: Tugas diantre.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NbiTask' }
+        '400':
+          description: Body/tugas di luar subset atau tidak valid (pesan berawalan `nbi:` atau dari validasi tugas), parameter query tak didukung.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: ENDUSER, atau NOC untuk tugas yang hanya boleh ADMIN.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Perangkat tidak ada atau milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '413':
+          description: Body lebih dari 256 KiB.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Kuota task tenant tercapai.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /nbi/tasks/{id}/retry:
+    post:
+      operationId: nbiRetryTask
+      tags: [NBI]
+      summary: Coba ulang tugas (NBI)
+      description: |
+        `{id}` = `_id` tugas (task UUID). Membangkitkan tugas YANG SAMA (parameter sama, hitungan retry di-reset), sama dengan `POST /tasks/{id}/retry`:
+        tugas `FAILED`/`CANCELLED`/`TIMEOUT` kembali `PENDING` (ikut kuota tenant); tugas `PENDING` idempoten; `SENT`/`COMPLETED` → `409`.
+        Peran `ADMIN`/`NOC` (NOC hanya untuk jenis tugas yang boleh dibuatnya). Tugas tenant lain = `404` (tidak dapat dibedakan dari UUID yang tak ada).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Dokumen tugas setelah diulang.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NbiTask' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: ENDUSER, atau NOC untuk tugas yang hanya boleh ADMIN.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Tugas tidak ada atau milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: Tugas berstatus `SENT`/`COMPLETED`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Kuota task tenant tercapai.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /nbi/tasks/{id}:
+    delete:
+      operationId: nbiDeleteTask
+      tags: [NBI]
+      summary: Hapus (batalkan) tugas (NBI)
+      description: |
+        `{id}` = `_id` tugas (task UUID). Padanan "hapus tugas" GenieACS = **membatalkan** tugas yang belum selesai (status `CANCELLED`); riwayat tugas
+        yang sudah `COMPLETED`/`FAILED`/`CANCELLED`/`TIMEOUT` tidak dihapus (`409`), sama dengan `POST /tasks/{id}/cancel`. Peran `ADMIN`/`NOC`.
+        Tugas tenant lain = `404`.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204':
+          description: Dibatalkan.
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: ENDUSER.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Tugas tidak ada atau milik tenant lain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: Tugas sudah berakhir.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -3751,11 +3915,13 @@ paths:
         - { name: pon_port, in: query, description: "Filter port PON persis (format apa adanya dari OLT).", schema: { type: string, maxLength: 32 } }
         - { name: state, in: query, description: Kode keadaan., schema: { type: string, enum: [ONLINE, OFFLINE, LOS, DYING_GASP, UNKNOWN] } }
         - { name: search, in: query, description: Cocokkan serial atau port. Maks 255 karakter., schema: { type: string, maxLength: 255 } }
+        - { name: problem, in: query, description: "`true` = hanya ONU bermasalah menurut OLT (`OFFLINE`, `LOS`, `DYING_GASP`; `UNKNOWN` tidak dihitung). Digabung AND dengan filter lain. Nilai lain 400.", schema: { type: boolean } }
+        - { name: sort, in: query, description: "`port` (bawaan: port, nomor ONU, serial) atau `severity` (masalah dulu: LOS, dying gasp, offline, tak diketahui, online; lalu port/nomor ONU/serial). Nilai lain 400.", schema: { type: string, enum: [port, severity] } }
         - $ref: '#/components/parameters/page'
         - $ref: '#/components/parameters/pageSize'
       responses:
         '200':
-          description: Daftar ONU terdaftar (urut port, nomor ONU, serial).
+          description: Daftar ONU terdaftar (bawaan urut port, nomor ONU, serial; `sort=severity` urut keparahan).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/OLTRegisteredONUListResponse' }
@@ -8439,6 +8605,45 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  /self-service/devices/{id}/diagnosis:
+    get:
+      operationId: diagnoseMyDevice
+      tags: [SelfService]
+      summary: '"Internet saya bermasalah?" — pemeriksaan sederhana perangkat sendiri'
+      description: |
+        Role `ENDUSER` (`RequireRoles(ENDUSER)`). Hanya baca. Hasil dibangun dari DAFTAR PUTIH kategori → teks awam tetap; **tidak diturunkan dari diagnosis staf**
+        (`GET /devices/{id}/diagnosis`), jadi tidak pernah memuat redaman optik, nama OLT/port, serial ONU, ambang, atau temuan/bukti internal. Device yang tidak dipetakan
+        ke akun ini → `404`, bukan `403`. Hasil adalah perkiraan; `disclaimer` selalu menyertainya.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/deviceIdPath'
+      responses:
+        '200':
+          description: Hasil pemeriksaan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CustomerDiagnosis' }
+        '400':
+          description: "`id` tidak valid."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Tidak terautentikasi.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Role bukan `ENDUSER`, atau token tanpa `user_id`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Device tidak ditemukan ATAU tidak dipetakan ke akun ini.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   /auth/menu-layout:
     get:
       operationId: getMenuLayout
@@ -9081,7 +9286,7 @@ components:
         type:
           type: string
           description: Kode jenis.
-          enum: [SECURITY_ALERT, DEVICE_OFFLINE_SPIKE, TASK_FAILURES, ROLLOUT_PAUSED, DEVICE_LIMIT_REACHED, NEW_TENANT_SIGNUP, ANNOUNCEMENT, BILLING_PAID, BILLING_EXPIRING, BILLING_EXPIRED, BILLING_FAILED, BUG_REPORT_UPDATE, OPTICAL_ALERT]
+          enum: [SECURITY_ALERT, DEVICE_OFFLINE_SPIKE, TASK_FAILURES, ROLLOUT_PAUSED, DEVICE_LIMIT_REACHED, NEW_TENANT_SIGNUP, ANNOUNCEMENT, BILLING_PAID, BILLING_EXPIRING, BILLING_EXPIRED, BILLING_FAILED, BUG_REPORT_UPDATE, OPTICAL_ALERT, DEVICE_OFFLINE, ONU_STATE_ALERT]
         type_name: { type: string, example: Pengumuman }
         severity: { type: string, enum: [INFO, WARNING, CRITICAL] }
         title: { type: string, maxLength: 160 }
@@ -10067,6 +10272,47 @@ components:
             SerialNumber: { $ref: '#/components/schemas/NbiValue' }
       required: [_id, _registered, DeviceID]
       additionalProperties: true
+
+    NbiTaskRequest:
+      type: object
+      description: "Body tugas NBI. Field yang dipakai bergantung pada `name`; field lain untuk `name` itu → 400."
+      properties:
+        name: { type: string, enum: [setParameterValues, getParameterValues, reboot] }
+        parameterValues:
+          type: array
+          maxItems: 100
+          description: "Hanya `setParameterValues`: pasangan `[nama, nilai]` atau `[nama, nilai, tipe-xsd]` (mis. `xsd:string`). Nilai string/angka/boolean."
+          items:
+            type: array
+            minItems: 2
+            maxItems: 3
+            items: {}
+        parameterNames:
+          type: array
+          items: { type: string }
+          description: "Hanya `getParameterValues`."
+      required: [name]
+
+    NbiTask:
+      type: object
+      description: "Dokumen tugas bergaya GenieACS. `status` dan `fault` adalah tambahan di luar GenieACS. Nilai parameter rahasia disamarkan."
+      properties:
+        _id: { type: string, format: uuid, description: "`task_uuid`." }
+        device: { type: string, format: uuid, description: "`device_uuid` perangkat." }
+        name: { type: string, description: "`setParameterValues` / `getParameterValues` / `reboot` (jenis lain: kode jenis task)." }
+        timestamp: { type: string, format: date-time }
+        status: { type: string, example: PENDING, description: "Kode status task (`PENDING`, `QUEUED`, `SENT`, `COMPLETED`, `FAILED`, `CANCELLED`, `TIMEOUT`)." }
+        parameterValues:
+          type: array
+          items: { type: array, items: { type: string } }
+        parameterNames:
+          type: array
+          items: { type: string }
+        fault:
+          type: object
+          properties:
+            message: { type: string }
+      required: [_id, device, name, timestamp, status]
 
     NbiValue:
       type: object
@@ -11170,7 +11416,7 @@ components:
           description: "NULL (global) hanya SUPERADMIN. Non-superadmin: harus tenant sendiri."
         event_type:
           type: string
-          enum: [DEVICE_FAULT, PARAMETER_VALUE_CHANGE, TASK_FAILED]
+          enum: [DEVICE_FAULT, PARAMETER_VALUE_CHANGE, TASK_FAILED, AUTOMATION_TRIGGERED, DEVICE_OFFLINE, ONU_STATE_CHANGED]
           description: "Kode `ref_webhook_event_types` yang sudah di-wire di usecase."
         name: { type: string, maxLength: 128 }
         target_url: { type: string, format: uri, maxLength: 500 }
@@ -11398,6 +11644,25 @@ components:
         status: { type: string, example: ONLINE }
         online: { type: boolean }
       required: [id, serial_number, status, online]
+
+    CustomerDiagnosis:
+      type: object
+      description: "Hasil pemeriksaan untuk pelanggan: teks awam dari daftar putih backend, tanpa data internal. Bentuk tertutup (tepat 7 field)."
+      properties:
+        online: { type: boolean, description: "`true` bila perangkat terhubung ke jaringan penyedia." }
+        cause:
+          type: string
+          enum: [CONNECTED, NOT_YET_CONNECTED, POWER, FIBER, NO_RECENT_CONTACT]
+          description: "Kategori tertutup. `POWER` = dugaan listrik/adaptor; `FIBER` = dugaan jalur serat optik; `NO_RECENT_CONTACT` = tak melapor, penyebab belum pasti."
+        headline: { type: string, description: Satu kalimat ringkas. }
+        steps:
+          type: array
+          items: { type: string }
+          description: Langkah yang dapat dicoba pelanggan sendiri.
+        can_reboot: { type: boolean, description: "`true` bila menyarankan restart (tombol restart tersedia di portal)." }
+        disclaimer: { type: string }
+        generated_at: { type: string, format: date-time }
+      required: [online, cause, headline, steps, can_reboot, disclaimer, generated_at]
 
     SelfServiceDeviceListResponse:
       type: object

@@ -78,3 +78,38 @@ yang dijadikan dugaan utama (tes regresi ada).
 **Belum terbukti:** semua ini hanya dengan **simulator**. Driver OLT nyata (ZTE), format serial nyata, teks keadaan nyata, dan perilaku polling OLT nyata belum ada. Status administratif port,
 RX sisi OLT dari perangkat nyata, dan seluruh aksi **tulis** (authorize ONU, kontrol port) tidak dibuat — lihat butir §8 di `OLT_CONTROLLER_DESIGN.md` untuk bahan yang dibutuhkan.
 
+## Pelengkap tanpa menunggu pihak lain (2026-10-29)
+
+Semua butir di bawah dibangun dan diuji **tanpa OLT/ONT nyata** (unit, MariaDB nyata, e2e 39/39, tes UI); bukti lapangan tetap belum ada.
+
+**Lokasi dari peta.** `GET /devices?has_location=true|false` (koordinat *lengkap* = lintang dan bujur sama-sama terisi; 0,0 sah). Tampilan Peta menampilkan panel "Belum punya lokasi" (sesuai filter aktif,
+10 per halaman) dengan tombol "Tetapkan lokasi" untuk ADMIN/NOC, juga di keadaan kosong; kartu Lokasi di detail perangkat punya "Pilih di peta". Pemilih: klik peta, seret penanda, atau **tempel koordinat**
+(`-6.2088, 106.8456`; juga titik koma, minus Unicode, koma desimal bergaya Indonesia bila tak ambigu; yang ambigu ditolak, bukan ditebak). Sengaja **tanpa** pencarian alamat pihak ketiga (privasi, kebijakan
+pemakaian). Disimpan lewat `PATCH /devices/{id}` yang sudah ada. Untuk ratusan perangkat, impor massal (kolom latitude/longitude) tetap jalur yang tepat.
+
+**Pemberitahuan offline dan LOS (migrasi 0048, hanya data ref).** Webhook baru `DEVICE_OFFLINE` (satu per perangkat yang ditandai offline penyapu; memuat `device_uuid`, serial, `last_inform_at`, `detected_at`)
+dan `ONU_STATE_CHANGED` (satu per polling OLT yang menemukan perubahan; jumlah total + maks 50 rincian + `truncated`). Notifikasi in-app `DEVICE_OFFLINE` dan `ONU_STATE_ALERT` **diringkas** (satu per tenant per
+sapuan, satu per polling OLT), bukan satu per perangkat/ONU, supaya pemadaman listrik massal tidak membanjiri ADMIN/NOC. Email mati secara bawaan (pengguna dapat menyalakannya). `ONU_STATE_ALERT` hanya untuk ONU
+yang *baru masuk* LOS atau dying gasp; keparahan CRITICAL bila >= 5 ONU LOS pada satu polling (dugaan kabel feeder/distribusi), selain itu WARNING; dying gasp massal tetap WARNING (listrik padam). Kegagalan webhook/notifikasi
+tidak menggagalkan sapuan maupun polling. Perangkat tanpa tenant tidak diberitahukan. **Belum teruji:** pengiriman webhook ke endpoint BSS nyata (worker yang ada dipakai apa adanya) dan volume pada armada besar.
+
+**Wildcard instance pada aturan otomasi.** Lihat `OTOMASI_DESIGN.md` ("Wildcard instance pada `set_parameter`"). Instance dikenali dari parameter yang sudah dilaporkan perangkat (bukan RPC tambahan), maks 8 instance
+per aksi, dilewati seluruhnya bila lebih; kondisi tidak mendukung wildcard.
+
+**Portal pelanggan "Internet saya bermasalah?".** `GET /self-service/devices/{id}/diagnosis`. Hasil dibangun **dari nol dari daftar putih** (kategori `CONNECTED`, `NOT_YET_CONNECTED`, `POWER`, `FIBER`,
+`NO_RECENT_CONTACT` -> teks awam tetap), bukan dengan menyaring diagnosis staf: tak ada string, angka, nama OLT/port, serial, ambang, atau temuan staf yang diteruskan; hanya *verdict* dan *kode* temuan dibaca. Bentuk
+respons tertutup (tepat 7 field) dan dijaga tes bocoran (sentinel di setiap field diagnosis staf + mutasi diuji) serta e2e. Kepemilikan akun-perangkat dicek sebelum diagnosis dijalankan. Selalu disertai
+`disclaimer`: ini perkiraan, bukan kepastian. Pemetaan kode-ke-penyebab bersifat heuristik dan belum divalidasi terhadap gangguan sungguhan.
+
+**NBI tahap 2.** `POST /nbi/devices/{device_uuid}/tasks` (`setParameterValues`, `getParameterValues`, `reboot`), `POST /nbi/tasks/{task_uuid}/retry`, `DELETE /nbi/tasks/{task_uuid}` (= membatalkan). Penerjemah tipis ke
+`task.Service` (validasi, kuota, scope tenant, penyegelan rahasia tetap di sana; RBAC = `POST /tasks`). Beda yang disengaja dari GenieACS: ACS **tidak menunggu** perangkat, respons selalu `202` berstatus antre
+(`?timeout` tanpa efek, `?connection_request` memicu Connection Request best-effort); `factoryReset`/`download`/`refreshObject` belum didukung (400 yang menyebut yang didukung); nilai parameter rahasia pada dokumen
+respons selalu disamarkan; UUID tugas/perangkat tenant lain memberi 404 (tak dapat dibedakan dari yang tak ada). Belum ada `GET /nbi/tasks`. Diuji unit + e2e (S37 NBI-06); **belum** diuji dengan klien GenieACS sungguhan.
+
+**Perbaikan tampilan ONU terdaftar (2026-10-29).** (1) "Keadaan sejak" tidak lagi menyesatkan: baris yang baru ditemukan memakai waktu penemuan sebagai waktu perubahan, jadi kini tampil
+"terlihat sejak ..." (waktu mulai sebenarnya tidak diketahui) dan "sejak ..." hanya untuk perubahan yang benar-benar teramati ACS. (2) `GET /olts/{uuid}/registered-onus?sort=severity` (LOS, dying gasp, offline,
+tak diketahui, online; lalu port) dipakai Console sebagai urutan bawaan; tanpa `sort` urutan lama (port, nomor ONU, serial) tetap. (3) Ringkasan menyebut jumlah offline. (4) Filter `problem=true` =
+OFFLINE/LOS/DYING_GASP (UNKNOWN tidak dihitung masalah) dan chip "Bermasalah saja". (5) Dugaan per port PON: >= 3 ONU **dan** >= 50% ONU port itu LOS => "kemungkinan feeder/distribusi/splitter"; dying gasp
+dengan ambang sama => "kemungkinan listrik padam di area". Ini **heuristik konservatif, bukan kepastian** (ambang belum dikalibrasi dengan data OLT nyata) dan selalu diberi catatan itu di banner. Dihitung di
+frontend dari ringkasan port (`lib/oltInventory.ts`); belum ada versi sisi server, jadi notifikasi tidak memakainya. (6) Notifikasi `ONU_STATE_ALERT` kini menautkan ke
+`/olts?olt=<uuid>&problem=1`: halaman OLT membuka OLT itu dengan filter bermasalah menyala; OLT yang tak dikenal pada tautan jatuh ke OLT pertama. Belum ada: riwayat perubahan keadaan per ONU (butuh tabel log).

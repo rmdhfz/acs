@@ -266,6 +266,7 @@ func (c *Client) findDeviceBySerial(serial string) (*deviceJSON, error) {
 
 type taskJSON struct {
 	ID           uint64  `json:"id"`
+	UUID         string  `json:"task_uuid"`
 	DeviceID     uint64  `json:"device_id"`
 	TaskStatusID uint64  `json:"task_status_id"`
 	TaskTypeID   uint64  `json:"task_type_id"`

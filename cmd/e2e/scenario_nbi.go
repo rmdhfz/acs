@@ -21,6 +21,7 @@ import (
 //	NBI-03  sort satu kunci naik/turun saling kebalikan; skip/limit membagi halaman tanpa baris terlewat/terulang
 //	NBI-04  masukan di luar subset (regex, _id, JSON rusak, skip bukan kelipatan limit, $gt pada _lastInform, projection di luar root) 400
 //	NBI-05  scope tenant & akses: tenant lain tidak melihat perangkat; tanpa token 401; ENDUSER 403
+//	NBI-06  tahap 2 — POST /nbi/devices/{uuid}/tasks, DELETE /nbi/tasks/{uuid}, POST /nbi/tasks/{uuid}/retry: dokumen tugas, rahasia tak bocor, 400/404/401/403
 func scenarioNBI(ctx context.Context, w *World) result {
 	key := "zte"
 	serial := w.serials[key]
@@ -196,5 +197,112 @@ func scenarioNBI(ctx context.Context, w *World) result {
 		return failr("NBI-05: ENDUSER harus 403, dapat %d", st)
 	}
 
-	return pass("query serial/parameter/_lastInform & projection bersarang benar; _id = device_uuid tanpa PK/rahasia; sort naik/turun saling kebalikan dan skip/limit tanpa baris terlewat; 10 masukan di luar subset 400; tenant lain kosong, tanpa token 401, ENDUSER 403")
+	// NBI-06: tugas (tahap 2). Semua tugas yang dibuat di sini dibatalkan di akhir supaya tidak mengganggu skenario lain.
+	var madeTasks []string
+	defer func() {
+		for _, id := range madeTasks {
+			_ = w.pilotAdmin.do(http.MethodDelete, "/api/v1/nbi/tasks/"+id, nil, nil)
+		}
+	}()
+	tasksURL := "/api/v1/nbi/devices/" + wantUUID + "/tasks"
+	type taskDoc struct {
+		ID              string     `json:"_id"`
+		Device          string     `json:"device"`
+		Name            string     `json:"name"`
+		Status          string     `json:"status"`
+		ParameterNames  []string   `json:"parameterNames"`
+		ParameterValues [][]string `json:"parameterValues"`
+	}
+	var td taskDoc
+	if err := w.pilotAdmin.do(http.MethodPost, tasksURL+"?connection_request&timeout=3000", map[string]any{"name": "getParameterValues", "parameterNames": []string{verPath}}, &td); err != nil {
+		return failr("NBI-06: buat tugas getParameterValues: %v", err)
+	}
+	madeTasks = append(madeTasks, td.ID)
+	if td.ID == "" || td.Device != wantUUID || td.Name != "getParameterValues" || td.Status != "PENDING" || len(td.ParameterNames) != 1 || td.ParameterNames[0] != verPath {
+		return failr("NBI-06: dokumen tugas salah: %+v", td)
+	}
+	// tugas yang sama terlihat di REST /tasks (satu antrean, bukan salinan terpisah)
+	d0, err := w.pilotAdmin.findDeviceBySerial(serial)
+	if err != nil {
+		return failr("NBI-06: %v", err)
+	}
+	if ts, err := w.pilotAdmin.listDeviceTasks(d0.ID); err != nil {
+		return failr("NBI-06: daftar tugas: %v", err)
+	} else {
+		found := false
+		for _, x := range ts {
+			if x.UUID == td.ID {
+				found = true
+			}
+		}
+		if !found {
+			return failr("NBI-06: tugas NBI %s tidak ada di antrean tugas perangkat", td.ID)
+		}
+	}
+	// hapus -> 204; hapus lagi (sudah CANCELLED) -> 409; ulang -> 200 PENDING lagi; hapus -> 204
+	if st, b := w.pilotAdmin.status(http.MethodDelete, "/api/v1/nbi/tasks/"+td.ID, nil); st != http.StatusNoContent && st != 200 {
+		return failr("NBI-06: DELETE tugas HTTP %d %s", st, b)
+	}
+	if st, _ := w.pilotAdmin.status(http.MethodDelete, "/api/v1/nbi/tasks/"+td.ID, nil); st != http.StatusConflict {
+		return failr("NBI-06: DELETE tugas yang sudah dibatalkan harus 409, dapat %d", st)
+	}
+	var rt taskDoc
+	if err := w.pilotAdmin.do(http.MethodPost, "/api/v1/nbi/tasks/"+td.ID+"/retry", nil, &rt); err != nil || rt.ID != td.ID || rt.Status != "PENDING" || rt.Device != wantUUID {
+		return failr("NBI-06: retry harus membangkitkan tugas yang SAMA berstatus PENDING: %+v (%v)", rt, err)
+	}
+	if st, _ := w.pilotAdmin.status(http.MethodPost, "/api/v1/nbi/tasks/"+td.ID+"/retry", nil); st != 200 {
+		return failr("NBI-06: retry tugas PENDING idempoten (200), dapat %d", st)
+	}
+
+	// setParameterValues: nilai rahasia tidak pernah kembali dalam dokumen
+	root := verPath[:strings.Index(verPath, ".")+1]
+	var sd taskDoc
+	pskPath := root + "LANDevice.1.WLANConfiguration.1.PreSharedKey.1.PreSharedKey"
+	if err := w.pilotAdmin.do(http.MethodPost, tasksURL, map[string]any{"name": "setParameterValues", "parameterValues": [][]any{
+		{root + "LANDevice.1.WLANConfiguration.1.SSID", "NBI-" + w.runID, "xsd:string"}, {pskPath, "RahasiaNBI-" + w.runID + "12"},
+	}}, &sd); err != nil {
+		return failr("NBI-06: buat tugas setParameterValues: %v", err)
+	}
+	madeTasks = append(madeTasks, sd.ID)
+	rawSet, _ := json.Marshal(sd)
+	if strings.Contains(string(rawSet), "RahasiaNBI") || len(sd.ParameterValues) != 2 {
+		return failr("NBI-06: dokumen setParameterValues membocorkan rahasia / jumlah salah: %s", rawSet)
+	}
+
+	// masukan di luar subset / tak sah -> 400
+	for name, body := range map[string]any{
+		"factoryReset (belum didukung)": map[string]any{"name": "factoryReset"},
+		"tanpa name":                    map[string]any{},
+		"nilai null":                    map[string]any{"name": "setParameterValues", "parameterValues": [][]any{{root + "X", nil}}},
+		"tipe xsd ngawur":               map[string]any{"name": "setParameterValues", "parameterValues": [][]any{{root + "X", "v", "xsd:ngawur"}}},
+		"get tanpa parameterNames":      map[string]any{"name": "getParameterValues"},
+	} {
+		if st, b := w.pilotAdmin.status(http.MethodPost, tasksURL, body); st != http.StatusBadRequest {
+			return failr("NBI-06: %s -> HTTP %d, harusnya 400 (%s)", name, st, b)
+		}
+	}
+	if st, _ := w.pilotAdmin.status(http.MethodPost, tasksURL+"?query=x", map[string]any{"name": "reboot"}); st != http.StatusBadRequest {
+		return failr("NBI-06: parameter query tak didukung harus 400, dapat %d", st)
+	}
+	if st, _ := w.pilotAdmin.status(http.MethodPost, "/api/v1/nbi/devices/00000000-0000-0000-0000-000000000000/tasks", map[string]any{"name": "reboot"}); st != http.StatusNotFound {
+		return failr("NBI-06: perangkat tak ada harus 404, dapat %d", st)
+	}
+
+	// isolasi & akses: tenant lain tak bisa membedakan UUID milik tenant ini dari UUID yang tak ada
+	if st, _ := w.pilot2Admin.status(http.MethodPost, tasksURL, map[string]any{"name": "getParameterValues", "parameterNames": []string{verPath}}); st != http.StatusNotFound {
+		return failr("NBI-06: tenant lain membuat tugas pada perangkat ini: HTTP %d, harusnya 404", st)
+	}
+	for _, c := range []struct{ m, p string }{{http.MethodDelete, "/api/v1/nbi/tasks/" + sd.ID}, {http.MethodPost, "/api/v1/nbi/tasks/" + sd.ID + "/retry"}} {
+		if st, _ := w.pilot2Admin.status(c.m, c.p, nil); st != http.StatusNotFound {
+			return failr("NBI-06: tenant lain %s %s: HTTP %d, harusnya 404", c.m, c.p, st)
+		}
+	}
+	if st, _ := NewClient(w.super.base, false).status(http.MethodPost, tasksURL, map[string]any{"name": "reboot"}); st != http.StatusUnauthorized {
+		return failr("NBI-06: tanpa token harus 401, dapat %d", st)
+	}
+	if st, _ := cust.status(http.MethodPost, tasksURL, map[string]any{"name": "reboot"}); st != http.StatusForbidden {
+		return failr("NBI-06: ENDUSER harus 403, dapat %d", st)
+	}
+
+	return pass("query serial/parameter/_lastInform & projection bersarang benar; _id = device_uuid tanpa PK/rahasia; sort naik/turun saling kebalikan dan skip/limit tanpa baris terlewat; 10 masukan di luar subset 400; tenant lain kosong, tanpa token 401, ENDUSER 403; tugas NBI: buat (get/set, rahasia tak bocor) → hapus 204/409 → retry tugas yang sama, masukan di luar subset 400, tenant lain 404, tanpa token 401, ENDUSER 403")
 }

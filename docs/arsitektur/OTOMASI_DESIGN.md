@@ -10,8 +10,8 @@ sama dengan data tenant lain: loop tak hingga, panggilan ke URL internal (SSRF),
 yang sempurna. Engine deklaratif menutup seluruh kelas risiko itu dengan konstruksi, dan tetap menutup kasus yang dipakai operator ISP:
 "jika X maka atur Y", "tandai perangkat berredaman buruk", "seragamkan SSID saat pertama terhubung".
 
-Yang **tidak** bisa diekspresikan (disengaja): perulangan, variabel antar-langkah, panggilan HTTP bebas dari dalam aturan, dan membaca
-data tenant lain. Bila kebutuhan nyata melampaui ini, keputusan berikutnya adalah JavaScript tersandbox (QuickJS/goja) — belum diambil.
+Yang **tidak** bisa diekspresikan (disengaja): perulangan bebas, variabel antar-langkah, panggilan HTTP bebas dari dalam aturan, dan membaca
+data tenant lain. Satu-satunya bentuk "iterasi" adalah wildcard instance pada target `set_parameter` (bagian berikutnya): tertutup, terbatas, tanpa sandbox. Bila kebutuhan nyata melampaui ini, keputusan berikutnya adalah JavaScript tersandbox (QuickJS/goja) — belum diambil.
 
 ## Bentuk aturan
 
@@ -23,6 +23,26 @@ mengubah perangkat).
   `{@oui}`, `{@product_class}`, `{@software_version}`, `{@hardware_version}`, `{@ip_address}`, `{@events}`. Bahasa ekspresi sama dengan virtual parameter.
 - **Aksi** (daftar tertutup, maks 10): `set_parameter` (nama + *ekspresi* nilai), `reboot`, `get_parameter_values`, `add_tag`, `webhook`
   (event `AUTOMATION_TRIGGERED`). Menambah jenis aksi = perubahan kode yang ditinjau, bukan data.
+
+## Wildcard instance pada `set_parameter` (2026-10-29)
+
+Tabel multi-instance TR-069 (`WLANConfiguration.{i}`, `WANPPPConnection.{i}`) membuat "atur SSID" tak cukup dengan satu path. Nama target boleh memuat segmen `*`:
+`InternetGatewayDevice.LANDevice.1.WLANConfiguration.*.SSID` = SSID pada **setiap instance yang pernah dilaporkan perangkat**.
+
+- `*` = **satu segmen angka utuh** (instance). Tidak cocok dengan nama objek atau beberapa segmen (`1.PreSharedKey.1` tidak ikut). Hanya raw path
+  (`InternetGatewayDevice.`/`Device.`), bukan logical key; tidak di segmen pertama/terakhir; maks 2 `*` (`domain.ValidParamPattern`).
+- **Instance dikenali dari `device_parameters`** (apa yang sudah dilaporkan perangkat), bukan dengan menyuruh perangkat menyebutkan isi tabelnya: tanpa RPC tambahan,
+  tanpa menebak. Perangkat yang belum pernah melaporkan instance tidak terkena (langkah tercatat sebagai dilewati, bukan hilang).
+- **Batas 8 instance per aksi** (`AutomationMaxWildcardInstances`). Lebih dari itu aksi **dilewati seluruhnya**, tidak diterapkan sebagian. Aksi berwildcard dihitung 8 pada
+  anggaran 30 `set_parameter` per tenant (itu beban terburuknya per Inform).
+- Rujukan `{...*...}` pada **nilai** terikat ke instance yang sama dengan nama target (`*` ke-k = `*` ke-k): `concat('AP-', {…WLANConfiguration.*.BSSID})` memakai BSSID
+  milik instance itu. Instance yang sumbernya belum dilaporkan dilewati sendiri (tak menulis nilai parsial), instance lain tetap diterapkan.
+- **Kondisi tidak mendukung wildcard** (ditolak saat simpan). Tidak perlu: instance yang sudah sesuai tidak dikerjakan ulang (konvergen), jadi aturan tanpa kondisi
+  hanya mengubah instance yang menyimpang.
+- Seluruh pagar anti-badai di bawah berlaku apa adanya (satu aturan × satu perangkat = satu pemicuan, berapa pun jumlah instance di dalamnya). Penyimpanan parameter
+  yang tidak mendukung pencarian instance (`domain.DeviceParameterPathLister`) membuat aksinya dilewati, bukan gagal.
+- Biaya jalur panas: tanpa aksi berwildcard pada aturan yang jatuh tempo = **nol query tambahan**; dengan aksi berwildcard: +1 pencarian instance per aksi, +1 pembacaan nilai
+  rujukan yang baru muncul.
 
 ## Pagar anti-badai
 

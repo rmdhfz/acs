@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -18,6 +19,7 @@ import (
 //	AU-04  validasi: sintaks, rujukan/target rahasia, variabel konteks, aksi, cooldown, trigger -> 400; nama ganda 409
 //	AU-05  isolasi tenant: tenant lain 403 (baca/ubah/hapus/reset/uji) dan tidak melihat aturan/riwayat
 //	AU-06  nonaktifkan / hapus: tidak memicu lagi, 404 setelah hapus
+//	AU-07  wildcard instance (*) pada target set_parameter: dry-run & sesi nyata mengatur path konkret, lalu konvergen; kondisi berwildcard/pola tak sah -> 400
 type automationJSON struct {
 	ID                  string `json:"id"`
 	TenantID            uint64 `json:"tenant_id"`
@@ -249,5 +251,73 @@ func scenarioAutomation(ctx context.Context, w *World) result {
 		return failr("AU-06: GET setelah hapus HTTP %d, harusnya 404", st)
 	}
 
-	return pass("dry-run menghitung %q tanpa mengantre apa pun; sesi Inform memicu SetParameterValues (CPE menerima, riwayat 1 pemicuan, tanpa rahasia); sesi berikutnya tidak memicu lagi; 11 masukan tak sah 400/409; tenant lain 403 pada baca/ubah/hapus/reset/uji dan tidak melihat aturan/riwayat; nonaktif tidak memicu; hapus -> 404", want)
+	// AU-07: wildcard instance pada target set_parameter. Instance dikenali dari parameter yang sudah dilaporkan CPE, jadi SSID dibaca dulu.
+	cut := strings.LastIndex(ssidPath, ".1.SSID")
+	if cut < 0 {
+		return failr("AU-07: bentuk path SSID tak terduga: %s", ssidPath)
+	}
+	pattern := ssidPath[:cut] + ".*.SSID"
+	if st, body := w.pilotAdmin.status(http.MethodPost, fmt.Sprintf("/api/v1/devices/%d/tasks/get-parameter-values", d.ID), map[string]any{"names": []string{ssidPath}}); st >= 400 {
+		return failr("AU-07: baca SSID: HTTP %d %s", st, body)
+	}
+	if rep := w.runCPE(ctx, dev, simcpe.SessionOpts{Events: []string{"2 PERIODIC"}}); !rep.OK || rep.CountRPC("GetParameterValues") == 0 {
+		return failr("AU-07: sesi pembacaan SSID gagal (ok=%v rpc=%v err=%s)", rep.OK, rep.RPCsReceived, rep.ErrMsg)
+	}
+	wantW := "AUW-" + serial[:10]
+	wildActions := []map[string]any{{"type": "set_parameter", "name": pattern, "value": "concat('AUW-', substr({@serial_number}, 0, 10))"}}
+	var tw struct {
+		OK        bool `json:"ok"`
+		WouldFire bool `json:"would_fire"`
+		Steps     []struct {
+			Path   string  `json:"path"`
+			Value  *string `json:"value"`
+			Change bool    `json:"change"`
+			Skip   string  `json:"skip"`
+		} `json:"steps"`
+		Error string `json:"error"`
+	}
+	if err := w.pilotAdmin.do(http.MethodPost, "/api/v1/automation-rules/test", map[string]any{"actions": wildActions, "device_id": d.ID}, &tw); err != nil {
+		return failr("AU-07 dry-run: %v", err)
+	}
+	if !tw.OK || !tw.WouldFire || len(tw.Steps) != 1 || tw.Steps[0].Path != ssidPath || tw.Steps[0].Value == nil || *tw.Steps[0].Value != wantW || !tw.Steps[0].Change {
+		return failr("AU-07: dry-run wildcard harus mengekspansi ke %s = %q: %+v", ssidPath, wantW, tw)
+	}
+	wildDef := map[string]any{"name": name + "-wild", "trigger_event": "EVERY_INFORM", "actions": wildActions, "cooldown_seconds": 300, "max_consecutive_fires": 2}
+	var wrule automationJSON
+	if err := w.pilotAdmin.do(http.MethodPost, "/api/v1/automation-rules", wildDef, &wrule); err != nil {
+		return failr("AU-07 POST: %v", err)
+	}
+	created = append(created, wrule.ID)
+	time.Sleep(200 * time.Millisecond)
+	repW := w.runCPE(ctx, dev, simcpe.SessionOpts{Events: []string{"2 PERIODIC"}})
+	if !repW.OK || setRPCs(repW) == 0 {
+		return failr("AU-07: sesi Inform harus memicu SetParameterValues (ok=%v rpc=%v err=%s)", repW.OK, repW.RPCsReceived, repW.ErrMsg)
+	}
+	if got, _ := dev.Param(ssidPath); got != wantW {
+		return failr("AU-07: SSID di CPE = %q, harusnya %q (diatur lewat wildcard)", got, wantW)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if rs, err := runs(w.pilotAdmin, "rule_uuid", wrule.ID); err != nil || len(rs) != 1 || !rs[0].Fired || !strings.Contains(rs[0].Summary, ssidPath+"="+wantW) || strings.Contains(rs[0].Summary, "*") {
+		return failr("AU-07: riwayat harus memuat path konkret, bukan pola: %+v (%v)", rs, err)
+	}
+	// instance yang sudah sesuai tidak dikerjakan ulang (konvergen)
+	if rep := w.runCPE(ctx, dev, simcpe.SessionOpts{Events: []string{"2 PERIODIC"}}); !rep.OK || setRPCs(rep) != 0 {
+		return failr("AU-07: sudah konvergen, sesi berikutnya tidak boleh memicu (set=%d)", setRPCs(rep))
+	}
+	// kondisi berwildcard ditolak; pola tak sah ditolak
+	for why, mod := range map[string]func(m map[string]any){
+		"kondisi berwildcard": func(m map[string]any) { m["condition"] = "{" + pattern + "} == 'x'" },
+		"logical key berwildcard": func(m map[string]any) {
+			m["actions"] = []map[string]any{{"type": "set_parameter", "name": "wifi.*.ssid", "value": "'x'"}}
+		},
+		"wildcard di segmen akhir": func(m map[string]any) {
+			m["actions"] = []map[string]any{{"type": "set_parameter", "name": ssidPath[:cut] + ".*", "value": "'x'"}}
+		},
+	} {
+		if st := post(mod); st != 400 {
+			return failr("AU-07: %s -> HTTP %d, harusnya 400", why, st)
+		}
+	}
+
+	return pass("dry-run menghitung %q tanpa mengantre apa pun; sesi Inform memicu SetParameterValues (CPE menerima, riwayat 1 pemicuan, tanpa rahasia); sesi berikutnya tidak memicu lagi; 11 masukan tak sah 400/409; tenant lain 403 pada baca/ubah/hapus/reset/uji dan tidak melihat aturan/riwayat; nonaktif tidak memicu; hapus -> 404; wildcard instance (*) pada target mengekspansi ke path konkret, memicu sekali lalu konvergen, kondisi/pola tak sah 400", want)
 }
