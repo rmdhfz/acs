@@ -146,6 +146,7 @@ func main() {
 		{"S36-webhook-alertmanager", scenarioAlertmanager},
 		{"S37-nbi-kompatibel-genieacs", scenarioNBI},
 		{"S38-peta-diagnosis-interval", scenarioMapDiagnosis},
+		{"S39-olt-onu-terdaftar", scenarioOLTInventory},
 	}
 
 	var results []result

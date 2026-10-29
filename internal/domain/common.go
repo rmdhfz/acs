@@ -191,6 +191,8 @@ const (
 	// RefTableOLTPollStatus / RefTableONUDiscoveryStatus — OLT Controller (migrations/0044).
 	RefTableOLTPollStatus      = "ref_olt_poll_status"
 	RefTableONUDiscoveryStatus = "ref_onu_discovery_status"
+	// RefTableOLTONUState — keadaan ONU terdaftar yang dinormalisasi driver (migrations/0047).
+	RefTableOLTONUState = "ref_olt_onu_state"
 )
 
 // Kode ref_webhook_event_types (migrations/0013) — jenis event yang dapat

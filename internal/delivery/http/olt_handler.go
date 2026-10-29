@@ -193,6 +193,48 @@ type patchOLTONURequest struct {
 }
 
 // PATCH /olt-onus/:uuid (ADMIN/NOC) — {"ignored": true} mengabaikan entri PENDING, {"ignored": false} memulihkan entri IGNORED.
+// listOLTRegisteredONUs — GET /olts/:uuid/registered-onus: ONU terdaftar di OLT beserta keadaannya dan tautan ke perangkat ACS.
+func (r *Router) listOLTRegisteredONUs(c *echo.Context) error {
+	in := olt.RegisteredListInput{
+		OLTUUID: c.Param("uuid"), PonPort: c.QueryParam("pon_port"), State: c.QueryParam("state"), Search: c.QueryParam("search"),
+	}
+	if err := checkMaxLen(lenRule{"uuid", in.OLTUUID, 36}, lenRule{"pon_port", in.PonPort, domain.ONUPortMaxLen},
+		lenRule{"state", in.State, 32}, lenRule{"search", in.Search, 255}); err != nil {
+		return err
+	}
+	rows, total, err := r.OLTs.ListRegistered(c.Request().Context(), ActorFrom(c), in, paginationFromQuery(c))
+	if err != nil {
+		return handleErr(c, err)
+	}
+	return c.JSON(http.StatusOK, listResponse{Data: rows, Total: total})
+}
+
+// listOLTPorts — GET /olts/:uuid/ports: ringkasan per port PON dari ONU terdaftar (hanya baca; bukan kontrol port).
+func (r *Router) listOLTPorts(c *echo.Context) error {
+	uuid := c.Param("uuid")
+	if err := checkMaxLen(lenRule{"uuid", uuid, 36}); err != nil {
+		return err
+	}
+	ports, err := r.OLTs.Ports(c.Request().Context(), ActorFrom(c), uuid)
+	if err != nil {
+		return handleErr(c, err)
+	}
+	return c.JSON(http.StatusOK, listResponse{Data: ports, Total: len(ports)})
+}
+
+// deviceOLT — GET /devices/:id/olt: posisi perangkat di jaringan OLT (OLT, port PON, keadaan menurut OLT).
+func (r *Router) deviceOLT(c *echo.Context) error {
+	id, err := parseUint64Param(c, "id")
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "id tidak valid")
+	}
+	v, err := r.OLTs.ForDevice(c.Request().Context(), ActorFrom(c), id)
+	if err != nil {
+		return handleErr(c, err)
+	}
+	return c.JSON(http.StatusOK, v)
+}
+
 func (r *Router) updateOLTONU(c *echo.Context) error {
 	uuid := c.Param("uuid")
 	if err := checkMaxLen(lenRule{"uuid", uuid, 36}); err != nil {

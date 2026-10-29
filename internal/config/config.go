@@ -86,6 +86,10 @@ type Config struct {
 	// Bawaan MATI; jangan diaktifkan di produksi.
 	OLTSimEnabled bool
 
+	// OLTPollMinutes — selang polling OLT berkala (menit): ONU belum terdaftar + ONU terdaftar (status/port), untuk status realtime
+	// dari sisi OLT. 0 (bawaan) = nonaktif: polling OLT nyata membebani perangkat dan membatasi sesi, jadi dinyalakan sengaja per instalasi.
+	OLTPollMinutes int
+
 	// TransferAllowedHosts — host yang boleh menjadi URL task Download/Upload TR-069 yang dibuat lewat API (nama host,
 	// *.subdomain, IP, atau CIDR). nil (default) = tidak dibatasi. Mendorong firmware/konfigurasi dari host sembarang
 	// adalah risiko bila token ADMIN tenant bocor; unduhan dari katalog firmware/berkas ACS (URL presigned) tidak terkena.
@@ -335,6 +339,9 @@ func Load() (*Config, error) {
 	cfg.WebhookBlockPrivate, err = strconv.ParseBool(getEnv("ACS_WEBHOOK_BLOCK_PRIVATE", "false"))
 	if err != nil {
 		return nil, fmt.Errorf("config: ACS_WEBHOOK_BLOCK_PRIVATE tidak valid: %w", err)
+	}
+	if cfg.OLTPollMinutes, err = strconv.Atoi(getEnv("ACS_OLT_POLL_MINUTES", "0")); err != nil || cfg.OLTPollMinutes < 0 || cfg.OLTPollMinutes > 1440 {
+		return nil, fmt.Errorf("config: ACS_OLT_POLL_MINUTES harus bilangan 0..1440 (0 = nonaktif)")
 	}
 	cfg.OLTSimEnabled, err = strconv.ParseBool(getEnv("ACS_OLT_SIM_ENABLED", "false"))
 	if err != nil {

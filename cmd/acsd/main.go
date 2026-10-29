@@ -254,7 +254,9 @@ func main() {
 		}
 		logger.Warn("driver OLT simulator aktif (ACS_OLT_SIM_ENABLED): menampilkan ONU palsu, jangan dipakai di produksi")
 	}
-	oltSvc := olt.NewService(mysql.NewOLTRepository(db), oltDrivers, refRepo, enc, activityLogRepo).WithBlockPrivate(cfg.WebhookBlockPrivate)
+	oltSvc := olt.NewService(mysql.NewOLTRepository(db), oltDrivers, refRepo, enc, activityLogRepo).WithBlockPrivate(cfg.WebhookBlockPrivate).
+		WithInventory(mysql.NewOLTInventoryRepository(db)).WithPublisher(wsHub).WithDevices(deviceSvc)
+	troubleshootSvc.WithOLT(oltSvc) // bukti sisi OLT pada diagnosis (ONU di OLT tenant yang serialnya sama)
 	sessionSvc := session.NewService(deviceSessionRepo, deviceEventRepo, deviceParamRepo, deviceRepo, tenantRepo, refRepo, deviceSvc, taskSvc, provisioningSvc, firmwareSvc, diagnosticsSvc, enc, activityLogRepo, logger, webhookSvc, wsHub).WithOpticalPoll(time.Duration(cfg.OpticalPollMinutes) * time.Minute).WithPPPoEPoll(time.Duration(cfg.PPPoEPollMinutes) * time.Minute).WithFaults(faultSvc).WithAutomation(automationSvc)
 	fileSvc := file.NewService(fileRepo, objStorage, activityLogRepo).WithStorageQuota(tenantStorageQuotaRepo)
 	tagSvc := tag.NewService(tagRepo, activityLogRepo)
@@ -462,6 +464,9 @@ func main() {
 	}()
 
 	stop := make(chan struct{})
+	if cfg.OLTPollMinutes > 0 {
+		go runOLTPoller(oltSvc, time.Duration(cfg.OLTPollMinutes)*time.Minute, lockSweeper, stop)
+	}
 	go runSweepers(deviceSvc, taskSvc, firmwareSvc, webhookSvc, sessionSvc, diagnosticsSvc, mysql.NewRetentionRepository(db), cfg.LogRetentionDays, time.Duration(cfg.OfflineMinMinutes)*time.Minute, signupSvc.Purge, notifSvc.Evaluate, billingSvc.Evaluate, lockSweeper, stop)
 
 	quit := make(chan os.Signal, 1)
@@ -546,6 +551,33 @@ func redactingRequestLogger(logger *slog.Logger) echo.MiddlewareFunc {
 			return nil
 		},
 	})
+}
+
+// runOLTPoller memoll OLT aktif yang sudah jatuh tempo (ACS_OLT_POLL_MINUTES). Goroutine SENDIRI dengan kunci sendiri: polling OLT nyata
+// lambat (hingga ~30 dtk per OLT) dan tidak boleh menahan tugas penyapu menit-an (offline perangkat, timeout task, dll.). Satu instance per tick.
+func runOLTPoller(svc *olt.Service, every time.Duration, lock func(name string, ttl time.Duration) (func(), bool), stop <-chan struct{}) {
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case <-ticker.C:
+			release, ok := lock("olt-poll", 10*time.Minute)
+			if !ok {
+				continue // instance lain yang memoll pada tick ini
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 9*time.Minute)
+			n, err := svc.PollDue(ctx, every)
+			cancel()
+			release()
+			if err != nil {
+				log.Printf("olt-poller: gagal memilih OLT jatuh tempo: %v", err)
+			} else if n > 0 {
+				log.Printf("olt-poller: %d OLT dipoll", n)
+			}
+		}
+	}
 }
 
 // runSweepers menjalankan tugas periodik ringan (FR-22, timeout task, wave

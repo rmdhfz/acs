@@ -32,6 +32,24 @@ const (
 const DiagnosisLimits = "Diagnosis ini hanya memakai bukti dari sisi ACS (TR-069: Inform, event, redaman optik yang dilaporkan perangkat, fault, task). " +
 	"Penyebab di jaringan fisik (fiber putus, port PON, LOS/dying gasp, OLT) hanya terlihat dari sisi OLT dan belum tersedia."
 
+// DiagnosisLimitsWithOLT = batas bila data OLT ikut dipakai: penyebab fisik yang DILAPORKAN OLT kini terlihat, tetapi datanya berasal dari polling
+// terakhir dan penyebab di luar yang dilaporkan ACS maupun OLT tetap tidak terlihat.
+const DiagnosisLimitsWithOLT = "Diagnosis ini memakai bukti dari sisi ACS (TR-069: Inform, event, redaman optik yang dilaporkan perangkat, fault, task) dan data OLT " +
+	"dari polling terakhir (keadaan bisa sudah berubah sejak itu). Penyebab di luar yang dilaporkan keduanya tidak terlihat."
+
+// DiagnosisOLT = posisi perangkat di jaringan OLT yang dipakai sebagai bukti; nil pada DeviceDiagnosis bila ONU-nya tidak ditemukan di OLT tenant.
+type DiagnosisOLT struct {
+	OLTName           string     `json:"olt_name"`
+	PonPort           string     `json:"pon_port"`
+	ONUIndex          *string    `json:"onu_index"`
+	State             string     `json:"state"` // kode ref_olt_onu_state
+	VendorState       *string    `json:"vendor_state"`
+	RxPowerDBM        *float64   `json:"rx_power_dbm"`
+	LastSeenAt        time.Time  `json:"last_seen_at"`
+	LastStateChangeAt time.Time  `json:"last_state_change_at"`
+	OLTPolledAt       *time.Time `json:"olt_polled_at"`
+}
+
 type DiagnosisFinding struct {
 	Code     string `json:"code"`
 	Severity string `json:"severity"`
@@ -53,10 +71,12 @@ type DeviceDiagnosis struct {
 	InformIntervalSeconds *uint32 `json:"inform_interval_seconds"`
 	// InformIntervalParameter = nama parameter lengkap untuk membaca interval Inform pada perangkat ini (sesuai model data TR-098/TR-181);
 	// kosong bila model datanya belum diketahui. Dipakai UI untuk aksi READ_INFORM_INTERVAL tanpa menebak root.
-	InformIntervalParameter string             `json:"inform_interval_parameter"`
-	OfflineThresholdSeconds int64              `json:"offline_threshold_seconds"`
-	Findings                []DiagnosisFinding `json:"findings"`
-	Actions                 []string           `json:"actions"`
-	Limits                  string             `json:"limits"`
-	GeneratedAt             time.Time          `json:"generated_at"`
+	InformIntervalParameter string `json:"inform_interval_parameter"`
+	OfflineThresholdSeconds int64  `json:"offline_threshold_seconds"`
+	// OLT = bukti dari sisi OLT (nil bila tidak ada: tenant tanpa OLT, ONU tak ditemukan, atau inventaris tidak aktif).
+	OLT         *DiagnosisOLT      `json:"olt"`
+	Findings    []DiagnosisFinding `json:"findings"`
+	Actions     []string           `json:"actions"`
+	Limits      string             `json:"limits"`
+	GeneratedAt time.Time          `json:"generated_at"`
 }

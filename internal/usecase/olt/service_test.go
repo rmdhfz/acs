@@ -22,6 +22,8 @@ import (
 var (
 	pollIDs = map[string]uint64{domain.OLTPollUnknown: 1, domain.OLTPollOK: 2, domain.OLTPollUnreachable: 3, domain.OLTPollAuthFailed: 4, domain.OLTPollError: 5}
 	onuIDs  = map[string]uint64{domain.ONUStatusPending: 11, domain.ONUStatusIgnored: 12, domain.ONUStatusResolved: 13}
+	// keadaan ONU terdaftar (ref_olt_onu_state)
+	stateIDs = map[string]uint64{domain.OLTStateUnknown: 21, domain.OLTStateOnline: 22, domain.OLTStateOffline: 23, domain.OLTStateLOS: 24, domain.OLTStateDyingGasp: 25}
 )
 
 type fakeRefs struct{}
@@ -33,6 +35,8 @@ func (fakeRefs) GetByCode(_ context.Context, table, code string) (domain.RefLook
 		m = pollIDs
 	case domain.RefTableONUDiscoveryStatus:
 		m = onuIDs
+	case domain.RefTableOLTONUState:
+		m = stateIDs
 	}
 	if id, ok := m[code]; ok {
 		return domain.RefLookup{ID: id, Code: code}, nil

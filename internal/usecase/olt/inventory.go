@@ -1,0 +1,338 @@
+package olt
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+
+	"acs/internal/domain"
+)
+
+// ---- Inventaris ONU terdaftar (irisan B, migrations/0047) ----
+// Read-only terhadap OLT. Keadaan ONU sudah dinormalisasi driver (domain.ReportedONU); usecase ini tidak pernah bercabang per vendor.
+
+// maxStateChangesInEvent membatasi rincian per event ONU_STATE_CHANGED; selebihnya hanya dihitung (jumlah total tetap benar).
+const maxStateChangesInEvent = 50
+
+// maxPollDuePerTick membatasi OLT yang dipoll dalam satu tick penyapu (polling OLT nyata lambat dan membatasi sesi).
+const maxPollDuePerTick = 20
+
+// errInventoryTooLarge: OLT melaporkan lebih dari domain.OLTMaxRegisteredONUs ONU; hasil tidak diterapkan.
+var errInventoryTooLarge = fmt.Errorf("OLT melaporkan lebih dari %d ONU terdaftar; hasil polling tidak diterapkan", domain.OLTMaxRegisteredONUs)
+
+// DeviceReader dipenuhi usecase/device.Service: pembacaan perangkat yang sudah menegakkan scope tenant/RBAC.
+type DeviceReader interface {
+	Get(ctx context.Context, actor domain.Actor, id uint64) (*domain.Device, error)
+}
+
+// WithInventory mengaktifkan inventaris ONU terdaftar (polling, daftar, port, tautan perangkat).
+func (s *Service) WithInventory(repo domain.OLTInventoryRepository) *Service {
+	s.inv = repo
+	return s
+}
+
+// WithPublisher mengaktifkan siaran realtime ONU_STATE_CHANGED ke WebSocket tenant pemilik OLT.
+func (s *Service) WithPublisher(p domain.EventPublisher) *Service {
+	s.publisher = p
+	return s
+}
+
+// WithDevices mengaktifkan pencarian ONU milik sebuah perangkat (ForDevice) dengan scope tenant dari usecase perangkat.
+func (s *Service) WithDevices(d DeviceReader) *Service {
+	s.devices = d
+	return s
+}
+
+// StateChange = satu ONU yang keadaannya berubah di antara dua polling.
+type StateChange struct {
+	SerialNumber string `json:"serial_number"`
+	PonPort      string `json:"pon_port"`
+	From         string `json:"from"`
+	To           string `json:"to"`
+}
+
+// RegisteredSummary = ringkasan rekonsiliasi ONU terdaftar pada satu polling.
+type RegisteredSummary struct {
+	Seen         int            `json:"seen"`          // ONU terdaftar yang dilaporkan OLT (setelah dibersihkan)
+	New          int            `json:"new"`           // belum pernah ada (atau sebelumnya hilang)
+	Removed      int            `json:"removed"`       // sebelumnya ada, kini tidak dilaporkan OLT (dihapus-lunak)
+	StateChanged int            `json:"state_changed"` // keadaan berbeda dari polling sebelumnya (tidak termasuk ONU baru)
+	Skipped      int            `json:"skipped"`       // entri dari perangkat yang tak valid/duplikat dan dilewati
+	ByState      map[string]int `json:"by_state"`      // jumlah per kode keadaan
+}
+
+// cleanReported membersihkan entri dari perangkat (tak tepercaya): serial wajib 1..32 tanpa karakter kontrol; port/nomor/tipe/keadaan asli
+// dipangkas; keadaan di luar kode yang dikenal menjadi UNKNOWN (tidak ditebak); RX di luar rentang fisik dibuang; duplikat serial (tak peka
+// huruf besar/kecil, seperti kolasi kolom) dibuang. Entri tak valid dilewati (dihitung), bukan menggagalkan seluruh polling.
+func cleanReported(in []domain.ReportedONU) ([]domain.ReportedONU, int) {
+	out := make([]domain.ReportedONU, 0, len(in))
+	seen := make(map[string]struct{}, len(in))
+	skipped := 0
+	for _, o := range in {
+		serial, err := domain.CleanText("serial", o.SerialNumber, 1, domain.ONUSerialMaxLen, false)
+		if err != nil {
+			skipped++
+			continue
+		}
+		key := strings.ToUpper(serial)
+		if _, dup := seen[key]; dup {
+			skipped++
+			continue
+		}
+		port, e1 := domain.CleanText("pon_port", o.PonPort, 0, domain.ONUPortMaxLen, false)
+		idx, e2 := domain.CleanText("onu_index", o.ONUIndex, 0, domain.ONUIndexMaxLen, false)
+		typ, e3 := domain.CleanText("onu_type", o.ONUType, 0, domain.ONUTypeMaxLen, false)
+		vst, e4 := domain.CleanText("vendor_state", o.VendorState, 0, domain.ONUVendorStateMaxLen, false)
+		if e1 != nil || e2 != nil || e3 != nil || e4 != nil {
+			skipped++
+			continue
+		}
+		state := o.State
+		if !domain.ValidOLTONUState(state) {
+			state = domain.OLTStateUnknown
+		}
+		var rx *float64
+		if o.RxPowerDBM != nil && domain.ValidOLTRx(*o.RxPowerDBM) {
+			v := *o.RxPowerDBM
+			rx = &v
+		}
+		seen[key] = struct{}{}
+		out = append(out, domain.ReportedONU{PonPort: port, ONUIndex: idx, SerialNumber: serial, ONUType: typ, State: state, VendorState: vst, RxPowerDBM: rx})
+	}
+	return out, skipped
+}
+
+// pollInventory membaca ONU terdaftar dari driver lalu merekonsiliasi snapshot. Dipanggil dari Poll dengan penjaga satu-polling-per-OLT
+// yang sama. Galat dikembalikan apa adanya (Poll yang mengklasifikasikannya).
+func (s *Service) pollInventory(ctx context.Context, o *domain.OLT, drv domain.OLTInventoryDriver, conn domain.OLTConnection) (*RegisteredSummary, error) {
+	cctx, cancel := context.WithTimeout(ctx, driverTimeout)
+	defer cancel()
+	reported, err := drv.ListRegisteredONUs(cctx, conn)
+	if err != nil {
+		return nil, err
+	}
+	clean, skipped := cleanReported(reported)
+	if len(clean) > domain.OLTMaxRegisteredONUs {
+		return nil, errInventoryTooLarge
+	}
+	sum, changes, err := s.reconcileInventory(ctx, o, clean)
+	if err != nil {
+		return nil, err
+	}
+	sum.Skipped = skipped
+	if len(changes) > 0 && s.publisher != nil {
+		shown := changes
+		if len(shown) > maxStateChangesInEvent {
+			shown = shown[:maxStateChangesInEvent]
+		}
+		s.publisher.BroadcastToTenant(o.TenantID, "ONU_STATE_CHANGED", map[string]interface{}{
+			"olt_id": o.UUID, "olt_name": o.Name, "changed": len(changes), "changes": shown,
+		})
+	}
+	return sum, nil
+}
+
+// reconcileInventory: serial baru → baris baru; serial yang ada → diperbarui (keadaan, RX, last_seen_at); serial yang tidak lagi dilaporkan →
+// dihapus-lunak. Mengembalikan juga daftar perubahan keadaan (untuk siaran).
+func (s *Service) reconcileInventory(ctx context.Context, o *domain.OLT, clean []domain.ReportedONU) (*RegisteredSummary, []StateChange, error) {
+	existing, err := s.inv.ListRegisteredByOLT(ctx, o.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	bySerial := make(map[string]domain.RegisteredONU, len(existing))
+	for _, e := range existing {
+		bySerial[strings.ToUpper(e.SerialNumber)] = e
+	}
+	stateIDs := map[string]uint64{}
+	stateID := func(code string) (uint64, error) {
+		if id, ok := stateIDs[code]; ok {
+			return id, nil
+		}
+		r, err := s.refs.GetByCode(ctx, domain.RefTableOLTONUState, code)
+		if err != nil {
+			return 0, err
+		}
+		stateIDs[code] = r.ID
+		return r.ID, nil
+	}
+
+	now := time.Now()
+	sum := &RegisteredSummary{Seen: len(clean), ByState: map[string]int{}}
+	var changes []StateChange
+	rows := make([]domain.RegisteredONU, 0, len(clean))
+	seen := make(map[string]struct{}, len(clean))
+	for _, c := range clean {
+		key := strings.ToUpper(c.SerialNumber)
+		seen[key] = struct{}{}
+		sid, err := stateID(c.State)
+		if err != nil {
+			return nil, nil, err
+		}
+		sum.ByState[c.State]++
+		row := domain.RegisteredONU{
+			UUID: uuid.NewString(), PonPort: c.PonPort, ONUIndex: ptrOrNil(c.ONUIndex), SerialNumber: c.SerialNumber, ONUType: ptrOrNil(c.ONUType),
+			StateID: sid, VendorState: ptrOrNil(c.VendorState), RxPowerDBM: c.RxPowerDBM,
+			FirstSeenAt: now, LastSeenAt: now, LastStateChangeAt: now,
+		}
+		if ex, ok := bySerial[key]; ok {
+			row.UUID, row.FirstSeenAt, row.LastStateChangeAt = ex.UUID, ex.FirstSeenAt, ex.LastStateChangeAt
+			if ex.State != c.State {
+				sum.StateChanged++
+				row.LastStateChangeAt = now
+				changes = append(changes, StateChange{SerialNumber: c.SerialNumber, PonPort: c.PonPort, From: ex.State, To: c.State})
+			}
+		} else {
+			sum.New++
+		}
+		rows = append(rows, row)
+	}
+	if err := s.inv.UpsertRegisteredONUs(ctx, o.ID, rows); err != nil {
+		return nil, nil, err
+	}
+	var gone []uint64
+	for _, e := range existing {
+		if _, still := seen[strings.ToUpper(e.SerialNumber)]; !still {
+			gone = append(gone, e.ID)
+		}
+	}
+	if len(gone) > 0 {
+		if err := s.inv.RemoveRegisteredONUs(ctx, gone, nil); err != nil {
+			return nil, nil, err
+		}
+	}
+	sum.Removed = len(gone)
+	return sum, changes, nil
+}
+
+// ---- pembacaan ----
+
+// RegisteredListInput = filter daftar ONU terdaftar sebuah OLT.
+type RegisteredListInput struct {
+	OLTUUID string
+	PonPort string
+	State   string // kode ref_olt_onu_state; kosong = semua
+	Search  string
+}
+
+func (s *Service) requireInventory() error {
+	if s.inv == nil {
+		return fmt.Errorf("%w: inventaris ONU terdaftar tidak diaktifkan", domain.ErrInvalidInput)
+	}
+	return nil
+}
+
+// ListRegistered mengembalikan ONU terdaftar sebuah OLT (scope tenant lewat OLT-nya), dengan tautan ke perangkat ACS.
+func (s *Service) ListRegistered(ctx context.Context, actor domain.Actor, in RegisteredListInput, p domain.Pagination) ([]domain.RegisteredONU, int, error) {
+	if err := s.requireInventory(); err != nil {
+		return nil, 0, err
+	}
+	o, err := s.load(ctx, actor, in.OLTUUID)
+	if err != nil {
+		return nil, 0, err
+	}
+	f := domain.RegisteredONUFilter{OLTID: &o.ID, TenantID: &o.TenantID, PonPort: in.PonPort, Search: in.Search}
+	if in.State != "" {
+		st, err := s.refs.GetByCode(ctx, domain.RefTableOLTONUState, in.State)
+		if err != nil {
+			return nil, 0, fmt.Errorf("%w: keadaan tidak dikenal", domain.ErrInvalidInput)
+		}
+		f.StateID = &st.ID
+	}
+	return s.inv.ListRegisteredONUs(ctx, f, p)
+}
+
+// Ports = ringkasan per port PON dari ONU terdaftar OLT itu. Hanya baca; bukan kontrol port.
+func (s *Service) Ports(ctx context.Context, actor domain.Actor, oltUUID string) ([]domain.PONPortSummary, error) {
+	if err := s.requireInventory(); err != nil {
+		return nil, err
+	}
+	o, err := s.load(ctx, actor, oltUUID)
+	if err != nil {
+		return nil, err
+	}
+	return s.inv.PortSummaries(ctx, o.ID)
+}
+
+// DeviceONU = posisi sebuah perangkat ACS di jaringan OLT.
+type DeviceONU struct {
+	// Linked: ada ONU dengan serial yang sama di OLT milik tenant perangkat.
+	Linked bool                  `json:"linked"`
+	ONU    *domain.RegisteredONU `json:"onu"`
+	// TenantHasOLT: tenant punya OLT aktif. Linked=false + TenantHasOLT=true = serial tidak ditemukan di data OLT terakhir (atau belum dipoll).
+	TenantHasOLT bool `json:"tenant_has_olt"`
+}
+
+// LookupONUBySerial mencari ONU di OLT milik tenant itu. Tidak memeriksa hak akses: pemanggil WAJIB sudah memverifikasi akses ke perangkat
+// (usecase/device.Get). Mengembalikan (ONU, true) bila ditemukan; (nil, apakah tenant punya OLT aktif) bila tidak.
+func (s *Service) LookupONUBySerial(ctx context.Context, tenantID uint64, serial string) (*domain.RegisteredONU, bool, error) {
+	if s.inv == nil {
+		return nil, false, nil
+	}
+	onu, err := s.inv.FindRegisteredBySerial(ctx, tenantID, serial)
+	if err == nil {
+		return onu, true, nil
+	}
+	if !errors.Is(err, domain.ErrNotFound) {
+		return nil, false, err
+	}
+	n, err := s.inv.CountActiveOLTs(ctx, tenantID)
+	if err != nil {
+		return nil, false, err
+	}
+	return nil, n > 0, nil
+}
+
+// ForDevice mengembalikan posisi perangkat di OLT. Akses mengikuti usecase perangkat (perangkat tenant lain = ErrNotFound/ErrForbidden).
+func (s *Service) ForDevice(ctx context.Context, actor domain.Actor, deviceID uint64) (*DeviceONU, error) {
+	if err := s.requireInventory(); err != nil {
+		return nil, err
+	}
+	if s.devices == nil {
+		return nil, fmt.Errorf("%w: pencarian per perangkat tidak diaktifkan", domain.ErrInvalidInput)
+	}
+	dev, err := s.devices.Get(ctx, actor, deviceID)
+	if err != nil {
+		return nil, err
+	}
+	if dev.TenantID == nil { // perangkat tanpa tenant tidak punya OLT
+		return &DeviceONU{}, nil
+	}
+	onu, tenantHasOLT, err := s.LookupONUBySerial(ctx, *dev.TenantID, dev.SerialNumber)
+	if err != nil {
+		return nil, err
+	}
+	return &DeviceONU{Linked: onu != nil, ONU: onu, TenantHasOLT: tenantHasOLT}, nil
+}
+
+// ---- polling berkala ----
+
+// PollDue memoll OLT aktif yang belum dipoll dalam `every` (terlama dulu, maks maxPollDuePerTick per panggilan, berurutan). Hasil per OLT
+// tercatat pada baris OLT (status/galat); galat satu OLT tidak menghentikan yang lain. Dipanggil penyapu; aman dari instance mana pun
+// (penjaga satu-polling-per-OLT berlaku per instance, rekonsiliasi idempoten). Mengembalikan jumlah OLT yang berhasil dipoll.
+func (s *Service) PollDue(ctx context.Context, every time.Duration) (int, error) {
+	if s.inv == nil || every <= 0 {
+		return 0, nil
+	}
+	due, err := s.inv.ListOLTsDueForPoll(ctx, time.Now().Add(-every), maxPollDuePerTick)
+	if err != nil {
+		return 0, err
+	}
+	system := domain.Actor{Roles: []string{domain.RoleSuperadmin}}
+	ok := 0
+	for i := range due {
+		if ctx.Err() != nil {
+			break
+		}
+		if _, err := s.Poll(ctx, system, due[i].UUID); err != nil {
+			log.Printf("olt: polling berkala %s gagal: %v", due[i].Name, err)
+			continue
+		}
+		ok++
+	}
+	return ok, nil
+}

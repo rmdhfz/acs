@@ -14,6 +14,7 @@ import (
 // Ambang aturan diagnosis. Semuanya heuristik atas data TR-069; angkanya sengaja konservatif dan tertulis di sini agar bisa ditinjau.
 const (
 	bootBeforeSilenceWindow = 30 * time.Minute // Inform terakhir sebaik ini setelah BOOT = "baru menyala lalu hilang"
+	oltStaleAfter           = 30 * time.Minute // data OLT lebih tua dari ini diberi catatan "basi"
 	bootFlapWindow          = 24 * time.Hour
 	bootFlapCount           = 3
 	opticalDropDB           = 3.0 // penurunan RX (dB) terhadap pembacaan terbaik di jendela terakhir
@@ -32,6 +33,9 @@ type Evidence struct {
 	Optical       []OpticalAt          // terbaru dulu
 	Faults        []domain.DeviceFault // fault aktif
 	Tasks         []TaskInfo           // terbaru dulu
+	// OLT = posisi perangkat di jaringan OLT (nil bila tak ditemukan/inventaris tidak aktif); TenantHasOLT = tenant punya OLT aktif.
+	OLT          *domain.DiagnosisOLT
+	TenantHasOLT bool
 	// Gaps = sumber bukti yang gagal dibaca; diagnosis menyatakannya agar "tidak ada data" tidak disalahartikan sebagai "tidak ada masalah".
 	Gaps []string
 }
@@ -57,7 +61,10 @@ func Diagnose(e Evidence) domain.DeviceDiagnosis {
 		DeviceID: e.Device.ID, Status: e.StatusCode, LastInformAt: e.Device.LastInformAt,
 		InformIntervalSeconds: e.Device.InformIntervalSeconds,
 		Findings:              []domain.DiagnosisFinding{}, Actions: []string{},
-		Limits: domain.DiagnosisLimits, GeneratedAt: e.Now,
+		Limits: domain.DiagnosisLimits, GeneratedAt: e.Now, OLT: e.OLT,
+	}
+	if e.OLT != nil {
+		d.Limits = domain.DiagnosisLimitsWithOLT
 	}
 	if e.DataModelRoot != "" {
 		d.InformIntervalParameter = e.DataModelRoot + "ManagementServer.PeriodicInformInterval"
@@ -89,14 +96,17 @@ func Diagnose(e Evidence) domain.DeviceDiagnosis {
 		a.add(domain.SeverityWarning, "NEVER_INFORMED", "Perangkat belum pernah terhubung ke ACS",
 			"Belum ada Inform yang diterima untuk perangkat ini.",
 			"Pastikan CPE menyala dan URL ACS beserta kredensial CWMP tenant sudah diatur di CPE, dan serial number yang didaftarkan benar.")
+		a.oltRules()
 	case domain.VerdictReachable:
 		a.add(domain.SeverityInfo, "WITHIN_TOLERANCE", "Perangkat masih dalam batas toleransi",
 			fmt.Sprintf("Inform terakhir %s lalu, di bawah ambang offline %s.", humanDuration(silent), humanDuration(threshold)),
 			"Tidak ada tindakan; status dihitung ulang tiap menit.")
+		a.oltRules()
 		a.opticalRules(false)
 		a.bootFlapRule()
 		a.faultRule()
 	case domain.VerdictOffline:
+		a.oltRules() // lebih dulu: laporan OLT paling dekat ke penyebab fisik, dan temuan sekelas mempertahankan urutan penambahan
 		a.offlineRules()
 		a.opticalRules(true)
 		a.bootFlapRule()
@@ -135,6 +145,69 @@ func (a *analysis) action(code string) {
 		}
 	}
 	a.d.Actions = append(a.d.Actions, code)
+}
+
+// oltRules: bukti dari sisi OLT (irisan B). Usia data selalu disebut di tiap temuan: keadaan OLT berasal dari polling terakhir, bukan dari
+// detik ini. Perangkat yang masih terjangkau ACS tidak pernah mendapat temuan kritis dari OLT (ACS baru saja menerima Inform, jadi
+// "LOS" pasti basi); selisihnya dinyatakan sebagai konflik berkeparahan info.
+func (a *analysis) oltRules() {
+	o := a.e.OLT
+	if o == nil {
+		if a.e.TenantHasOLT && a.d.Verdict != domain.VerdictReachable {
+			a.add(domain.SeverityInfo, "OLT_NOT_FOUND", "ONU tidak ditemukan di data OLT",
+				"Tenant punya OLT terdaftar, tetapi tidak ada ONU dengan serial ini pada polling OLT terakhir.",
+				"Periksa kesamaan format serial antara OLT dan TR-069, apakah ONU sudah diregistrasi di OLT, dan apakah OLT sudah dipoll.")
+		}
+		return
+	}
+	age := a.e.Now.Sub(o.LastSeenAt)
+	where := fmt.Sprintf("OLT %s, port %s", o.OLTName, o.PonPort)
+	if o.ONUIndex != nil && *o.ONUIndex != "" {
+		where += fmt.Sprintf(", ONU %s", *o.ONUIndex)
+	}
+	basis := fmt.Sprintf("%s: keadaan %s, terpantau sejak %s lalu (data OLT %s lalu).", where, o.State, humanDuration(a.e.Now.Sub(o.LastStateChangeAt)), humanDuration(age))
+	vendor := ""
+	if o.VendorState != nil && *o.VendorState != "" {
+		vendor = fmt.Sprintf(" Keadaan asli dari OLT: %q.", *o.VendorState)
+	}
+
+	if a.d.Verdict == domain.VerdictReachable {
+		if o.State != domain.OLTStateOnline {
+			a.add(domain.SeverityInfo, "OLT_STATE_CONFLICT", "OLT dan ACS tidak sepaham",
+				basis+fmt.Sprintf(" Namun ACS menerima Inform %s lalu.", humanDuration(a.silent)),
+				"Data OLT kemungkinan basi atau ONU baru saja pulih; poll ulang OLT untuk memastikan.")
+		}
+	} else {
+		acs := fmt.Sprintf("ACS diam %s", humanDuration(a.silent))
+		if a.d.Verdict == domain.VerdictNeverConnected {
+			acs = "ACS belum pernah menerima Inform dari perangkat ini"
+		}
+		switch o.State {
+		case domain.OLTStateLOS:
+			a.add(domain.SeverityCritical, "OLT_LOS", "OLT melaporkan ONU kehilangan sinyal optik (LOS)", basis+" "+acs+".",
+				"Jalur fiber antara OLT dan ONU terputus atau konektor terlepas; ONU kemungkinan masih berdaya. Periksa ODP/splitter, kabel drop, dan konektor di ONU.")
+		case domain.OLTStateDyingGasp:
+			a.add(domain.SeverityCritical, "OLT_DYING_GASP", "OLT menerima dying gasp: ONU kehilangan daya listrik", basis+" "+acs+".",
+				"Periksa listrik di lokasi pelanggan dan adaptor ONU; ONU kembali sendiri begitu daya pulih.")
+		case domain.OLTStateOffline:
+			a.add(domain.SeverityWarning, "OLT_ONU_OFFLINE", "ONU offline di OLT", basis+vendor+" "+acs+".",
+				"OLT tidak merinci penyebabnya (bisa listrik maupun fiber). Bandingkan dengan redaman optik terakhir dan riwayat BOOT pada temuan lain.")
+		case domain.OLTStateOnline:
+			hint := "Lapisan optik dan daya ONU sehat. Periksa jalur IP/VLAN manajemen dari ONU ke ACS, URL dan kredensial ACS pada pengaturan TR-069 ONU, serta firewall."
+			if a.d.Verdict == domain.VerdictNeverConnected {
+				hint += " Untuk ONU baru: pastikan URL ACS sudah diprovisioning ke ONU."
+			}
+			a.add(domain.SeverityWarning, "OLT_ONLINE_ACS_SILENT", "ONU online di OLT, tetapi tidak terlihat di ACS", basis+" "+acs+".", hint)
+		default:
+			a.add(domain.SeverityInfo, "OLT_STATE_UNKNOWN", "Keadaan ONU di OLT tidak diketahui", basis+vendor,
+				"Driver OLT tidak memetakan keadaan ini ke keadaan yang dikenal.")
+		}
+	}
+	if age > oltStaleAfter {
+		a.add(domain.SeverityInfo, "OLT_DATA_STALE", "Data OLT sudah lama",
+			fmt.Sprintf("Polling OLT terakhir yang memuat ONU ini %s lalu.", humanDuration(age)),
+			"Poll ulang OLT dari halaman OLT, atau nyalakan polling berkala (ACS_OLT_POLL_MINUTES).")
+	}
 }
 
 // offlineRules: bukti tentang DIAMNYA perangkat (interval, restart sebelum hilang).
@@ -319,6 +392,13 @@ func privateHost(raw string) string {
 func (a *analysis) summary() string {
 	switch a.d.Verdict {
 	case domain.VerdictNeverConnected:
+		// NEVER_INFORMED hanyalah fakta, bukan penyebab. Bila ada bukti lain yang berbobot (mis. OLT melaporkan LOS atau ONU online tetapi belum
+		// pernah Inform), itulah yang dibaca operator pertama kali.
+		for _, f := range a.d.Findings {
+			if f.Severity != domain.SeverityInfo && f.Code != "NEVER_INFORMED" {
+				return fmt.Sprintf("Dugaan utama: %s. %s", f.Title, f.Evidence)
+			}
+		}
 		return "Perangkat belum pernah terhubung ke ACS."
 	case domain.VerdictReachable:
 		return fmt.Sprintf("Perangkat terjangkau: Inform terakhir %s lalu, di bawah ambang offline %s.", humanDuration(a.silent), humanDuration(a.threshold))

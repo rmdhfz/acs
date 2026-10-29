@@ -37,6 +37,10 @@ type Service struct {
 	activity domain.ActivityLogRepository
 
 	blockPrivate bool
+	// Opsional (WithInventory/WithPublisher/WithDevices): inventaris ONU terdaftar, siaran realtime, dan pencarian per perangkat.
+	inv       domain.OLTInventoryRepository
+	publisher domain.EventPublisher
+	devices   DeviceReader
 	// polling — penjaga satu polling per OLT dalam satu instance: OLT nyata membatasi sesi bersamaan, dan dua polling
 	// serentak hanya menggandakan beban. (Antar-instance tidak dijaga; rekonsiliasi idempoten.)
 	polling sync.Map
@@ -494,6 +498,8 @@ type PollSummary struct {
 	Resolved    int `json:"resolved"`     // sebelumnya PENDING/IGNORED, kini tidak muncul → RESOLVED
 	Skipped     int `json:"skipped"`      // entri dari perangkat yang tidak valid/duplikat dan dilewati
 	QueueLength int `json:"queue_length"` // PENDING sesudah rekonsiliasi
+	// Registered = ringkasan ONU terdaftar; nil bila driver OLT ini tidak mendukung pembacaan ONU terdaftar (atau inventaris tidak aktif).
+	Registered *RegisteredSummary `json:"registered,omitempty"`
 }
 
 // Poll membaca ONU belum terdaftar dari OLT lalu merekonsiliasi antrean. Satu polling per OLT dalam satu waktu.
@@ -543,6 +549,23 @@ func (s *Service) Poll(ctx context.Context, actor domain.Actor, uuid string) (*P
 		return nil, err
 	}
 	sum.Skipped = skipped
+	// ONU terdaftar (kemampuan opsional driver). Antrean belum-terdaftar di atas sudah tersimpan; bila bagian ini gagal polling dicatat
+	// gagal dan galatnya dikembalikan, supaya status OK tidak menyembunyikan inventaris yang basi.
+	if invDrv, ok := drv.(domain.OLTInventoryDriver); ok && s.inv != nil {
+		rs, ierr := s.pollInventory(ctx, o, invDrv, conn)
+		if ierr != nil {
+			code, msg, out := classify(ierr)
+			if errors.Is(ierr, errInventoryTooLarge) {
+				code, msg, out = domain.OLTPollError, ierr.Error(), fmt.Errorf("%w: %s", domain.ErrUpstreamUnavailable, ierr)
+			}
+			if err := s.recordPoll(ctx, o, code, &msg, nil); err != nil {
+				return nil, err
+			}
+			s.record(ctx, actor, &o.TenantID, "POLL_OLT", o.ID, map[string]any{"result": code, "stage": "registered"})
+			return nil, out
+		}
+		sum.Registered = rs
+	}
 	if err := s.recordPoll(ctx, o, domain.OLTPollOK, nil, nil); err != nil {
 		return nil, err
 	}

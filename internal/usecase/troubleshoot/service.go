@@ -26,7 +26,14 @@ const (
 	tasksLookback   = 50
 )
 
+// ONULookup dipenuhi usecase/olt.Service: mencari ONU di OLT milik tenant lewat serial. Tidak memeriksa hak akses (perangkat sudah diautorisasi
+// lewat DeviceReader). Mengembalikan (ONU, true) bila ketemu; (nil, apakah tenant punya OLT aktif) bila tidak.
+type ONULookup interface {
+	LookupONUBySerial(ctx context.Context, tenantID uint64, serial string) (*domain.RegisteredONU, bool, error)
+}
+
 type Service struct {
+	olt          ONULookup
 	devices      DeviceReader
 	events       domain.DeviceEventRepository
 	optical      domain.DeviceOpticalMetricRepository
@@ -43,6 +50,12 @@ func NewService(devices DeviceReader, events domain.DeviceEventRepository, optic
 	return &Service{devices: devices, events: events, optical: optical, faults: faults, tasks: tasks, refs: refs, params: params, minThreshold: minThreshold, now: time.Now}
 }
 
+// WithOLT mengaktifkan bukti dari sisi OLT (opsional; tanpa ini diagnosis hanya memakai bukti ACS).
+func (s *Service) WithOLT(l ONULookup) *Service {
+	s.olt = l
+	return s
+}
+
 // Diagnose mengumpulkan bukti dan menjalankan aturan. Perangkat milik tenant lain = domain.ErrNotFound/ErrForbidden dari usecase/device.
 // Sumber bukti yang gagal dibaca dicatat sebagai celah (Evidence.Gaps) dan tidak menggagalkan diagnosis.
 func (s *Service) Diagnose(ctx context.Context, actor domain.Actor, deviceID uint64) (*domain.DeviceDiagnosis, error) {
@@ -53,6 +66,20 @@ func (s *Service) Diagnose(ctx context.Context, actor domain.Actor, deviceID uin
 	ev := Evidence{Now: s.now(), Device: *dev, MinThreshold: s.minThreshold}
 	if ref, err := s.refs.GetByID(ctx, domain.RefTableDeviceStatus, dev.DeviceStatusID); err == nil {
 		ev.StatusCode = ref.Code
+	}
+
+	if s.olt != nil && dev.TenantID != nil {
+		switch onu, hasOLT, err := s.olt.LookupONUBySerial(ctx, *dev.TenantID, dev.SerialNumber); {
+		case err != nil:
+			ev.Gaps = append(ev.Gaps, "data OLT")
+		case onu != nil:
+			ev.OLT = &domain.DiagnosisOLT{
+				OLTName: onu.OLTName, PonPort: onu.PonPort, ONUIndex: onu.ONUIndex, State: onu.State, VendorState: onu.VendorState,
+				RxPowerDBM: onu.RxPowerDBM, LastSeenAt: onu.LastSeenAt, LastStateChangeAt: onu.LastStateChangeAt, OLTPolledAt: onu.OLTLastPollAt,
+			}
+		default:
+			ev.TenantHasOLT = hasOLT
+		}
 	}
 
 	for _, root := range []string{"InternetGatewayDevice.", "Device."} {

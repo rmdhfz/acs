@@ -30,6 +30,7 @@ var refTableWhitelist = map[string]bool{
 	// OLT Controller (migrations/0044): dipakai usecase/olt (GetByCode) untuk status poll OLT dan status antrean ONU.
 	domain.RefTableOLTPollStatus:      true,
 	domain.RefTableONUDiscoveryStatus: true,
+	domain.RefTableOLTONUState:        true,
 }
 
 type refRepository struct {
