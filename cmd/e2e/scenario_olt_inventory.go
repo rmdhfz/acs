@@ -267,6 +267,10 @@ func scenarioOLTInventory(ctx context.Context, w *World) result {
 		!strings.HasPrefix(d.Summary, "Dugaan utama: OLT melaporkan ONU kehilangan sinyal optik") || !strings.Contains(d.Limits, "data OLT") {
 		return failr("INV-04: diagnosis LOS = %+v finding=%+v", d, f)
 	}
+	// ONU baru ditemukan oleh SATU polling: tidak boleh dikatakan baru berubah (waktu mulainya tidak diketahui)
+	if !strings.Contains(f.Evidence, "waktu mulainya sebelum itu tidak diketahui") || strings.Contains(f.Evidence, "terpantau berubah") {
+		return failr("INV-04: bukti LOS harus jujur soal waktu mulai untuk ONU yang baru ditemukan: %q", f.Evidence)
+	}
 	if !strings.Contains(f.Evidence, "OLT e2e-inv-"+run) || !strings.Contains(f.Evidence, "port sim/1/1") {
 		return failr("INV-04: evidence harus menyebut OLT dan port: %q", f.Evidence)
 	}

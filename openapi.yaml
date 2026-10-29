@@ -10303,6 +10303,7 @@ components:
             state: { type: string, enum: [ONLINE, OFFLINE, LOS, DYING_GASP, UNKNOWN] }
             vendor_state: { type: string, nullable: true }
             rx_power_dbm: { type: number, format: double, nullable: true }
+            first_seen_at: { type: string, format: date-time, description: "Kapan ACS pertama kali melihat ONU ini. Sama dengan `last_state_change_at` = keadaan belum pernah teramati berubah (waktu mulainya tidak diketahui)." }
             last_seen_at: { type: string, format: date-time }
             last_state_change_at: { type: string, format: date-time }
             olt_polled_at: { type: string, format: date-time, nullable: true }

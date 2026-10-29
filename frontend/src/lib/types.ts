@@ -177,6 +177,7 @@ export interface DeviceDiagnosis {
     state: OLTONUState
     vendor_state: string | null
     rx_power_dbm: number | null
+    first_seen_at: string
     last_seen_at: string
     last_state_change_at: string
     olt_polled_at: string | null

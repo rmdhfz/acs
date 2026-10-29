@@ -45,6 +45,7 @@ type DiagnosisOLT struct {
 	State             string     `json:"state"` // kode ref_olt_onu_state
 	VendorState       *string    `json:"vendor_state"`
 	RxPowerDBM        *float64   `json:"rx_power_dbm"`
+	FirstSeenAt       time.Time  `json:"first_seen_at"`
 	LastSeenAt        time.Time  `json:"last_seen_at"`
 	LastStateChangeAt time.Time  `json:"last_state_change_at"`
 	OLTPolledAt       *time.Time `json:"olt_polled_at"`

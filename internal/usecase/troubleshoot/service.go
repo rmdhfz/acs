@@ -82,7 +82,7 @@ func (s *Service) DiagnoseDevice(ctx context.Context, dev *domain.Device) (*doma
 		case onu != nil:
 			ev.OLT = &domain.DiagnosisOLT{
 				OLTName: onu.OLTName, PonPort: onu.PonPort, ONUIndex: onu.ONUIndex, State: onu.State, VendorState: onu.VendorState,
-				RxPowerDBM: onu.RxPowerDBM, LastSeenAt: onu.LastSeenAt, LastStateChangeAt: onu.LastStateChangeAt, OLTPolledAt: onu.OLTLastPollAt,
+				RxPowerDBM: onu.RxPowerDBM, FirstSeenAt: onu.FirstSeenAt, LastSeenAt: onu.LastSeenAt, LastStateChangeAt: onu.LastStateChangeAt, OLTPolledAt: onu.OLTLastPollAt,
 			}
 		default:
 			ev.TenantHasOLT = hasOLT

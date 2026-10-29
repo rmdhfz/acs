@@ -16,7 +16,7 @@ func oltAt(state string, seenAgo time.Duration) *domain.DiagnosisOLT {
 	idx, vendor := "7", "vendor-"+state
 	return &domain.DiagnosisOLT{
 		OLTName: "OLT-Pusat", PonPort: "sim/1/2", ONUIndex: &idx, State: state, VendorState: &vendor,
-		LastSeenAt: t0.Add(-seenAgo), LastStateChangeAt: t0.Add(-seenAgo - time.Hour),
+		FirstSeenAt: t0.Add(-seenAgo - 5*time.Hour), LastSeenAt: t0.Add(-seenAgo), LastStateChangeAt: t0.Add(-seenAgo - time.Hour),
 	}
 }
 
@@ -246,5 +246,39 @@ func TestService_BuktiOLT(t *testing.T) {
 	svc := newSvc(fakeDevices{dev: dev}, fakeEvents{}, fakeOptical{}, &fakeFaults{}, fakeTasks{})
 	if d, err := svc.Diagnose(context.Background(), domain.Actor{}, 7); err != nil || d.OLT != nil || d.Limits != domain.DiagnosisLimits {
 		t.Errorf("tanpa OLT: err=%v olt=%+v", err, d.OLT)
+	}
+}
+
+// "Sejak" jujur: ONU yang baru ditemukan ACS (waktu perubahan == waktu penemuan) tidak boleh dikatakan baru berubah; perubahan yang teramati boleh.
+func TestDiagnose_OLT_TeksSejakJujur(t *testing.T) {
+	// teramati: ditemukan 5 jam lalu, berubah 1 jam lalu
+	e := base(3 * time.Hour)
+	e.OLT = oltAt(domain.OLTStateLOS, 2*time.Minute)
+	f := finding(t, Diagnose(e), "OLT_LOS")
+	if !strings.Contains(f.Evidence, "terpantau berubah ke keadaan ini 1 jam") || strings.Contains(f.Evidence, "tidak diketahui") {
+		t.Errorf("perubahan teramati: %q", f.Evidence)
+	}
+	// baru ditemukan: tidak ada klaim perubahan
+	e = base(3 * time.Hour)
+	o := oltAt(domain.OLTStateLOS, 2*time.Minute)
+	o.FirstSeenAt = o.LastStateChangeAt
+	e.OLT = o
+	f = finding(t, Diagnose(e), "OLT_LOS")
+	if !strings.Contains(f.Evidence, "terlihat dalam keadaan ini sejak") || !strings.Contains(f.Evidence, "waktu mulainya sebelum itu tidak diketahui") || strings.Contains(f.Evidence, "terpantau berubah") {
+		t.Errorf("baru ditemukan harus jujur: %q", f.Evidence)
+	}
+	// selisih sub-detik (pembulatan penyimpanan) tetap dianggap sama dengan penemuan
+	o.FirstSeenAt = o.LastStateChangeAt.Add(-500 * time.Millisecond)
+	if f = finding(t, Diagnose(e), "OLT_LOS"); strings.Contains(f.Evidence, "terpantau berubah") {
+		t.Errorf("selisih sub-detik bukan perubahan: %q", f.Evidence)
+	}
+	// FirstSeenAt tak diketahui (nol): sehati-hati yang sama
+	o.FirstSeenAt = time.Time{}
+	if f = finding(t, Diagnose(e), "OLT_LOS"); strings.Contains(f.Evidence, "terpantau berubah") {
+		t.Errorf("FirstSeenAt kosong tak boleh dianggap perubahan teramati: %q", f.Evidence)
+	}
+	// first_seen_at ikut ke respons diagnosis
+	if d := Diagnose(e); d.OLT == nil {
+		t.Error("OLT harus ikut ke respons")
 	}
 }

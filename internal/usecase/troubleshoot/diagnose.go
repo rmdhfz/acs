@@ -170,7 +170,7 @@ func (a *analysis) oltRules() {
 	if o.ONUIndex != nil && *o.ONUIndex != "" {
 		where += fmt.Sprintf(", ONU %s", *o.ONUIndex)
 	}
-	basis := fmt.Sprintf("%s: keadaan %s, terpantau sejak %s lalu (data OLT %s lalu).", where, o.State, humanDuration(a.e.Now.Sub(o.LastStateChangeAt)), humanDuration(age))
+	basis := fmt.Sprintf("%s: keadaan %s, %s (data OLT %s lalu).", where, o.State, stateSinceText(o, a.e.Now), humanDuration(age))
 	vendor := ""
 	if o.VendorState != nil && *o.VendorState != "" {
 		vendor = fmt.Sprintf(" Keadaan asli dari OLT: %q.", *o.VendorState)
@@ -213,6 +213,17 @@ func (a *analysis) oltRules() {
 			fmt.Sprintf("Polling OLT terakhir yang memuat ONU ini %s lalu.", humanDuration(age)),
 			"Poll ulang OLT dari halaman OLT, atau nyalakan polling berkala (ACS_OLT_POLL_MINUTES).")
 	}
+}
+
+// stateSinceText: kapan keadaan ONU di OLT mulai. Baris yang baru ditemukan ACS memakai waktu penemuan sebagai waktu perubahan
+// (LastStateChangeAt == FirstSeenAt), jadi itu BUKAN "sejak": ONU yang sudah LOS berjam-jam sebelum ditemukan akan tampak baru LOS beberapa detik
+// lalu. Hanya perubahan yang benar-benar teramati yang disebut "berubah"; FirstSeenAt kosong (tak diketahui) diperlakukan sama hati-hatinya.
+func stateSinceText(o *domain.DiagnosisOLT, now time.Time) string {
+	ago := humanDuration(now.Sub(o.LastStateChangeAt))
+	if !o.FirstSeenAt.IsZero() && o.LastStateChangeAt.Sub(o.FirstSeenAt) > time.Second {
+		return fmt.Sprintf("terpantau berubah ke keadaan ini %s lalu", ago)
+	}
+	return fmt.Sprintf("terlihat dalam keadaan ini sejak %s lalu (waktu mulainya sebelum itu tidak diketahui)", ago)
 }
 
 // offlineRules: bukti tentang DIAMNYA perangkat (interval, restart sebelum hilang).
