@@ -166,6 +166,10 @@ type Config struct {
 	DBMaxOpenConns           int
 	DBMaxIdleConns           int
 	DBConnMaxLifetimeMinutes int
+
+	// OfflineMinMinutes — batas MINIMUM diam sebelum perangkat dianggap offline (menit, bawaan 15). Batas sebenarnya per perangkat
+	// = max(ini, 2,5 x interval Periodic Inform yang dilaporkan perangkat), maks 7 hari (domain.OfflineThreshold).
+	OfflineMinMinutes int
 }
 
 func Load() (*Config, error) {
@@ -186,6 +190,9 @@ func Load() (*Config, error) {
 	}
 	if cfg.DBConnMaxLifetimeMinutes, err = strconv.Atoi(getEnv("ACS_DB_CONN_MAX_LIFETIME_MINUTES", "30")); err != nil || cfg.DBConnMaxLifetimeMinutes < 1 || cfg.DBConnMaxLifetimeMinutes > 1440 {
 		return nil, fmt.Errorf("config: ACS_DB_CONN_MAX_LIFETIME_MINUTES harus bilangan 1..1440")
+	}
+	if cfg.OfflineMinMinutes, err = strconv.Atoi(getEnv("ACS_OFFLINE_MIN_MINUTES", "15")); err != nil || cfg.OfflineMinMinutes < 1 || cfg.OfflineMinMinutes > 1440 {
+		return nil, fmt.Errorf("config: ACS_OFFLINE_MIN_MINUTES harus bilangan 1..1440")
 	}
 
 	cfg.JWTSecret = []byte(os.Getenv("ACS_JWT_SECRET"))

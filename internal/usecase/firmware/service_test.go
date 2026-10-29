@@ -236,10 +236,11 @@ func (f *fakeDeviceRepoFW) Update(context.Context, *domain.Device) error { retur
 func (f *fakeDeviceRepoFW) UpdateStatus(context.Context, uint64, uint64, *uint64) error {
 	return nil
 }
-func (f *fakeDeviceRepoFW) MarkStaleOffline(context.Context, uint64, time.Time) (int64, error) {
-	return 0, nil
+func (f *fakeDeviceRepoFW) MarkStaleOffline(context.Context, uint64, time.Duration, time.Time) ([]domain.StaleDevice, error) {
+	return nil, nil
 }
-func (f *fakeDeviceRepoFW) SoftDelete(context.Context, uint64, uint64) error { return nil }
+func (f *fakeDeviceRepoFW) SetInformInterval(context.Context, uint64, *uint32) error { return nil }
+func (f *fakeDeviceRepoFW) SoftDelete(context.Context, uint64, uint64) error         { return nil }
 
 type fakeTaskCreatorFW struct {
 	lastInput domain.CreateTaskInput

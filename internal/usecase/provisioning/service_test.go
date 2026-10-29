@@ -79,10 +79,11 @@ func (f *fakeDeviceRepoPV) Update(_ context.Context, d *domain.Device) error { f
 func (f *fakeDeviceRepoPV) UpdateStatus(context.Context, uint64, uint64, *uint64) error {
 	return nil
 }
-func (f *fakeDeviceRepoPV) MarkStaleOffline(context.Context, uint64, time.Time) (int64, error) {
-	return 0, nil
+func (f *fakeDeviceRepoPV) MarkStaleOffline(context.Context, uint64, time.Duration, time.Time) ([]domain.StaleDevice, error) {
+	return nil, nil
 }
-func (f *fakeDeviceRepoPV) SoftDelete(context.Context, uint64, uint64) error { return nil }
+func (f *fakeDeviceRepoPV) SetInformInterval(context.Context, uint64, *uint32) error { return nil }
+func (f *fakeDeviceRepoPV) SoftDelete(context.Context, uint64, uint64) error         { return nil }
 
 // fakeDeviceParamRepoPV — key gabungan deviceID+name, cukup utk uji
 // precondition MatchParameterName/MatchParameterValuePattern.

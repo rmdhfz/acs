@@ -155,10 +155,11 @@ func (f *fakeDeviceRepo) Update(context.Context, *domain.Device) error { return 
 func (f *fakeDeviceRepo) UpdateStatus(context.Context, uint64, uint64, *uint64) error {
 	return nil
 }
-func (f *fakeDeviceRepo) MarkStaleOffline(context.Context, uint64, time.Time) (int64, error) {
-	return 0, nil
+func (f *fakeDeviceRepo) MarkStaleOffline(context.Context, uint64, time.Duration, time.Time) ([]domain.StaleDevice, error) {
+	return nil, nil
 }
-func (f *fakeDeviceRepo) SoftDelete(context.Context, uint64, uint64) error { return nil }
+func (f *fakeDeviceRepo) SetInformInterval(context.Context, uint64, *uint32) error { return nil }
+func (f *fakeDeviceRepo) SoftDelete(context.Context, uint64, uint64) error         { return nil }
 
 // fakeTenantRepo implementasi in-memory minimal domain.TenantRepository —
 // hanya GetByID yang dipakai enforceTenantTaskQuota (resolve max_pending_tasks

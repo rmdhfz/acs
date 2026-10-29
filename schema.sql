@@ -6701,3 +6701,7 @@ CREATE TABLE olt_unregistered_onus (
 INSERT INTO ref_notification_types (code, name, description, severity_id, default_in_app, default_email, is_mandatory) VALUES
     ('PLATFORM_ALERT', 'Alert infrastruktur ACS', 'Alert dari Prometheus/Alertmanager (backlog task, kegagalan task per vendor, dst.). Hanya operator platform.',
         (SELECT id FROM ref_notification_severity WHERE code = 'WARNING'), 1, 1, 0);
+
+-- 0046_device_inform_interval: interval Periodic Inform yang dilaporkan perangkat (detik); NULL = belum diketahui.
+ALTER TABLE devices
+    ADD COLUMN inform_interval_seconds INT UNSIGNED NULL AFTER last_boot_event_at;

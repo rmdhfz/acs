@@ -140,6 +140,7 @@ services:
       # (lihat docs/laporan/PROGRESS.md LANJUTAN 14).
       ACS_DB_MAX_OPEN_CONNS: ${ACS_DB_MAX_OPEN_CONNS:-50}
       ACS_DB_MAX_IDLE_CONNS: ${ACS_DB_MAX_IDLE_CONNS:-10}
+      ACS_OFFLINE_MIN_MINUTES: ${ACS_OFFLINE_MIN_MINUTES:-15}
       ACS_DB_CONN_MAX_LIFETIME_MINUTES: ${ACS_DB_CONN_MAX_LIFETIME_MINUTES:-30}
       # Masuk dengan Google / SSO OIDC (kosongkan ACS_OIDC_ISSUER untuk menonaktifkan; lihat RUNBOOK §R).
       # Google: ACS_OIDC_ISSUER=https://accounts.google.com. Secret hanya di .env, jangan di-commit.

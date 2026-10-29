@@ -130,6 +130,9 @@ func (d *Device) InformParams() []NameValue {
 	}
 	out := make([]NameValue, 0, len(want)+1)
 	for _, rel := range want {
+		if d.Profile.OmitPeriodicInformInterval && rel == "ManagementServer.PeriodicInformInterval" {
+			continue
+		}
 		if v, ok := d.params[r+rel]; ok {
 			out = append(out, NameValue{Name: r + rel, Value: v})
 		}

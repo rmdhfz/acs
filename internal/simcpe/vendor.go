@@ -43,6 +43,10 @@ type Profile struct {
 	// ConnectionRequestURL pada Inform — menguji jalur Connection Request
 	// tanpa URL yang diketahui.
 	OmitConnectionRequestURL bool
+	// OmitPeriodicInformInterval: sebagian firmware tidak melaporkan ManagementServer.PeriodicInformInterval pada Inform (ONT nyata
+	// ZTE F660/F609 dan Optictimes pada UAT 21 Okt 2026 begitu) — menguji penemuan interval lewat GetParameterValues. Nilainya
+	// tetap dapat dibaca lewat RPC.
+	OmitPeriodicInformInterval bool
 }
 
 // RootPrefix mengembalikan awalan path parameter sesuai data model.
@@ -89,7 +93,7 @@ var Profiles = map[string]Profile{
 		Key: "nokia", Manufacturer: "Nokia", OUI: "NOK1AF", ProductClass: "BeaconG6",
 		ModelName: "G-1425G-A", Namespace: "urn:dslforum-org:cwmp-1-2",
 		DataModel: TR181, HardwareVer: "3FE48927AAAA", SoftwareVer: "3FE49362IJHK92",
-		OmitConnectionRequestURL: true,
+		OmitConnectionRequestURL: true, OmitPeriodicInformInterval: true,
 	},
 	"cdata": {
 		Key: "cdata", Manufacturer: "C-Data Technology", OUI: "CDT007", ProductClass: "FD704GW",

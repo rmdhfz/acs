@@ -37,6 +37,29 @@ func badRequest(format string, a ...any) error {
 	return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf(format, a...))
 }
 
+// deviceFilterFromQuery membentuk filter dasar perangkat dari query string (filter kolom + serial); dipakai bersama oleh daftar
+// (GET /devices) dan peta (GET /devices/map) supaya keduanya menyaring identik. Query bebas param= dst. ada di parseDeviceQuery.
+func deviceFilterFromQuery(c *echo.Context) (domain.DeviceFilter, error) {
+	f := domain.DeviceFilter{
+		Search:         c.QueryParam("search"),
+		SerialNumber:   c.QueryParam("serial_number"),
+		VendorID:       queryUint64(c, "vendor_id"),
+		DeviceModelID:  queryUint64(c, "device_model_id"),
+		DeviceStatusID: queryUint64(c, "device_status_id"),
+		TenantID:       queryUint64(c, "tenant_id"),
+		TagID:          queryUint64(c, "tag_id"),
+		OpticalLevel:   c.QueryParam("optical_level"),
+		NoVendor:       c.QueryParam("no_vendor") == "true",
+	}
+	if f.OpticalLevel != "" && !domain.ValidOpticalLevel(f.OpticalLevel) {
+		return f, echo.NewHTTPError(http.StatusBadRequest, "optical_level harus ok, warn, bad, atau unknown")
+	}
+	if err := checkMaxLen(lenRule{"serial_number", f.SerialNumber, 128}); err != nil {
+		return f, err
+	}
+	return f, nil
+}
+
 // parseDeviceQuery mengisi bagian query bebas dari filter; mengembalikan daftar fields= dan vparams= (kosong = tidak diminta).
 func parseDeviceQuery(c *echo.Context, f *domain.DeviceFilter) (fields, vparams []string, err error) {
 	raws := c.QueryParams()["param"]

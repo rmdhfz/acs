@@ -59,6 +59,7 @@ import (
 	"acs/internal/usecase/signup"
 	"acs/internal/usecase/tag"
 	"acs/internal/usecase/task"
+	"acs/internal/usecase/troubleshoot"
 	"acs/internal/usecase/usp_session"
 	"acs/internal/usecase/vparam"
 	"acs/internal/usecase/webhook"
@@ -236,13 +237,15 @@ func main() {
 	firmwareSvc := firmware.NewService(firmwareFileRepo, firmwareJobRepo, firmwareRolloutRepo, deviceRepo, taskSvc, refRepo, activityLogRepo, objStorage, usageRepo)
 	provisioningSvc := provisioning.NewService(profileRepo, profileParamRepo, ztRuleRepo, deviceRepo, deviceParamRepo, refRepo, taskSvc, firmwareSvc, activityLogRepo, presetRepo, presetAppRepo)
 	deviceSvc := device.NewService(deviceRepo, vendorOUIRepo, deviceModelRepo, refRepo, deviceParamRepo, deviceEventRepo, opticalMetricRepo, configSnapshotRepo, enc, activityLogRepo, taskSvc, fileRepo, objStorage, mysql.NewOpenTaskCanceller(db))
-	deviceSvc.WithCatalog(vendorRepo, tenantRepo).WithQuota(tenantQuotaRepo).WithCRTrustedCIDRs(cfg.CRTrustedCIDRs)
+	deviceSvc.WithCatalog(vendorRepo, tenantRepo).WithQuota(tenantQuotaRepo).WithCRTrustedCIDRs(cfg.CRTrustedCIDRs).WithPublisher(wsHub).WithMap(deviceRepo.(domain.DeviceMapReader))
 	diagnosticsSvc := diagnostics.NewService(diagnosticRepo, deviceRepo, taskSvc, activityLogRepo)
 	captureSvc := capture.NewService(mysql.NewCaptureRepository(db), deviceSvc, deviceSessionRepo, activityLogRepo)
 	vparamSvc := vparam.NewService(mysql.NewVirtualParameterRepository(db), deviceSvc, deviceParamRepo, activityLogRepo)
 	automationSvc := automation.NewService(hotcache.WrapAutomationRules(mysql.NewAutomationRuleRepository(db), informConfigCacheTTL),
 		mysql.NewAutomationStateRepository(db), mysql.NewAutomationRunRepository(db), deviceSvc, deviceParamRepo, taskSvc, tagRepo, webhookSvc, activityLogRepo)
 	faultSvc := fault.NewService(mysql.NewFaultRepository(db), activityLogRepo)
+	troubleshootSvc := troubleshoot.NewService(deviceSvc, deviceEventRepo, opticalMetricRepo, mysql.NewFaultRepository(db), taskRepo, refRepo, deviceParamRepo,
+		time.Duration(cfg.OfflineMinMinutes)*time.Minute)
 	// OLT Controller irisan 1: registry driver. Driver vendor nyata didaftarkan di sini saat ada; simulator hanya bila diaktifkan.
 	oltDrivers := oltdriver.NewRegistry()
 	if cfg.OLTSimEnabled {
@@ -389,6 +392,7 @@ func main() {
 		Transfers:         transferSvc,
 		Capture:           captureSvc,
 		Faults:            faultSvc,
+		Troubleshoot:      troubleshootSvc,
 		OLTs:              oltSvc,
 		Alerts:            alertsSvc,
 		AlertmanagerToken: cfg.AlertmanagerWebhookToken,
@@ -458,7 +462,7 @@ func main() {
 	}()
 
 	stop := make(chan struct{})
-	go runSweepers(deviceSvc, taskSvc, firmwareSvc, webhookSvc, sessionSvc, diagnosticsSvc, mysql.NewRetentionRepository(db), cfg.LogRetentionDays, signupSvc.Purge, notifSvc.Evaluate, billingSvc.Evaluate, lockSweeper, stop)
+	go runSweepers(deviceSvc, taskSvc, firmwareSvc, webhookSvc, sessionSvc, diagnosticsSvc, mysql.NewRetentionRepository(db), cfg.LogRetentionDays, time.Duration(cfg.OfflineMinMinutes)*time.Minute, signupSvc.Purge, notifSvc.Evaluate, billingSvc.Evaluate, lockSweeper, stop)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
@@ -549,7 +553,7 @@ func redactingRequestLogger(logger *slog.Logger) echo.MiddlewareFunc {
 // karena app server stateless (TECH.md §9). Dispatch webhook pakai ticker
 // terpisah yang lebih cepat (15 dtk) supaya event fault/value-change sampai
 // ke sistem pihak ketiga dengan latensi rendah.
-func runSweepers(deviceSvc *device.Service, taskSvc *task.Service, firmwareSvc *firmware.Service, webhookSvc *webhook.Service, sessionSvc *session.Service, diagSvc *diagnostics.Service, retention domain.RetentionRepository, retentionDays int, signupPurge func(context.Context) (int64, error), notifyEval func(context.Context) (int, error), billingEval func(context.Context) (int, error), lock func(name string, ttl time.Duration) (func(), bool), stop <-chan struct{}) {
+func runSweepers(deviceSvc *device.Service, taskSvc *task.Service, firmwareSvc *firmware.Service, webhookSvc *webhook.Service, sessionSvc *session.Service, diagSvc *diagnostics.Service, retention domain.RetentionRepository, retentionDays int, offlineMin time.Duration, signupPurge func(context.Context) (int64, error), notifyEval func(context.Context) (int, error), billingEval func(context.Context) (int, error), lock func(name string, ttl time.Duration) (func(), bool), stop <-chan struct{}) {
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
 	// Pemangkasan log: tiap 6 jam (data menahun dihapus bertahap per batch).
@@ -621,7 +625,7 @@ func runSweepers(deviceSvc *device.Service, taskSvc *task.Service, firmwareSvc *
 				continue // instance lain yang menjalankan sweeper tick ini
 			}
 			ctx := context.Background()
-			if n, err := deviceSvc.MarkStaleOffline(ctx, 15*time.Minute); err != nil {
+			if n, err := deviceSvc.MarkStaleOffline(ctx, offlineMin); err != nil {
 				log.Printf("sweeper: mark stale offline gagal: %v", err)
 			} else if n > 0 {
 				log.Printf("sweeper: %d device ditandai offline", n)

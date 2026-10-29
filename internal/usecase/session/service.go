@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -44,6 +45,8 @@ type Service struct {
 	// (di memori: setelah restart tiap device disegarkan sekali pada Inform pertamanya, lalu berkala).
 	pppoePollEvery time.Duration
 	pppoeNext      sync.Map
+	// intervalNext — device id -> kapan boleh mencoba lagi membaca PeriodicInformInterval (bila perangkat tidak mengungkapkannya).
+	intervalNext sync.Map
 	// typeIDs: cache kode tipe XSD -> id ref_parameter_types (lihat paramTypeID).
 	typeIDs         sync.Map
 	sessions        domain.DeviceSessionRepository
@@ -308,6 +311,14 @@ func (s *Service) HandleInform(ctx context.Context, in InformInput) (*InformResu
 			params = append(params, domain.DeviceParameter{DeviceID: dev.ID, ParameterName: p.Name, ParameterValue: &val, ParameterTypeID: s.paramTypeID(ctx, p.Type)})
 		}
 		_ = s.deviceParams.UpsertBatch(ctx, params)
+		// Perbarui juga objek dev di memori: pemeriksaan penemuan interval di bawah memakainya, dan tanpa ini perangkat yang BARU SAJA
+		// melaporkan interval tetap dianggap "belum diketahui" sehingga mendapat tugas baca yang sia-sia.
+		if sec, ok := s.noteInformInterval(ctx, dev.ID, dev.InformIntervalSeconds, in.Parameters); ok {
+			dev.InformIntervalSeconds = sec
+			if sec == nil { // dilaporkan 0 = Periodic Inform dimatikan: membacanya lagi tidak akan memberi nilai baru
+				s.intervalNext.Store(dev.ID, time.Now().Add(24*time.Hour))
+			}
+		}
 	}
 
 	// Webhook PARAMETER_VALUE_CHANGE (migrations/0013) — CPE mengirim event
@@ -375,8 +386,17 @@ func (s *Service) HandleInform(ctx context.Context, in InformInput) (*InformResu
 		}
 	}
 
+	// Penemuan interval direncanakan SEBELUM poll lain (memeriksa apakah perangkat sedang tanpa task terbuka) dan dijalankan SESUDAHNYA.
+	// Dua urutan sederhana sama-sama salah: bila poll lebih dulu, poll yang baru dibuat pada Inform ini membuat penemuan selalu
+	// "sibuk" dan ia tak pernah jalan (fatal untuk ONT ber-interval 12 jam); bila penemuan lebih dulu, ia memakai satu-satunya slot
+	// sehingga pembacaan optik/PPPoE pertama tertunda sampai Inform berikutnya. Dengan rencana-lalu-jalankan ketiganya diantre di
+	// Inform yang sama dan dijalankan berurutan dalam satu sesi.
+	discoverInterval := s.planInformIntervalDiscovery(ctx, dev)
 	s.maybePollOptical(ctx, dev)
 	s.maybePollPPPoE(ctx, dev)
+	if discoverInterval != nil {
+		discoverInterval()
+	}
 
 	_ = s.deviceSvc.MarkOnline(ctx, dev)
 
@@ -651,6 +671,7 @@ func (s *Service) HandleRPCResponse(ctx context.Context, resp RPCResponse) error
 			params = append(params, domain.DeviceParameter{DeviceID: sess.DeviceID, ParameterName: p.Name, ParameterValue: &val, ParameterTypeID: s.paramTypeID(ctx, p.Type), Writable: true})
 		}
 		_ = s.deviceParams.UpsertBatch(ctx, params)
+		_, _ = s.noteInformInterval(ctx, sess.DeviceID, nil, resp.ParameterValues)
 
 		// Korelasikan ke DeviceDiagnostic (bila task ini task pengambilan hasil diagnostik).
 		vals := make(map[string]string, len(resp.ParameterValues))
@@ -730,6 +751,62 @@ func (s *Service) WithFaults(f FaultRecorder) *Service {
 func (s *Service) WithPPPoEPoll(every time.Duration) *Service {
 	s.pppoePollEvery = every
 	return s
+}
+
+// informIntervalSuffix — akhiran nama parameter interval Periodic Inform (TR-098 maupun TR-181).
+const informIntervalSuffix = ".ManagementServer.PeriodicInformInterval"
+
+// noteInformInterval menyimpan interval Periodic Inform bila ikut dilaporkan (Inform atau hasil GetParameterValues). Dasar
+// ambang offline per perangkat (domain.OfflineThreshold). known = nilai tersimpan saat ini (nil = tidak diketahui/belum dimuat);
+// tidak menulis bila sama. Nilai bukan angka diabaikan. Gagal menyimpan tidak menggagalkan Inform. Mengembalikan nilai efektif
+// (nil bila 0 = pengiriman berkala dimatikan) dan ok=true bila interval ikut dilaporkan; nil+ok=false bila tidak ada/tak valid.
+func (s *Service) noteInformInterval(ctx context.Context, deviceID uint64, known *uint32, params []InformParameter) (*uint32, bool) {
+	for _, p := range params {
+		if !strings.HasSuffix(p.Name, informIntervalSuffix) {
+			continue
+		}
+		n, err := strconv.ParseUint(strings.TrimSpace(p.Value), 10, 32)
+		if err != nil {
+			return nil, false
+		}
+		sec := uint32(n)
+		var effective *uint32
+		if sec > 0 {
+			effective = &sec
+		}
+		if (known == nil) == (effective == nil) && (known == nil || *known == *effective) {
+			return effective, true // sudah tersimpan sama
+		}
+		if err := s.deviceSvc.SetInformInterval(ctx, deviceID, sec); err != nil {
+			s.log().Warn("cwmp: gagal menyimpan interval Periodic Inform", "device_id", deviceID, "error", err)
+		}
+		return effective, true
+	}
+	return nil, false
+}
+
+// planInformIntervalDiscovery memutuskan SEKARANG apakah perlu membaca PeriodicInformInterval perangkat ini dan mengembalikan fungsi yang
+// mengantrekannya (nil = tidak perlu/tidak sekarang). Kebanyakan CPE tidak melaporkan interval di Inform; tanpa nilainya ambang offline
+// jatuh ke batas minimum dan perangkat ber-interval panjang tampak offline padahal sehat. Tidak direncanakan bila interval sudah diketahui,
+// bila baru dicoba (paling sering sekali per 24 jam per perangkat, di memori; setelah restart sekali lagi), atau bila perangkat sedang
+// punya task terbuka — yang terakhir TIDAK mengunci percobaan berikutnya (dicoba lagi pada Inform berikutnya). Gagal tidak menggagalkan Inform.
+func (s *Service) planInformIntervalDiscovery(ctx context.Context, dev *domain.Device) func() {
+	if dev.InformIntervalSeconds != nil {
+		return nil
+	}
+	if v, ok := s.intervalNext.Load(dev.ID); ok && time.Now().Before(v.(time.Time)) {
+		return nil
+	}
+	if pending, err := s.taskSvc.HasPendingForDevice(ctx, dev.ID); err != nil || pending {
+		return nil
+	}
+	return func() {
+		s.intervalNext.Store(dev.ID, time.Now().Add(24*time.Hour))
+		if _, err := s.taskSvc.EnqueueInformIntervalPoll(ctx, dev.ID); err != nil {
+			s.log().Debug("cwmp: pembacaan interval Inform ditunda", "device_id", dev.ID, "error", err)
+			s.intervalNext.Store(dev.ID, time.Now().Add(time.Hour))
+		}
+	}
 }
 
 // maybePollPPPoE mengantre pembacaan koneksi WAN/PPP bila sudah lewat intervalnya, supaya kolom PPPoE di daftar perangkat

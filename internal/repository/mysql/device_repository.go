@@ -18,6 +18,9 @@ type deviceRepository struct{ db *sqlx.DB }
 
 func NewDeviceRepository(db *sqlx.DB) domain.DeviceRepository { return &deviceRepository{db: db} }
 
+// Dipakai main.go lewat type assertion pada domain.DeviceRepository; pastikan gagal saat kompilasi, bukan saat start.
+var _ domain.DeviceMapReader = (*deviceRepository)(nil)
+
 func (r *deviceRepository) Create(ctx context.Context, d *domain.Device) error {
 	now := time.Now()
 	d.CreatedAt, d.UpdatedAt = now, now
@@ -119,7 +122,10 @@ func (r *deviceRepository) GetByOUISerial(ctx context.Context, oui, serial strin
 	return &d, nil
 }
 
-func (r *deviceRepository) List(ctx context.Context, f domain.DeviceFilter, p domain.Pagination) ([]domain.Device, int, error) {
+// buildDeviceWhere menyusun klausa WHERE (tanpa kata WHERE) dan argumennya dari filter perangkat. Satu sumber untuk daftar
+// (List) dan peta (ListForMap) supaya keduanya menyaring dengan aturan yang persis sama. Kolom tidak diberi alias tabel
+// (subquery merujuk devices.id), jadi pemanggil tidak boleh men-JOIN tabel yang punya kolom bernama sama.
+func buildDeviceWhere(f domain.DeviceFilter) (string, []interface{}, error) {
 	where := []string{"is_deleted = 0"}
 	args := []interface{}{}
 	if f.TenantID != nil {
@@ -179,7 +185,7 @@ func (r *deviceRepository) List(ctx context.Context, f domain.DeviceFilter, p do
 			where = append(where, "("+rx+" >= ? AND "+rx+" <= ?)")
 			args = append(args, domain.OpticalRXWarnBelowDBM, domain.OpticalRXOverloadAboveDBM)
 		default:
-			return nil, 0, fmt.Errorf("%w: optical_level tidak dikenal", domain.ErrInvalidInput)
+			return "", nil, fmt.Errorf("%w: optical_level tidak dikenal", domain.ErrInvalidInput)
 		}
 	}
 	if f.InformBefore != nil {
@@ -195,11 +201,18 @@ func (r *deviceRepository) List(ctx context.Context, f domain.DeviceFilter, p do
 		where = append(where, cond)
 		args = append(args, cargs...)
 	}
+	return strings.Join(where, " AND "), args, nil
+}
+
+func (r *deviceRepository) List(ctx context.Context, f domain.DeviceFilter, p domain.Pagination) ([]domain.Device, int, error) {
+	whereSQL, args, err := buildDeviceWhere(f)
+	if err != nil {
+		return nil, 0, err
+	}
 	orderBy, err := deviceOrderBy(f.Sort, f.SortDesc)
 	if err != nil {
 		return nil, 0, err
 	}
-	whereSQL := strings.Join(where, " AND ")
 
 	// Query bebas (param= / sort pada kolom tanpa indeks) bisa mahal pada armada besar: batasi waktu eksekusi di sisi server (MariaDB
 	// "SET STATEMENT ... FOR"), supaya satu permintaan tidak menahan DB. Terlewati -> galat 1969 -> 400 "persempit filter" (errors.go).
@@ -328,18 +341,107 @@ func (r *deviceRepository) UpdateStatus(ctx context.Context, id, statusID uint64
 	return translateErr(err)
 }
 
-// MarkStaleOffline menandai OFFLINE device yang last_inform_at-nya lebih lama
-// dari staleBefore dan belum berstatus offline/decommissioned (FR-22).
-func (r *deviceRepository) MarkStaleOffline(ctx context.Context, offlineStatusID uint64, staleBefore time.Time) (int64, error) {
-	res, err := r.db.ExecContext(ctx,
-		`UPDATE devices SET device_status_id = ?
-		 WHERE is_deleted = 0 AND device_status_id <> ?
-		   AND last_inform_at IS NOT NULL AND last_inform_at < ?`,
-		offlineStatusID, offlineStatusID, staleBefore)
+// ListForMap mengembalikan titik peta (perangkat ber-koordinat) dengan filter daftar yang sama (buildDeviceWhere), opsional dibatasi bbox,
+// plus hitungan untuk UI: berapa yang cocok filter dan berapa di antaranya punya koordinat. limit+1 baris dibaca untuk mendeteksi
+// pemotongan tanpa COUNT kedua.
+func (r *deviceRepository) ListForMap(ctx context.Context, f domain.DeviceFilter, box *domain.BBox, limit int) (domain.DeviceMapResult, error) {
+	whereSQL, args, err := buildDeviceWhere(f)
 	if err != nil {
-		return 0, translateErr(err)
+		return domain.DeviceMapResult{}, err
 	}
-	return res.RowsAffected()
+	pre := ""
+	if len(f.Params) > 0 {
+		pre = "SET STATEMENT max_statement_time=10 FOR " // query bebas: lihat catatan di List
+	}
+	var counts struct {
+		Total   int `db:"total"`
+		Located int `db:"located"`
+	}
+	if err := r.db.GetContext(ctx, &counts,
+		pre+"SELECT COUNT(*) AS total, COALESCE(SUM(latitude IS NOT NULL AND longitude IS NOT NULL), 0) AS located FROM devices WHERE "+whereSQL,
+		args...); err != nil {
+		return domain.DeviceMapResult{}, translateErr(err)
+	}
+
+	pointsWhere := whereSQL + " AND latitude IS NOT NULL AND longitude IS NOT NULL"
+	pargs := append([]interface{}{}, args...)
+	if box != nil {
+		pointsWhere += " AND latitude BETWEEN ? AND ?"
+		pargs = append(pargs, box.South, box.North)
+		if box.West <= box.East {
+			pointsWhere += " AND longitude BETWEEN ? AND ?"
+		} else { // melintasi bujur 180: timur-jauh ATAU barat-jauh
+			pointsWhere += " AND (longitude >= ? OR longitude <= ?)"
+		}
+		pargs = append(pargs, box.West, box.East)
+	}
+	pargs = append(pargs, limit+1)
+	var pts []domain.DeviceMapPoint
+	if err := r.db.SelectContext(ctx, &pts,
+		pre+"SELECT id, device_uuid, serial_number, product_class, latitude, longitude, device_status_id, last_inform_at FROM devices WHERE "+
+			pointsWhere+" ORDER BY id LIMIT ?", pargs...); err != nil {
+		return domain.DeviceMapResult{}, translateErr(err)
+	}
+	res := domain.DeviceMapResult{Total: counts.Total, Located: counts.Located}
+	if len(pts) > limit {
+		pts, res.Truncated = pts[:limit], true
+	}
+	res.Points = pts
+	return res, nil
+}
+
+// staleOfflineBatch membatasi baris yang dikunci/diubah satu kali sapuan (satu tick): setelah pemadaman besar sisanya diselesaikan
+// tick berikutnya, tanpa transaksi raksasa yang menahan Inform.
+const staleOfflineBatch = 5000
+
+// MarkStaleOffline menandai OFFLINE perangkat yang diam melewati ambang per perangkat: lihat domain.OfflineThreshold — rumus yang
+// sama dituliskan di SQL (GREATEST(min, LEAST(max, CEIL(faktor x interval)))). SELECT ... FOR UPDATE lalu UPDATE per id dalam satu
+// transaksi: MariaDB tidak punya UPDATE ... RETURNING, dan penguncian menutup race dengan Inform yang masuk di tengah sapuan
+// (Inform menunggu commit lalu menjadikan perangkat ONLINE seperti biasa). Mengembalikan HANYA perangkat yang benar-benar berpindah.
+func (r *deviceRepository) MarkStaleOffline(ctx context.Context, offlineStatusID uint64, minThreshold time.Duration, now time.Time) ([]domain.StaleDevice, error) {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, translateErr(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var stale []domain.StaleDevice
+	if err := tx.SelectContext(ctx, &stale,
+		`SELECT id, tenant_id, serial_number, last_inform_at FROM devices
+		 WHERE is_deleted = 0 AND device_status_id <> ? AND last_inform_at IS NOT NULL
+		   AND TIMESTAMPDIFF(SECOND, last_inform_at, ?) >
+		       GREATEST(?, LEAST(?, CEIL(? * COALESCE(inform_interval_seconds, 0))))
+		 ORDER BY id LIMIT ? FOR UPDATE`,
+		offlineStatusID, now, int64(minThreshold/time.Second), int64(domain.MaxOfflineThreshold/time.Second),
+		domain.InformIntervalFactor, staleOfflineBatch); err != nil {
+		return nil, translateErr(err)
+	}
+	if len(stale) == 0 {
+		return nil, nil
+	}
+	ids := make([]uint64, len(stale))
+	for i, d := range stale {
+		ids[i] = d.ID
+	}
+	q, args, err := sqlx.In(`UPDATE devices SET device_status_id = ? WHERE id IN (?)`, offlineStatusID, ids)
+	if err != nil {
+		return nil, translateErr(err)
+	}
+	if _, err := tx.ExecContext(ctx, q, args...); err != nil {
+		return nil, translateErr(err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, translateErr(err)
+	}
+	return stale, nil
+}
+
+// SetInformInterval menyimpan interval Periodic Inform yang dilaporkan perangkat; tidak menulis bila nilainya sama (NULL-safe).
+func (r *deviceRepository) SetInformInterval(ctx context.Context, id uint64, seconds *uint32) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE devices SET inform_interval_seconds = ? WHERE id = ? AND is_deleted = 0 AND NOT (inform_interval_seconds <=> ?)`,
+		seconds, id, seconds)
+	return translateErr(err)
 }
 
 // SoftDelete menandai device terhapus DAN melepas relasi aksesnya

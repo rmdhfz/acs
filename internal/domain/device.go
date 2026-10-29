@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"math"
 	"time"
 )
 
@@ -40,9 +41,12 @@ type Device struct {
 	InformPasswordEnc []byte     `db:"inform_password_enc" json:"-"`
 	LastInformAt      *time.Time `db:"last_inform_at" json:"last_inform_at"`
 	LastBootEventAt   *time.Time `db:"last_boot_event_at" json:"last_boot_event_at"`
-	Latitude          *float64   `db:"latitude" json:"latitude"`
-	Longitude         *float64   `db:"longitude" json:"longitude"`
-	Notes             *string    `db:"notes" json:"notes"`
+	// InformIntervalSeconds — ManagementServer.PeriodicInformInterval yang DILAPORKAN perangkat (migrations/0046); nil = belum diketahui.
+	// Dasar ambang offline per perangkat (OfflineThreshold).
+	InformIntervalSeconds *uint32  `db:"inform_interval_seconds" json:"inform_interval_seconds"`
+	Latitude              *float64 `db:"latitude" json:"latitude"`
+	Longitude             *float64 `db:"longitude" json:"longitude"`
+	Notes                 *string  `db:"notes" json:"notes"`
 	Audit
 }
 
@@ -138,11 +142,50 @@ type DeviceRepository interface {
 	CountByVendor(ctx context.Context, tenantID *uint64) ([]DeviceVendorCount, error)
 	Update(ctx context.Context, d *Device) error
 	UpdateStatus(ctx context.Context, id, statusID uint64, updatedBy *uint64) error
-	MarkStaleOffline(ctx context.Context, offlineStatusID uint64, staleBefore time.Time) (int64, error)
+	// MarkStaleOffline menandai OFFLINE perangkat yang diam melewati OfflineThreshold-nya (dihitung per perangkat dari
+	// inform_interval_seconds; minThreshold = batas minimum) dan mengembalikan perangkat yang BENAR-BENAR berpindah status,
+	// supaya perubahan bisa disiarkan realtime.
+	MarkStaleOffline(ctx context.Context, offlineStatusID uint64, minThreshold time.Duration, now time.Time) ([]StaleDevice, error)
+	// SetInformInterval menyimpan interval Periodic Inform yang dilaporkan perangkat (nil = tidak diketahui).
+	SetInformInterval(ctx context.Context, id uint64, seconds *uint32) error
 	// SoftDelete menandai device terhapus. Create() meng-"revive" baris terhapus
 	// dengan (oui, serial) yang sama bila CPE itu Inform lagi (unique key
 	// uq_devices_oui_serial mencakup baris terhapus) — lihat implementasinya.
 	SoftDelete(ctx context.Context, id, deletedBy uint64) error
+}
+
+// StaleDevice = perangkat yang baru saja ditandai OFFLINE oleh penyapu.
+type StaleDevice struct {
+	ID           uint64     `db:"id"`
+	TenantID     *uint64    `db:"tenant_id"`
+	SerialNumber string     `db:"serial_number"`
+	LastInformAt *time.Time `db:"last_inform_at"`
+}
+
+// Ambang offline per perangkat: perangkat dianggap offline bila diam lebih lama dari InformIntervalFactor x interval Periodic Inform
+// yang dilaporkannya (toleransi dua Inform terlewat + selisih jam), tidak kurang dari batas minimum dan tidak lebih dari
+// MaxOfflineThreshold. Interval belum diketahui = batas minimum. Rumus yang sama dipakai SQL penyapu
+// (repository/mysql.MarkStaleOffline) — ubah keduanya bersamaan.
+const (
+	InformIntervalFactor = 2.5
+	MaxOfflineThreshold  = 7 * 24 * time.Hour
+)
+
+// OfflineThreshold mengembalikan lamanya diam sebelum perangkat dianggap offline.
+func OfflineThreshold(informIntervalSeconds *uint32, minThreshold time.Duration) time.Duration {
+	// Dihitung dalam detik (float) dan dibatasi SEBELUM menjadi time.Duration: interval raksasa (mis. 4294967295, nilai yang kerap
+	// berarti "dimatikan") akan meluap int64 nanodetik. Urutan sama dengan SQL: GREATEST(minThreshold, LEAST(max, ceil(faktor x interval))).
+	scaledSec := 0.0
+	if informIntervalSeconds != nil {
+		scaledSec = math.Ceil(InformIntervalFactor * float64(*informIntervalSeconds))
+	}
+	if maxSec := MaxOfflineThreshold.Seconds(); scaledSec > maxSec {
+		scaledSec = maxSec
+	}
+	if scaled := time.Duration(scaledSec) * time.Second; scaled > minThreshold {
+		return scaled
+	}
+	return minThreshold
 }
 
 // OpenTaskCanceller membatalkan task yang belum terminal (PENDING/QUEUED/SENT)

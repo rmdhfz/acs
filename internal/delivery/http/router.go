@@ -34,6 +34,7 @@ import (
 	"acs/internal/usecase/signup"
 	"acs/internal/usecase/tag"
 	"acs/internal/usecase/task"
+	"acs/internal/usecase/troubleshoot"
 	"acs/internal/usecase/vparam"
 	"acs/internal/usecase/webhook"
 )
@@ -82,6 +83,8 @@ type Router struct {
 	Capture *capture.Service
 	// Resource faults (migrations/0038): cwmp:Fault aktif dari CPE; nil = rute tidak dipasang.
 	Faults *fault.Service
+	// Troubleshoot — diagnosis "kenapa offline?" per perangkat (opsional; rute tidak didaftarkan bila nil).
+	Troubleshoot *troubleshoot.Service
 	// OLT Controller irisan 1 (migrations/0044): inventaris OLT + antrean ONU belum terdaftar; nil = rute tidak dipasang.
 	OLTs *olt.Service
 	// Alert Alertmanager -> notifikasi PLATFORM_ALERT untuk SUPERADMIN; rute dipasang hanya bila Alerts dan AlertmanagerToken terisi.
@@ -303,6 +306,15 @@ func (r *Router) Register(e *echo.Echo) {
 	}
 
 	authed.GET("/devices", r.listDevices)
+	// NBI kompatibel-sebagian GenieACS (hanya baca): query/projection/sort/skip/limit diterjemahkan ke query perangkat yang sama,
+	// jadi scope tenant/RBAC identik dengan GET /devices.
+	authed.GET("/nbi/devices", r.nbiListDevices)
+	// Peta perangkat: rute statis didaftarkan sebelum /devices/:id. Baca untuk semua peran staf (scope tenant di usecase).
+	authed.GET("/devices/map", r.deviceMap)
+	if r.Troubleshoot != nil {
+		// Diagnosis offline: hanya baca, semua peran staf (scope tenant ditegakkan usecase/device.Get).
+		authed.GET("/devices/:id/diagnosis", r.deviceDiagnosis)
+	}
 	authed.GET("/devices/stats", r.deviceStats)
 	authed.GET("/devices/insights", r.deviceInsights)
 	if r.Capture != nil {

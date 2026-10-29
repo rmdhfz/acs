@@ -94,8 +94,10 @@ type Service struct {
 	tenants domain.TenantRepository
 	quota   domain.TenantQuotaRepository // opsional (WithQuota): batas perangkat per tenant
 
-	notifier domain.Notifier                // opsional (WithNotifier): notifikasi DEVICE_LIMIT_REACHED
-	fleet    domain.FleetInsightsRepository // opsional (WithFleetInsights): wawasan armada dashboard
+	notifier  domain.Notifier                // opsional (WithNotifier): notifikasi DEVICE_LIMIT_REACHED
+	publisher domain.EventPublisher          // opsional (WithPublisher): siaran realtime DEVICE_OFFLINE
+	mapReader domain.DeviceMapReader         // opsional (WithMap): titik peta perangkat
+	fleet     domain.FleetInsightsRepository // opsional (WithFleetInsights): wawasan armada dashboard
 
 	// crTrusted — rentang IP tepercaya untuk host ConnectionRequestURL di luar IP sumber Inform (WithCRTrustedCIDRs).
 	crTrusted []*net.IPNet
@@ -720,15 +722,90 @@ func (s *Service) TouchLastBootEvent(ctx context.Context, d *domain.Device, at t
 	return s.devices.Update(ctx, d)
 }
 
-// MarkStaleOffline menandai OFFLINE device yang tidak Inform lagi melewati
-// threshold (FR-22). Dipanggil periodik dari goroutine di cmd/acsd — lihat
-// TECH.md §9 (app server stateless, aman dijalankan dari instance manapun).
-func (s *Service) MarkStaleOffline(ctx context.Context, threshold time.Duration) (int64, error) {
+// WithMap mengaktifkan peta perangkat (ListForMap).
+func (s *Service) WithMap(r domain.DeviceMapReader) *Service {
+	s.mapReader = r
+	return s
+}
+
+// ListForMap mengembalikan titik peta dengan scope tenant dan perlindungan parameter rahasia yang sama dengan List.
+func (s *Service) ListForMap(ctx context.Context, actor domain.Actor, f domain.DeviceFilter, box *domain.BBox) (*domain.DeviceMapResult, error) {
+	if s.mapReader == nil {
+		return nil, fmt.Errorf("%w: peta perangkat tidak diaktifkan", domain.ErrInvalidInput)
+	}
+	if err := checkQueryParams(actor, f); err != nil {
+		return nil, err
+	}
+	if !actor.IsSuperadmin() {
+		tid, err := auth.ScopedTenantFilter(actor)
+		if err != nil {
+			return nil, err
+		}
+		f.TenantID = tid
+	}
+	res, err := s.mapReader.ListForMap(ctx, f, box, domain.MaxMapPoints)
+	if err != nil {
+		return nil, err
+	}
+	codes := map[uint64]string{} // kode status per id, dicari sekali per id (ref di-cache di repositori)
+	for i := range res.Points {
+		id := res.Points[i].DeviceStatusID
+		code, ok := codes[id]
+		if !ok {
+			if ref, err := s.refs.GetByID(ctx, domain.RefTableDeviceStatus, id); err == nil {
+				code = ref.Code
+			}
+			codes[id] = code
+		}
+		res.Points[i].Status = code
+	}
+	if res.Points == nil {
+		res.Points = []domain.DeviceMapPoint{}
+	}
+	return &res, nil
+}
+
+// WithPublisher mengaktifkan siaran realtime perubahan status perangkat (DEVICE_OFFLINE) ke WebSocket tenant pemiliknya.
+func (s *Service) WithPublisher(p domain.EventPublisher) *Service {
+	s.publisher = p
+	return s
+}
+
+// MarkStaleOffline menandai OFFLINE device yang tidak Inform lagi melewati ambang per perangkat (FR-22; lihat
+// domain.OfflineThreshold: 2,5 x interval Periodic Inform yang dilaporkan perangkat, minimal minThreshold) dan menyiarkan
+// DEVICE_OFFLINE ke tenant pemiliknya. Dipanggil periodik dari goroutine di cmd/acsd — lihat TECH.md §9 (app server stateless,
+// aman dijalankan dari instance manapun). Mengembalikan jumlah perangkat yang berpindah status.
+func (s *Service) MarkStaleOffline(ctx context.Context, minThreshold time.Duration) (int64, error) {
 	offlineStatus, err := s.refs.GetByCode(ctx, domain.RefTableDeviceStatus, domain.DeviceStatusOffline)
 	if err != nil {
 		return 0, err
 	}
-	return s.devices.MarkStaleOffline(ctx, offlineStatus.ID, time.Now().Add(-threshold))
+	moved, err := s.devices.MarkStaleOffline(ctx, offlineStatus.ID, minThreshold, time.Now())
+	if err != nil {
+		return 0, err
+	}
+	if s.publisher != nil {
+		for _, d := range moved {
+			if d.TenantID == nil {
+				continue
+			}
+			s.publisher.BroadcastToTenant(*d.TenantID, "DEVICE_OFFLINE", map[string]interface{}{
+				"device_id":      d.ID,
+				"serial_number":  d.SerialNumber,
+				"last_inform_at": d.LastInformAt,
+			})
+		}
+	}
+	return int64(len(moved)), nil
+}
+
+// SetInformInterval menyimpan interval Periodic Inform yang dilaporkan perangkat (detik). Nilai 0 = pengiriman berkala dimatikan
+// di perangkat; itu tidak berarti "tanpa batas", jadi disimpan sebagai tidak diketahui (nil) dan ambang minimum yang berlaku.
+func (s *Service) SetInformInterval(ctx context.Context, deviceID uint64, seconds uint32) error {
+	if seconds == 0 {
+		return s.devices.SetInformInterval(ctx, deviceID, nil)
+	}
+	return s.devices.SetInformInterval(ctx, deviceID, &seconds)
 }
 
 func (s *Service) ListParameters(ctx context.Context, actor domain.Actor, deviceID uint64, prefix string) ([]domain.DeviceParameter, error) {

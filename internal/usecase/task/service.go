@@ -940,6 +940,31 @@ func (s *Service) summaryBranch(ctx context.Context, deviceID uint64) string {
 	return ""
 }
 
+// EnqueueInformIntervalPoll mengantre pembacaan SATU parameter, ManagementServer.PeriodicInformInterval, supaya penyapu offline
+// tahu seberapa sering perangkat ini seharusnya Inform (domain.OfflineThreshold). Sengaja task tersendiri, bukan ditempelkan ke
+// polling PPPoE: firmware yang menolak nama parameter ini (fault 9005) tidak boleh ikut merusak pembacaan PPPoE. false bila data
+// model perangkat belum diketahui — bukan error. Aktor sistem; kuota task tenant tetap berlaku (ErrQuotaExceeded dikembalikan apa adanya).
+func (s *Service) EnqueueInformIntervalPoll(ctx context.Context, deviceID uint64) (bool, error) {
+	root := ""
+	for _, r := range []string{"InternetGatewayDevice.", "Device."} {
+		if ok, err := s.deviceParams.HasPrefix(ctx, deviceID, r); err == nil && ok {
+			root = r
+			break
+		}
+	}
+	if root == "" {
+		return false, nil
+	}
+	sys := domain.Actor{Roles: []string{domain.RoleSuperadmin}}
+	if _, err := s.CreateTask(ctx, sys, domain.CreateTaskInput{
+		DeviceID: deviceID, TaskType: domain.TaskTypeGetParameterValues, Priority: 8,
+		Parameters: map[string]interface{}{"names": []string{root + "ManagementServer.PeriodicInformInterval"}},
+	}); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // EnqueuePPPoEPoll mengantre pembacaan koneksi WAN/PPP (username PPPoE) untuk penyegaran berkala. false bila data model
 // device belum diketahui (belum ada parameter) — bukan error. Dibuat sebagai aktor sistem; kuota task tenant tetap berlaku
 // (ErrQuotaExceeded dikembalikan apa adanya agar pemanggil dapat menunda).

@@ -46,10 +46,11 @@ func (f *fakeDeviceRepoAuth) Update(context.Context, *domain.Device) error { ret
 func (f *fakeDeviceRepoAuth) UpdateStatus(context.Context, uint64, uint64, *uint64) error {
 	return nil
 }
-func (f *fakeDeviceRepoAuth) MarkStaleOffline(context.Context, uint64, time.Time) (int64, error) {
-	return 0, nil
+func (f *fakeDeviceRepoAuth) MarkStaleOffline(context.Context, uint64, time.Duration, time.Time) ([]domain.StaleDevice, error) {
+	return nil, nil
 }
-func (f *fakeDeviceRepoAuth) SoftDelete(context.Context, uint64, uint64) error { return nil }
+func (f *fakeDeviceRepoAuth) SetInformInterval(context.Context, uint64, *uint32) error { return nil }
+func (f *fakeDeviceRepoAuth) SoftDelete(context.Context, uint64, uint64) error         { return nil }
 
 // fakeTenantRepoAuth implementasi in-memory minimal domain.TenantRepository.
 type fakeTenantRepoAuth struct {

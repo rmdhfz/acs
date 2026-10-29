@@ -144,6 +144,8 @@ func main() {
 		{"S34-aturan-otomasi", scenarioAutomation},
 		{"S35-olt-controller", scenarioOLT},
 		{"S36-webhook-alertmanager", scenarioAlertmanager},
+		{"S37-nbi-kompatibel-genieacs", scenarioNBI},
+		{"S38-peta-diagnosis-interval", scenarioMapDiagnosis},
 	}
 
 	var results []result
